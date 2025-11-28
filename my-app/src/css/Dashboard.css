@@ -1,0 +1,123 @@
+.cuerpo {
+  background-color: #0a3d2a;
+  color: white;
+  font-family: "Poppins", sans-serif;
+  min-height: 100vh;
+  padding: 2rem;
+  overflow-x: hidden;
+}
+
+/* ===============================
+   ENCABEZADO
+=============================== */
+
+.encabezado-tablero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.logo-aquaher {
+  height: 60px;
+  object-fit: contain;
+}
+
+.encabezado-tablero h1 {
+  font-size: 1.8rem;
+  margin: 0;
+}
+
+/* ===============================
+   GRID KPIS
+=============================== */
+
+.cuadricula-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.2rem;
+  margin-top: 2rem;
+}
+
+/* ===============================
+   TABLA
+=============================== */
+
+.contenedor-tabla {
+  margin-top: 2rem;
+  background: white;
+  color: #333;
+  border-radius: 10px;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* tabla responsive */
+.contenedor-tabla table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1rem;
+}
+
+/* ===============================
+   RESPONSIVE TABLET
+=============================== */
+
+@media (max-width: 900px) {
+  .cuerpo {
+    padding: 1.5rem;
+  }
+
+  .logo-aquaher {
+    height: 50px;
+  }
+
+  .encabezado-tablero {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .encabezado-tablero h1 {
+    font-size: 1.6rem;
+  }
+
+  .cuadricula-kpis {
+    gap: 1rem;
+  }
+}
+
+/* ===============================
+   RESPONSIVE MÓVIL GRANDE
+=============================== */
+
+@media (max-width: 600px) {
+  .cuerpo {
+    padding: 1rem;
+  }
+
+  .encabezado-tablero h1 {
+    font-size: 1.4rem;
+  }
+
+  .contenedor-tabla table {
+    font-size: 0.85rem;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+/* ===============================
+   RESPONSIVE MÓVIL PEQUEÑO
+=============================== */
+
+@media (max-width: 400px) {
+  .encabezado-tablero h1 {
+    font-size: 1.2rem;
+  }
+
+  .logo-aquaher {
+    height: 45px;
+  }
+}

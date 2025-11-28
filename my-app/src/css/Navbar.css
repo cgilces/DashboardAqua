@@ -1,0 +1,241 @@
+/* ==============================
+   SIDEBAR BASE
+============================== */
+.sidebar {
+  background: #2c574b60;
+  color: white;
+  width: 250px;
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  transition: 0.3s ease;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 999;
+}
+
+/* Scroll */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 5px;
+}
+
+/* ==============================
+   SIDEBAR CERRADO
+============================== */
+.sidebar.closed {
+  width: 60px;
+}
+
+.sidebar.closed .menu-item {
+  justify-content: center;
+}
+.sidebar.closed .menu-link span {
+  display: none;
+}
+.sidebar.closed .submenu {
+  display: none;
+}
+
+/* ==============================
+   BOTÓN TOGGLE — DESKTOP
+============================== */
+.toggle-btn {
+  position: fixed;
+  top: 15px;
+  left: 15px;
+  background: #00b389;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  z-index: 2000;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.sidebar.open ~ .toggle-btn {
+  left: 270px;
+}
+
+.sidebar.closed ~ .toggle-btn {
+  left: 15px;
+}
+
+/* ==============================
+   MENÚ PRINCIPAL
+============================== */
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar ul li {
+  padding: 8px 10px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  cursor: pointer;
+  padding: 10px 8px;
+  border-radius: 6px;
+  transition: 0.2s;
+}
+
+.menu-item:hover {
+  background: #222;
+}
+
+.menu-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: white;
+  flex-grow: 1;
+  text-decoration: none;
+}
+
+/* ==============================
+   SUBMENÚ
+============================== */
+.submenu {
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.submenu li {
+  padding: 4px 0;
+}
+
+.submenu li a {
+  color: #ccc;
+  font-size: 14px;
+}
+
+.submenu li a:hover {
+  color: white;
+}
+
+/* ==============================
+   MENU ACTIVO
+============================== */
+.menu-item.active {
+  background: #007bff;
+  border-left: 4px solid #fff;
+}
+
+.menu-item.active:hover {
+  background: #0056b3;
+}
+
+/* ==============================
+   CONTENT
+============================== */
+.main-content {
+  width: calc(100% - 250px);
+  margin-left: 250px;
+  padding: 20px;
+  transition: margin-left .3s ease, width .3s ease;
+}
+
+.sidebar.closed ~ .main-content {
+  width: calc(100% - 60px);
+  margin-left: 60px;
+}
+
+/* ==========================================================
+   SOLO MODIFICADO LO QUE PEDISTE (SEPARAR ÍTEMS DEL MENÚ)
+========================================================== */
+
+/* Desktop */
+@media (min-width: 900px) {
+  .sidebar.open ul {
+    margin-top: 85px;   /* antes 60px */
+  }
+
+  .sidebar.closed ul {
+    margin-top: 60px;   /* antes 20px */
+  }
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .sidebar.open ul {
+    margin-top: 85px; /* agregado para dar espacio también en móvil */
+  }
+}
+
+/* ==============================
+   RESPONSIVE TABLET < 900px
+============================== */
+@media (max-width: 900px) {
+  .sidebar {
+    width: 200px;
+    left: -200px;
+  }
+
+  .sidebar.open {
+    left: 0;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+}
+
+/* ==========================================================
+   RESPONSIVE MOBILE < 600px
+========================================================== */
+@media (max-width: 600px) {
+
+  .sidebar {
+    width: 0;
+    left: 0;
+    background: rgba(4, 92, 76, 0.95);
+    backdrop-filter: blur(4px);
+    border-right: 1px solid rgba(255,255,255,0.1);
+    transition: left .3s ease, width .3s ease;
+  }
+
+  .sidebar.open {
+    width: 180px;
+    left: 0;
+  }
+
+  .sidebar.closed {
+    width: 0;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 15px;
+  }
+
+  .toggle-btn {
+    position: fixed;
+    top: 0;
+    left: 0;
+    background: #00b389;
+    padding: 12px 15px;
+    width: auto;
+    border-radius: 0 0 6px 0;
+    z-index: 3000;
+  }
+
+  .menu-link span {
+    display: none;
+  }
+}

@@ -1,0 +1,75 @@
+# =======================================
+# ARCHIVO .gitignore PARA NODE + FRONTEND
+# =======================================
+
+# Dependencias de Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Archivos de compilación o salida
+dist/
+build/
+coverage/
+*.log
+
+# Cache y temporales
+.cache/
+.tmp/
+.DS_Store
+Thumbs.db
+
+# Configuración del editor
+.vscode/
+.idea/
+
+# Sistema operativo
+*.swp
+*.swo
+*.bak
+
+# Archivos de Docker
+docker-compose.override.yml
+Dockerfile.local
+
+# Archivos personalizados de usuario
+*.sqlite
+*.db
+*.pid
+*.seed
+*.key
+*.pem
+*.crt
+
+# Archivos de Power BI / Excel exportados
+*.pbix
+*.xlsx
+*.xls
+*.csv
+
+# Archivos de backend temporales
+backend/uploads/
+backend/tmp/
+backend/logs/
+backend/.env
+
+backend/services/api_log.txt
+*.log
+*.txt
+
+# Archivos de frontend
+frontend/.env
+frontend/node_modules/
+frontend/dist/
+
+# Logs generales
+*.log
+logs/

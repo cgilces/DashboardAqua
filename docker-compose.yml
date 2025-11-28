@@ -1,0 +1,46 @@
+services:
+  backend:
+    build: ./backend
+    container_name: backend
+    restart: always
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_USER: postgres
+      DB_PASS: Aqua1992.
+      DB_NAME: ventas_mv
+    networks:
+      - dasboard_net
+
+  frontend:
+    build: ./my-app
+    container_name: frontend
+    restart: always
+    ports:
+      - "3000:80"
+    networks:
+      - dasboard_net
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Aqua1992.
+      POSTGRES_DB: ventas_mv
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dasboard_net
+
+networks:
+  dasboard_net:
+
+volumes:
+  postgres_data:

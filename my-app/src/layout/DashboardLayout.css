@@ -1,0 +1,209 @@
+/* ===============================
+    LAYOUT BASE
+=============================== */
+
+.layout-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.layout-content {
+  flex: 1;
+  padding: 20px;
+  transition: margin-left .3s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Sidebar desktop */
+.sidebar.open ~ .layout-content {
+  margin-left: 0px;
+}
+
+.sidebar.closed ~ .layout-content {
+  margin-left: -200px;
+}
+
+
+/* ===============================
+    RESPONSIVE 1200px
+=============================== */
+@media (max-width: 1200px) {
+  .layout-content {
+    padding: 15px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+  }
+}
+
+
+/* ===============================
+    RESPONSIVE 900px
+=============================== */
+
+@media (max-width: 900px) {
+
+  .sidebar {
+    position: fixed;
+    height: 100vh;
+    top: 0;
+    width: 200px;
+    left: -200px;
+    transition: 0.3s ease;
+    z-index: 999;
+  }
+
+  .sidebar.open {
+    left: 0;
+  }
+
+  .toggle-btn {
+    position: fixed;
+    left: 15px;
+    top: 15px;
+    z-index: 2000;
+    cursor: pointer;
+  }
+
+  .layout-content {
+    margin-left: 0 !important;
+    padding: 15px;
+  }
+
+  header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  header img {
+    height: 50px;
+  }
+
+  header h1 {
+    font-size: 1.5rem;
+    width: 100%;
+  }
+
+  header select {
+    width: 100%;
+    max-width: 300px;
+    font-size: 1rem;
+    padding: 10px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .tarjeta {
+    padding: 20px;
+    width: 100%;
+  }
+
+  .text-5xl {
+    font-size: 2rem;
+  }
+}
+
+
+/* ===============================
+    RESPONSIVE 600px (móvil)
+=============================== */
+
+@media (max-width: 600px) {
+
+  .sidebar {
+    width: 60px;
+    left: -60px;
+  }
+
+  .sidebar.open {
+    width: 180px;
+  }
+
+  .toggle-btn {
+    left: 10px;
+  }
+
+  .menu-item {
+    font-size: 0;
+  }
+
+  .menu-item svg {
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+
+  .sidebar.open .menu-item {
+    font-size: 14px;
+  }
+
+  header h1 {
+    font-size: 1.3rem;
+    line-height: 1.3;
+  }
+
+  header p {
+    font-size: 0.8rem;
+  }
+
+  /* full width inputs */
+  header select,
+  input,
+  button {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .main-content {
+    padding: 10px !important;
+  }
+
+  .h-full {
+    padding: 10px 0;
+  }
+
+  h2 {
+    font-size: 1rem;
+  }
+
+  table {
+    width: 100%;
+    font-size: 0.75rem;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+
+/* ===============================
+    EXTRA — performance mobile
+=============================== */
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+img {
+  max-width: 100%;
+}
+
+.hidden-mobile {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .hidden-mobile {
+    display: block;
+  }
+}

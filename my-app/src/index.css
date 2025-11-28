@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- ESTILOS GLOBALES DEL DASHBOARD --- */
+@layer base {
+  body {
+    @apply text-white font-sans;
+    background: linear-gradient(180deg, #012E24 0%, #014434 100%);
+    font-family: 'Poppins', sans-serif !important;
+    overflow-x: hidden;
+  }
+
+  /* Animación global */
+  @keyframes aparecerSuave {
+    from {
+      opacity: 0;
+      transform: translateY(15px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .fade-in {
+    animation: aparecerSuave 0.6s ease forwards;
+  }
+
+  /* ========================================================
+     TARJETAS RESPONSIVE & EFECTOS
+  ======================================================== */
+  .tarjeta {
+    @apply bg-[#045C4C]
+      rounded-2xl
+      p-6
+      shadow-lg
+      transition-transform
+      duration-500
+      ease-in-out
+      hover:shadow-2xl
+      w-full
+      max-w-full;
+
+    animation: aparecerSuave 0.6s ease forwards;
+  }
+
+  .tarjeta:hover {
+    transform: scale(1.06) translateY(-6px);
+    box-shadow: 0 20px 35px rgba(0,0,0,0.45);
+  }
+
+  /* ========================================================
+     PROGRESO
+  ======================================================== */
+  .barra-progreso {
+    @apply w-full h-2 bg-gray-700 rounded-full overflow-hidden;
+  }
+  .relleno-progreso {
+    @apply h-full bg-[#00C896] transition-all duration-500 ease-out;
+  }
+}
+
+/* ========================================================
+     RESPONSIVE BREAKPOINTS ADICIONALES
+======================================================== */
+
+/* Para tablets */
+@media (max-width: 900px) {
+  .tarjeta {
+    @apply p-4;
+    transform: none !important;
+  }
+}
+
+/* Teléfonos grandes */
+@media (max-width: 600px) {
+  .tarjeta {
+    @apply p-3 rounded-xl;
+    font-size: 0.95rem;
+  }
+}
+
+/* Teléfonos chicos */
+@media (max-width: 400px) {
+  .tarjeta {
+    @apply p-2 rounded-lg;
+    font-size: 0.9rem;
+  }
+}
