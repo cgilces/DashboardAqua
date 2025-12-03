@@ -3,9 +3,10 @@ const express = require('express');
 const router = express.Router();
 const ventasController = require('../controllers/ventasController');
 
-// Ruta para obtener los datos del dashboard de ventas
+// Ruta principal del dashboard
 router.get('/dashboard', ventasController.obtenerDatosDashboard);
-// router.get("/detalle-ruta", ventasController.obtenerDetalleRuta);  // 🆕 NUEVA
 
+// 🆕 Ruta para obtener el detalle por vendedor (R1, R2, R3…)
+router.get('/ruta/detalle', ventasController.obtenerDetalleRuta);
 
 module.exports = router;

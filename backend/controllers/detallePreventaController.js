@@ -101,8 +101,6 @@ const obtenerDetalleRuta = async (req, res) => {
     // ============================================================
     // 5) CONSULTAR ÚLTIMA VISITA GLOBAL
     // ============================================================
-
-
     const ultimaVisitaSQL = `
                     SELECT
                         customer_code,

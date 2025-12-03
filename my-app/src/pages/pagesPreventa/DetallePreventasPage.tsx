@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import * as XLSX from "xlsx";
+
 
 const DetallePreventasPage: React.FC = () => {
   const { ruta, anio, mes } = useParams();
@@ -9,7 +11,7 @@ const DetallePreventasPage: React.FC = () => {
   const [clientesSinConsumo, setClientesSinConsumo] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
 
-  // 📌 PAGINACIÓN
+  //  PAGINACIÓN
   const [paginaActual, setPaginaActual] = useState(1);
   const clientesPorPagina = 10;
 
@@ -63,6 +65,28 @@ const DetallePreventasPage: React.FC = () => {
       </div>
     );
   }
+
+
+
+  const exportarClientesSinConsumo = () => {
+    if (!clientesPagina || clientesPagina.length === 0) return;
+
+    // Preparamos los datos de exportación
+    const datosExportar = clientesPagina.map((c) => ({
+      Código: c.codigo_cliente,
+      Cliente: c.nombre_cliente,
+      Dirección: c.direccion_entrega,
+      "Última visita": c.ultima_visita || "—",
+      "Última factura": c.ultima_factura || "—",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(datosExportar);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Clientes sin consumo");
+
+    XLSX.writeFile(wb, "clientes_sin_consumo.xlsx");
+  };
+
 
   return (
     <div className="min-h-screen bg-[#012E24] text-white p-8">
@@ -152,8 +176,39 @@ const DetallePreventasPage: React.FC = () => {
       {/* CLIENTES SIN CONSUMO */}
       <h1 className="text-center text-xl font-bold mt-10 mb-4">CLIENTES SIN CONSUMO</h1>
 
+
+
       {clientesPagina.length > 0 ? (
         <>
+
+          {/* BOTÓN DE EXPORTACIÓN */}
+          <div className="flex justify-end mb-4">
+
+            <button
+              onClick={exportarClientesSinConsumo}
+              className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
+            >
+              {/* Ícono de descarga */}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"
+                />
+              </svg>
+
+              Exportar clientes S/C
+            </button>
+
+
+          </div>
           <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
             <thead className="bg-[#014434] text-red-300 uppercase text-xs">
               <tr>
@@ -191,10 +246,6 @@ const DetallePreventasPage: React.FC = () => {
                 </tr>
               ))}
             </tbody>
-
-
-
-
 
           </table>
 

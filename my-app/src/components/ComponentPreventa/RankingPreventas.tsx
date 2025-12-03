@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 
 interface Props {
   datos: any;
-  anio: number | string;   // ahora OBLIGATORIOS
-  mes: number | string;    // ahora OBLIGATORIOS
+  anio: number | string;
+  mes: number | string;
 }
 
 const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
@@ -18,10 +18,9 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
     );
   }
 
-  // Lista de preventas
   const preventas = datos.rankingPreventas;
 
-  // Totales generales
+  // Totales
   const totalUnidades = preventas.reduce(
     (acc: number, p: any) => acc + (p.unidades || 0),
     0
@@ -35,7 +34,7 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
   return (
     <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E]">
 
-      {/* 🔧 BOTÓN GENERAL PARA CONFIGURAR METAS */}
+      {/* BOTÓN CONFIGURAR METAS */}
       <div className="flex justify-end mb-4">
         <button
           onClick={() => navigate("/configurar-metas")}
@@ -46,7 +45,6 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
       </div>
 
       <table className="min-w-full text-sm">
-        {/* ENCABEZADO */}
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
             <th className="px-4 py-3 text-left">Ruta / Preventa</th>
@@ -57,31 +55,34 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
           </tr>
         </thead>
 
-        {/* CUERPO */}
         <tbody>
           {preventas.map((p: any, idx: number) => {
-            // Proyección (-2%)
-            const proyeccion = -2;
-            const meta = (p.unidades * (1 + proyeccion / 100)).toFixed(0);
 
-            // Variación real del backend
-            const variacion =
+            // --- PROYECCIÓN: AHORA BASADA EN DÓLARES ---
+            const proyeccion = -2;
+            const meta = (p.monto * (1 + proyeccion / 100)).toFixed(2);
+
+            // --- VARIACIÓN REAL DEL BACKEND (USD) ---
+            const variacion = 
+              p.vsMesAnterior?.variacion_porc !== null &&
               p.vsMesAnterior?.variacion_porc !== undefined
                 ? p.vsMesAnterior.variacion_porc
                 : 0;
 
-            const unidadesAnterior =
-              p.vsMesAnterior?.unidades_anterior ?? 0;
+            const montoAnterior =
+              p.vsMesAnterior?.monto_anterior ?? 0;
 
             const variacionTexto =
-              `${variacion > 0 ? "+" : ""}${variacion}% (${unidadesAnterior})`;
+              `${variacion > 0 ? "+" : ""}${variacion}% ($${montoAnterior.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })})`;
 
             return (
               <tr
                 key={idx}
                 onClick={() =>
-                  //  navigate(`/detalle-ruta/${p.preventa}?anio=${anio}&mes=${mes}`)
-                  navigate(`/detalle-ruta/${p.preventa}/${anio}/${mes}`)                
+                  navigate(`/detalle-ruta/${p.preventa}/${anio}/${mes}`)
                 }
                 className={`cursor-pointer ${
                   idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
@@ -105,7 +106,7 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
                 </td>
 
                 <td className="px-4 py-2 text-right text-green-300">
-                  {proyeccion}% ({meta})
+                  {proyeccion}% (${meta})
                 </td>
 
                 <td
@@ -124,7 +125,6 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
           })}
         </tbody>
 
-        {/* PIE DE TABLA */}
         <tfoot className="bg-[#014434] font-bold text-gray-200 border-t border-[#046C5E]">
           <tr>
             <td className="px-4 py-3 text-left">Total</td>
