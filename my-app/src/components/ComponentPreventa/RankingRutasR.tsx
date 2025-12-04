@@ -29,6 +29,11 @@ const RankingRutasR = ({
             <th className="px-4 py-3 text-left">Usuario</th>
             <th className="px-4 py-3 text-right">Unidades</th>
             <th className="px-4 py-3 text-right">Dólares</th>
+            <th className="px-4 py-3 text-right">Metas</th>
+
+            <th className="px-4 py-3 text-right">Proyeccion</th>
+            <th className="px-4 py-3 text-right">Vs Mes Anterior</th>
+
           </tr>
         </thead>
 
@@ -56,6 +61,50 @@ const RankingRutasR = ({
                   minimumFractionDigits: 2
                 })}
               </td>
+
+
+                  <td className="px-4 py-2 text-right text-blue-300 font-bold">
+                ${Number(r.meta).toLocaleString("es-EC", {
+                  minimumFractionDigits: 2
+                })}
+              </td>
+
+
+              <td className="px-4 py-2 text-right text-blue-300 font-bold">
+                ${Number(r.proyeccion).toLocaleString("es-EC", {
+                  minimumFractionDigits: 2
+                })}
+
+
+
+
+
+              </td>
+
+
+              {/* VS MES ANTERIOR */}
+              <td
+                className={`px-4 py-2 text-right font-bold ${r.vsMesAnterior.variacion_abs >= 0 ? "text-green-400" : "text-red-400"
+                  }`}
+              >
+                {r.vsMesAnterior.monto_anterior === 0 ? (
+                  "Sin datos"
+                ) : (
+                  <>
+                    ${Number(r.vsMesAnterior.variacion_abs).toLocaleString("es-EC", {
+                      minimumFractionDigits: 2,
+                    })}{" "}
+                    (
+                    {r.vsMesAnterior.variacion_porc !== null
+                      ? `${r.vsMesAnterior.variacion_porc}%`
+                      : "–"}
+                    )
+                  </>
+                )}
+              </td>
+
+
+
             </tr>
           ))}
         </tbody>

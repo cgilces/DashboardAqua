@@ -11,7 +11,7 @@ interface ClienteTop {
 }
 
 export default function TopClientes({ topClientes }: { topClientes: ClienteTop[] }) {
-
+  
   // 🔹 PAGINACIÓN
   const [pagina, setPagina] = useState(1);
   const itemsPorPagina = 10;
@@ -45,9 +45,9 @@ export default function TopClientes({ topClientes }: { topClientes: ClienteTop[]
         </thead>
 
         <tbody>
-          {clientesPaginados.map((cli) => (
+          {clientesPaginados.map((cli, idx) => (
             <tr
-              key={cli.codigo}
+              key={`cli-${cli.codigo}-${cli.montoActual}-${idx}`}
               className="border-b border-gray-800 hover:bg-[#013c30]"
             >
               <td>
@@ -71,10 +71,11 @@ export default function TopClientes({ topClientes }: { topClientes: ClienteTop[]
               </td>
 
               <td
-                className={`text-right ${cli.variacionMontoAbs >= 0
+                className={`text-right ${
+                  cli.variacionMontoAbs >= 0
                     ? "text-green-400"
                     : "text-red-400"
-                  }`}
+                }`}
               >
                 {cli.variacionMontoAbs >= 0 ? "+" : ""}
                 ${cli.variacionMontoAbs.toLocaleString(undefined, {
@@ -83,16 +84,16 @@ export default function TopClientes({ topClientes }: { topClientes: ClienteTop[]
               </td>
 
               <td
-                className={`text-right ${(cli.variacionMontoPorc ?? 0) >= 0
+                className={`text-right ${
+                  (cli.variacionMontoPorc ?? 0) >= 0
                     ? "text-green-400"
                     : "text-red-400"
-                  }`}
+                }`}
               >
-                {cli.variacionMontoPorc !== null && cli.variacionMontoPorc !== undefined
-                  ? (cli.variacionMontoPorc ?? 0).toFixed(1)
+                {cli.variacionMontoPorc !== null
+                  ? cli.variacionMontoPorc.toFixed(1)
                   : "N/A"}
               </td>
-
             </tr>
           ))}
         </tbody>
@@ -101,27 +102,36 @@ export default function TopClientes({ topClientes }: { topClientes: ClienteTop[]
       {/* PAGINACIÓN */}
       {totalPaginas > 1 && (
         <div className="flex justify-between items-center mt-4 text-sm text-gray-300">
+
+          {/* Botón Anterior */}
           <button
             onClick={paginaAnterior}
             disabled={pagina === 1}
-            className={`px-4 py-2 rounded-lg bg-[#046C5E] hover:bg-[#058A73] transition ${pagina === 1 ? "opacity-40 cursor-not-allowed" : ""
-              }`}
+            className={`px-4 py-2 rounded-lg bg-[#046C5E] hover:bg-[#058A73] transition flex items-center justify-center
+              ${pagina === 1 ? "opacity-40 cursor-not-allowed" : ""}
+            `}
           >
-            ⬅️ Anterior
+            <span className="sm:hidden">⬅️</span>
+            <span className="hidden sm:inline">⬅️ Anterior</span>
           </button>
 
-          <span>
+          {/* Indicador */}
+          <span className="mx-2">
             Página {pagina} de {totalPaginas}
           </span>
 
+          {/* Botón Siguiente */}
           <button
             onClick={paginaSiguiente}
             disabled={pagina === totalPaginas}
-            className={`px-4 py-2 rounded-lg bg-[#046C5E] hover:bg-[#058A73] transition ${pagina === totalPaginas ? "opacity-40 cursor-not-allowed" : ""
-              }`}
+            className={`px-4 py-2 rounded-lg bg-[#046C5E] hover:bg-[#058A73] transition flex items-center justify-center
+              ${pagina === totalPaginas ? "opacity-40 cursor-not-allowed" : ""}
+            `}
           >
-            Siguiente ➡️
+            <span className="sm:hidden">➡️</span>
+            <span className="hidden sm:inline">Siguiente ➡️</span>
           </button>
+
         </div>
       )}
     </div>

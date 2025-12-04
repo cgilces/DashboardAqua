@@ -29,6 +29,88 @@ const RUTAS_PREVENTA_VALIDAS = [
 const META_ANUAL_UNIDADES_PREVENTA = 700000;   //  ajustar valor real
 const META_ANUAL_USD_PREVENTA = 2000000;  //  ajustar valor real
 
+
+
+// ===============================
+// 🔧 DÍAS LABORABLES DEL MES (L–S)
+// ===============================
+const getDiasLaborablesMes = (anio, mes) => {
+  const diasEnMes = new Date(anio, mes, 0).getDate();
+  let laborables = 0;
+
+  for (let d = 1; d <= diasEnMes; d++) {
+    const fecha = new Date(anio, mes - 1, d);
+    const dia = fecha.getDay(); // 0 domingo
+    if (dia !== 0) laborables++;
+  }
+  return laborables;
+};
+
+// =====================================
+// 🔧 META HISTÓRICA POR PREVENTA (USD)
+// =====================================
+const obtenerMetasHistoricasPreventas = async () => {
+  const sql = `
+    SELECT seller_code, 
+           MAX(total_mes) AS meta_historica
+    FROM (
+      SELECT 
+        o.seller_code,
+        DATE_TRUNC('month', o.fecha_entrega) AS mes,
+        SUM(dd.total) AS total_mes
+      FROM ordenes o
+      JOIN detalle_documento dd 
+        ON dd.documento_code = o.code
+      WHERE dd.codigo_categoria = '7'
+        AND o.status IN (2,4,5)
+        AND (
+          o.seller_code ILIKE 'PV%' OR
+          o.seller_code ILIKE 'PREVENTA%' OR
+          o.seller_code ILIKE 'TELEVENTA%' OR
+          o.seller_code ILIKE 'R%'
+        )
+      GROUP BY o.seller_code, DATE_TRUNC('month', o.fecha_entrega)
+    ) AS sub
+    GROUP BY seller_code;
+  `;
+  const filas = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
+
+  const mapa = {};
+  filas.forEach(f => mapa[f.seller_code] = Number(f.meta_historica));
+  return mapa;
+};
+
+// ========================================
+// 🔧 META HISTÓRICA GLOBAL (USD – DESCART)
+// ========================================
+const obtenerMetaHistoricaGlobal = async () => {
+  const sql = `
+    SELECT MAX(total_mes) AS meta_global
+    FROM (
+      SELECT 
+        DATE_TRUNC('month', o.fecha_entrega) as mes,
+        SUM(dd.total) AS total_mes
+      FROM ordenes o
+      JOIN detalle_documento dd 
+        ON dd.documento_code = o.code
+      WHERE dd.codigo_categoria = '7'
+        AND o.status IN (2,4,5)
+        AND (
+          o.seller_code ILIKE 'PV%' OR
+          o.seller_code ILIKE 'PREVENTA%' OR
+          o.seller_code ILIKE 'TELEVENTA%' OR
+          o.seller_code ILIKE 'R%'
+        )
+      GROUP BY DATE_TRUNC('month', o.fecha_entrega)
+    ) AS sub;
+  `;
+  const [row] = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
+  return row?.meta_global ? Number(row.meta_global) : 0;
+};
+
+
+
+
 // ======================================================
 // 🔥 TOP 20 CLIENTES CON MAYOR CONSUMO (FACTURAS PREVENTA)
 // ======================================================
@@ -83,7 +165,6 @@ const obtenerTop20Clientes = async (anioNum, mesNum) => {
   });
 };
 
-
 const obtenerDetalleRuta = async (req, res) => {
   try {
     const { vendedor, anio, mes } = req.query;
@@ -105,7 +186,6 @@ const obtenerDetalleRuta = async (req, res) => {
     res.status(500).json({ message: "Error interno" });
   }
 };
-
 
 // ======================================================
 // 🔍 OBTENER DETALLE DE PRODUCTOS VENDIDOS POR UNA RUTA R
@@ -141,46 +221,113 @@ const obtenerDetallePorVendedor = async (codigoVendedor, anioNum, mesNum) => {
   });
 };
 
-const obtenerRankingRutasDescartable = async (anioNum, mesNum) => {
-  const fechaInicioStr = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
-  let mesFin = mesNum + 1;
-  let anioFin = anioNum;
 
-  if (mesFin === 13) {
-    mesFin = 1;
-    anioFin++;
-  }
+// const obtenerRankingRutasDescartable = async (anioNum, mesNum) => {
 
-  const fechaFinStr = `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
+const obtenerRankingRutasDescartable = async (
+  anioNum,
+  mesNum,
+  metasPorPreventa,
+  diasTranscurridos,
+  diasLaborablesMes
+) => {
+  // MES ACTUAL
+  const inicio = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
+  const mesSiguiente = mesNum === 12 ? 1 : mesNum + 1;
+  const anioFin = mesNum === 12 ? anioNum + 1 : anioNum;
+  const fin = `${anioFin}-${String(mesSiguiente).padStart(2, "0")}-01 00:00:00`;
 
-  console.log("fecha rankinInicio:", fechaInicioStr);
-  console.log("fecha rankinFin:", fechaFinStr)
+  // MES ANTERIOR
+  const fechaAnt = new Date(anioNum, mesNum - 2, 1);
+  const anioPrev = fechaAnt.getFullYear();
+  const mesPrev = fechaAnt.getMonth() + 1;
+  const inicioPrev = `${anioPrev}-${String(mesPrev).padStart(2, "0")}-01 00:00:00`;
+  const finPrev = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
 
+  console.log("📌 RANKING R ACTUAL:", inicio, fin);
+  console.log("📌 RANKING R ANTERIOR:", inicioPrev, finPrev);
 
-  const sql = `
- SELECT 
+  // ==========================
+  // MES ACTUAL
+  // ==========================
+  const sqlActual = `
+    SELECT 
       o.seller_code AS usuario,
       SUM(dd.cantidad) AS unidades,
       SUM(dd.total) AS dolares
     FROM ordenes o
-    JOIN detalle_documento dd 
-        ON dd.documento_code = o.code
+    JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE 
-        dd.codigo_categoria = '7'
-        AND o.status IN ('2','4','5')
-        AND o.seller_code ILIKE 'R%'      
-      AND o.fecha_creacion >= '${fechaInicioStr}'
-      AND o.fecha_creacion <  '${fechaFinStr}'
-    GROUP BY 
-        o.seller_code
-    ORDER BY 
-        unidades DESC;
+      dd.codigo_categoria = '7'
+      AND o.status IN ('2','4','5')
+      AND o.seller_code ILIKE 'R%'
+      AND o.fecha_creacion >= '${inicio}'
+      AND o.fecha_creacion <  '${fin}'
+    GROUP BY o.seller_code
+    ORDER BY dolares DESC;
   `;
+  const actual = await sequelize.query(sqlActual, { type: Sequelize.QueryTypes.SELECT });
 
+  // ==========================
+  // MES ANTERIOR
+  // ==========================
+  const sqlPrev = `
+    SELECT 
+      o.seller_code AS usuario,
+      SUM(dd.total) AS dolares
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE 
+      dd.codigo_categoria = '7'
+      AND o.status IN ('2','4','5')
+      AND o.seller_code ILIKE 'R%'
+      AND o.fecha_creacion >= '${inicioPrev}'
+      AND o.fecha_creacion <  '${finPrev}'
+    GROUP BY o.seller_code;
+  `;
+  const anterior = await sequelize.query(sqlPrev, { type: Sequelize.QueryTypes.SELECT });
 
-  return await sequelize.query(sql, {
-    type: Sequelize.QueryTypes.SELECT,
+  // Convertimos el anterior en mapa
+  const mapPrev = {};
+  anterior.forEach(r => {
+    mapPrev[r.usuario] = Number(r.dolares) || 0;
   });
+
+  // ==========================
+  // COMBINAR RESULTADOS
+  // ==========================
+  const rankingFinal = actual.map(r => {
+    const montoActual = Number(r.dolares);
+    const montoAnterior = mapPrev[r.usuario] || 0;
+
+    const variacionAbs = montoActual - montoAnterior;
+    const variacionPorc =
+      montoAnterior > 0 ? ((variacionAbs / montoAnterior) * 100) : null;
+
+    // PROYECCIÓN DEL MES → -2%
+    // const proyeccion = montoActual * 0.98;
+    const proyeccion = (montoActual / diasTranscurridos) * diasLaborablesMes;
+
+
+
+    return {
+      usuario: r.usuario,
+      unidades: Number(r.unidades),
+      dolares: montoActual,
+      meta: metasPorPreventa[r.usuario] || 0,
+      proyeccion: Number(proyeccion.toFixed(2)),
+      vsMesAnterior: {
+        monto_anterior: montoAnterior,
+        variacion_abs: Number(variacionAbs.toFixed(2)),
+        variacion_porc: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null
+      }
+    };
+
+  });
+
+  console.log("📊 Ranking R Completo:", rankingFinal);
+
+  return rankingFinal;
 };
 
 
@@ -288,22 +435,61 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 
   console.log("📊 RESULTADOS PREVENTA:", resultadosSQL);
 
-  const rankingPreventasSQL = resultadosSQL.map(r => ({
-    preventa: r.preventa,
-    unidades: Number(r.sum_quantity),
-    monto: Number(r.sum_total)
-  }));
+  // const rankingPreventasSQL = resultadosSQL.map(r => ({
+  //   preventa: r.preventa,
+  //   unidades: Number(r.sum_quantity),
+  //   monto: Number(r.sum_total)
+  // }));
 
-  const unidadesTotalesSQL = resultadosSQL.reduce((a, b) => a + Number(b.sum_quantity), 0);
-  const montoTotalSQL = resultadosSQL.reduce((a, b) => a + Number(b.sum_total), 0);
+  // const unidadesTotalesSQL = resultadosSQL.reduce((a, b) => a + Number(b.sum_quantity), 0);
+  // const montoTotalSQL = resultadosSQL.reduce((a, b) => a + Number(b.sum_total), 0);
 
-  console.log("📌 Unidades Totales Preventa:", unidadesTotalesSQL);
-  console.log("📌 Monto Total Preventa:", montoTotalSQL);
+  // console.log("📌 Unidades Totales Preventa:", unidadesTotalesSQL);
+  // console.log("📌 Monto Total Preventa:", montoTotalSQL);
+
+  // =============================
+  // 🔥 METAS Y PROYECCIÓN NUEVA
+  // =============================
+  const metasPorPreventa = await obtenerMetasHistoricasPreventas();
+  const metaGlobal = await obtenerMetaHistoricaGlobal();
+
+  const hoy = new Date();
+  const esMesActual = hoy.getFullYear() === anioNum && (hoy.getMonth() + 1) === mesNum;
+  const diasTranscurridos = esMesActual ? hoy.getDate() : new Date(anioNum, mesNum, 0).getDate();
+  const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum);
+
+  let rankingPreventasSQL = resultadosSQL.map(r => {
+    const preventa = r.preventa;
+    const unidades = Number(r.sum_quantity);
+    const monto = Number(r.sum_total);
+
+    // Meta histórica de esta ruta
+    const metaHistorica = metasPorPreventa[preventa] || 0;
+
+    // Proyección del mes: (ventas / días transcurridos) * días laborables
+    const proyeccion = (monto / diasTranscurridos) * diasLaborablesMes;
+
+    return {
+      preventa,
+      unidades,
+      monto,
+      meta: metaHistorica,
+      proyeccion: Number(proyeccion.toFixed(2))
+    };
+  });
+
+  // ORDENAR por quién vende más USD
+  rankingPreventasSQL.sort((a, b) => b.monto - a.monto);
+
+  // TOTALES
+  const unidadesTotalesSQL = rankingPreventasSQL.reduce((a, b) => a + b.unidades, 0);
+  const montoTotalSQL = rankingPreventasSQL.reduce((a, b) => a + b.monto, 0);
+
 
   // ============================================
   // 🔥 TOP 20 MES ACTUAL
   // ============================================
-  console.log("🔍 Consultando TOP 20 Clientes...");
+  // console.log("🔍 Consultando TOP 20 Clientes...");
   const topActual = await obtenerTop20Clientes(anioNum, mesNum);
 
   // ============================================
@@ -317,7 +503,7 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     const anioPrev = fechaAnterior.getFullYear();
     const mesPrev = fechaAnterior.getMonth() + 1;
 
-    console.log(`📆 Comparando vs Mes Anterior: ${anioPrev}-${mesPrev}`);
+    // console.log(`📆 Comparando vs Mes Anterior: ${anioPrev}-${mesPrev}`);
 
     topAnterior = await obtenerTop20Clientes(anioPrev, mesPrev);
   } catch {
@@ -353,29 +539,40 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     };
   });
 
-  console.log("🔥 TOP 20 FINAL:", top20Final);
+  // console.log("🔥 TOP 20 FINAL:", top20Final);
 
   // ======================================================
   // 🔥 RANKING RUTAS R DESCARTABLE
   // ======================================================
   console.log("🔍 Consultando Ranking Rutas R...");
-  const rankingRutasR = await obtenerRankingRutasDescartable(anioNum, mesNum);
+  // const rankingRutasR = await obtenerRankingRutasDescartable(anioNum, mesNum);
+
+  const rankingRutasR = await obtenerRankingRutasDescartable(
+    anioNum,
+    mesNum,
+    metasPorPreventa,
+    diasTranscurridos,
+    diasLaborablesMes
+  );
+
   console.log("📌 Ranking R:", rankingRutasR);
 
   // ======================================================
   // 🔥 NUEVA CONSULTA: VENTA POR PRODUCTO (PV + R + TELEVENTA)
   // ======================================================
-  console.log("📦 Consultando Venta por Producto General...");
+  // console.log("📦 Consultando Venta por Producto General...");
 
   const ventaPorProducto = await obtenerVentaPorProducto(anioNum, mesNum);
 
-  console.log("📊 Venta por Producto:", ventaPorProducto);
+  // console.log("📊 Venta por Producto:", ventaPorProducto);
 
   // ======================================================
   // 🔥 METAS MENSUALES Y CUMPLIMIENTO
   // ======================================================
   const metaMensualUnidades = META_ANUAL_UNIDADES_PREVENTA / 12;
-  const metaMensualDolares = META_ANUAL_USD_PREVENTA / 12;
+  // const metaMensualDolares = META_ANUAL_USD_PREVENTA / 12;
+  const metaMensualDolares = metaGlobal;
+
 
   const cumplimientoUnidadesMensual =
     metaMensualUnidades > 0
@@ -453,17 +650,10 @@ const obtenerDatosDashboard = async (req, res) => {
     const mesNum = parseInt(mes, 10);
     // console.log(`🚀 Procesando dashboard para ${anioNum}-${mesNum}`);
 
-
-
-
-
-
     // =====================
     // MES ACTUAL
     // =====================
     const resumenActual = await calcularKPIsMes(anioNum, mesNum);
-
-
 
     // 🆕 TOP 20 CLIENTES CON MAYOR CONSUMO
     const top20Clientes = await obtenerTop20Clientes(anioNum, mesNum);

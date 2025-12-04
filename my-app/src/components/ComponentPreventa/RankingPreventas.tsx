@@ -50,6 +50,7 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
             <th className="px-4 py-3 text-left">Ruta / Preventa</th>
             <th className="px-4 py-3 text-right">Unidades</th>
             <th className="px-4 py-3 text-right">Dólares</th>
+            <th className="px-4 py-3 text-right">Meta</th>
             <th className="px-4 py-3 text-right">Proyección</th>
             <th className="px-4 py-3 text-right">Vs Mes Anterior</th>
           </tr>
@@ -63,9 +64,9 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
             const meta = (p.monto * (1 + proyeccion / 100)).toFixed(2);
 
             // --- VARIACIÓN REAL DEL BACKEND (USD) ---
-            const variacion = 
+            const variacion =
               p.vsMesAnterior?.variacion_porc !== null &&
-              p.vsMesAnterior?.variacion_porc !== undefined
+                p.vsMesAnterior?.variacion_porc !== undefined
                 ? p.vsMesAnterior.variacion_porc
                 : 0;
 
@@ -84,9 +85,8 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
                 onClick={() =>
                   navigate(`/detalle-ruta/${p.preventa}/${anio}/${mes}`)
                 }
-                className={`cursor-pointer ${
-                  idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
-                } hover:bg-[#026452] transition`}
+                className={`cursor-pointer ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
+                  } hover:bg-[#026452] transition`}
                 title={`Ver detalle de ${p.preventa}`}
               >
                 <td className="px-4 py-2 font-medium text-gray-100 underline decoration-dotted hover:text-green-300">
@@ -105,18 +105,29 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
                   }) ?? "0.00"}
                 </td>
 
+
+                <td className="px-4 py-2 text-right text-blue-400 font-semibold">
+                  $
+                  {p.meta?.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }) ?? "0.00"}
+                </td>
+
+
+
+
                 <td className="px-4 py-2 text-right text-green-300">
                   {proyeccion}% (${meta})
                 </td>
 
                 <td
-                  className={`px-4 py-2 text-right ${
-                    variacion < 0
+                  className={`px-4 py-2 text-right ${variacion < 0
                       ? "text-red-400"
                       : variacion > 0
-                      ? "text-green-400"
-                      : "text-gray-300"
-                  }`}
+                        ? "text-green-400"
+                        : "text-gray-300"
+                    }`}
                 >
                   {variacionTexto}
                 </td>

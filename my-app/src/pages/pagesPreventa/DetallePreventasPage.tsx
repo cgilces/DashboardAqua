@@ -65,9 +65,6 @@ const DetallePreventasPage: React.FC = () => {
       </div>
     );
   }
-
-
-
   const exportarClientesSinConsumo = () => {
     if (!clientesPagina || clientesPagina.length === 0) return;
 
@@ -250,46 +247,90 @@ const DetallePreventasPage: React.FC = () => {
           </table>
 
           {/* PAGINACIÓN */}
+          {/* PAGINACIÓN */}
           <div className="flex justify-center mt-6 gap-2">
 
             {/* Botón Anterior */}
             <button
               disabled={paginaActual === 1}
               onClick={() => setPaginaActual(paginaActual - 1)}
-              className={`px-3 py-1 rounded-md ${paginaActual === 1
-                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                : "bg-[#046C5E] hover:bg-[#058A73]"
+              className={`px-3 py-1 rounded-md flex items-center justify-center
+      ${paginaActual === 1
+                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                  : "bg-[#046C5E] hover:bg-[#058A73]"
                 }`}
             >
-              ← Anterior
+              {/* Móvil: icono ←  | Desktop: texto */}
+              <span className="sm:hidden">←</span>
+              <span className="hidden sm:inline">← Anterior</span>
             </button>
 
-            {/* Números */}
-            {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((num) => (
-              <button
-                key={num}
-                onClick={() => setPaginaActual(num)}
-                className={`px-3 py-1 rounded-md ${paginaActual === num
-                  ? "bg-green-500 text-black font-bold"
-                  : "bg-[#01382D] hover:bg-[#025f4b]"
-                  }`}
-              >
-                {num}
-              </button>
-            ))}
+            {/* Números comprimidos */}
+            {(() => {
+              const pages = [];
+              const maxVisible = 5;
+
+              if (totalPaginas <= maxVisible) {
+                // Mostrar todas
+                for (let i = 1; i <= totalPaginas; i++) pages.push(i);
+              } else {
+                // Mostrar primeras, últimas y página actual
+                pages.push(1);
+
+                if (paginaActual > 3) pages.push("...");
+
+                const start = Math.max(2, paginaActual - 1);
+                const end = Math.min(totalPaginas - 1, paginaActual + 1);
+
+                for (let i = start; i <= end; i++) pages.push(i);
+
+                if (paginaActual < totalPaginas - 2) pages.push("...");
+
+                pages.push(totalPaginas);
+              }
+
+              return pages.map((num, idx) =>
+                num === "..." ? (
+                  <span
+                    key={`dots-${idx}`}
+                    className="px-2 py-1 text-gray-400 select-none"
+                  >
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={`page-${idx}-${num}`}
+                    onClick={() => setPaginaActual(num)}
+                    className={`px-3 py-1 rounded-md 
+            ${paginaActual === num
+                        ? "bg-green-500 text-black font-bold"
+                        : "bg-[#01382D] hover:bg-[#025f4b]"
+                      }`}
+                  >
+                    {num}
+                  </button>
+                )
+              );
+            })()}
 
             {/* Botón Siguiente */}
             <button
               disabled={paginaActual === totalPaginas}
               onClick={() => setPaginaActual(paginaActual + 1)}
-              className={`px-3 py-1 rounded-md ${paginaActual === totalPaginas
-                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                : "bg-[#046C5E] hover:bg-[#058A73]"
+              className={`px-3 py-1 rounded-md flex items-center justify-center
+      ${paginaActual === totalPaginas
+                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                  : "bg-[#046C5E] hover:bg-[#058A73]"
                 }`}
             >
-              Siguiente →
+              {/* Móvil: icono → | Desktop: texto */}
+              <span className="sm:hidden">→</span>
+              <span className="hidden sm:inline">Siguiente →</span>
             </button>
+
           </div>
+
+
         </>
       ) : (
         <p className="text-center text-gray-400 mt-10">

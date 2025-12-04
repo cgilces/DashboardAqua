@@ -1,28 +1,40 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import "../css/Navbar.css";
-import { BarChart, Storefront, ShoppingCart, MoveToInbox, Factory, Layers } from "@mui/icons-material";
+
+import {
+  BarChart,
+  Storefront,
+  ShoppingCart,
+  MoveToInbox,
+  AcUnit,
+  Layers,
+  EmojiFoodBeverage,
+  Menu,
+  Close
+} from "@mui/icons-material";
 
 export default function SidebarDashboards() {
+  // 🔹 AHORA EL MENÚ SIEMPRE INICIA CERRADO
+  const [isOpen, setIsOpen] = useState(false);
 
-  const [isOpen, setIsOpen] = useState(true);
-  const [selectedMenu, setSelectedMenu] = useState<string | null>("preventa");
+  const [selectedMenu, setSelectedMenu] = useState<string>("CONSOLIDADO");
 
   const menuItems = [
-    { name: "PREVENTA", icon: <BarChart />, path: "/dashboard/preventa" },
-    { name: "RURAL", icon: <Storefront />, path: "/dashboard/rural" },
-    { name: "CANAL", icon: <ShoppingCart />, path: "/dashboard/Canal" },
-    { name: "DISTRIBUCIÓN", icon: <MoveToInbox />, path: "/dashboard/distribucion" },
-    { name: "POSVENTA", icon: <Layers />, path: "/dashboard/posventa" },
-    { name: "SUPERMERCADOS", icon: <Factory />, path: "/dashboard/super" },
-    { name: "CONSOLIDADO GENERAL", icon: <BarChart />, path: "/dashboard/consolidado" },
+    { name: "CONSOLIDADO", icon: <BarChart />, path: "/dashboard/consolidado" },
+    { name: "PREVENTA", icon: <Storefront />, path: "/dashboard/preventa" },
+    { name: "BOTELLÓN", icon: <ShoppingCart />, path: "/dashboard/botellon" },
+    { name: "DESCARTABLE", icon: <MoveToInbox />, path: "/dashboard/descartable" },
+    { name: "HIELO", icon: <AcUnit />, path: "/dashboard/hielo" },
+    { name: "PLUS", icon: <Layers />, path: "/dashboard/plus" },
+    { name: "CAFÉ", icon: <EmojiFoodBeverage />, path: "/dashboard/cafe" }
   ];
 
   return (
     <>
-      {/* BOTÓN FUERA DEL SIDEBAR */}
+      {/* BOTÓN HAMBURGUESA */}
       <button className="toggle-btn" onClick={() => setIsOpen(!isOpen)}>
-        {isOpen ? "<<" : ">>"}
+        {isOpen ? <Close /> : <Menu />}
       </button>
 
       <div className={`sidebar ${isOpen ? "open" : "closed"}`}>
@@ -31,10 +43,20 @@ export default function SidebarDashboards() {
             <li key={item.name}>
               <Link
                 to={item.path}
-                className={selectedMenu === item.name ? "active-menu menu-item" : "menu-item"}
-                onClick={() => setSelectedMenu(item.name)}
+                className={
+                  selectedMenu === item.name
+                    ? "menu-item active-menu"
+                    : "menu-item"
+                }
+                onClick={() => {
+                  setSelectedMenu(item.name);
+
+                  // 🔹 AUTO-CERRAR EN MÓVILES
+                  if (window.innerWidth <= 600) setIsOpen(false);
+                }}
               >
-                {item.icon} {isOpen && item.name}
+                <span className="menu-icon">{item.icon}</span>
+                {isOpen && <span className="menu-text">{item.name}</span>}
               </Link>
             </li>
           ))}
