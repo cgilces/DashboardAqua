@@ -31,6 +31,20 @@ const META_ANUAL_USD_PREVENTA = 2000000;  //  ajustar valor real
 
 
 
+// =============================================================
+// 🧩 FUNCIÓN SEGURA PARA FECHAS PG (EVITA MESES 13)
+// =============================================================
+function getRangoFechas(anio, mes) {
+  const inicio = new Date(Date.UTC(anio, mes - 1, 1));
+  const fin = new Date(Date.UTC(anio, mes, 1));
+
+  const fInicio = inicio.toISOString().replace("T", " ").substring(0, 19);
+  const fFin = fin.toISOString().replace("T", " ").substring(0, 19);
+
+  return { fInicio, fFin };
+}
+
+
 // ===============================
 // 🔧 DÍAS LABORABLES DEL MES (L–S)
 // ===============================
@@ -45,6 +59,36 @@ const getDiasLaborablesMes = (anio, mes) => {
   }
   return laborables;
 };
+
+
+
+
+// ======================================================
+// 🔧 DÍAS HÁBILES TRANSCURRIDOS (L–S) DEL MES
+// ======================================================
+function getDiasHabilesTranscurridos(anio, mes) {
+  const hoy = new Date();
+  let limite = new Date(anio, mes, 0).getDate();
+
+  // Si es mes actual → hasta hoy
+  if (hoy.getFullYear() === anio && (hoy.getMonth() + 1) === mes) {
+    // limite = hoy.getDate();
+    const diaLocal = new Date().getDate();
+    limite = diaLocal;
+
+  }
+
+  let habiles = 0;
+
+  for (let d = 1; d <= limite; d++) {
+    const fecha = new Date(anio, mes - 1, d);
+    const dia = fecha.getDay(); // 0 domingo
+    if (dia !== 0) habiles++; // L–S
+  }
+
+  return habiles;
+}
+
 
 // =====================================
 // 🔧 META HISTÓRICA POR PREVENTA (USD)
@@ -191,8 +235,7 @@ const obtenerDetalleRuta = async (req, res) => {
 // 🔍 OBTENER DETALLE DE PRODUCTOS VENDIDOS POR UNA RUTA R
 // ======================================================
 const obtenerDetallePorVendedor = async (codigoVendedor, anioNum, mesNum) => {
-  const inicio = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
-  const fin = `${anioNum}-${String(mesNum + 1).padStart(2, "0")}-01 00:00:00`;
+  const { fInicio, fFin } = getRangoFechas(anioNum, mesNum);
 
   const sql = `
     SELECT 
@@ -207,8 +250,8 @@ const obtenerDetallePorVendedor = async (codigoVendedor, anioNum, mesNum) => {
         o.seller_code = '${codigoVendedor}'
         AND dd.codigo_categoria = '7'
         AND o.status IN ('2','4','5')
-        AND o.fecha_creacion >= '${inicio}'
-        AND o.fecha_creacion < '${fin}'
+        AND o.fecha_creacion >= '${fInicio}'
+        AND o.fecha_creacion < '${fFin}'
     GROUP BY 
         dd.codigo_producto,
         dd.descripcion
@@ -220,6 +263,7 @@ const obtenerDetallePorVendedor = async (codigoVendedor, anioNum, mesNum) => {
     type: Sequelize.QueryTypes.SELECT
   });
 };
+
 
 
 // const obtenerRankingRutasDescartable = async (anioNum, mesNum) => {
@@ -244,8 +288,8 @@ const obtenerRankingRutasDescartable = async (
   const inicioPrev = `${anioPrev}-${String(mesPrev).padStart(2, "0")}-01 00:00:00`;
   const finPrev = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
 
-  console.log("📌 RANKING R ACTUAL:", inicio, fin);
-  console.log("📌 RANKING R ANTERIOR:", inicioPrev, finPrev);
+  //console.log("📌 RANKING R ACTUAL:", inicio, fin);
+  //console.log("📌 RANKING R ANTERIOR:", inicioPrev, finPrev);
 
   // ==========================
   // MES ACTUAL
@@ -325,7 +369,7 @@ const obtenerRankingRutasDescartable = async (
 
   });
 
-  console.log("📊 Ranking R Completo:", rankingFinal);
+  // //console.log("📊 Ranking R Completo:", rankingFinal);
 
   return rankingFinal;
 };
@@ -364,10 +408,170 @@ const obtenerVentaPorProducto = async (anioNum, mesNum) => {
 };
 
 
+
+
+
+//Crear la función SQL que obtiene precios promedio por preventa
+const obtenerPrecioPromedioPorPreventa = async (anioNum, mesNum) => {
+  const inicio = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
+  const mesSig = mesNum === 12 ? 1 : mesNum + 1;
+  const anioSig = mesNum === 12 ? anioNum + 1 : anioNum;
+  const fin = `${anioSig}-${String(mesSig).padStart(2, "0")}-01 00:00:00`;
+
+  const sql = `
+    SELECT
+      o.seller_code AS preventa,
+      dd.codigo_producto,
+      dd.descripcion,
+      SUM(dd.cantidad) AS unidades,
+      SUM(dd.total) AS monto,
+      CASE
+        WHEN SUM(dd.cantidad) > 0 THEN SUM(dd.total) / SUM(dd.cantidad)
+        ELSE 0
+      END AS precio_promedio
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE
+       o.status IN ('2','4','5')
+       AND dd.codigo_categoria = '7'
+       AND (
+          o.seller_code ILIKE 'PV%'
+          OR o.seller_code ILIKE 'PREVENTA%'
+          OR o.seller_code ILIKE 'TELEVENTA%'
+          OR o.seller_code ILIKE 'R%'
+       )
+       AND o.fecha_entrega >= '${inicio}'
+       AND o.fecha_entrega <  '${fin}'
+    GROUP BY o.seller_code, dd.codigo_producto, dd.descripcion
+    ORDER BY o.seller_code;
+  `;
+
+  return await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
+};
+
+
+
+//Función para obtener los datos del mes anterior
+const obtenerPrecioPromedioMesAnterior = async (anioNum, mesNum) => {
+  const fecha = new Date(anioNum, mesNum - 2, 1);
+  const anioPrev = fecha.getFullYear();
+  const mesPrev = fecha.getMonth() + 1;
+
+  return await obtenerPrecioPromedioPorPreventa(anioPrev, mesPrev);
+};
+
+
+
+
+
+// ===========================
+// 🧩 CLASIFICAR PRESENTACIÓN
+// ===========================
+function clasificarPresentacion(descripcion = "") {
+  const text = descripcion.toUpperCase();
+
+  if (text.includes("300ML")) return "300ML";
+  if (text.includes("500ML")) return "500ML";
+  if (text.includes("625ML")) return "625ML";
+  if (text.includes("1.5") || text.includes("1.5L")) return "1.5L";
+  if (text.includes("1L SPORT")) return "1L SPORT";
+  if (text.includes("1L")) return "1L";
+  if (text.includes("GALON") || text.includes("GALÓN")) return "GALON";
+  if (text.includes("6L")) return "6L";
+
+  return "OTROS";
+}
+
+
+// =================================================
+// 🧮 ORGANIZAR TABLA DE PRECIOS PROMEDIO (FINAL)
+// =================================================
+// =================================================
+// 🧮 TABLA DE PRECIOS PROMEDIO FINAL
+// =================================================
+function procesarTablaPrecioPromedio(actual, anterior, productosVendidos) {
+  const mapAnterior = {};
+
+  // Crear mapa del mes anterior: preventa + categoría → precio promedio
+  anterior.forEach(row => {
+    const categoria = clasificarPresentacion(row.descripcion);
+    const key = `${row.preventa}_${categoria}`;
+    mapAnterior[key] = Number(row.precio_promedio) || 0;
+  });
+
+  const respuesta = {};
+
+  actual.forEach(row => {
+    const categoria = clasificarPresentacion(row.descripcion);
+    if (categoria === "OTROS") return;
+
+    // ❗ FILTRO IMPORTANTE → SOLO productos que sí se vendieron este mes
+    if (!productosVendidos[row.preventa]?.has(categoria)) return;
+
+    const key = `${row.preventa}_${categoria}`;
+
+    const precioActual = Number(row.precio_promedio) || 0;
+    const precioAnterior = mapAnterior[key] || 0;
+
+    let variacion = null;
+    if (precioAnterior > 0) {
+      variacion = ((precioActual - precioAnterior) / precioAnterior) * 100;
+    }
+
+    if (!respuesta[row.preventa]) respuesta[row.preventa] = {};
+
+    respuesta[row.preventa][categoria] = {
+      precio: Number(precioActual.toFixed(2)),
+      vsAnterior: variacion !== null ? Number(variacion.toFixed(2)) : null
+    };
+  });
+
+  return respuesta;
+}
+// ======================================================
+// 🔍 TODOS LOS PRODUCTOS VENDIDOS POR PREVENTA (MES ACTUAL)
+// ======================================================
+async function obtenerProductosVendidosMes(anio, mes) {
+  const inicio = `${anio}-${String(mes).padStart(2, "0")}-01 00:00:00`;
+  const mesSig = mes === 12 ? 1 : mes + 1;
+  const anioSig = mes === 12 ? anio + 1 : anio;
+  const fin = `${anioSig}-${String(mesSig).padStart(2, "0")}-01 00:00:00`;
+
+  const sql = `
+    SELECT 
+      o.seller_code AS preventa,
+      dd.descripcion
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE 
+      dd.codigo_categoria = '7'
+      AND o.status IN ('2','4','5')
+      AND o.fecha_creacion >= '${inicio}'
+      AND o.fecha_creacion < '${fin}'
+  `;
+
+  const rows = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
+
+  const mapa = {};
+
+  rows.forEach(item => {
+    const categoria = clasificarPresentacion(item.descripcion);
+    if (categoria === "OTROS") return;
+
+    if (!mapa[item.preventa]) mapa[item.preventa] = new Set();
+    mapa[item.preventa].add(categoria);
+  });
+
+  return mapa;
+}
+
+
+
+
 const calcularKPIsMes = async (anioNum, mesNum) => {
-  console.log("\n==============================================");
-  console.log(`📆 CALCULANDO KPI MES ${anioNum}-${mesNum}`);
-  console.log("==============================================");
+  //console.log("\n==============================================");
+  //console.log(`📆 CALCULANDO KPI MES ${anioNum}-${mesNum}`);
+  //console.log("==============================================");
 
   const fechaInicioStr = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
   let mesFin = mesNum + 1;
@@ -380,14 +584,14 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 
   const fechaFinStr = `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
 
-  console.log("⏳ RANGO FECHAS KPI:");
-  console.log("➡️ Inicio:", fechaInicioStr);
-  console.log("➡️ Fin:", fechaFinStr);
+  //console.log("⏳ RANGO FECHAS KPI:");
+  //console.log("➡️ Inicio:", fechaInicioStr);
+  //console.log("➡️ Fin:", fechaFinStr);
 
   // ============================
   // KPI SQL REAL POR PREVENTA
   // ============================
-  console.log("🔍 Consultando ranking PREVENTA...");
+  //console.log("🔍 Consultando ranking PREVENTA...");
 
   const resultadosSQL = await Orden.findAll({
     attributes: [
@@ -433,19 +637,8 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     raw: true
   });
 
-  console.log("📊 RESULTADOS PREVENTA:", resultadosSQL);
+  ////console.log("📊 RESULTADOS PREVENTA:", resultadosSQL);
 
-  // const rankingPreventasSQL = resultadosSQL.map(r => ({
-  //   preventa: r.preventa,
-  //   unidades: Number(r.sum_quantity),
-  //   monto: Number(r.sum_total)
-  // }));
-
-  // const unidadesTotalesSQL = resultadosSQL.reduce((a, b) => a + Number(b.sum_quantity), 0);
-  // const montoTotalSQL = resultadosSQL.reduce((a, b) => a + Number(b.sum_total), 0);
-
-  // console.log("📌 Unidades Totales Preventa:", unidadesTotalesSQL);
-  // console.log("📌 Monto Total Preventa:", montoTotalSQL);
 
   // =============================
   // 🔥 METAS Y PROYECCIÓN NUEVA
@@ -455,7 +648,9 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 
   const hoy = new Date();
   const esMesActual = hoy.getFullYear() === anioNum && (hoy.getMonth() + 1) === mesNum;
-  const diasTranscurridos = esMesActual ? hoy.getDate() : new Date(anioNum, mesNum, 0).getDate();
+  // const diasTranscurridos = esMesActual ? hoy.getDate() : new Date(anioNum, mesNum, 0).getDate();
+  const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum);
+
   const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum);
 
   let rankingPreventasSQL = resultadosSQL.map(r => {
@@ -489,7 +684,7 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   // ============================================
   // 🔥 TOP 20 MES ACTUAL
   // ============================================
-  // console.log("🔍 Consultando TOP 20 Clientes...");
+  // //console.log("🔍 Consultando TOP 20 Clientes...");
   const topActual = await obtenerTop20Clientes(anioNum, mesNum);
 
   // ============================================
@@ -503,12 +698,12 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     const anioPrev = fechaAnterior.getFullYear();
     const mesPrev = fechaAnterior.getMonth() + 1;
 
-    // console.log(`📆 Comparando vs Mes Anterior: ${anioPrev}-${mesPrev}`);
+    // //console.log(`📆 Comparando vs Mes Anterior: ${anioPrev}-${mesPrev}`);
 
     topAnterior = await obtenerTop20Clientes(anioPrev, mesPrev);
   } catch {
     topAnterior = [];
-    console.log("⚠️ No hay TOP anterior.");
+    //console.log("⚠️ No hay TOP anterior.");
   }
 
   // ============================================
@@ -539,12 +734,12 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     };
   });
 
-  // console.log("🔥 TOP 20 FINAL:", top20Final);
+  // //console.log("🔥 TOP 20 FINAL:", top20Final);
 
   // ======================================================
   // 🔥 RANKING RUTAS R DESCARTABLE
   // ======================================================
-  console.log("🔍 Consultando Ranking Rutas R...");
+  //console.log("🔍 Consultando Ranking Rutas R...");
   // const rankingRutasR = await obtenerRankingRutasDescartable(anioNum, mesNum);
 
   const rankingRutasR = await obtenerRankingRutasDescartable(
@@ -555,16 +750,16 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     diasLaborablesMes
   );
 
-  console.log("📌 Ranking R:", rankingRutasR);
+  //console.log("📌 Ranking R:", rankingRutasR);
 
   // ======================================================
   // 🔥 NUEVA CONSULTA: VENTA POR PRODUCTO (PV + R + TELEVENTA)
   // ======================================================
-  // console.log("📦 Consultando Venta por Producto General...");
+  // //console.log("📦 Consultando Venta por Producto General...");
 
   const ventaPorProducto = await obtenerVentaPorProducto(anioNum, mesNum);
 
-  // console.log("📊 Venta por Producto:", ventaPorProducto);
+  // //console.log("📊 Venta por Producto:", ventaPorProducto);
 
   // ======================================================
   // 🔥 METAS MENSUALES Y CUMPLIMIENTO
@@ -584,8 +779,8 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
       ? (montoTotalSQL / metaMensualDolares) * 100
       : 0;
 
-  console.log("🎯 Cumplimiento Mensual Unidades:", cumplimientoUnidadesMensual);
-  console.log("🎯 Cumplimiento Mensual USD:", cumplimientoUSDMensual);
+  //console.log("🎯 Cumplimiento Mensual Unidades:", cumplimientoUnidadesMensual);
+  //console.log("🎯 Cumplimiento Mensual USD:", cumplimientoUSDMensual);
 
   // ======================================================
   // RETORNO FINAL
@@ -639,7 +834,7 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 const obtenerDatosDashboard = async (req, res) => {
   try {
     const { anio, mes } = req.query;
-    // console.log("\n📥 Query recibida en /api/ventas/dashboard:", req.query);
+
     if (!anio || !mes) {
       return res.status(400).json({
         error: "Debe enviar ?anio=YYYY&mes=MM",
@@ -648,14 +843,13 @@ const obtenerDatosDashboard = async (req, res) => {
 
     const anioNum = parseInt(anio, 10);
     const mesNum = parseInt(mes, 10);
-    // console.log(`🚀 Procesando dashboard para ${anioNum}-${mesNum}`);
 
     // =====================
     // MES ACTUAL
     // =====================
     const resumenActual = await calcularKPIsMes(anioNum, mesNum);
 
-    // 🆕 TOP 20 CLIENTES CON MAYOR CONSUMO
+    // TOP 20 CLIENTES
     const top20Clientes = await obtenerTop20Clientes(anioNum, mesNum);
 
     // =========================================
@@ -671,8 +865,6 @@ const obtenerDatosDashboard = async (req, res) => {
       const anioPrev = fecha.getFullYear();
       const mesPrev = fecha.getMonth() + 1;
 
-      console.log(`📊 Calculando comparativa con ${anioPrev}-${mesPrev}`);
-
       resumenPrev = await calcularKPIsMes(anioPrev, mesPrev);
 
       const uAct = resumenActual._raw.unidadesTotales;
@@ -683,7 +875,6 @@ const obtenerDatosDashboard = async (req, res) => {
       comparativaMesAnterior = {
         anio: anioPrev,
         mes: mesPrev,
-
         unidades: {
           anterior: uPrev,
           actual: uAct,
@@ -691,7 +882,6 @@ const obtenerDatosDashboard = async (req, res) => {
           variacionPorcentaje:
             uPrev > 0 ? ((uAct - uPrev) / uPrev) * 100 : null,
         },
-
         monto: {
           anterior: mPrev,
           actual: mAct,
@@ -701,123 +891,31 @@ const obtenerDatosDashboard = async (req, res) => {
         },
       };
 
-      console.log("📌 Comparativa general generada:", comparativaMesAnterior);
     } catch (err) {
       console.error("❌ Error comparativa general:", err);
     }
 
-    // ==========================================================
-    // 🧾 TOP 10 CLIENTES ENRIQUECIDO (MES ACTUAL vs MES ANTERIOR)
-    // ==========================================================
-    let topClientesDetallado = [];
-
-    try {
-      const clientesActual = resumenActual.clientesDetalle || {};
-      const clientesPrev = resumenPrev?.clientesDetalle || {};
-
-      const topActual = Object.values(clientesActual)
-        .sort((a, b) => b.monto - a.monto)
-        .slice(0, 10);
-
-      topClientesDetallado = topActual.map((cliActual) => {
-        const codigo = cliActual.codigo;
-        const cliPrev = clientesPrev[codigo] || {
-          monto: 0,
-          unidades: 0,
-          ordenes: 0,
-        };
-
-        const variacionMontoAbs = cliActual.monto - cliPrev.monto;
-        const variacionMontoPorc =
-          cliPrev.monto > 0 ? (variacionMontoAbs / cliPrev.monto) * 100 : null;
-
-        const variacionUnidadesAbs = cliActual.unidades - cliPrev.unidades;
-        const variacionUnidadesPorc =
-          cliPrev.unidades > 0
-            ? (variacionUnidadesAbs / cliPrev.unidades) * 100
-            : null;
-
-        return {
-          codigo,
-          cliente: cliActual.cliente,
-
-          montoActual: cliActual.monto,
-          unidadesActual: cliActual.unidades,
-          ordenesActual: cliActual.ordenes,
-
-          montoAnterior: cliPrev.monto,
-          unidadesAnterior: cliPrev.unidades,
-          ordenesAnterior: cliPrev.ordenes,
-
-          variacionMontoAbs,
-          variacionMontoPorc,
-          variacionUnidadesAbs,
-          variacionUnidadesPorc,
-
-          historial: [
-            {
-              etiqueta: "Mes anterior",
-              monto: cliPrev.monto,
-              unidades: cliPrev.unidades,
-            },
-            {
-              etiqueta: "Mes actual",
-              monto: cliActual.monto,
-              unidades: cliActual.unidades,
-            },
-          ],
-        };
-      });
-
-      // console.log("📊 TOP 10 CLIENTES DETALLADO:", topClientesDetallado);
-    } catch (errCli) {
-      console.error("❌ Error generando topClientesDetallado:", errCli);
-    }
-
     // ======================================================
-    // 🆕 NUEVA COLUMNA "vsMesAnterior" PARA CADA PREVENTA
+    // 🆕 vsMesAnterior por preventa
     // ======================================================
     try {
-      console.log("==============================================");
-      console.log("🔄 INICIANDO GENERACIÓN VS MES ANTERIOR (USD)");
-      console.log("==============================================");
-
       const rankingActual = resumenActual.rankingPreventas || [];
       const rankingPrevio = resumenPrev?.rankingPreventas || [];
 
-      console.log("📊 rankingActual (mes actual):", rankingActual);
-      console.log("📊 rankingPrevio (mes anterior):", rankingPrevio);
-
-      // ======================================================
-      // 🗺️ MAPA MES ANTERIOR → SOLO DÓLARES
-      // ======================================================
       const rankingPrevMap = {};
-
       rankingPrevio.forEach(r => {
-        rankingPrevMap[r.preventa] = {
-          monto: Number(r.monto) || 0
-        };
+        rankingPrevMap[r.preventa] = { monto: Number(r.monto) || 0 };
       });
 
-      console.log("🧩 rankingPrevMap generado:", rankingPrevMap);
-
-      // ======================================================
-      // 🧮 CALCULAR VARIACIÓN EN DÓLARES
-      // ======================================================
       resumenActual.rankingPreventas = rankingActual.map(r => {
         const montoActual = Number(r.monto) || 0;
-
         const prev = rankingPrevMap[r.preventa] || { monto: 0 };
-        const montoAnterior = Number(prev.monto) || 0;
+        const montoAnterior = prev.monto;
 
         const variacionAbs = montoActual - montoAnterior;
 
         const variacionPorc =
           montoAnterior > 0 ? (variacionAbs / montoAnterior) * 100 : null;
-
-        console.log(
-          `🔍 PREVENTA ${r.preventa}: actual $${montoActual}, anterior $${montoAnterior}, abs ${variacionAbs}, % ${variacionPorc}`
-        );
 
         return {
           ...r,
@@ -861,10 +959,30 @@ const obtenerDatosDashboard = async (req, res) => {
 
     console.log("📤 Enviando respuesta final del dashboard");
 
+    // 🔥 ================================================
+    // 🔥 NUEVO: COSTO PROMEDIO POR PREVENTA
+    // 🔥 ================================================
+    const productosVendidos = await obtenerProductosVendidosMes(anioNum, mesNum);
+
+    const preciosActual = await obtenerPrecioPromedioPorPreventa(anioNum, mesNum);
+    const preciosAnterior = await obtenerPrecioPromedioMesAnterior(anioNum, mesNum);
+
+    const precioPromedioTabla = procesarTablaPrecioPromedio(
+      preciosActual,
+      preciosAnterior,
+      productosVendidos
+    );
+
+    console.log(" tabla costo promedio:", precioPromedioTabla);
+
+    // ================================================
+    // RESPUESTA FINAL
+    // ================================================
     return res.status(200).json({
       ...publicResumen,
       comparativaMesAnterior,
       topClientes: resumenActual.topClientes,
+      precioPromedioTabla
     });
 
   } catch (error) {

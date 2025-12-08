@@ -5,37 +5,91 @@ const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 
 // ========================================================
+// 🧩 HELPER PARA FORMATEAR FECHAS A YYYY-MM-DD
+// ========================================================
+function formatFecha(fecha) {
+  if (!fecha) return null;
+  const d = new Date(fecha);
+  if (isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
+
+// ========================================================
+// 🧩 FUNCIÓN SEGURA PARA GENERAR FECHAS PG EN UTC
+// ========================================================
+function obtenerRangoFechasPG(anio, mes) {
+  const inicio = new Date(Date.UTC(anio, mes - 1, 1)); // inicio mes
+  const fin = new Date(Date.UTC(anio, mes, 1));       // siguiente mes
+
+  const fInicio = inicio.toISOString().replace("T", " ").substring(0, 19);
+  const fFin = fin.toISOString().replace("T", " ").substring(0, 19);
+
+  return { fInicio, fFin };
+}
+
+// ========================================================
 // 🚀 CONTROLADOR PRINCIPAL
 // ========================================================
 const obtenerDetalleRuta = async (req, res) => {
+  console.log("▶️ [detallePreventa] Inicio obtenerDetalleRuta, params:", req.params);
+
   try {
     const { ruta, anio, mes } = req.params;
 
     if (!ruta || !anio || !mes) {
+      console.warn("⚠️ [detallePreventa] Faltan parámetros /ruta/anio/mes");
       return res.status(400).json({ error: "Debe enviar /ruta/anio/mes" });
     }
 
     const anioNum = parseInt(anio);
     const mesNum = parseInt(mes);
 
-    const fechaInicioStr = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
-    const fechaFinStr = `${anioNum}-${String(mesNum + 1).padStart(2, "0")}-01 00:00:00`;
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12) {
+      console.warn("⚠️ [detallePreventa] Año o mes inválido:", { anio, mes });
+      return res.status(400).json({ error: "Mes o año inválido" });
+    }
 
     // ============================================================
-    // 1) CATÁLOGO
+    // 🗓 USO DE FUNCIÓN SEGURA PARA FECHAS PG
     // ============================================================
+    const { fInicio: fechaInicioStr, fFin: fechaFinStr } = obtenerRangoFechasPG(anioNum, mesNum);
+
+    console.log("🧮 [detallePreventa] Rango de fechas calculado (SEGURIDAD UTC):", {
+      anioNum,
+      mesNum,
+      fechaInicioStr,
+      fechaFinStr,
+    });
+
+    const rutaUpper = ruta.trim().toUpperCase();
+
+    // ============================================================
+    // 1) CATÁLOGO DE LA RUTA
+    // ============================================================
+    console.log("📦 [detallePreventa] Buscando catálogo para ruta:", rutaUpper);
+
     const rutaInfo = await RutaPreventa.findOne({
-      where: { codigo_ruta: ruta.trim().toUpperCase() },
+      where: { codigo_ruta: rutaUpper },
     });
 
     let catalogo = [];
     if (rutaInfo?.productos_catalogo) {
-      catalogo = JSON.parse(rutaInfo.productos_catalogo);
+      try {
+        catalogo = JSON.parse(rutaInfo.productos_catalogo);
+      } catch (e) {
+        console.error("❌ [detallePreventa] Error parseando JSON catálogo:", e.message);
+      }
     }
 
+    console.log("📦 [detallePreventa] Catálogo cargado. Total items:", catalogo.length);
+
     // ============================================================
-    // 2) PRODUCTOS VENDIDOS
+    // 2) PRODUCTOS VENDIDOS EN EL MES
     // ============================================================
+    console.log("🧾 [detallePreventa] Consultando productos vendidos...");
+
     const productosVendidosSQL = `
       SELECT
           dd.descripcion AS producto,
@@ -54,14 +108,24 @@ const obtenerDetalleRuta = async (req, res) => {
       ORDER BY unidades_vendidas DESC;
     `;
 
+    console.log("🧾 [detallePreventa] Params productosVendidos:", {
+      ruta: rutaUpper,
+      inicio: fechaInicioStr,
+      fin: fechaFinStr,
+    });
+
     const productosVendidos = await db.query(productosVendidosSQL, {
-      replacements: { ruta: ruta.toUpperCase(), inicio: fechaInicioStr, fin: fechaFinStr },
+      replacements: { ruta: rutaUpper, inicio: fechaInicioStr, fin: fechaFinStr },
       type: db.QueryTypes.SELECT,
     });
+
+    console.log("🧾 [detallePreventa] Productos vendidos obtenidos:", productosVendidos.length);
 
     // ============================================================
     // 3) CLIENTES ASIGNADOS A LA RUTA
     // ============================================================
+    console.log("👥 [detallePreventa] Consultando clientes asignados a la ruta...");
+
     const clientesRutaSQL = `
       SELECT codigo_cliente, nombre_cliente, direccion_entrega
       FROM clientes_ventas
@@ -69,13 +133,17 @@ const obtenerDetalleRuta = async (req, res) => {
     `;
 
     const clientesRuta = await db.query(clientesRutaSQL, {
-      replacements: { ruta: ruta.toUpperCase() },
+      replacements: { ruta: rutaUpper },
       type: db.QueryTypes.SELECT,
     });
+
+    console.log("👥 [detallePreventa] Total clientes asignados:", clientesRuta.length);
 
     // ============================================================
     // 4) CLIENTES CON CONSUMO EN EL MES
     // ============================================================
+    console.log("📊 [detallePreventa] Consultando clientes con consumo...");
+
     const clientesConConsumoSQL = `
       SELECT DISTINCT customer_code
       FROM ordenes
@@ -88,53 +156,59 @@ const obtenerDetalleRuta = async (req, res) => {
     `;
 
     const clientesConConsumoRows = await db.query(clientesConConsumoSQL, {
-      replacements: { ruta: ruta.toUpperCase(), inicio: fechaInicioStr, fin: fechaFinStr },
+      replacements: { ruta: rutaUpper, inicio: fechaInicioStr, fin: fechaFinStr },
       type: db.QueryTypes.SELECT,
     });
 
-    const clientesConConsumo = new Set(clientesConConsumoRows.map(c => c.customer_code));
+    console.log("📊 [detallePreventa] Clientes con consumo:", clientesConConsumoRows.length);
+
+    const clientesConConsumo = new Set(
+      clientesConConsumoRows.map((c) => c.customer_code)
+    );
 
     const listaClientesSinConsumo = clientesRuta.filter(
-      cli => !clientesConConsumo.has(cli.codigo_cliente)
+      (cli) => !clientesConConsumo.has(cli.codigo_cliente)
     );
+
+    console.log("📊 [detallePreventa] Clientes SIN consumo:", listaClientesSinConsumo.length);
 
     // ============================================================
     // 5) CONSULTAR ÚLTIMA VISITA GLOBAL
     // ============================================================
+    console.log("📅 [detallePreventa] Consultando última visita...");
+
     const ultimaVisitaSQL = `
-                    SELECT
-                        customer_code,
-                        MAX(fecha_entrega) AS ultima_visita
-                    FROM (
-                        SELECT customer_code, fecha_entrega FROM ordenes
-                        UNION ALL
-                        SELECT customer_code, fecha_entrega FROM facturas
-                    ) x
-                    GROUP BY customer_code;
-                  `;
-
-
+      SELECT
+          customer_code,
+          MAX(fecha_entrega) AS ultima_visita
+      FROM (
+          SELECT customer_code, fecha_entrega FROM ordenes
+          UNION ALL
+          SELECT customer_code, fecha_entrega FROM facturas
+      ) x
+      GROUP BY customer_code;
+    `;
 
     const ultimasVisitas = await db.query(ultimaVisitaSQL, {
       type: db.QueryTypes.SELECT,
     });
 
+    console.log("📅 [detallePreventa] Registros última visita:", ultimasVisitas.length);
+
     const mapUltimaVisita = new Map(
-      ultimasVisitas.map(v => [v.customer_code, v.ultima_visita])
+      ultimasVisitas.map((v) => [v.customer_code, v.ultima_visita])
     );
 
     // ============================================================
     // 6) CONSULTAR ÚLTIMA FACTURA GLOBAL
     // ============================================================
+    console.log("🧾 [detallePreventa] Consultando última factura...");
+
     const ultimaFacturaSQL = `
       SELECT 
           customer_code,
           MAX(
-              COALESCE(
-                  fecha_autorizacion,
-                  fecha_entrega,
-                  fecha_creacion
-              )
+              COALESCE(fecha_autorizacion, fecha_entrega, fecha_creacion)
           ) AS ultima_factura
       FROM facturas
       GROUP BY customer_code;
@@ -144,20 +218,18 @@ const obtenerDetalleRuta = async (req, res) => {
       type: db.QueryTypes.SELECT,
     });
 
+    console.log("🧾 [detallePreventa] Registros última factura:", ultimasFacturas.length);
+
     const mapUltimaFactura = new Map(
-      ultimasFacturas.map(v => [v.customer_code, v.ultima_factura])
+      ultimasFacturas.map((v) => [v.customer_code, v.ultima_factura])
     );
 
     // ============================================================
-    // 7) FORMATEAR FECHAS
+    // 7) FORMATEAR FECHAS PARA CLIENTES SIN CONSUMO
     // ============================================================
-    function formatFecha(fecha) {
-      if (!fecha) return null;
-      const d = new Date(fecha);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
+    console.log("🛠 [detallePreventa] Formateando fechas de clientes sin consumo...");
 
-    listaClientesSinConsumo.forEach(cli => {
+    listaClientesSinConsumo.forEach((cli) => {
       cli.ultima_visita = formatFecha(mapUltimaVisita.get(cli.codigo_cliente));
       cli.ultima_factura = formatFecha(mapUltimaFactura.get(cli.codigo_cliente));
     });
@@ -168,24 +240,34 @@ const obtenerDetalleRuta = async (req, res) => {
     const totalClientesRuta = clientesRuta.length;
     const totalSin = listaClientesSinConsumo.length;
 
+    const resumenClientes = {
+      totalClientesRuta,
+      clientesConConsumo: totalClientesRuta - totalSin,
+      clientesSinConsumo: totalSin,
+    };
+
+    console.log("✅ [detallePreventa] Resumen clientes:", resumenClientes);
+
     return res.json({
-      ruta: ruta.toUpperCase(),
+      ruta: rutaUpper,
       anio: anioNum,
       mes: mesNum,
-
-      resumenClientes: {
-        totalClientesRuta,
-        clientesConConsumo: totalClientesRuta - totalSin,
-        clientesSinConsumo: totalSin,
+      rangoFechas: {
+        inicio: fechaInicioStr,
+        fin: fechaFinStr,
       },
-
+      resumenClientes,
       listaClientesSinConsumo,
-      productosVendidos
+      productosVendidos,
+      catalogo,
     });
 
   } catch (error) {
-    console.error("❌ ERROR EN DETALLE RUTA:", error);
-    return res.status(500).json({ error: "Error al obtener detalle de ruta" });
+    console.error("❌ [detallePreventa] ERROR EN DETALLE RUTA:", error);
+    return res.status(500).json({
+      error: "Error al obtener detalle de ruta",
+      detalle: error.message,
+    });
   }
 };
 

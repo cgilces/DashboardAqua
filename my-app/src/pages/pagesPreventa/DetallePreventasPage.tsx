@@ -27,7 +27,9 @@ const DetallePreventasPage: React.FC = () => {
     setCargando(true);
 
     fetch(`http://localhost:5000/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`)
-      .then((res) => res.json())
+    // fetch(`${API_URL}/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`)
+  
+    .then((res) => res.json())
       .then((data) => {
         console.log("Datos FULL recibidos:", data);
 
@@ -65,11 +67,17 @@ const DetallePreventasPage: React.FC = () => {
       </div>
     );
   }
-  const exportarClientesSinConsumo = () => {
-    if (!clientesPagina || clientesPagina.length === 0) return;
 
-    // Preparamos los datos de exportación
-    const datosExportar = clientesPagina.map((c) => ({
+
+
+  const exportarClientesSinConsumo = () => {
+  if (!clientesSinConsumo || clientesSinConsumo.length === 0) return;
+
+  try {
+    const rutaUpper = (ruta || "").toUpperCase();
+
+    const datosExportar = clientesSinConsumo.map((c) => ({
+      Ruta: rutaUpper,
       Código: c.codigo_cliente,
       Cliente: c.nombre_cliente,
       Dirección: c.direccion_entrega,
@@ -77,12 +85,36 @@ const DetallePreventasPage: React.FC = () => {
       "Última factura": c.ultima_factura || "—",
     }));
 
+    // 1️⃣ Crear hoja
     const ws = XLSX.utils.json_to_sheet(datosExportar);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Clientes sin consumo");
 
-    XLSX.writeFile(wb, "clientes_sin_consumo.xlsx");
-  };
+    // 2️⃣ Agregar título en A1
+    const titulo = [`CLIENTES SIN CONSUMO - ${rutaUpper} - ${mes}/${anio}`];
+    XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
+
+    // 3️⃣ 👉 AUTO-ANCHO DE COLUMNAS
+    const columnas = Object.keys(datosExportar[0]);
+
+    ws['!cols'] = columnas.map((col) => {
+      const maxLong = Math.max(
+        col.length,
+        ...datosExportar.map((row) => String(row[col]).length)
+      );
+      return { wch: maxLong + 4 }; // +4 para margen visual
+    });
+
+    // 4️⃣ Crear archivo Excel
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Clientes_SC");
+
+    const nombreArchivo = `clientes_sin_consumo_${rutaUpper}_${mes}_${anio}.xlsx`;
+    XLSX.writeFile(wb, nombreArchivo, { compression: true });
+
+  } catch (error) {
+    console.error("❌ Error exportando Excel:", error);
+  }
+};
+
 
 
   return (

@@ -5,6 +5,9 @@ import TopClientes from "../../components/ComponentPreventa/TopClientes";
 import RankingRutasR from "../../components/ComponentPreventa/RankingRutasR";
 import DashboardLayout from "../../layout/DashboardLayout";
 import GraficoVentaPorProducto from "../../components/ComponentPreventa/GraficoVentaPorProducto";
+
+import CostoPromedioProductos from "../../components/ComponentPreventa/CostoPromedioProductos";
+
 // import { API_URL } from "../../config/api";
 
 //  Diccionario de meses
@@ -34,16 +37,16 @@ export default function DashboardPreventa() {
   const mesGuardado = localStorage.getItem("mesSeleccionado");
   const anioGuardado = localStorage.getItem("anioSeleccionado");
 
-  const [mesSeleccionado, setMesSeleccionado] = useState < string > (
+  const [mesSeleccionado, setMesSeleccionado] = useState<string>(
     mesGuardado ?? mesActual.toString()
   );
-  const [anioSeleccionado, setAnioSeleccionado] = useState < string > (
+  const [anioSeleccionado, setAnioSeleccionado] = useState<string>(
     anioGuardado ?? anioActual.toString()
   );
 
-  const [datos, setDatos] = useState < any > (null);
+  const [datos, setDatos] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
-  const [topClientesState, setTopClientesState] = useState < any[] > ([]);
+  const [topClientesState, setTopClientesState] = useState<any[]>([]);
 
   // ============================
   // 🔥 Cargar datos cuando cambie mes o año
@@ -71,7 +74,7 @@ export default function DashboardPreventa() {
       setCargando(true);
       const res = await fetch(
         // `${API_URL}/api/ventas/dashboard?anio=${anio}&mes=${mes}`
-          `http://localhost:5000/api/ventas/dashboard?anio=${anio}&mes=${mes}`
+        `http://localhost:5000/api/ventas/dashboard?anio=${anio}&mes=${mes}`
       );
       const data = await res.json();
 
@@ -340,30 +343,38 @@ export default function DashboardPreventa() {
 
             {/* DOS TABLAS: RANKING PREVENTA Y R DESCARTABLE */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <div className="h-full flex flex-col">
+              <div className="h-full flex flex-col xl:col-span-2">
                 <RankingPreventas
                   datos={datos}
                   anio={anioSeleccionado}
                   mes={mesSeleccionado}
                 />
               </div>
+            </div>
 
-              <div className="grid grid-cols-1 gap-6">
-                {/* Ranking Rutas R */}
-                <div className="h-full flex flex-col">
-                  <RankingRutasR
-                    data={datos.rankingRutasR}
-                    anio={anioSeleccionado}
-                    mes={mesSeleccionado}
-                  />
-                </div>
 
-                {/* GRAFICO VENTA POR PRODUCTO */}
-                <div className="h-full flex flex-col">
-                  <GraficoVentaPorProducto data={datos.ventaPorProducto} />
-                </div>
+
+            <div className="grid grid-cols-1 gap-6">
+              {/* Ranking Rutas R */}
+              <div className="h-full flex flex-col">
+                <RankingRutasR
+                  data={datos.rankingRutasR}
+                  anio={anioSeleccionado}
+                  mes={mesSeleccionado}
+                />
               </div>
 
+
+              {/* Costo Promedio por Producto */}
+              <div className="h-full flex flex-col">
+                <CostoPromedioProductos data={datos.precioPromedioTabla} />
+
+              </div>
+
+              {/* GRAFICO VENTA POR PRODUCTO */}
+              <div className="h-full flex flex-col">
+                <GraficoVentaPorProducto data={datos.ventaPorProducto} />
+              </div>
 
             </div>
 
