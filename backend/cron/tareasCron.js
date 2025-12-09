@@ -23,7 +23,7 @@ function writeLog(message) {
 }
 
 // 🕑 CRON configurado para Ecuador: 02:00 AM todos los días
-cron.schedule('0 2 * * *', async () => {
+cron.schedule('59 23 * * *', async () => {
   writeLog("=== Inicio de ejecución del CRON ===");
 
   try {

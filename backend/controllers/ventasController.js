@@ -265,9 +265,6 @@ const obtenerDetallePorVendedor = async (codigoVendedor, anioNum, mesNum) => {
 };
 
 
-
-// const obtenerRankingRutasDescartable = async (anioNum, mesNum) => {
-
 const obtenerRankingRutasDescartable = async (
   anioNum,
   mesNum,
@@ -288,12 +285,7 @@ const obtenerRankingRutasDescartable = async (
   const inicioPrev = `${anioPrev}-${String(mesPrev).padStart(2, "0")}-01 00:00:00`;
   const finPrev = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
 
-  //console.log("📌 RANKING R ACTUAL:", inicio, fin);
-  //console.log("📌 RANKING R ANTERIOR:", inicioPrev, finPrev);
-
-  // ==========================
   // MES ACTUAL
-  // ==========================
   const sqlActual = `
     SELECT 
       o.seller_code AS usuario,
@@ -312,9 +304,7 @@ const obtenerRankingRutasDescartable = async (
   `;
   const actual = await sequelize.query(sqlActual, { type: Sequelize.QueryTypes.SELECT });
 
-  // ==========================
   // MES ANTERIOR
-  // ==========================
   const sqlPrev = `
     SELECT 
       o.seller_code AS usuario,
@@ -337,42 +327,45 @@ const obtenerRankingRutasDescartable = async (
     mapPrev[r.usuario] = Number(r.dolares) || 0;
   });
 
-  // ==========================
   // COMBINAR RESULTADOS
-  // ==========================
   const rankingFinal = actual.map(r => {
-    const montoActual = Number(r.dolares);
-    const montoAnterior = mapPrev[r.usuario] || 0;
+  const montoActual = Number(r.dolares);  // Monto del mes actual
+  const montoAnterior = mapPrev[r.usuario] || 0;  // Monto del mes anterior
 
-    const variacionAbs = montoActual - montoAnterior;
-    const variacionPorc =
-      montoAnterior > 0 ? ((variacionAbs / montoAnterior) * 100) : null;
+  // Proyección del mes actual: (ventas / días transcurridos) * días laborables
+  const proyeccion = (montoActual / diasTranscurridos) * diasLaborablesMes;
 
-    // PROYECCIÓN DEL MES → -2%
-    // const proyeccion = montoActual * 0.98;
-    const proyeccion = (montoActual / diasTranscurridos) * diasLaborablesMes;
+  // Proyección del mes anterior: (ventas mes anterior / días transcurridos mes anterior) * días laborables mes actual
+  const proyeccionAnterior = (montoAnterior / diasTranscurridos) * diasLaborablesMes;
 
+  // Cálculo de la proyección faltante
+  const proyeccionFaltantePorcentaje = ((proyeccion - montoActual) / proyeccion) * 100;
 
+  // Variación con respecto al mes anterior (comparando la proyección actual con la proyección anterior)
+  const variacionAbs = proyeccion - proyeccionAnterior;  // Diferencia absoluta de la proyección
+  const variacionPorc = proyeccionAnterior > 0 ? ((variacionAbs / proyeccionAnterior) * 100) : null;
 
-    return {
-      usuario: r.usuario,
-      unidades: Number(r.unidades),
-      dolares: montoActual,
-      meta: metasPorPreventa[r.usuario] || 0,
-      proyeccion: Number(proyeccion.toFixed(2)),
-      vsMesAnterior: {
-        monto_anterior: montoAnterior,
-        variacion_abs: Number(variacionAbs.toFixed(2)),
-        variacion_porc: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null
-      }
-    };
+  return {
+    usuario: r.usuario,
+    unidades: Number(r.unidades),
+    dolares: montoActual,
+    meta: metasPorPreventa[r.usuario] || 0,  // Meta histórica
+    proyeccion: Number(proyeccion.toFixed(2)),  // Proyección para este mes
+    proyeccionFaltantePorcentaje: Number(proyeccionFaltantePorcentaje.toFixed(2)),
+    vsMesAnterior: {
+      monto_anterior: proyeccionAnterior,  // Proyección del mes anterior
+      variacion_abs: Number(variacionAbs.toFixed(2)),  // Variación absoluta
+      variacion_porc: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null  // Variación porcentual
+    }
+  };
+});
 
-  });
+ 
 
-  // //console.log("📊 Ranking R Completo:", rankingFinal);
 
   return rankingFinal;
 };
+
 
 
 const obtenerVentaPorProducto = async (anioNum, mesNum) => {
@@ -484,11 +477,9 @@ function clasificarPresentacion(descripcion = "") {
 
 
 // =================================================
-// 🧮 ORGANIZAR TABLA DE PRECIOS PROMEDIO (FINAL)
+// ORGANIZAR TABLA DE PRECIOS PROMEDIO (FINAL)
 // =================================================
-// =================================================
-// 🧮 TABLA DE PRECIOS PROMEDIO FINAL
-// =================================================
+
 function procesarTablaPrecioPromedio(actual, anterior, productosVendidos) {
   const mapAnterior = {};
 
@@ -648,7 +639,6 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 
   const hoy = new Date();
   const esMesActual = hoy.getFullYear() === anioNum && (hoy.getMonth() + 1) === mesNum;
-  // const diasTranscurridos = esMesActual ? hoy.getDate() : new Date(anioNum, mesNum, 0).getDate();
   const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum);
 
   const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum);
@@ -908,12 +898,15 @@ const obtenerDatosDashboard = async (req, res) => {
       });
 
       resumenActual.rankingPreventas = rankingActual.map(r => {
-        const montoActual = Number(r.monto) || 0;
+        // Usar la proyección del mes actual
+        const proyeccionActual = Number(r.proyeccion) || 0;
+
+        // Usar el valor de la proyección y no el histórico para la variación con el mes anterior
         const prev = rankingPrevMap[r.preventa] || { monto: 0 };
         const montoAnterior = prev.monto;
 
-        const variacionAbs = montoActual - montoAnterior;
-
+        // Aquí debes comparar la proyección con el monto del mes anterior
+        const variacionAbs = proyeccionActual - montoAnterior;  // diferencia entre la proyección y el mes anterior
         const variacionPorc =
           montoAnterior > 0 ? (variacionAbs / montoAnterior) * 100 : null;
 
@@ -928,7 +921,13 @@ const obtenerDatosDashboard = async (req, res) => {
         };
       });
 
-      console.log("✅ rankingPreventas calculado (USD):", resumenActual.rankingPreventas);
+
+
+
+
+
+
+      // console.log("✅ rankingPreventas calculado (USD):", resumenActual.rankingPreventas);
 
     } catch (e) {
       console.error("❌ Error generando vsMesAnterior (USD):", e);
@@ -945,8 +944,8 @@ const obtenerDatosDashboard = async (req, res) => {
       const variacionMontoMesAnterior =
         comparativaMesAnterior.monto?.variacionPorcentaje ?? null;
 
-      console.log("📌 variación unidades KPIs:", variacionUnidadesMesAnterior);
-      console.log("📌 variación monto KPIs:", variacionMontoMesAnterior);
+      // console.log("📌 variación unidades KPIs:", variacionUnidadesMesAnterior);
+      // console.log("📌 variación monto KPIs:", variacionMontoMesAnterior);
 
       resumenActual.kpisGenerales = {
         ...resumenActual.kpisGenerales,
@@ -973,7 +972,7 @@ const obtenerDatosDashboard = async (req, res) => {
       productosVendidos
     );
 
-    console.log(" tabla costo promedio:", precioPromedioTabla);
+    // console.log(" tabla costo promedio:", precioPromedioTabla);
 
     // ================================================
     // RESPUESTA FINAL

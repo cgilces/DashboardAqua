@@ -76,60 +76,54 @@ const RankingRutasR = ({
                   minimumFractionDigits: 2
                 })}
               </td>
-
               <td className="px-4 py-2 text-right font-bold">
+                {/* CALCULO DE PORCENTAJE DE CRECIMIENTO */}
+                {(() => {
+                  const meta = Number(r.meta) || 0;
+                  const proy = Number(r.proyeccion) || 0;
 
-  {/* CALCULO DE PORCENTAJE REAL */}
-  {(() => {
-    const meta = Number(r.meta) || 0;
-    const proy = Number(r.proyeccion) || 0;
+                  // Fórmula para calcular el porcentaje de crecimiento
+                  const porcentajeCrecimiento = meta > 0 ? ((proy / meta - 1) * 100) : 0;
 
-    const porc = meta > 0 ? (proy / meta) * 100 : 0;
+                  return (
+                    <>
+                      {/* Porcentaje de Crecimiento entre paréntesis */}
+                      <span className={`text-${porcentajeCrecimiento > 0 ? 'green' : 'red'}-400`}>
+                        ({porcentajeCrecimiento.toFixed(1)}%)
+                      </span>
 
-    return (
-      <>
-        {/* PRIMERO EL PORCENTAJE */}
-        <span className="text-green-400">
-          {porc.toFixed(1)}%
-        </span>
+                      {" "}
 
-        {" "}
-
-        {/* LUEGO EL DOLAR ENTRE PARENTESIS */}
-        <span className="text-blue-300">
-          ($
-          {proy.toLocaleString("es-EC", {
-            minimumFractionDigits: 2,
-          })}
-          )
-        </span>
-      </>
-    );
-  })()}
-
-</td>
+                      {/* Monto de la Proyección */}
+                      <span className="text-blue-300">
+                        ${proy.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                      </span>
+                    </>
+                  );
+                })()}
+              </td>
 
 
               {/* VS MES ANTERIOR */}
               <td
-                className={`px-4 py-2 text-right font-bold ${
-                  r.vsMesAnterior.variacion_abs >= 0
-                    ? "text-green-400"
-                    : "text-red-400"
-                }`}
+                className={`px-4 py-2 text-right font-bold ${r.vsMesAnterior.variacion_abs >= 0
+                  ? "text-green-400"
+                  : "text-red-400"
+                  }`}
               >
                 {r.vsMesAnterior.monto_anterior === 0 ? (
                   "Sin datos"
                 ) : (
                   <>
-                    ${Number(r.vsMesAnterior.variacion_abs).toLocaleString("es-EC", {
+                    ( {r.vsMesAnterior.variacion_porc !== null
+                      ? `${r.vsMesAnterior.variacion_porc}%`
+                      : "–"})
+
+
+                     ${Number(r.vsMesAnterior.monto_anterior).toLocaleString("es-EC", {
                       minimumFractionDigits: 2,
                     })}{" "}
-                    (
-                    {r.vsMesAnterior.variacion_porc !== null
-                      ? `${r.vsMesAnterior.variacion_porc}%`
-                      : "–"}
-                    )
+                    
                   </>
                 )}
               </td>
