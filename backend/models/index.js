@@ -1,6 +1,6 @@
-// models/index.js
-const sequelize = require('../db');
+const sequelize = require('../db');  // Conexión a la base de datos
 
+// Importar los modelos
 const Factura = require('./factura');
 const DetalleDocumento = require('./detalleDocumento');
 const MetaPreventa = require('./metaPreventa');
@@ -9,9 +9,14 @@ const ClienteVenta = require('./clienteVenta');
 const Orden = require('./orden');
 const SincronizacionVenta = require('./SincronizacionVenta');
 
+// Asegúrate de importar tu modelo 'AppUser' (o como lo hayas nombrado)
+const AppUser = require('./appUser');  // Ruta correcta para importar el modelo AppUser
+
 // ===========================
-// RELACIONES FACTURAS
+// RELACIONES ENTRE MODELOS
 // ===========================
+
+// Relaciones de Facturas con otras tablas
 Factura.belongsTo(RutaPreventa, {
   foreignKey: 'route_code',
   targetKey: 'codigo_ruta',
@@ -24,7 +29,7 @@ Factura.belongsTo(ClienteVenta, {
   as: 'cliente_venta'
 });
 
-// Detalles de Facturas
+// Relación de Detalles de Factura
 Factura.hasMany(DetalleDocumento, {
   foreignKey: 'documento_code',
   sourceKey: 'code'
@@ -36,7 +41,7 @@ DetalleDocumento.belongsTo(Factura, {
 });
 
 // ===========================
-// RELACIONES ORDENES (PREVENTAS)
+// RELACIONES DE ORDENES (PREVENTAS)
 // ===========================
 Orden.belongsTo(RutaPreventa, {
   foreignKey: 'route_code',
@@ -50,7 +55,7 @@ Orden.belongsTo(ClienteVenta, {
   as: 'cliente_venta'
 });
 
-// 🔥 Detalles de Órdenes (para sumar cantidades y USD)
+// Detalles de las Órdenes
 Orden.hasMany(DetalleDocumento, {
   foreignKey: 'documento_code',
   sourceKey: 'code'
@@ -62,16 +67,14 @@ DetalleDocumento.belongsTo(Orden, {
 });
 
 // ===========================
-// META → RUTA
+// RELACIÓN META → RUTA
 // ===========================
 MetaPreventa.belongsTo(RutaPreventa, {
   foreignKey: 'codigo_ruta',
   targetKey: 'codigo_ruta'
 });
 
-
-
-
+// Exportar todos los modelos correctamente
 module.exports = {
   Factura,
   DetalleDocumento,
@@ -80,7 +83,6 @@ module.exports = {
   ClienteVenta,
   Orden,
   SincronizacionVenta,
-  sequelize,
+  AppUser,  // Asegúrate de exportar AppUser aquí
+  sequelize, // Exportar la conexión a la base de datos
 };
-
-

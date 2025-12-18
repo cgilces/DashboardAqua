@@ -1,6 +1,6 @@
 // routes/sincronizacionRoutes.js
 const express = require("express");
-const { sincronizarVentas } = require("../controllers/sincronizacionController");
+const { sincronizarVentas } = require("../../controllers/controllerPreventa/sincronizacionController");
 
 const router = express.Router();
 

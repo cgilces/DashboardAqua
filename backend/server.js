@@ -3,14 +3,26 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 
-const syncRoutes = require("./routes/sincronizacionRoutes");
-const ventasRoutes = require("./routes/ventasRoutes");
-const detallePreventaRoutes = require("./routes/detallePreventaRoutes");
-const metasRoutes = require("./routes/metasRoutes");
+
+const login = require('./routes/login/loginRoutes');
+const crearUsuario = require('./routes/login/usuariosRoutes');
+
+
+const syncRoutes = require("./routes/rutasPreventas/sincronizacionRoutes");
+const ventasRoutes = require("./routes/rutasPreventas/ventasRoutes");
+const detallePreventaRoutes = require("./routes/rutasPreventas/detallePreventaRoutes");
+const metasRoutes = require("./routes/rutasPreventas/metasRoutes");
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+
+app.use('/api/login', login);
+app.use('/api/usuarios', crearUsuario);
+
+
+
 
 app.use("/api/sync", syncRoutes);
 app.use('/api/ventas', ventasRoutes);

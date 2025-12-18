@@ -1,5 +1,6 @@
 // controllers/sincronizacionController.js
-const { sincronizarVentasRango } = require("../services/sincronizacionService");
+const { sincronizarVentasRango } = require("../../services/sincronizacionService");
+
 
 const sincronizarVentas = async (req, res) => {
   try {

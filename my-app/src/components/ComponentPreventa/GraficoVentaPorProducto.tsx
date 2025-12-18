@@ -48,7 +48,14 @@ const GraficoVentaPorProducto = ({ data }: { data: any[] }) => {
   `,
 
       // ⭐ Tooltip centrado solo en móvil
-      position: function (pos, params, dom, rect, size) {
+
+      position: function (
+        pos: any,
+        params: any,
+        dom: any,
+        rect: any,
+        size: any
+      ) {
         if (!isMobile()) {
           return pos;
         }
@@ -61,6 +68,8 @@ const GraficoVentaPorProducto = ({ data }: { data: any[] }) => {
           top: chartH / 2 - dom.offsetHeight / 2,
         };
       },
+
+
 
       formatter: (params: any) => {
         return `

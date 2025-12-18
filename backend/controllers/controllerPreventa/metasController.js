@@ -1,4 +1,4 @@
-const MetaPreventa = require("../models/metaPreventa");
+const MetaPreventa = require("../../models/metaPreventa");
 
 //Metodo Post
 exports.guardarMeta = async (req, res) => {

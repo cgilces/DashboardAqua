@@ -5,11 +5,11 @@ const {
   RutaPreventa,
   ClienteVenta,
   MetaPreventa,
-} = require("../models");
+} = require("../../models");
 
 const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
-const { sequelize } = require('../models');
+const { sequelize } = require('../../models');
 
 
 // ==========================================

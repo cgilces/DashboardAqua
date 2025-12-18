@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import logo from "../../assets/logo.png";
+import { useAuth } from "../../components/auth/AuthContext"; // Importa el hook useAuth
 import RankingPreventas from "../../components/ComponentPreventa/RankingPreventas";
 import TopClientes from "../../components/ComponentPreventa/TopClientes";
 import RankingRutasR from "../../components/ComponentPreventa/RankingRutasR";
@@ -97,6 +98,12 @@ export default function DashboardPreventa() {
   const resumen = datos?.resumenGeneral;
   const comp = datos?.comparativaMesAnterior;
 
+  // Obtener el rol del usuario desde el contexto
+  const { user } = useAuth();  // Accede al usuario desde el contexto de autenticación
+  const isVendedor = user?.role === "VENDEDOR";  // Compara el rol con "Vendedor"
+  const isAdmin = user?.role === "ADMIN";  // Compara el rol con "Admin"
+
+
   return (
     <DashboardLayout>
       <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#012E24] to-[#014434]">
@@ -165,197 +172,198 @@ export default function DashboardPreventa() {
         {datos && !cargando && kpis && (
           <>
             {/* TARJETAS PRINCIPALES */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-              {/* CARD 1 - Unidades Vendidas */}
-              <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
-                <h2 className="text-xl font-semibold mb-1">Unidades Vendidas</h2>
-                <p className="text-5xl font-bold">
-                  {kpis.unidadesTotales.toLocaleString()}
-                </p>
-                <p className="text-gray-300 text-sm mb-4">
-                  Periodo Ant{" "}
-                  <span
-                    className={
-                      kpis.periodoAntUnidadesPorc >= 0
-                        ? "text-green-400"
-                        : "text-red-400"
-                    }
-                  >
-                    {kpis.periodoAntUnidadesPorc >= 0 ? "+" : ""}
-                    {kpis.periodoAntUnidadesPorc?.toFixed(1)}%
-                  </span>
-                </p>
-                {/* TARGET MENSUAL */}
-                <p className="text-xs text-gray-300 font-semibold mb-1">
-                  TARGET MENSUAL <span className="float-right">{kpis.cumplimientoUnidadesMensual.toFixed(1)}%</span>
-                </p>
-                <div className="w-full h-3 bg-[#02483A] rounded-full mb-4">
-                  <div
-                    className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
-                    style={{
-                      width: `${kpis.cumplimientoUnidadesMensual}%`,
-                    }}
-                  />
-                </div>
-                {/* TARGET ANUAL */}
-                <p className="text-xs text-gray-300 font-semibold mb-1">
-                  TARGET ANUAL <span className="float-right">{kpis.cumplimientoUnidadesAnual.toFixed(1)}%</span>
-                </p>
-
-                <div className="w-full h-3 bg-[#02483A] rounded-full">
-                  <div
-                    className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
-                    style={{
-                      width: `${kpis.cumplimientoUnidadesAnual}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-
-              {/* CARD 2 - Ventas USD */}
-              <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
-                <h2 className="text-xl font-semibold mb-1">Ventas en USD</h2>
-
-                <p className="text-5xl font-bold">
-                  $
-                  {kpis.montoTotal.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                  })}
-                </p>
-
-                <p className="text-gray-300 text-sm mb-4">
-                  Periodo Ant{" "}
-                  <span
-                    className={
-                      kpis.periodoAntMontoPorc >= 0
-                        ? "text-green-400"
-                        : "text-red-400"
-                    }
-                  >
-                    {kpis.periodoAntMontoPorc >= 0 ? "+" : ""}
-                    {kpis.periodoAntMontoPorc?.toFixed(1)}%
-                  </span>
-                </p>
-
-                {/* TARGET MENSUAL */}
-                <p className="text-xs text-gray-300 font-semibold mb-1">
-                  TARGET MENSUAL <span className="float-right">{kpis.cumplimientoUSDMensual.toFixed(1)}%</span>
-                </p>
-
-                <div className="w-full h-3 bg-[#02483A] rounded-full mb-4">
-                  <div
-                    className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
-                    style={{
-                      width: `${kpis.cumplimientoUSDMensual}%`,
-                    }}
-                  />
-                </div>
-
-                {/* TARGET ANUAL */}
-                <p className="text-xs text-gray-300 font-semibold mb-1">
-                  TARGET ANUAL <span className="float-right">{kpis.cumplimientoUSDAnual.toFixed(1)}%</span>
-                </p>
-
-                <div className="w-full h-3 bg-[#02483A] rounded-full">
-                  <div
-                    className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
-                    style={{
-                      width: `${kpis.cumplimientoUSDAnual}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-
-              {/* CARD 3 - Comparativa Mes Anterior */}
-              <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
-                <h2 className="text-lg text-gray-200 font-semibold">
-                  Comparativa Mes Anterior
-                </h2>
-
-                <div className="text-gray-300 text-sm mt-3 leading-relaxed">
-
-                  {/* UNIDADES */}
-                  <p className="font-semibold text-gray-100 mb-1">Unidades:</p>
-                  <p>Mes anterior: {comp.unidades.anterior.toLocaleString()}</p>
-                  <p>Mes actual: {comp.unidades.actual.toLocaleString()}</p>
-
-                  <p>
-                    Variación:{" "}
+            {(isAdmin) && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                {/* CARD 1 - Unidades Vendidas */}
+                <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
+                  <h2 className="text-xl font-semibold mb-1">Unidades Vendidas</h2>
+                  <p className="text-5xl font-bold">
+                    {kpis.unidadesTotales.toLocaleString()}
+                  </p>
+                  <p className="text-gray-300 text-sm mb-4">
+                    Periodo Ant{" "}
                     <span
                       className={
-                        comp.unidades.variacionAbs >= 0
-                          ? "text-green-400 font-semibold"
-                          : "text-red-400 font-semibold"
+                        kpis.periodoAntUnidadesPorc >= 0
+                          ? "text-green-400"
+                          : "text-red-400"
                       }
                     >
-                      {comp.unidades.variacionAbs.toLocaleString()} (
-                      {comp.unidades.variacionPorcentaje != null
-                        ? comp.unidades.variacionPorcentaje.toFixed(2) + "%"
-                        : "N/A"}
-                      )
+                      {kpis.periodoAntUnidadesPorc >= 0 ? "+" : ""}
+                      {kpis.periodoAntUnidadesPorc?.toFixed(1)}%
+                    </span>
+                  </p>
+                  {/* TARGET MENSUAL */}
+                  <p className="text-xs text-gray-300 font-semibold mb-1">
+                    TARGET MENSUAL <span className="float-right">{kpis.cumplimientoUnidadesMensual.toFixed(1)}%</span>
+                  </p>
+                  <div className="w-full h-3 bg-[#02483A] rounded-full mb-4">
+                    <div
+                      className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
+                      style={{
+                        width: `${kpis.cumplimientoUnidadesMensual}%`,
+                      }}
+                    />
+                  </div>
+                  {/* TARGET ANUAL */}
+                  <p className="text-xs text-gray-300 font-semibold mb-1">
+                    TARGET ANUAL <span className="float-right">{kpis.cumplimientoUnidadesAnual.toFixed(1)}%</span>
+                  </p>
+
+                  <div className="w-full h-3 bg-[#02483A] rounded-full">
+                    <div
+                      className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
+                      style={{
+                        width: `${kpis.cumplimientoUnidadesAnual}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+
+                {/* CARD 2 - Ventas USD */}
+                <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
+                  <h2 className="text-xl font-semibold mb-1">Ventas en USD</h2>
+
+                  <p className="text-5xl font-bold">
+                    $
+                    {kpis.montoTotal.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+
+                  <p className="text-gray-300 text-sm mb-4">
+                    Periodo Ant{" "}
+                    <span
+                      className={
+                        kpis.periodoAntMontoPorc >= 0
+                          ? "text-green-400"
+                          : "text-red-400"
+                      }
+                    >
+                      {kpis.periodoAntMontoPorc >= 0 ? "+" : ""}
+                      {kpis.periodoAntMontoPorc?.toFixed(1)}%
                     </span>
                   </p>
 
-                  {/* MONTO */}
-                  <p className="font-semibold text-gray-100 mt-4 mb-1">Monto USD:</p>
-
-                  <p>
-                    Mes anterior: $
-                    {comp.monto.anterior.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                    })}
+                  {/* TARGET MENSUAL */}
+                  <p className="text-xs text-gray-300 font-semibold mb-1">
+                    TARGET MENSUAL <span className="float-right">{kpis.cumplimientoUSDMensual.toFixed(1)}%</span>
                   </p>
 
-                  <p>
-                    Mes actual: $
-                    {comp.monto.actual.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                    })}
+                  <div className="w-full h-3 bg-[#02483A] rounded-full mb-4">
+                    <div
+                      className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
+                      style={{
+                        width: `${kpis.cumplimientoUSDMensual}%`,
+                      }}
+                    />
+                  </div>
+
+                  {/* TARGET ANUAL */}
+                  <p className="text-xs text-gray-300 font-semibold mb-1">
+                    TARGET ANUAL <span className="float-right">{kpis.cumplimientoUSDAnual.toFixed(1)}%</span>
                   </p>
 
-                  <p>
-                    Variación:{" "}
-                    <span
-                      className={
-                        comp.monto.variacionAbs >= 0
-                          ? "text-green-400 font-semibold"
-                          : "text-red-400 font-semibold"
-                      }
-                    >
-                      +$
-                      {comp.monto.variacionAbs.toLocaleString(undefined, {
+                  <div className="w-full h-3 bg-[#02483A] rounded-full">
+                    <div
+                      className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
+                      style={{
+                        width: `${kpis.cumplimientoUSDAnual}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+
+                {/* CARD 3 - Comparativa Mes Anterior */}
+                <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
+                  <h2 className="text-lg text-gray-200 font-semibold">
+                    Comparativa Mes Anterior
+                  </h2>
+
+                  <div className="text-gray-300 text-sm mt-3 leading-relaxed">
+
+                    {/* UNIDADES */}
+                    <p className="font-semibold text-gray-100 mb-1">Unidades:</p>
+                    <p>Mes anterior: {comp.unidades.anterior.toLocaleString()}</p>
+                    <p>Mes actual: {comp.unidades.actual.toLocaleString()}</p>
+
+                    <p>
+                      Variación:{" "}
+                      <span
+                        className={
+                          comp.unidades.variacionAbs >= 0
+                            ? "text-green-400 font-semibold"
+                            : "text-red-400 font-semibold"
+                        }
+                      >
+                        {comp.unidades.variacionAbs.toLocaleString()} (
+                        {comp.unidades.variacionPorcentaje != null
+                          ? comp.unidades.variacionPorcentaje.toFixed(2) + "%"
+                          : "N/A"}
+                        )
+                      </span>
+                    </p>
+
+                    {/* MONTO */}
+                    <p className="font-semibold text-gray-100 mt-4 mb-1">Monto USD:</p>
+
+                    <p>
+                      Mes anterior: $
+                      {comp.monto.anterior.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
-                      })}{" "}
-                      (
-                      {comp.monto.variacionPorcentaje != null
-                        ? comp.monto.variacionPorcentaje.toFixed(2) + "%"
-                        : "N/A"}
-                      )
-                    </span>
-                  </p>
+                      })}
+                    </p>
+
+                    <p>
+                      Mes actual: $
+                      {comp.monto.actual.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </p>
+
+                    <p>
+                      Variación:{" "}
+                      <span
+                        className={
+                          comp.monto.variacionAbs >= 0
+                            ? "text-green-400 font-semibold"
+                            : "text-red-400 font-semibold"
+                        }
+                      >
+                        +$
+                        {comp.monto.variacionAbs.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}{" "}
+                        (
+                        {comp.monto.variacionPorcentaje != null
+                          ? comp.monto.variacionPorcentaje.toFixed(2) + "%"
+                          : "N/A"}
+                        )
+                      </span>
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
 
-
-            {/* DOS TABLAS: RANKING PREVENTA Y R DESCARTABLE */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <div className="h-full flex flex-col xl:col-span-2">
-                <RankingPreventas
-                  datos={datos}
-                  anio={anioSeleccionado}
-                  mes={mesSeleccionado}
-                />
+            {/* Mostrar solo el RankingPreventas para los Vendedores */}
+            {(isVendedor || isAdmin) && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="h-full flex flex-col xl:col-span-2">
+                  <RankingPreventas
+                    datos={datos}
+                    anio={anioSeleccionado}
+                    mes={mesSeleccionado}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
 
-
-            <div className="grid grid-cols-1 gap-6">
-              {/* Ranking Rutas R */}
+            {(isVendedor || isAdmin) && (
               <div className="h-full flex flex-col">
                 <RankingRutasR
                   data={datos.rankingRutasR}
@@ -363,26 +371,29 @@ export default function DashboardPreventa() {
                   mes={mesSeleccionado}
                 />
               </div>
+            )}
 
 
-              {/* Costo Promedio por Producto */}
-              <div className="h-full flex flex-col">
-                <CostoPromedioProductos data={datos.precioPromedioTabla} />
+            {isAdmin && (
+              <>
+                {/* Costo Promedio por Producto */}
+                <div className="h-full flex flex-col">
+                  <CostoPromedioProductos data={datos.precioPromedioTabla} />
+                </div>
 
-              </div>
+                {/* GRAFICO VENTA POR PRODUCTO */}
+                <div className="h-full flex flex-col">
+                  <GraficoVentaPorProducto data={datos.ventaPorProducto} />
+                </div>
 
-              {/* GRAFICO VENTA POR PRODUCTO */}
-              <div className="h-full flex flex-col">
-                <GraficoVentaPorProducto data={datos.ventaPorProducto} />
-              </div>
+                <br></br>
 
-            </div>
-
-            <br />
-            <br></br>
-
-            {/* TOP CLIENTES */}
-            <TopClientes topClientes={topClientesState} />
+                {/* TOP CLIENTES */}
+                <div className="h-full flex flex-col">
+                  <TopClientes topClientes={topClientesState} />
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

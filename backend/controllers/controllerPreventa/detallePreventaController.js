@@ -1,6 +1,5 @@
-// controllers/detallePreventaController.js
-const { Orden, RutaPreventa } = require("../models");
-const db = require("../db");
+const { Orden, RutaPreventa } = require("../../models");
+const db = require("../../db");
 const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 
@@ -37,7 +36,6 @@ const obtenerDetalleRuta = async (req, res) => {
 
   try {
     const { ruta, anio, mes } = req.params;
-
     if (!ruta || !anio || !mes) {
       console.warn("⚠️ [detallePreventa] Faltan parámetros /ruta/anio/mes");
       return res.status(400).json({ error: "Debe enviar /ruta/anio/mes" });
@@ -66,63 +64,7 @@ const obtenerDetalleRuta = async (req, res) => {
     const rutaUpper = ruta.trim().toUpperCase();
 
     // ============================================================
-    // 1) CATÁLOGO DE LA RUTA
-    // ============================================================
-    console.log("📦 [detallePreventa] Buscando catálogo para ruta:", rutaUpper);
-
-    const rutaInfo = await RutaPreventa.findOne({
-      where: { codigo_ruta: rutaUpper },
-    });
-
-    let catalogo = [];
-    if (rutaInfo?.productos_catalogo) {
-      try {
-        catalogo = JSON.parse(rutaInfo.productos_catalogo);
-      } catch (e) {
-        console.error("❌ [detallePreventa] Error parseando JSON catálogo:", e.message);
-      }
-    }
-
-    console.log("📦 [detallePreventa] Catálogo cargado. Total items:", catalogo.length);
-
-    // ============================================================
-    // 2) PRODUCTOS VENDIDOS EN EL MES
-    // ============================================================
-    console.log("🧾 [detallePreventa] Consultando productos vendidos...");
-
-    const productosVendidosSQL = `
-      SELECT
-          dd.descripcion AS producto,
-          SUM(dd.cantidad) AS unidades_vendidas,
-          SUM(dd.total) AS monto_usd
-      FROM ordenes o
-      JOIN detalle_documento dd
-          ON dd.documento_code = o.code
-      WHERE 
-          o.type = 2
-          AND o.status = 5
-          AND o.seller_code = :ruta
-          AND o.fecha_entrega >= :inicio
-          AND o.fecha_entrega <  :fin
-      GROUP BY dd.descripcion
-      ORDER BY unidades_vendidas DESC;
-    `;
-
-    console.log("🧾 [detallePreventa] Params productosVendidos:", {
-      ruta: rutaUpper,
-      inicio: fechaInicioStr,
-      fin: fechaFinStr,
-    });
-
-    const productosVendidos = await db.query(productosVendidosSQL, {
-      replacements: { ruta: rutaUpper, inicio: fechaInicioStr, fin: fechaFinStr },
-      type: db.QueryTypes.SELECT,
-    });
-
-    console.log("🧾 [detallePreventa] Productos vendidos obtenidos:", productosVendidos.length);
-
-    // ============================================================
-    // 3) CLIENTES ASIGNADOS A LA RUTA
+    // 1) CONSULTAR CLIENTES ASIGNADOS A LA RUTA
     // ============================================================
     console.log("👥 [detallePreventa] Consultando clientes asignados a la ruta...");
 
@@ -140,7 +82,7 @@ const obtenerDetalleRuta = async (req, res) => {
     console.log("👥 [detallePreventa] Total clientes asignados:", clientesRuta.length);
 
     // ============================================================
-    // 4) CLIENTES CON CONSUMO EN EL MES
+    // 2) CONSULTAR CLIENTES CON CONSUMO EN EL MES
     // ============================================================
     console.log("📊 [detallePreventa] Consultando clientes con consumo...");
 
@@ -166,11 +108,55 @@ const obtenerDetalleRuta = async (req, res) => {
       clientesConConsumoRows.map((c) => c.customer_code)
     );
 
-    const listaClientesSinConsumo = clientesRuta.filter(
-      (cli) => !clientesConConsumo.has(cli.codigo_cliente)
-    );
+    // ============================================================
+    // 3) CONSULTAR CONSUMO ACTUAL Y ANTERIOR
+    // ============================================================
+    const clientesConsumoDataSQL = `
+      SELECT 
+          customer_code,
+          SUM(CASE WHEN fecha_entrega >= :inicio AND fecha_entrega < :fin THEN total ELSE 0 END) AS consumo_actual,
+          SUM(CASE WHEN fecha_entrega < :inicio THEN total ELSE 0 END) AS consumo_anterior
+      FROM ordenes
+      WHERE seller_code = :ruta
+      AND type = 2
+      AND status = 5
+      GROUP BY customer_code;
+    `;
 
-    console.log("📊 [detallePreventa] Clientes SIN consumo:", listaClientesSinConsumo.length);
+    const clientesConsumoData = await db.query(clientesConsumoDataSQL, {
+      replacements: { ruta: rutaUpper, inicio: fechaInicioStr, fin: fechaFinStr },
+      type: db.QueryTypes.SELECT,
+    });
+
+    // ============================================================
+    // 4) CONSULTAR PRODUCTOS VENDIDOS EN EL MES
+    // ============================================================
+    console.log("🧾 [detallePreventa] Consultando productos vendidos...");
+
+    const productosVendidosSQL = `
+      SELECT
+          dd.descripcion AS producto,
+          SUM(dd.cantidad) AS unidades_vendidas,
+          SUM(dd.total) AS monto_usd
+      FROM ordenes o
+      JOIN detalle_documento dd
+          ON dd.documento_code = o.code
+      WHERE 
+          o.type = 2
+          AND o.status = 5
+          AND o.seller_code = :ruta
+          AND o.fecha_entrega >= :inicio
+          AND o.fecha_entrega <  :fin
+      GROUP BY dd.descripcion
+      ORDER BY unidades_vendidas DESC;
+    `;
+
+    const productosVendidos = await db.query(productosVendidosSQL, {
+      replacements: { ruta: rutaUpper, inicio: fechaInicioStr, fin: fechaFinStr },
+      type: db.QueryTypes.SELECT,
+    });
+
+    console.log("🧾 [detallePreventa] Productos vendidos obtenidos:", productosVendidos.length);
 
     // ============================================================
     // 5) CONSULTAR ÚLTIMA VISITA GLOBAL
@@ -192,7 +178,6 @@ const obtenerDetalleRuta = async (req, res) => {
     const ultimasVisitas = await db.query(ultimaVisitaSQL, {
       type: db.QueryTypes.SELECT,
     });
-
     console.log("📅 [detallePreventa] Registros última visita:", ultimasVisitas.length);
 
     const mapUltimaVisita = new Map(
@@ -225,49 +210,62 @@ const obtenerDetalleRuta = async (req, res) => {
     );
 
     // ============================================================
-    // 7) FORMATEAR FECHAS PARA CLIENTES SIN CONSUMO
+    // 7) UNIFICAR CLIENTES CON Y SIN CONSUMO EN UN SOLO ARRAY
     // ============================================================
-    console.log("🛠 [detallePreventa] Formateando fechas de clientes sin consumo...");
+    console.log("🛠 [detallePreventa] Unificando clientes...");
 
-    listaClientesSinConsumo.forEach((cli) => {
-      cli.ultima_visita = formatFecha(mapUltimaVisita.get(cli.codigo_cliente));
-      cli.ultima_factura = formatFecha(mapUltimaFactura.get(cli.codigo_cliente));
+    const clientesRutaConDetalles = clientesRuta.map((cliente) => {
+      // Buscar los datos de consumo de cada cliente
+      const consumoData = clientesConsumoData.find((c) => c.customer_code === cliente.codigo_cliente) || {};
+
+      // Asegurarse de que consumoActual y consumoAnterior sean números
+      const consumoActual = parseFloat(consumoData.consumo_actual) || 0;  // Si es NaN, asigna 0
+      const consumoAnterior = parseFloat(consumoData.consumo_anterior) || 0;  // Si es NaN, asigna 0
+
+      // Calcular el porcentaje de cambio correctamente
+      const porcentajeCambio = consumoAnterior === 0 
+        ? '100%' 
+        : ((consumoActual - consumoAnterior) / consumoAnterior * 100).toFixed(2) + '%';
+
+      return {
+        codigo_cliente: cliente.codigo_cliente,
+        nombre_cliente: cliente.nombre_cliente,
+        direccion_entrega: cliente.direccion_entrega,
+        ultima_visita: formatFecha(mapUltimaVisita.get(cliente.codigo_cliente)),
+        ultima_factura: formatFecha(mapUltimaFactura.get(cliente.codigo_cliente)),
+        consumo_actual: consumoActual.toFixed(2),
+        consumo_anterior: consumoAnterior.toFixed(2),
+        max_consumo: Math.max(consumoActual, consumoAnterior).toFixed(2),
+        porcentaje_cambio: porcentajeCambio,
+        tuvo_consumo: clientesConConsumo.has(cliente.codigo_cliente) ? 'Sí' : 'No',
+      };
     });
+
+    console.log("✅ [detallePreventa] Resumen clientes:", clientesRutaConDetalles);
 
     // ============================================================
     // 8) RESPUESTA FINAL
     // ============================================================
     const totalClientesRuta = clientesRuta.length;
-    const totalSin = listaClientesSinConsumo.length;
-
-    const resumenClientes = {
-      totalClientesRuta,
-      clientesConConsumo: totalClientesRuta - totalSin,
-      clientesSinConsumo: totalSin,
-    };
-
-    console.log("✅ [detallePreventa] Resumen clientes:", resumenClientes);
+    const totalSin = clientesRuta.length - clientesConConsumo.size;
 
     return res.json({
       ruta: rutaUpper,
       anio: anioNum,
       mes: mesNum,
-      rangoFechas: {
-        inicio: fechaInicioStr,
-        fin: fechaFinStr,
+      rangoFechas: { inicio: fechaInicioStr, fin: fechaFinStr },
+      resumenClientes: {
+        totalClientesRuta,
+        clientesConConsumo: totalClientesRuta - totalSin,
+        clientesSinConsumo: totalSin,
       },
-      resumenClientes,
-      listaClientesSinConsumo,
-      productosVendidos,
-      catalogo,
+      productosVendidos,  // Aquí se incluyen los productos vendidos
+      clientesRuta: clientesRutaConDetalles,  // Aquí se incluyen todos los clientes con detalles
     });
 
   } catch (error) {
     console.error("❌ [detallePreventa] ERROR EN DETALLE RUTA:", error);
-    return res.status(500).json({
-      error: "Error al obtener detalle de ruta",
-      detalle: error.message,
-    });
+    return res.status(500).json({ error: "Error al obtener detalle de ruta", detalle: error.message });
   }
 };
 

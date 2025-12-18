@@ -1,7 +1,7 @@
 // routes/ventasRoutes.js
 const express = require('express');
 const router = express.Router();
-const ventasController = require('../controllers/ventasController');
+const ventasController = require('../../controllers/controllerPreventa/ventasController');
 
 // Ruta principal del dashboard
 router.get('/dashboard', ventasController.obtenerDatosDashboard);

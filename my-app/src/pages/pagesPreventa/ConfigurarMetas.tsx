@@ -104,7 +104,7 @@ export default function ConfigurarMetas() {
 
 
                 <Link
-                    to="/"
+                    to="/dashboard/preventa"
                     className="px-4 py-2 bg-[#046C5E] rounded-lg hover:bg-[#058A73] transition whitespace-nowrap"
                 >
                     ← Volver al Dashboard

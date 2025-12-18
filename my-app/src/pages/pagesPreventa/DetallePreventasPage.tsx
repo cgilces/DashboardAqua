@@ -10,6 +10,8 @@ const DetallePreventasPage: React.FC = () => {
   const [resumenClientes, setResumenClientes] = useState<any>(null);
   const [clientesSinConsumo, setClientesSinConsumo] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [filtroConsumo, setFiltroConsumo] = useState('Todos'); // 'Todos', 'Sí', 'No'
+
 
   //  PAGINACIÓN
   const [paginaActual, setPaginaActual] = useState(1);
@@ -23,15 +25,23 @@ const DetallePreventasPage: React.FC = () => {
     );
   }
 
+
   useEffect(() => {
     setCargando(true);
 
     fetch(`http://localhost:5000/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`)
-    // fetch(`${API_URL}/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`)
-  
-    .then((res) => res.json())
+      .then((res) => res.json())
       .then((data) => {
         console.log("Datos FULL recibidos:", data);
+
+        // FILTRAR CLIENTES SEGÚN EL FILTRO SELECCIONADO
+        let clientesFiltrados = data.listaClientesSinConsumo || [];
+
+        if (filtroConsumo !== 'Todos') {
+          clientesFiltrados = clientesFiltrados.filter(cliente => cliente.tuvo_consumo === filtroConsumo);
+        }
+
+        setClientesSinConsumo(clientesFiltrados);
 
         // PRODUCTOS
         const productosMapeados = (data.productosVendidos || []).map((p: any) => ({
@@ -44,12 +54,9 @@ const DetallePreventasPage: React.FC = () => {
 
         // RESUMEN CLIENTES
         setResumenClientes(data.resumenClientes);
-
-        // CLIENTES SIN CONSUMO
-        setClientesSinConsumo(data.listaClientesSinConsumo || []);
       })
       .finally(() => setCargando(false));
-  }, [ruta, anio, mes]);
+  }, [ruta, anio, mes, filtroConsumo]); // Agregar filtroConsumo en las dependencias
 
 
   // 📌 Cálculo de clientes paginados
@@ -71,49 +78,49 @@ const DetallePreventasPage: React.FC = () => {
 
 
   const exportarClientesSinConsumo = () => {
-  if (!clientesSinConsumo || clientesSinConsumo.length === 0) return;
+    if (!clientesSinConsumo || clientesSinConsumo.length === 0) return;
 
-  try {
-    const rutaUpper = (ruta || "").toUpperCase();
+    try {
+      const rutaUpper = (ruta || "").toUpperCase();
 
-    const datosExportar = clientesSinConsumo.map((c) => ({
-      Ruta: rutaUpper,
-      Código: c.codigo_cliente,
-      Cliente: c.nombre_cliente,
-      Dirección: c.direccion_entrega,
-      "Última visita": c.ultima_visita || "—",
-      "Última factura": c.ultima_factura || "—",
-    }));
+      const datosExportar = clientesSinConsumo.map((c) => ({
+        Ruta: rutaUpper,
+        Código: c.codigo_cliente,
+        Cliente: c.nombre_cliente,
+        Dirección: c.direccion_entrega,
+        "Última visita": c.ultima_visita || "—",
+        "Última factura": c.ultima_factura || "—",
+      }));
 
-    // 1️⃣ Crear hoja
-    const ws = XLSX.utils.json_to_sheet(datosExportar);
+      // 1️⃣ Crear hoja
+      const ws = XLSX.utils.json_to_sheet(datosExportar);
 
-    // 2️⃣ Agregar título en A1
-    const titulo = [`CLIENTES SIN CONSUMO - ${rutaUpper} - ${mes}/${anio}`];
-    XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
+      // 2️⃣ Agregar título en A1
+      const titulo = [`CLIENTES SIN CONSUMO - ${rutaUpper} - ${mes}/${anio}`];
+      XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
 
-    // 3️⃣ 👉 AUTO-ANCHO DE COLUMNAS
-    const columnas = Object.keys(datosExportar[0]);
+      // 3️⃣ 👉 AUTO-ANCHO DE COLUMNAS
+      const columnas = Object.keys(datosExportar[0]);
 
-    ws['!cols'] = columnas.map((col) => {
-      const maxLong = Math.max(
-        col.length,
-        ...datosExportar.map((row) => String(row[col]).length)
-      );
-      return { wch: maxLong + 4 }; // +4 para margen visual
-    });
+      ws['!cols'] = columnas.map((col) => {
+        const maxLong = Math.max(
+          col.length,
+          ...datosExportar.map((row) => String(row[col]).length)
+        );
+        return { wch: maxLong + 4 }; // +4 para margen visual
+      });
 
-    // 4️⃣ Crear archivo Excel
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Clientes_SC");
+      // 4️⃣ Crear archivo Excel
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Clientes_SC");
 
-    const nombreArchivo = `clientes_sin_consumo_${rutaUpper}_${mes}_${anio}.xlsx`;
-    XLSX.writeFile(wb, nombreArchivo, { compression: true });
+      const nombreArchivo = `clientes_sin_consumo_${rutaUpper}_${mes}_${anio}.xlsx`;
+      XLSX.writeFile(wb, nombreArchivo, { compression: true });
 
-  } catch (error) {
-    console.error("❌ Error exportando Excel:", error);
-  }
-};
+    } catch (error) {
+      console.error("❌ Error exportando Excel:", error);
+    }
+  };
 
 
 
@@ -127,7 +134,8 @@ const DetallePreventasPage: React.FC = () => {
         </h1>
 
         <Link
-          to="/"
+          to="/dashboard/preventa"
+
           className="px-4 py-2 bg-[#046C5E] rounded-lg hover:bg-[#058A73] transition"
         >
           ← Volver al Dashboard
@@ -202,102 +210,93 @@ const DetallePreventasPage: React.FC = () => {
         </p>
       )}
 
-      {/* CLIENTES SIN CONSUMO */}
-      <h1 className="text-center text-xl font-bold mt-10 mb-4">CLIENTES SIN CONSUMO</h1>
 
-
-
+      {/* CLIENTES */}
+      <h1 className="text-center text-xl font-bold mt-10 mb-4">CLIENTES DE RUTA</h1>
       {clientesPagina.length > 0 ? (
         <>
-
           {/* BOTÓN DE EXPORTACIÓN */}
-          <div className="flex justify-end mb-4">
-
+          <div className="flex justify-between mb-4">
             <button
               onClick={exportarClientesSinConsumo}
               className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
             >
-              {/* Ícono de descarga */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"
-                />
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
               </svg>
-
               Exportar clientes S/C
             </button>
 
+            {/* Filtro de Consumo */}
+            <div>
+              <label htmlFor="filtroConsumo" className="text-white mr-2">Filtrar por consumo Mes_Actual:</label>
+              <select
+                id="filtroConsumo"
+                value={filtroConsumo}
+                onChange={(e) => setFiltroConsumo(e.target.value)}
+                className="px-4 py-2 bg-[#046C5E] text-white font-semibold rounded-md"
+              >
+                <option value="Todos">Todos</option>
+                <option value="Con Consumo">Con Consumo</option>
+                <option value="Sin Consumo">Sin Consumo</option>
 
+              </select>
+            </div>
           </div>
+
+
+          {/* Tabla de clientes */}
           <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
             <thead className="bg-[#014434] text-red-300 uppercase text-xs">
               <tr>
                 <th className="px-4 py-3 text-left">Código</th>
                 <th className="px-4 py-3 text-left">Cliente</th>
                 <th className="px-4 py-3 text-left">Dirección</th>
-                <th className="px-4 py-3 text-left">ultima visita</th>
-                <th className="px-4 py-3 text-left">ultima factura</th>
+                <th className="px-4 py-3 text-left">Max_Por_Mes</th>
+                <th className="px-4 py-3 text-left">Cantidad</th>
+                <th className="px-4 py-3 text-left">Consumo Actual</th> {/* Nueva columna de consumo */}
+                <th className="px-4 py-3 text-left">VS MES ANT</th> {/* Nueva columna de consumo */}
+
+                <th className="px-4 py-3 text-left">Última visita</th>
+                <th className="px-4 py-3 text-left">Última factura</th>
+                <th className="px-4 py-3 text-left">tuvo_consumo</th>
+
+
 
               </tr>
             </thead>
-
-
             <tbody>
               {clientesPagina.map((c, idx) => (
-                <tr
-                  key={idx}
-                  className={`${idx % 2 === 0 ? "bg-[#3a0f00]" : "bg-[#5c1800]"
-                    } hover:bg-[#8a2400] transition`}
-                >
+                <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#3a0f00]" : "bg-[#5c1800]"} hover:bg-[#8a2400] transition`}>
                   <td className="px-4 py-2">{c.codigo_cliente}</td>
                   <td className="px-4 py-2">{c.nombre_cliente}</td>
                   <td className="px-4 py-2">{c.direccion_entrega}</td>
+                  <td className="px-4 py-2"></td>
+                  <td className="px-4 py-2"></td>
+                  <td className="px-4 py-2"></td>
+                  <td className="px-4 py-2"></td>
 
-                  {/* 🔹 NUEVO: mostrar última visita */}
-                  <td className="px-4 py-2 text-green-300 font-bold">
-                    {c.ultima_visita ?? "—"}
-                  </td>
-
-                  {/* 🔹 NUEVO: mostrar última factura */}
-                  <td className="px-4 py-2 text-blue-300 font-bold">
-                    {c.ultima_factura ?? "—"}
-                  </td>
-
+                  <td className="px-4 py-2 text-green-300 font-bold">{c.ultima_visita ?? "—"}</td>
+                  <td className="px-4 py-2 text-blue-300 font-bold">{c.ultima_factura ?? "—"}</td>
+                  <td className="px-4 py-2 text-yellow-300 font-bold">{c.consumo_actual ?? "—"}</td> {/* Mostrar el consumo */}
                 </tr>
               ))}
             </tbody>
-
           </table>
 
           {/* PAGINACIÓN */}
-          {/* PAGINACIÓN */}
           <div className="flex justify-center mt-6 gap-2">
-
             {/* Botón Anterior */}
             <button
               disabled={paginaActual === 1}
               onClick={() => setPaginaActual(paginaActual - 1)}
-              className={`px-3 py-1 rounded-md flex items-center justify-center
-      ${paginaActual === 1
-                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                  : "bg-[#046C5E] hover:bg-[#058A73]"
-                }`}
+              className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1 ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
             >
-              {/* Móvil: icono ←  | Desktop: texto */}
               <span className="sm:hidden">←</span>
               <span className="hidden sm:inline">← Anterior</span>
             </button>
 
-            {/* Números comprimidos */}
+            {/* Páginas */}
             {(() => {
               const pages = [];
               const maxVisible = 5;
@@ -306,38 +305,23 @@ const DetallePreventasPage: React.FC = () => {
                 // Mostrar todas
                 for (let i = 1; i <= totalPaginas; i++) pages.push(i);
               } else {
-                // Mostrar primeras, últimas y página actual
                 pages.push(1);
-
                 if (paginaActual > 3) pages.push("...");
-
                 const start = Math.max(2, paginaActual - 1);
                 const end = Math.min(totalPaginas - 1, paginaActual + 1);
-
                 for (let i = start; i <= end; i++) pages.push(i);
-
                 if (paginaActual < totalPaginas - 2) pages.push("...");
-
                 pages.push(totalPaginas);
               }
 
               return pages.map((num, idx) =>
                 num === "..." ? (
-                  <span
-                    key={`dots-${idx}`}
-                    className="px-2 py-1 text-gray-400 select-none"
-                  >
-                    ...
-                  </span>
+                  <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
                 ) : (
                   <button
                     key={`page-${idx}-${num}`}
                     onClick={() => setPaginaActual(num)}
-                    className={`px-3 py-1 rounded-md 
-            ${paginaActual === num
-                        ? "bg-green-500 text-black font-bold"
-                        : "bg-[#01382D] hover:bg-[#025f4b]"
-                      }`}
+                    className={`px-3 py-1 rounded-md ${paginaActual === num ? "bg-green-500 text-black font-bold" : "bg-[#01382D] hover:bg-[#025f4b]"}`}
                   >
                     {num}
                   </button>
@@ -349,25 +333,15 @@ const DetallePreventasPage: React.FC = () => {
             <button
               disabled={paginaActual === totalPaginas}
               onClick={() => setPaginaActual(paginaActual + 1)}
-              className={`px-3 py-1 rounded-md flex items-center justify-center
-      ${paginaActual === totalPaginas
-                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                  : "bg-[#046C5E] hover:bg-[#058A73]"
-                }`}
+              className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
             >
-              {/* Móvil: icono → | Desktop: texto */}
               <span className="sm:hidden">→</span>
               <span className="hidden sm:inline">Siguiente →</span>
             </button>
-
           </div>
-
-
         </>
       ) : (
-        <p className="text-center text-gray-400 mt-10">
-          Todos los clientes realizaron compras 🎉
-        </p>
+        <p className="text-center text-gray-400 mt-10">No hay clientes sin consumo</p>
       )}
     </div>
   );
