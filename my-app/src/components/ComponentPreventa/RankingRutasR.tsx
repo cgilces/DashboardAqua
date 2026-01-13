@@ -75,7 +75,7 @@ const RankingRutasR = ({
 
       // 5️⃣ Auto-ajustar el ancho de las columnas
       const columnas = Object.keys(datosExportar[0]);
-      ws['!cols'] = columnas.map((col) => {
+      ws['!cols'] = columnas.map((col: any) => {
         const maxLong = Math.max(
           col.length,
           ...datosExportar.map((row) => String(row[col]).length)
@@ -96,7 +96,7 @@ const RankingRutasR = ({
   };
 
   // Función para ordenar los datos
-  const requestSort = (key) => {
+  const requestSort = (key: any) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
@@ -253,23 +253,39 @@ const RankingRutasR = ({
                 })()}
               </td>
 
-              <td
-                className={`px-4 py-2 text-right font-bold ${r.vsMesAnterior?.variacion_abs >= 0
-                  ? "text-green-400"
-                  : "text-red-400"
-                  }`}
-              >
-                {r.vsMesAnterior?.monto_anterior === 0 ? "Sin datos" : (
-                  <>
-                    ( {r.vsMesAnterior?.variacion_porc !== null
-                      ? `${r.vsMesAnterior?.variacion_porc}%`
-                      : "–"} )
-                    ${Number(r.vsMesAnterior?.monto_anterior).toLocaleString("es-EC", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </>
-                )}
-              </td>
+            <td
+  className={`px-4 py-2 text-right font-bold ${
+    (r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+  }`}
+>
+  {!r.vsMesAnterior || r.vsMesAnterior.monto_anterior === 0 ? (
+    "Sin datos"
+  ) : (
+    (() => {
+      const abs = Number(r.vsMesAnterior.variacion_abs) || 0;
+      const porc = r.vsMesAnterior.variacion_porc;
+      const signo = abs >= 0 ? "+" : "-";
+
+      return (
+        <>
+          (
+          {porc !== null
+            ? `${porc >= 0 ? "+" : "-"}${Math.abs(porc).toFixed(2)}%`
+            : "–"}
+          )
+          {" "}
+          {signo}$
+          {Math.abs(abs).toLocaleString("es-EC", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
+        </>
+      );
+    })()
+  )}
+</td>
+
+
             </tr>
           ))}
         </tbody>

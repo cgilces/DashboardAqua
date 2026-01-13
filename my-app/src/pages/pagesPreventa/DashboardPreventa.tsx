@@ -1,18 +1,289 @@
+// import React, { useState, useEffect } from "react";
+// import logo from "../../assets/logo.png";
+// import { useAuth } from "../../components/auth/AuthContext";
+// import RankingPreventas from "../../components/ComponentPreventa/RankingPreventas";
+// import TopClientes from "../../components/ComponentPreventa/TopClientes";
+// import RankingRutasR from "../../components/ComponentPreventa/RankingRutasR";
+// import DashboardLayout from "../../layout/DashboardLayout";
+// import GraficoVentaPorProducto from "../../components/ComponentPreventa/GraficoVentaPorProducto";
+// import CostoPromedioProductos from "../../components/ComponentPreventa/CostoPromedioProductos";
+// import { Header } from "../../components/common/Header";
+// import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
+// import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
+
+// // Diccionario de meses
+// const meses: Record<string, number> = {
+//   Enero: 1,
+//   Febrero: 2,
+//   Marzo: 3,
+//   Abril: 4,
+//   Mayo: 5,
+//   Junio: 6,
+//   Julio: 7,
+//   Agosto: 8,
+//   Septiembre: 9,
+//   Octubre: 10,
+//   Noviembre: 11,
+//   Diciembre: 12,
+// };
+
+// export default function DashboardPreventa() {
+//   const hoy = new Date();
+//   const mesActual = hoy.getMonth() + 1;
+//   const anioActual = hoy.getFullYear();
+
+//   const mesGuardado = localStorage.getItem("mesSeleccionado");
+//   const anioGuardado = localStorage.getItem("anioSeleccionado");
+
+//   const [mesSeleccionado, setMesSeleccionado] = useState<string>(
+//     mesGuardado ?? mesActual.toString()
+//   );
+//   const [anioSeleccionado, setAnioSeleccionado] = useState<string>(
+//     anioGuardado ?? anioActual.toString()
+//   );
+
+//   const [datos, setDatos] = useState<any>(null);
+//   const [cargando, setCargando] = useState(false);
+//   const [topClientesState, setTopClientesState] = useState<any[]>([]);
+
+//   useEffect(() => {
+//     if (mesSeleccionado && anioSeleccionado) {
+//       obtenerDatos(parseInt(anioSeleccionado), parseInt(mesSeleccionado));
+//     }
+//   }, [mesSeleccionado, anioSeleccionado]);
+
+//   useEffect(() => {
+//     localStorage.setItem("mesSeleccionado", mesSeleccionado);
+//     localStorage.setItem("anioSeleccionado", anioSeleccionado);
+//   }, [mesSeleccionado, anioSeleccionado]);
+
+//   const obtenerDatos = async (anio: number, mes: number) => {
+//     try {
+//       setCargando(true);
+//       const res = await fetch(
+//         `http://localhost:5000/api/ventas/dashboard?anio=${anio}&mes=${mes}`
+//       );
+//       const data = await res.json();
+//       setDatos(data);
+//       setTopClientesState(data.topClientes || []);
+//     } catch (error) {
+//     } finally {
+//       setCargando(false);
+//     }
+//   };
+
+//   const ranking = datos?.rankingPreventas || [];
+//   const kpis = datos?.kpisGenerales;
+//   const resumen = datos?.resumenGeneral;
+//   const comp = datos?.comparativaMesAnterior;
+
+//   const { user } = useAuth();
+//   const isVendedor = user?.role === "VENDEDOR";
+//   const isAdmin = user?.role === "ADMIN";
+
+//   // ===============================
+//   // 🔥 AGREGACIÓN TIENDAS / RURAL
+//   // ===============================
+//   const agruparCanal = (items: any[], campoMonto: "monto" | "dolares") => {
+//     return items.reduce(
+//       (acc, item) => {
+//         acc.unidades += Number(item.unidades || 0);
+//         acc.monto += Number(item.proyeccion || 0);
+
+//         if (item.vsMesAnterior) {
+//           acc.mesAnterior += Number(item.vsMesAnterior.monto_anterior || 0);
+//           acc.variacionAbs += Number(item.vsMesAnterior.variacion_abs || 0);
+//         }
+
+//         return acc;
+//       },
+//       { unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0 }
+//     );
+//   };
+
+//   const resumenVentasUSD = datos
+//     ? {
+//       tiendas: (() => {
+//         const r = agruparCanal(datos.rankingPreventas || [], "monto");
+//         return {
+//           ...r,
+//           variacionPorc:
+//             r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : 0,
+//         };
+//       })(),
+//       rural: (() => {
+//         const r = agruparCanal(datos.rankingRutasR || [], "dolares");
+//         return {
+//           ...r,
+//           variacionPorc:
+//             r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : 0,
+//         };
+//       })(),
+//     }
+//     : null;
+
+
+//   return (
+//     <DashboardLayout>
+//       <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#012E24] to-[#014434]">
+//         <Header />
+
+//         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
+//           <div className="flex items-center gap-4">
+//             <img src={logo} className="h-12" alt="Logo" />
+//             <div>
+//               <h1 className="text-3xl font-bold">Dashboard de Preventas</h1>
+//               <p className="text-sm text-gray-300">
+//                 Órdenes, clientes y comparativas
+//               </p>
+//             </div>
+//           </div>
+
+//           <BotonActualizarSincronizacion />
+
+//           <div className="flex gap-3">
+//             <select
+//               className="bg-[#046C5E] px-4 py-2 rounded-lg"
+//               value={mesSeleccionado}
+//               onChange={(e) => setMesSeleccionado(e.target.value)}
+//             >
+//               {Object.entries(meses).map(([n, v]) => (
+//                 <option key={n} value={v}>
+//                   {n}
+//                 </option>
+//               ))}
+//             </select>
+
+//             <select
+//               className="bg-[#046C5E] px-4 py-2 rounded-lg"
+//               value={anioSeleccionado}
+//               onChange={(e) => setAnioSeleccionado(e.target.value)}
+//             >
+//               {Array.from({ length: 5 }, (_, i) => {
+//                 const y = new Date().getFullYear() - i;
+//                 return (
+//                   <option key={y} value={y}>
+//                     {y}
+//                   </option>
+//                 );
+//               })}
+//             </select>
+//           </div>
+//         </header>
+
+//         {cargando && (
+//           <p className="text-center animate-pulse">Cargando datos…</p>
+//         )}
+
+//         {datos && !cargando && kpis && (
+//           <>
+//             {/* ================= CARD VENTAS USD ================= */}
+//             {isAdmin && resumenVentasUSD && (
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+//                 <div className="bg-[#012E24] border border-[#046C5E] rounded-xl p-6 md:col-span-2">
+//                   <h3 className="text-sm text-gray-300 mb-4 uppercase">
+//                     Ventas USD
+//                   </h3>
+
+//                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+//                     {["tiendas", "rural"].map((canal) => (
+//                       <div
+//                         key={canal}
+//                         className="border border-[#046C5E] rounded-lg p-4"
+//                       >
+//                         <p className="text-xs text-gray-400 uppercase">
+//                           {canal}
+//                         </p>
+
+//                         <p className="text-3xl font-bold">
+//                           $
+//                           {resumenVentasUSD[canal].monto.toLocaleString(
+//                             "es-EC",
+//                             { minimumFractionDigits: 2 }
+//                           )}
+//                         </p>
+
+//                         <p className="text-xs text-gray-300">
+//                           Mes anterior: $
+//                           {resumenVentasUSD[canal].mesAnterior.toLocaleString(
+//                             "es-EC"
+//                           )}
+//                         </p>
+
+//                         <p
+//                           className={`text-xs font-semibold ${resumenVentasUSD[canal].variacionAbs >= 0
+//                               ? "text-green-400"
+//                               : "text-red-400"
+//                             }`}
+//                         >
+//                           Variación:{" "}
+//                           {resumenVentasUSD[canal].variacionAbs.toLocaleString()}{" "}
+//                           ({resumenVentasUSD[canal].variacionPorc.toFixed(1)}%)
+//                         </p>
+
+//                         <p className="text-xs text-gray-300 mt-1">
+//                           Unidades:{" "}
+//                           {resumenVentasUSD[canal].unidades.toLocaleString()}
+//                         </p>
+//                       </div>
+//                     ))}
+//                   </div>
+//                 </div>
+//               </div>
+//             )}
+
+//             {(isVendedor || isAdmin) && (
+//               <RankingPreventas datos={datos} />
+//             )}
+
+//             {(isVendedor || isAdmin) && (
+//               <RankingRutasR data={datos.rankingRutasR} />
+//             )}
+
+//             {isAdmin && (
+//               <>
+//                 <RankingDescartablePorCanal
+//                   data={datos.ventasDescartablePorCanal}
+//                 />
+//                 <CostoPromedioProductos data={datos.precioPromedioTabla} />
+//                 <GraficoVentaPorProducto data={datos.ventaPorProducto} />
+//                 <TopClientes topClientes={topClientesState} />
+//               </>
+//             )}
+//           </>
+//         )}
+//       </div>
+//     </DashboardLayout>
+//   );
+// }
+
+
+
+
+
+
+
+
+
+
+
+
 import React, { useState, useEffect } from "react";
 import logo from "../../assets/logo.png";
-import { useAuth } from "../../components/auth/AuthContext"; // Importa el hook useAuth
+import { useAuth } from "../../components/auth/AuthContext";
 import RankingPreventas from "../../components/ComponentPreventa/RankingPreventas";
 import TopClientes from "../../components/ComponentPreventa/TopClientes";
 import RankingRutasR from "../../components/ComponentPreventa/RankingRutasR";
 import DashboardLayout from "../../layout/DashboardLayout";
 import GraficoVentaPorProducto from "../../components/ComponentPreventa/GraficoVentaPorProducto";
-
 import CostoPromedioProductos from "../../components/ComponentPreventa/CostoPromedioProductos";
+import { Header } from "../../components/common/Header";
+import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
+import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
+import { API_URL } from "../../config/api";
 
-// import { API_URL } from "../../config/api";
-
-//  Diccionario de meses
-const meses: Record<string, number> = {
+// Diccionario de meses
+const meses: Record<any, number> = {
   Enero: 1,
   Febrero: 2,
   Marzo: 3,
@@ -28,9 +299,6 @@ const meses: Record<string, number> = {
 };
 
 export default function DashboardPreventa() {
-  // ============================
-  // 🔥 PRIMERA CARGA DEL MES / AÑO
-  // ============================
   const hoy = new Date();
   const mesActual = hoy.getMonth() + 1;
   const anioActual = hoy.getFullYear();
@@ -38,10 +306,10 @@ export default function DashboardPreventa() {
   const mesGuardado = localStorage.getItem("mesSeleccionado");
   const anioGuardado = localStorage.getItem("anioSeleccionado");
 
-  const [mesSeleccionado, setMesSeleccionado] = useState<string>(
+  const [mesSeleccionado, setMesSeleccionado] = useState<any>(
     mesGuardado ?? mesActual.toString()
   );
-  const [anioSeleccionado, setAnioSeleccionado] = useState<string>(
+  const [anioSeleccionado, setAnioSeleccionado] = useState<any>(
     anioGuardado ?? anioActual.toString()
   );
 
@@ -49,27 +317,17 @@ export default function DashboardPreventa() {
   const [cargando, setCargando] = useState(false);
   const [topClientesState, setTopClientesState] = useState<any[]>([]);
 
-  // ============================
-  // 🔥 Cargar datos cuando cambie mes o año
-  // ============================
   useEffect(() => {
     if (mesSeleccionado && anioSeleccionado) {
       obtenerDatos(parseInt(anioSeleccionado), parseInt(mesSeleccionado));
     }
   }, [mesSeleccionado, anioSeleccionado]);
 
-  // ============================
-  // 🔥 Guardar cambios en localStorage
-  // ============================
   useEffect(() => {
     localStorage.setItem("mesSeleccionado", mesSeleccionado);
     localStorage.setItem("anioSeleccionado", anioSeleccionado);
   }, [mesSeleccionado, anioSeleccionado]);
 
-
-
-
-  //  Cuando llegan datos desde backend → actualizar estados
   const obtenerDatos = async (anio: number, mes: number) => {
     try {
       setCargando(true);
@@ -77,75 +335,106 @@ export default function DashboardPreventa() {
         // `${API_URL}/api/ventas/dashboard?anio=${anio}&mes=${mes}`
         `http://localhost:5000/api/ventas/dashboard?anio=${anio}&mes=${mes}`
       );
-      const data = await res.json();
-
-      console.log("✅ [FRONT] Datos recibidos:", data);
-
+      const data:any = await res.json();
       setDatos(data);
-      setTopClientesState(data.topClientes || []); // ← Aquí se actualiza el Top 20
-
+      setTopClientesState(data.topClientes || []);
     } catch (error) {
-      console.error("❌ [FRONT] Error al obtener datos:", error);
     } finally {
       setCargando(false);
     }
   };
 
-
-  //  Variables derivadas
   const ranking = datos?.rankingPreventas || [];
   const kpis = datos?.kpisGenerales;
   const resumen = datos?.resumenGeneral;
   const comp = datos?.comparativaMesAnterior;
 
-  // Obtener el rol del usuario desde el contexto
-  const { user } = useAuth();  // Accede al usuario desde el contexto de autenticación
-  const isVendedor = user?.role === "VENDEDOR";  // Compara el rol con "Vendedor"
-  const isAdmin = user?.role === "ADMIN";  // Compara el rol con "Admin"
+  const { user } = useAuth();
+  const isVendedor = user?.role === "VENDEDOR";
+  const isAdmin = user?.role === "ADMIN";
 
+  // ===============================
+  // 🔥 AGREGACIÓN TIENDAS / RURAL
+  // ===============================
+  const agruparCanal = (items: any[], campoMonto: "monto" | "dolares") => {
+    return items.reduce(
+      (acc, item) => {
+        acc.unidades += Number(item.unidades || 0);
+        acc.monto += Number(item.proyeccion || 0);
+
+        if (item.vsMesAnterior) {
+          acc.mesAnterior += Number(item.vsMesAnterior.monto_anterior || 0);
+          acc.variacionAbs += Number(item.vsMesAnterior.variacion_abs || 0);
+        }
+
+        return acc;
+      },
+      { unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0 }
+    );
+  };
+
+  const resumenVentasUSD:any = datos
+    ? {
+      tiendas: (() => {
+        const r = agruparCanal(datos.rankingPreventas || [], "monto");
+        return {
+          ...r,
+          variacionPorc:
+            r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : 0,
+        };
+      })(),
+      rural: (() => {
+        const r = agruparCanal(datos.rankingRutasR || [], "dolares");
+        return {
+          ...r,
+          variacionPorc:
+            r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : 0,
+        };
+      })(),
+    }
+    : null;
 
   return (
     <DashboardLayout>
       <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#012E24] to-[#014434]">
-        {/* HEADER */}
-        <header className="flex justify-between items-center mb-10 border-b border-[#046C5E] pb-4">
+        <Header />
+
+        <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
-            <img src={logo} alt="Logo" className="h-12 rounded-md" />
+            <img src={logo} className="h-12" alt="Logo" />
             <div>
-              <h1 className="text-3xl font-bold tracking-wide">
-                Dashboard de Preventas
-              </h1>
+              <h1 className="text-3xl font-bold">Dashboard de Preventas</h1>
               <p className="text-sm text-gray-300">
-                Órdenes, clientes, productos y comparativas por mes
+                Órdenes, clientes y comparativas
               </p>
             </div>
           </div>
 
-          {/* SELECTORES */}
-          <div className="flex items-center gap-3">
+          <BotonActualizarSincronizacion />
+
+          <div className="flex gap-3">
             <select
-              className="bg-[#046C5E] text-white px-4 py-2 rounded-lg shadow-sm hover:bg-[#058A73] focus:outline-none transition"
+              className="bg-[#046C5E] px-4 py-2 rounded-lg"
               value={mesSeleccionado}
               onChange={(e) => setMesSeleccionado(e.target.value)}
             >
-              <option value="">Seleccionar mes</option>
-              {Object.entries(meses).map(([nombre, numero]) => (
-                <option key={nombre} value={numero}>
-                  {nombre}
+              {Object.entries(meses).map(([n, v]) => (
+                <option key={n} value={v}>
+                  {n}
                 </option>
               ))}
             </select>
 
             <select
-              className="bg-[#046C5E] text-white px-4 py-2 rounded-lg shadow-sm hover:bg-[#058A73] focus:outline-none transition"
+              className="bg-[#046C5E] px-4 py-2 rounded-lg"
               value={anioSeleccionado}
               onChange={(e) => setAnioSeleccionado(e.target.value)}
             >
               {Array.from({ length: 5 }, (_, i) => {
-                const year = new Date().getFullYear() - i;
+                const y = new Date().getFullYear() - i;
                 return (
-                  <option key={year} value={year}>
-                    {year}
+                  <option key={y} value={y}>
+                    {y}
                   </option>
                 );
               })}
@@ -153,245 +442,81 @@ export default function DashboardPreventa() {
           </div>
         </header>
 
-        {/* ESTADOS */}
         {cargando && (
-          <p className="text-center text-gray-300 animate-pulse mb-6">
-            Cargando datos desde el servidor...
-          </p>
+          <p className="text-center animate-pulse">Cargando datos…</p>
         )}
 
-        {!cargando && !datos && (
-          <p className="text-center text-gray-400">
-            Selecciona un mes y año para ver los resultados 📊
-          </p>
-        )}
-
-        {/* ========================== */}
-        {/* CONTENIDO DEL DASHBOARD */}
-        {/* ========================== */}
         {datos && !cargando && kpis && (
           <>
-            {/* TARJETAS PRINCIPALES */}
-            {(isAdmin) && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                {/* CARD 1 - Unidades Vendidas */}
-                <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
-                  <h2 className="text-xl font-semibold mb-1">Unidades Vendidas</h2>
-                  <p className="text-5xl font-bold">
-                    {kpis.unidadesTotales.toLocaleString()}
-                  </p>
-                  <p className="text-gray-300 text-sm mb-4">
-                    Periodo Ant{" "}
-                    <span
-                      className={
-                        kpis.periodoAntUnidadesPorc >= 0
-                          ? "text-green-400"
-                          : "text-red-400"
-                      }
-                    >
-                      {kpis.periodoAntUnidadesPorc >= 0 ? "+" : ""}
-                      {kpis.periodoAntUnidadesPorc?.toFixed(1)}%
-                    </span>
-                  </p>
-                  {/* TARGET MENSUAL */}
-                  <p className="text-xs text-gray-300 font-semibold mb-1">
-                    TARGET MENSUAL <span className="float-right">{kpis.cumplimientoUnidadesMensual.toFixed(1)}%</span>
-                  </p>
-                  <div className="w-full h-3 bg-[#02483A] rounded-full mb-4">
-                    <div
-                      className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
-                      style={{
-                        width: `${kpis.cumplimientoUnidadesMensual}%`,
-                      }}
-                    />
-                  </div>
-                  {/* TARGET ANUAL */}
-                  <p className="text-xs text-gray-300 font-semibold mb-1">
-                    TARGET ANUAL <span className="float-right">{kpis.cumplimientoUnidadesAnual.toFixed(1)}%</span>
-                  </p>
+            {/* ================= CARD VENTAS USD ================= */}
+            {isAdmin && resumenVentasUSD && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                <div className="bg-[#012E24] border border-[#046C5E] rounded-xl p-6 md:col-span-2">
+                  <h3 className="text-sm text-gray-300 mb-4 uppercase">
+                    Ventas USD
+                  </h3>
 
-                  <div className="w-full h-3 bg-[#02483A] rounded-full">
-                    <div
-                      className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
-                      style={{
-                        width: `${kpis.cumplimientoUnidadesAnual}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-
-
-                {/* CARD 2 - Ventas USD */}
-                <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
-                  <h2 className="text-xl font-semibold mb-1">Ventas en USD</h2>
-
-                  <p className="text-5xl font-bold">
-                    $
-                    {kpis.montoTotal.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                    })}
-                  </p>
-
-                  <p className="text-gray-300 text-sm mb-4">
-                    Periodo Ant{" "}
-                    <span
-                      className={
-                        kpis.periodoAntMontoPorc >= 0
-                          ? "text-green-400"
-                          : "text-red-400"
-                      }
-                    >
-                      {kpis.periodoAntMontoPorc >= 0 ? "+" : ""}
-                      {kpis.periodoAntMontoPorc?.toFixed(1)}%
-                    </span>
-                  </p>
-
-                  {/* TARGET MENSUAL */}
-                  <p className="text-xs text-gray-300 font-semibold mb-1">
-                    TARGET MENSUAL <span className="float-right">{kpis.cumplimientoUSDMensual.toFixed(1)}%</span>
-                  </p>
-
-                  <div className="w-full h-3 bg-[#02483A] rounded-full mb-4">
-                    <div
-                      className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
-                      style={{
-                        width: `${kpis.cumplimientoUSDMensual}%`,
-                      }}
-                    />
-                  </div>
-
-                  {/* TARGET ANUAL */}
-                  <p className="text-xs text-gray-300 font-semibold mb-1">
-                    TARGET ANUAL <span className="float-right">{kpis.cumplimientoUSDAnual.toFixed(1)}%</span>
-                  </p>
-
-                  <div className="w-full h-3 bg-[#02483A] rounded-full">
-                    <div
-                      className="h-full bg-[#04C29B] rounded-full transition-all duration-700"
-                      style={{
-                        width: `${kpis.cumplimientoUSDAnual}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-
-
-                {/* CARD 3 - Comparativa Mes Anterior */}
-                <div className="p-6 bg-[#01382D] rounded-xl shadow-lg">
-                  <h2 className="text-lg text-gray-200 font-semibold">
-                    Comparativa Mes Anterior
-                  </h2>
-
-                  <div className="text-gray-300 text-sm mt-3 leading-relaxed">
-
-                    {/* UNIDADES */}
-                    <p className="font-semibold text-gray-100 mb-1">Unidades:</p>
-                    <p>Mes anterior: {comp.unidades.anterior.toLocaleString()}</p>
-                    <p>Mes actual: {comp.unidades.actual.toLocaleString()}</p>
-
-                    <p>
-                      Variación:{" "}
-                      <span
-                        className={
-                          comp.unidades.variacionAbs >= 0
-                            ? "text-green-400 font-semibold"
-                            : "text-red-400 font-semibold"
-                        }
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {["tiendas", "rural"].map((canal) => (
+                      <div
+                        key={canal}
+                        className="border border-[#046C5E] rounded-lg p-4"
                       >
-                        {comp.unidades.variacionAbs.toLocaleString()} (
-                        {comp.unidades.variacionPorcentaje != null
-                          ? comp.unidades.variacionPorcentaje.toFixed(2) + "%"
-                          : "N/A"}
-                        )
-                      </span>
-                    </p>
+                        <p className="text-xs text-gray-400 uppercase">
+                          {canal}
+                        </p>
 
-                    {/* MONTO */}
-                    <p className="font-semibold text-gray-100 mt-4 mb-1">Monto USD:</p>
+                        <p className="text-3xl font-bold">
+                          $
+                          {resumenVentasUSD[canal].monto.toLocaleString(
+                            "es-EC",
+                            { minimumFractionDigits: 2 }
+                          )}
+                        </p>
 
-                    <p>
-                      Mes anterior: $
-                      {comp.monto.anterior.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                      })}
-                    </p>
+                        <p className="text-xs text-gray-300">
+                          Mes anterior: $
+                          {resumenVentasUSD[canal].mesAnterior.toLocaleString(
+                            "es-EC"
+                          )}
+                        </p>
 
-                    <p>
-                      Mes actual: $
-                      {comp.monto.actual.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                      })}
-                    </p>
+                        <p
+                          className={`text-xs font-semibold ${resumenVentasUSD[canal].variacionAbs >= 0
+                              ? "text-green-400"
+                              : "text-red-400"
+                            }`}
+                        >
+                          Variación:{" "}
+                          {resumenVentasUSD[canal].variacionAbs.toLocaleString()}{" "}
+                          ({resumenVentasUSD[canal].variacionPorc.toFixed(1)}%)
+                        </p>
 
-                    <p>
-                      Variación:{" "}
-                      <span
-                        className={
-                          comp.monto.variacionAbs >= 0
-                            ? "text-green-400 font-semibold"
-                            : "text-red-400 font-semibold"
-                        }
-                      >
-                        +$
-                        {comp.monto.variacionAbs.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                        })}{" "}
-                        (
-                        {comp.monto.variacionPorcentaje != null
-                          ? comp.monto.variacionPorcentaje.toFixed(2) + "%"
-                          : "N/A"}
-                        )
-                      </span>
-                    </p>
+                        <p className="text-xs text-gray-300 mt-1">
+                          Unidades:{" "}
+                          {resumenVentasUSD[canal].unidades.toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             )}
-
-
-            {/* Mostrar solo el RankingPreventas para los Vendedores */}
-            {(isVendedor || isAdmin) && (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <div className="h-full flex flex-col xl:col-span-2">
-                  <RankingPreventas
-                    datos={datos}
-                    anio={anioSeleccionado}
-                    mes={mesSeleccionado}
-                  />
-                </div>
-              </div>
-            )}
-
 
             {(isVendedor || isAdmin) && (
-              <div className="h-full flex flex-col">
-                <RankingRutasR
-                  data={datos.rankingRutasR}
-                  anio={anioSeleccionado}
-                  mes={mesSeleccionado}
-                />
-              </div>
+              <RankingPreventas datos={datos} anio={""} mes={""} />
             )}
 
+            {(isVendedor || isAdmin) && (
+              <RankingRutasR data={datos.rankingRutasR} anio={""} mes={""} />
+            )}
 
             {isAdmin && (
               <>
-                {/* Costo Promedio por Producto */}
-                <div className="h-full flex flex-col">
-                  <CostoPromedioProductos data={datos.precioPromedioTabla} />
-                </div>
-
-                {/* GRAFICO VENTA POR PRODUCTO */}
-                <div className="h-full flex flex-col">
-                  <GraficoVentaPorProducto data={datos.ventaPorProducto} />
-                </div>
-
-                <br></br>
-
-                {/* TOP CLIENTES */}
-                <div className="h-full flex flex-col">
-                  <TopClientes topClientes={topClientesState} />
-                </div>
+                <RankingDescartablePorCanal data={datos.ventasDescartablePorCanal} anio={""} mes={""}/>
+                <CostoPromedioProductos data={datos.precioPromedioTabla} />
+                <GraficoVentaPorProducto data={datos.ventaPorProducto} />
+                <TopClientes topClientes={topClientesState} />
               </>
             )}
           </>

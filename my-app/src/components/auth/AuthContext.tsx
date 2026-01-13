@@ -64,7 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('app_user_session', JSON.stringify(loggedUser));
 
       // Redirigir al dashboard después del login
-      navigate('/dashboard/preventa'); 
+      navigate('/dashboard/preventa');
 
     } catch (err: any) {
       console.error("Login error:", err);
@@ -75,9 +75,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    // Limpia estado
     setUser(null);
-    localStorage.removeItem('app_user_session');
+
+    // Borra TODO el localStorage
+    localStorage.clear();
+
+    // Redirige al login (ruta principal)
+    navigate('/');
   };
+
 
   return (
     <AuthContext.Provider value={{ user, login, logout, loading, error }}>

@@ -52,63 +52,121 @@ export default function TopClientes({ topClientes }: { topClientes: ClienteTop[]
   };
 
   return (
-    <div className="tarjeta fade-in mb-8">
-      <h2 className="text-lg font-semibold mb-4">
+    // <div className="mb-8">
+    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
+
+      <h2 className="text-xl font-bold px-4 py-3 text-blue-300">
+
+        {/* <h2 className="text-lg font-semibold mb-4 text-center"> */}
         Top 20 Clientes con Mayor Consumo
       </h2>
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-gray-400 border-b border-gray-700">
-            <th className="text-left py-2" onClick={() => handleSort("cliente")}>
-              Cliente {sortConfig.key === "cliente" ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+      <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
+        <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+          <tr>
+            <th
+              className="px-4 py-3 text-left cursor-pointer"
+              onClick={() => handleSort("cliente")}
+            >
+              Cliente
+              <span className="text-[#6BAF8E] ml-1">
+                {sortConfig.key === "cliente"
+                  ? sortConfig.direction === "asc"
+                    ? "↑"
+                    : "↓"
+                  : "↕"}
+              </span>
             </th>
 
-            <th className="text-right py-2" onClick={() => handleSort("montoActual")}>
-              Mes Actual (USD) {sortConfig.key === "montoActual" ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+            <th
+              className="px-4 py-3 text-right cursor-pointer"
+              onClick={() => handleSort("montoActual")}
+            >
+              Mes Actual (USD)
+              <span className="text-[#6BAF8E] ml-1">
+                {sortConfig.key === "montoActual"
+                  ? sortConfig.direction === "asc"
+                    ? "↑"
+                    : "↓"
+                  : "↕"}
+              </span>
             </th>
-            <th className="text-right py-2" onClick={() => handleSort("montoAnterior")}>
-              Mes Anterior (USD) {sortConfig.key === "montoAnterior" ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+
+            <th
+              className="px-4 py-3 text-right cursor-pointer"
+              onClick={() => handleSort("montoAnterior")}
+            >
+              Mes Anterior (USD)
+              <span className="text-[#6BAF8E] ml-1">
+                {sortConfig.key === "montoAnterior"
+                  ? sortConfig.direction === "asc"
+                    ? "↑"
+                    : "↓"
+                  : "↕"}
+              </span>
             </th>
-            <th className="text-right py-2" onClick={() => handleSort("variacionMontoAbs")}>
-              Variación {sortConfig.key === "variacionMontoAbs" ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+
+            <th
+              className="px-4 py-3 text-right cursor-pointer"
+              onClick={() => handleSort("variacionMontoAbs")}
+            >
+              Variación
+              <span className="text-[#6BAF8E] ml-1">
+                {sortConfig.key === "variacionMontoAbs"
+                  ? sortConfig.direction === "asc"
+                    ? "↑"
+                    : "↓"
+                  : "↕"}
+              </span>
             </th>
-            <th className="text-right py-2" onClick={() => handleSort("variacionMontoPorc")}>
-              % {sortConfig.key === "variacionMontoPorc" ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
-            </th>         
+
+            <th
+              className="px-4 py-3 text-right cursor-pointer"
+              onClick={() => handleSort("variacionMontoPorc")}
+            >
+              %
+              <span className="text-[#6BAF8E] ml-1">
+                {sortConfig.key === "variacionMontoPorc"
+                  ? sortConfig.direction === "asc"
+                    ? "↑"
+                    : "↓"
+                  : "↕"}
+              </span>
+            </th>
           </tr>
         </thead>
 
         <tbody>
           {clientesPaginados.map((cli, idx) => (
             <tr
-              key={`cli-${cli.codigo}-${cli.montoActual}-${idx}`}
-              className="border-b border-gray-800 hover:bg-[#013c30]"
+              key={`cli-${cli.codigo}-${idx}`}
+              className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
+                } hover:bg-[#026452] transition`}
             >
-              <td>
+              <td className="px-4 py-2 text-white">
                 <b>{cli.cliente}</b>
                 <br />
-                <span className="text-gray-400 text-xs">
+                <span className="text-[#6BAF8E] text-xs">
                   Código: {cli.codigo}
                 </span>
               </td>
 
-              <td className="text-right">
+              <td className="px-4 py-2 text-right text-blue-400 font-semibold">
                 ${cli.montoActual.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                 })}
               </td>
 
-              <td className="text-right">
+              <td className="px-4 py-2 text-right text-blue-300 font-semibold">
                 ${cli.montoAnterior.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                 })}
               </td>
 
               <td
-                className={`text-right ${cli.variacionMontoAbs >= 0
-                    ? "text-green-400"
-                    : "text-red-400"
+                className={`px-4 py-2 text-right font-semibold ${cli.variacionMontoAbs >= 0
+                  ? "text-green-400"
+                  : "text-red-400"
                   }`}
               >
                 {cli.variacionMontoAbs >= 0 ? "+" : ""}
@@ -118,13 +176,13 @@ export default function TopClientes({ topClientes }: { topClientes: ClienteTop[]
               </td>
 
               <td
-                className={`text-right ${(cli.variacionMontoPorc ?? 0) >= 0
-                    ? "text-green-400"
-                    : "text-red-400"
+                className={`px-4 py-2 text-right font-semibold ${(cli.variacionMontoPorc ?? 0) >= 0
+                  ? "text-green-400"
+                  : "text-red-400"
                   }`}
               >
                 {cli.variacionMontoPorc !== null
-                  ? cli.variacionMontoPorc.toFixed(1)
+                  ? `${cli.variacionMontoPorc.toFixed(1)}%`
                   : "N/A"}
               </td>
             </tr>
@@ -134,37 +192,84 @@ export default function TopClientes({ topClientes }: { topClientes: ClienteTop[]
 
       {/* PAGINACIÓN */}
       {totalPaginas > 1 && (
-        <div className="flex justify-between items-center mt-4 text-sm text-gray-300">
-          {/* Botón Anterior */}
+        <div className="flex justify-center mt-6 gap-2">
+          {/* ⬅️ ANTERIOR */}
           <button
-            onClick={paginaAnterior}
             disabled={pagina === 1}
-            className={`px-4 py-2 rounded-lg bg-[#046C5E] hover:bg-[#058A73] transition flex items-center justify-center
-              ${pagina === 1 ? "opacity-40 cursor-not-allowed" : ""}
-            `}
+            onClick={paginaAnterior}
+            className={`px-3 py-1 rounded-md flex items-center justify-center
+        ${pagina === 1
+                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                : "bg-[#046C5E] hover:bg-[#058A73]"
+              }`}
           >
-            <span className="sm:hidden">⬅️</span>
-            <span className="hidden sm:inline">⬅️ Anterior</span>
+            <span className="sm:hidden">←</span>
+            <span className="hidden sm:inline">← Anterior</span>
           </button>
 
-          {/* Indicador */}
-          <span className="mx-2">
-            Página {pagina} de {totalPaginas}
-          </span>
+          {/* 🔢 NÚMEROS */}
+          {(() => {
+            const pages = [];
+            const maxVisible = 5;
 
-          {/* Botón Siguiente */}
+            if (totalPaginas <= maxVisible) {
+              for (let i = 1; i <= totalPaginas; i++) pages.push(i);
+            } else {
+              pages.push(1);
+
+              if (pagina > 3) pages.push("...");
+
+              const start = Math.max(2, pagina - 1);
+              const end = Math.min(totalPaginas - 1, pagina + 1);
+
+              for (let i = start; i <= end; i++) pages.push(i);
+
+              if (pagina < totalPaginas - 2) pages.push("...");
+
+              pages.push(totalPaginas);
+            }
+
+            return pages.map((num, idx) =>
+              num === "..." ? (
+                <span
+                  key={`dots-${idx}`}
+                  className="px-2 py-1 text-gray-400 select-none"
+                >
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={`page-${num}`}
+                  onClick={() => setPagina(num)}
+                  className={`px-3 py-1 rounded-md
+              ${pagina === num
+                      ? "bg-green-500 text-black font-bold"
+                      : "bg-[#01382D] hover:bg-[#025f4b]"
+                    }`}
+                >
+                  {num}
+                </button>
+              )
+            );
+          })()}
+
+          {/* ➡️ SIGUIENTE */}
           <button
-            onClick={paginaSiguiente}
             disabled={pagina === totalPaginas}
-            className={`px-4 py-2 rounded-lg bg-[#046C5E] hover:bg-[#058A73] transition flex items-center justify-center
-              ${pagina === totalPaginas ? "opacity-40 cursor-not-allowed" : ""}
-            `}
+            onClick={paginaSiguiente}
+            className={`px-3 py-1 rounded-md flex items-center justify-center
+        ${pagina === totalPaginas
+                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                : "bg-[#046C5E] hover:bg-[#058A73]"
+              }`}
           >
-            <span className="sm:hidden">➡️</span>
-            <span className="hidden sm:inline">Siguiente ➡️</span>
+            <span className="sm:hidden">→</span>
+            <span className="hidden sm:inline">Siguiente →</span>
           </button>
         </div>
       )}
+
     </div>
+
   );
 }

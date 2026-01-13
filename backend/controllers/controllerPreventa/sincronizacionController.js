@@ -1,5 +1,39 @@
 // controllers/sincronizacionController.js
+const sequelize = require("../../db");  // Importar la conexión sequelize
 const { sincronizarVentasRango } = require("../../services/sincronizacionService");
+
+
+
+// Función para obtener la última fecha de sincronización
+const getLastSync = async (req, res) => {
+  try {
+    // Realizar la consulta SQL para obtener la última fecha de sincronización
+    const result = await sequelize.query('SELECT hasta_date FROM sincronizaciones_ventas ORDER BY fecha_sync DESC LIMIT 1', {
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // Verificar si se obtuvieron resultados
+    if (result.length === 0) {
+      return res.status(404).json({ error: "No se encontró una fecha de sincronización." });
+    }
+
+    // Extraer la fecha de sincronización
+    const lastSyncDate = result[0].hasta_date;
+    console.log("Fecha de sincronización obtenida:", lastSyncDate);  // Verificar el valor
+
+    // Formatear la fecha a formato ISO (YYYY-MM-DDTHH:mm:ss.sssZ)
+    const formattedDate = lastSyncDate ? new Date(lastSyncDate).toISOString().split('T')[0] : null;  // Obtener solo la fecha sin la hora
+
+    // Devolver la respuesta en formato legible (solo la fecha)
+    res.json({
+      lastSync: formattedDate,
+    });
+  } catch (error) {
+    console.error('Error al obtener la última fecha de sincronización:', error);
+    res.status(500).json({ error: "Error al obtener la última fecha de sincronización", detalle: error.message });
+  }
+};
+
 
 
 const sincronizarVentas = async (req, res) => {
@@ -52,4 +86,5 @@ const sincronizarVentas = async (req, res) => {
 
 module.exports = {
   sincronizarVentas,
+  getLastSync
 };

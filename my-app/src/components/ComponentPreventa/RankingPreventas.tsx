@@ -3,9 +3,27 @@ import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx"; // Importar la librería XLSX para generar archivos Excel
 import { useAuth } from "../../components/auth/AuthContext"; // Importa el hook useAuth
 
+// Definir los tipos para los datos
+interface VsMesAnterior {
+  monto_anterior: number;
+}
+
+interface Preventa {
+  preventa: string;
+  unidades: number;
+  monto: number;
+  meta: number;
+  proyeccion: number;
+  vsMesAnterior?: VsMesAnterior;
+}
+
+interface Datos {
+  rankingPreventas: Preventa[];
+}
+
 // Define la interfaz Props para las propiedades que el componente recibirá
 interface Props {
-  datos: any; // Si sabes más sobre la estructura de datos, puedes mejorar el tipo
+  datos: Datos; 
   anio: number | string;
   mes: number | string;
 }
@@ -19,7 +37,7 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
   const isAdmin = user?.role === "ADMIN"; // Compara el rol con "Admin"
 
   const [sortConfig, setSortConfig] = useState({ key: 'N*', direction: 'asc' });
-  const [sortedData, setSortedData] = useState(datos.rankingPreventas);
+  const [sortedData, setSortedData] = useState<Preventa[]>(datos.rankingPreventas);
 
   if (!datos || !datos.rankingPreventas) {
     return (
@@ -33,28 +51,28 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
 
   // Totales
   const totalUnidades = preventas.reduce(
-    (acc: number, p: any) => acc + (p.unidades || 0),
+    (acc: number, p: Preventa) => acc + (p.unidades || 0),
     0
   );
 
   const totalUSD = preventas.reduce(
-    (acc: number, p: any) => acc + (p.monto || 0),
+    (acc: number, p: Preventa) => acc + (p.monto || 0),
     0
   );
 
   // Agregar los totales de Meta, Proyección, y Vs Mes Anterior
   const totalMeta = preventas.reduce(
-    (acc: number, p: any) => acc + (p.meta || 0),
+    (acc: number, p: Preventa) => acc + (p.meta || 0),
     0
   );
 
   const totalProyeccion = preventas.reduce(
-    (acc: number, p: any) => acc + (p.proyeccion || 0),
+    (acc: number, p: Preventa) => acc + (p.proyeccion || 0),
     0
   );
 
   const totalVsMesAnterior = preventas.reduce(
-    (acc: number, p: any) => acc + (p.vsMesAnterior?.monto_anterior || 0),
+    (acc: number, p: Preventa) => acc + (p.vsMesAnterior?.monto_anterior || 0),
     0
   );
 
@@ -63,10 +81,10 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
     if (!preventas || preventas.length === 0) return;
 
     try {
-      const rutaUpper = "Ranking Preventa"; // Si deseas agregar alguna otra variable aquí, puedes hacerlo
+      const rutaUpper = "Ranking Preventa"; 
 
       // 1️⃣ Formato de los datos a exportar
-      const datosExportar = preventas.map((p) => ({
+      const datosExportar = preventas.map((p: Preventa) => ({
         "N*": preventas.indexOf(p) + 1,
         "Ruta / Preventa": p.preventa,
         "Unidades": p.unidades?.toLocaleString() ?? "0",
@@ -104,7 +122,7 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
           col.length,
           ...datosExportar.map((row) => String(row[col]).length)
         );
-        return { wch: maxLong + 4 }; // +4 para margen visual
+        return { wch: maxLong + 4 }; 
       });
 
       // 6️⃣ Crear el libro de trabajo Excel
@@ -120,7 +138,7 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
   };
 
   // Función para ordenar los datos
-  const requestSort = (key) => {
+  const requestSort = (key: keyof Preventa) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
@@ -130,14 +148,13 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
 
     const sorted = [...preventas].sort((a, b) => {
       const aValue = key === 'vsMesAnterior'
-        ? a[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
-        : a[key]; // En el caso de otras columnas, simplemente usamos el valor
+        ? a[key]?.monto_anterior
+        : a[key];
 
       const bValue = key === 'vsMesAnterior'
-        ? b[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
-        : b[key]; // En el caso de otras columnas, simplemente usamos el valor
+        ? b[key]?.monto_anterior
+        : b[key];
 
-      // Comparar los valores
       if (typeof aValue === 'string' && typeof bValue === 'string') {
         return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
       }
@@ -152,32 +169,57 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
     setSortedData(sorted);
   };
 
-  return (
+   return (
     <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E]">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold px-4 py-3 text-blue-300">RANKING PREVENTA</h2>
+      <div className="flex justify-between items-center px-4 mb-4">
 
-        {/* Mostrar el botón solo si el rol del usuario es "admin" */}
+        {/* TÍTULO */}
+        <h2 className="text-xl font-bold text-blue-300 leading-none">
+          RANKING PREVENTA
+        </h2>
+
+        {/* BOTONES ADMIN */}
         {isAdmin && (
-          <div className="flex gap-4 mb-4"> {/* Flexbox para alinear los botones */}
-            {/* Botón Configurar Metas */}
+          <div className="flex flex-nowrap items-center gap-3 sm:gap-4">
+
+            {/* CONFIGURAR METAS */}
             <button
               onClick={() => navigate("/configurar-metas")}
-              className="bg-[#0db48b] hover:bg-[#0aa77e] text-black font-semibold px-4 py-2 rounded-lg shadow-md transition flex items-center gap-2"
+              className="
+          flex items-center gap-2
+          bg-[#0db48b] hover:bg-[#0aa77e]
+          text-black font-semibold
+          px-3.5 sm:px-5 py-2 sm:py-2.5
+          rounded-lg shadow-md
+          transition
+          text-sm sm:text-base
+        "
             >
-              <span>⚙️</span> Configurar Metas
+              <span className="text-base sm:text-lg">⚙️</span>
+              <span className="hidden sm:inline">Configurar Metas</span>
             </button>
 
-            {/* Botón para exportar tabla a Excel */}
+            {/* EXPORTAR */}
             <button
               onClick={exportarTablaExcel}
-              className="bg-[#0db48b] hover:bg-[#0aa77e] text-black font-semibold px-4 py-2 rounded-lg shadow-md transition flex items-center gap-2"
+              className="
+          flex items-center gap-2
+          bg-[#0db48b] hover:bg-[#0aa77e]
+          text-black font-semibold
+          px-3.5 sm:px-5 py-2 sm:py-2.5
+          rounded-lg shadow-md
+          transition
+          text-sm sm:text-base
+        "
             >
-              <span>📥</span> Exportar
+              <span className="text-base sm:text-lg">📥</span>
+              <span className="hidden sm:inline">Exportar</span>
             </button>
+
           </div>
         )}
       </div>
+
 
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
@@ -214,10 +256,10 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
             </th>
             <th
               className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('proyeccion')}
-            >
+              onClick={() => requestSort('proyeccion')}>
               Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
+
             <th
               className="px-4 py-3 text-right cursor-pointer"
               onClick={() => requestSort('vsMesAnterior')}
@@ -309,7 +351,7 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
                       <span>
                         ({variacionAbs > 0 ? "+" : ""}{variacionPorc}%)
                       </span>{" "}
-                      ${montoAnterior.toLocaleString("es-EC", {
+                      ${variacionAbs.toLocaleString("es-EC", {
                         minimumFractionDigits: 2,
                       })}
                     </>

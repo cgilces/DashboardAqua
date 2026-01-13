@@ -1,8 +1,7 @@
-// models/factura.js
-const { DataTypes } = require('sequelize');
-const sequelize = require('../db');
+const { DataTypes } = require("sequelize");
+const sequelize = require("../db"); // Asegúrate de que este import esté correcto
 
-const Factura = sequelize.define('Factura', {
+const Factura = sequelize.define("Factura", {
   code: {
     type: DataTypes.STRING,
     primaryKey: true,
@@ -27,7 +26,7 @@ const Factura = sequelize.define('Factura', {
   longitude: DataTypes.DECIMAL(12, 8),
   notes: DataTypes.TEXT,
 }, {
-  tableName: 'facturas',
+  tableName: "facturas",
   timestamps: false,
 });
 

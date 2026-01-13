@@ -22,6 +22,20 @@ const GraficoVentaPorProducto = ({ data }: { data: any[] }) => {
     usd: Number(p.dolares),
   }));
 
+
+
+
+  const pieDataValid = pieData.filter(
+    (p) => !isNaN(p.value) && p.value > 0
+  );
+
+
+  // console.log("pieData", pieData);
+
+  const totalUSD = pieDataValid.reduce((sum, p) => sum + p.value, 0);
+
+  // console.log("totalUSD", totalUSD);
+
   const options = {
     backgroundColor: "transparent",
 
@@ -115,15 +129,37 @@ const GraficoVentaPorProducto = ({ data }: { data: any[] }) => {
     ],
   };
 
+  // ⛔ 1. NO hay datos
+  if (pieDataValid.length === 0 || totalUSD === 0) {
+    return (
+      <div className="bg-[#012E24] border border-[#046C5E] rounded-lg p-6 shadow-lg mt-6">
+        <h2 className="text-xl font-bold text-green-300 mb-4 px-2">
+          Venta por Producto (USD & Unidades)
+        </h2>
+        <p className="text-center text-gray-400 py-10">
+          No hay información disponible para el mes seleccionado.
+        </p>
+      </div>
+    );
+  }
+
+  // ✅ 2. SÍ hay datos → renderizar gráfico
   return (
     <div className="bg-[#012E24] border border-[#046C5E] rounded-lg p-6 shadow-lg mt-6">
       <h2 className="text-xl font-bold text-green-300 mb-4 px-2">
         Venta por Producto (USD & Unidades)
       </h2>
 
-      <ReactECharts option={options} style={{ height: "420px" }} />
+      <ReactECharts
+        option={options}
+        style={{ height: "420px" }}
+        notMerge={true}
+        lazyUpdate={true}
+      />
     </div>
   );
+
+
 };
 
 export default GraficoVentaPorProducto;
