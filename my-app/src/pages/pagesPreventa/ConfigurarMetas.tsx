@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { BsSave } from "react-icons/bs";
+import { BsClipboardCheck } from "react-icons/bs";
+
 
 export default function ConfigurarMetas() {
     const navigate = useNavigate();
@@ -190,12 +193,27 @@ export default function ConfigurarMetas() {
                     </div>
 
                     {/* BOTÓN GUARDAR */}
+
                     <button
                         onClick={guardarMeta}
-                        className="w-full bg-[#0db48b] hover:bg-[#0aa77e] text-black font-bold py-2 sm:py-3 mt-4 rounded-lg shadow-md text-sm sm:text-base"
+                        className="
+    w-full
+    flex items-center justify-center gap-2
+    bg-[#0db48b] hover:bg-[#0aa77e]
+    text-black font-bold
+    py-2 sm:py-3 mt-4
+    rounded-lg shadow-md
+    text-sm sm:text-base
+    transition
+  "
                     >
+                        <BsSave size={18} />
                         Guardar Meta Preventa
                     </button>
+
+
+
+
 
 
                 </div>
@@ -205,8 +223,10 @@ export default function ConfigurarMetas() {
         ===================================================== */}
                 <div className="bg-[#013d32] p-4 sm:p-8 rounded-xl shadow-lg text-xs sm:text-sm">
 
-                    <h2 className="text-lg sm:text-xl font-semibold mb-4 text-green-300 text-center">
-                        📋 Metas Registradas
+
+                    <h2 className="flex items-center justify-center gap-2 text-lg sm:text-xl font-semibold mb-4 text-green-300">
+                        <BsClipboardCheck size={18} />
+                        Metas Registradas
                     </h2>
 
                     <div className="overflow-x-auto">

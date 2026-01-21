@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx"; // Importar la librería XLSX para generar archivos Excel
 import { useAuth } from "../../components/auth/AuthContext"; // Importa el hook useAuth
+import { BsDownload } from "react-icons/bs";
 
 const RankingRutasR = ({
   data,
@@ -32,7 +33,7 @@ const RankingRutasR = ({
   const totalUSD = sortedData.reduce((acc, r) => acc + Number(r.dolares || 0), 0);
   const totalMeta = sortedData.reduce((acc, r) => acc + Number(r.meta || 0), 0);
   const totalProyeccion = sortedData.reduce((acc, r) => acc + Number(r.proyeccion || 0), 0);
-  const totalVsMesAnterior = sortedData.reduce((acc, r) => acc + (r.vsMesAnterior?.monto_anterior || 0), 0);
+  const totalVsMesAnterior = sortedData.reduce((acc, r) => acc + (r.vsMesAnterior?.variacion_abs || 0), 0);
 
   // Función para exportar a Excel
   const exportarTablaExcel = () => {
@@ -49,7 +50,7 @@ const RankingRutasR = ({
         "Dólares": (r.dolares?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "0.00"),
         "Meta": (r.meta?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "0.00"),
         "Proyección": (r.proyeccion?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "0.00"),
-        "Vs Mes Anterior": (r.vsMesAnterior?.monto_anterior?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "Sin datos"),
+        "Vs Mes Anterior": (r.vsMesAnterior?.variacion_abs?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "Sin datos"),
       }));
 
       // 2️⃣ Crear hoja de trabajo
@@ -95,6 +96,16 @@ const RankingRutasR = ({
     }
   };
 
+
+
+
+
+
+
+
+
+
+
   // Función para ordenar los datos
   const requestSort = (key: any) => {
     let direction = 'asc';
@@ -133,23 +144,54 @@ const RankingRutasR = ({
   return (
     <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
       {/* Botón para exportar tabla a Excel */}
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold px-4 py-3 text-blue-300">
+      <div
+        className="
+    flex flex-col gap-4
+    md:flex-row md:items-center md:justify-between
+    mb-4
+  "
+      >
+        {/* TÍTULO */}
+        <h2
+          className="
+      text-lg md:text-xl
+      font-bold
+      px-4 py-2
+      text-blue-300
+      text-center md:text-left
+    "
+        >
           RANKING R - DESCARTABLE
         </h2>
 
-        {/* Mostrar el botón solo si el rol del usuario es "admin" */}
+        {/* BOTÓN EXPORTAR (solo admin) */}
         {isAdmin && (
           <div className="flex gap-4 mb-4"> {/* Flexbox para alinear los botones */}
             <button
               onClick={exportarTablaExcel}
-              className="bg-[#0db48b] hover:bg-[#0aa77e] text-black font-semibold px-4 py-2 rounded-lg shadow-md transition flex items-center gap-2"
+              className="
+          flex items-center justify-center gap-2
+          w-full md:w-auto
+          px-4 py-2
+          rounded-lg
+          border border-[#0db48b]/60
+          bg-[#0db48b]/20
+          text-white font-semibold
+          shadow-md
+          hover:bg-[#0db48b]/30
+          hover:shadow-lg
+          active:scale-[0.98]
+          transition-all
+        "
             >
-              <span>📥</span> Exportar
+              <BsDownload size={16} className="text-white shrink-0" />
+              <span>Exportar</span>
             </button>
           </div>
         )}
       </div>
+
+
 
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
@@ -253,37 +295,36 @@ const RankingRutasR = ({
                 })()}
               </td>
 
-            <td
-  className={`px-4 py-2 text-right font-bold ${
-    (r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
-  }`}
->
-  {!r.vsMesAnterior || r.vsMesAnterior.monto_anterior === 0 ? (
-    "Sin datos"
-  ) : (
-    (() => {
-      const abs = Number(r.vsMesAnterior.variacion_abs) || 0;
-      const porc = r.vsMesAnterior.variacion_porc;
-      const signo = abs >= 0 ? "+" : "-";
+              <td
+                className={`px-4 py-2 text-right font-bold ${(r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+                  }`}
+              >
+                {!r.vsMesAnterior || r.vsMesAnterior.monto_anterior === 0 ? (
+                  "Sin datos"
+                ) : (
+                  (() => {
+                    const abs = Number(r.vsMesAnterior.variacion_abs) || 0;
+                    const porc = r.vsMesAnterior.variacion_porc;
+                    const signo = abs >= 0 ? "+" : "-";
 
-      return (
-        <>
-          (
-          {porc !== null
-            ? `${porc >= 0 ? "+" : "-"}${Math.abs(porc).toFixed(2)}%`
-            : "–"}
-          )
-          {" "}
-          {signo}$
-          {Math.abs(abs).toLocaleString("es-EC", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}
-        </>
-      );
-    })()
-  )}
-</td>
+                    return (
+                      <>
+                        (
+                        {porc !== null
+                          ? `${porc >= 0 ? "+" : "-"}${Math.abs(porc).toFixed(2)}%`
+                          : "–"}
+                        )
+                        {" "}
+                        {signo}$
+                        {Math.abs(abs).toLocaleString("es-EC", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </>
+                    );
+                  })()
+                )}
+              </td>
 
 
             </tr>

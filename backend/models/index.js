@@ -8,6 +8,8 @@ const RutaPreventa = require('./rutaPreventa');
 const ClienteVenta = require('./clienteVenta');
 const Orden = require('./orden');
 const SincronizacionVenta = require('./SincronizacionVenta');
+const DireccionesCliente = require('./DireccionesCliente');
+
 
 // Asegúrate de importar tu modelo 'AppUser' (o como lo hayas nombrado)
 const AppUser = require('./appUser');  // Ruta correcta para importar el modelo AppUser
@@ -83,6 +85,7 @@ module.exports = {
   ClienteVenta,
   Orden,
   SincronizacionVenta,
+  DireccionesCliente,
   AppUser,  // Asegúrate de exportar AppUser aquí
   sequelize, // Exportar la conexión a la base de datos
 };

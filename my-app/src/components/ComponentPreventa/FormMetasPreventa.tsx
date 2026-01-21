@@ -1,8 +1,10 @@
 import React, { useState } from "react";
+import { BsSave } from "react-icons/bs";
+
 
 const rutas = [
-  "PV1","PV2","PV3","PV4","PV5","PV6","PV8","PV9","PV10","PV11","PV12","PV13","PV14",
-  "TELEVENTA 1","TELEVENTA 4","PREVENTA VIP 1"
+  "PV1", "PV2", "PV3", "PV4", "PV5", "PV6", "PV8", "PV9", "PV10", "PV11", "PV12", "PV13", "PV14",
+  "TELEVENTA 1", "TELEVENTA 4", "PREVENTA VIP 1"
 ];
 
 const meses = [
@@ -121,12 +123,23 @@ const FormMetasPreventa = () => {
         onChange={(e) => setForm({ ...form, meta_dolares: e.target.value })}
       />
 
+
       <button
-        className="w-full py-2 bg-[#0db48b] hover:bg-[#0aa77e] rounded-md font-semibold"
         onClick={handleSave}
+        className="
+    w-full
+    flex items-center justify-center gap-2
+    py-2
+    bg-[#0db48b] hover:bg-[#0aa77e]
+    rounded-md
+    font-semibold
+    transition
+  "
       >
+        <BsSave size={16} />
         Guardar Meta
       </button>
+
     </div>
   );
 };

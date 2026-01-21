@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { BsDownload } from "react-icons/bs";
 import * as XLSX from "xlsx"; // Importar la librería XLSX para generar archivos Excel
 
 interface Props {
@@ -40,6 +41,13 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
 
   const [sortConfig, setSortConfig] = useState({ key: 'preventa', direction: 'asc' });
   const [sortedData, setSortedData] = useState(data ? transformar(data) : []);
+
+  useEffect(() => {
+  if (data) {
+    setSortedData(transformar(data));
+  }
+}, [data]);
+
 
   const money = (v: number | null) => v === null ? "—" : `$${v.toFixed(2)}`;
   const variacion = (v: number | null) => v === null ? "—" : `${v > 0 ? "+" : ""}${v}%`;
@@ -130,86 +138,132 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
   };
 
   return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-8">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold px-4 py-3 text-blue-300">
+    <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-8">
+
+      {/* HEADER SUPERIOR */}
+
+      <div className="
+  flex flex-col gap-3
+  md:flex-row md:items-center md:justify-between
+  px-4 py-3
+">
+        {/* TÍTULO */}
+        <h2 className="
+    text-lg md:text-xl
+    font-bold
+    text-blue-300
+    text-center md:text-left
+  ">
           PRECIO PROMEDIO POR PRODUCTO
         </h2>
 
-        <div className="flex gap-4 mb-4">
+        {/* BOTÓN */}
+        <div className="flex gap-4 mb-4"> {/* Flexbox para alinear los botones */}
           <button
             onClick={exportarTablaExcel}
-            className="bg-[#0db48b] hover:bg-[#0aa77e] text-black font-semibold px-4 py-2 rounded-lg shadow-md transition flex items-center gap-2"
+            className="
+        flex items-center justify-center gap-2
+        w-full md:w-auto
+        px-4 py-2
+        rounded-lg
+        border border-[#0db48b]/60
+        bg-[#0db48b]/20
+        text-white font-semibold
+        shadow-md
+        hover:bg-[#0db48b]/30
+        hover:shadow-lg
+        active:scale-[0.98]
+        transition-all
+      "
           >
-            <span>📥</span> Exportar
+            <BsDownload size={16} />
+            Exportar
           </button>
         </div>
       </div>
 
-      <table className="min-w-full text-sm">
-        <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-          <tr>
-            <th
-              className="px-4 py-3 text-left cursor-pointer"
-              onClick={() => requestSort('preventa')}
-            >
-              Preventa <span className="text-green-300">{sortConfig.key === 'preventa' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
 
-            {CATEGORIAS.map(cat => (
-              <React.Fragment key={`head-${cat}`}>
-                <th
-                  className="px-4 py-3 text-right cursor-pointer"
-                  onClick={() => requestSort(`c_${cat}`)}
-                >
-                  {cat} <span className="text-green-300">{sortConfig.key === `c_${cat}` ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-                </th>
-                <th
-                  className="px-4 py-3 text-right cursor-pointer"
-                  onClick={() => requestSort(`v_${cat}`)}
-                >
-                  VS ANT {cat} <span className="text-green-300">{sortConfig.key === `v_${cat}` ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-                </th>
-              </React.Fragment>
-            ))}
-          </tr>
-        </thead>
 
-        <tbody>
-          {sortedData.map((row, idx) => (
-            <tr
-              key={row.preventa}
-              className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#026452] transition`}
-            >
-              <td className="px-4 py-2 font-medium text-gray-100">{row.preventa}</td>
+      {/* HEADER FIJO */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm table-fixed">
+          <thead className="bg-[#014434] text-green-300 uppercase text-xs sticky top-0 z-20">
+            <tr>
+              <th
+                className="px-4 py-3 text-left w-44 cursor-pointer"
+                onClick={() => requestSort("preventa")}
+              >
+                Preventa
+              </th>
 
-              {CATEGORIAS.map(cat => {
-                const precio = row[`c_${cat}`];
-                const vs = row[`v_${cat}`];
-
-                return (
-                  <React.Fragment key={`${row.preventa}-${cat}`}>
-                    <td className="px-4 py-2 text-right text-blue-400 font-semibold">
-                      {money(precio)}
-                    </td>
-
-                    <td
-                      className={`px-4 py-2 text-right font-semibold ${vs == null
-                          ? "text-gray-400"
-                          : vs >= 0
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }`}
-                    >
-                      {variacion(vs)}
-                    </td>
-                  </React.Fragment>
-                );
-              })}
+              {CATEGORIAS.map((cat) => (
+                <React.Fragment key={`head-${cat}`}>
+                  <th
+                    className="px-4 py-3 text-right w-24 cursor-pointer"
+                    onClick={() => requestSort(`c_${cat}`)}
+                  >
+                    {cat}
+                  </th>
+                  <th
+                    className="px-4 py-3 text-right w-28 cursor-pointer"
+                    onClick={() => requestSort(`v_${cat}`)}
+                  >
+                    VS ANT
+                  </th>
+                </React.Fragment>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+        </table>
+      </div>
+
+      {/* BODY SCROLL */}
+      <div className="overflow-x-auto ">
+        <table className="min-w-full text-sm table-fixed">
+          <tbody>
+            {sortedData.map((row, idx) => (
+              <tr
+                key={row.preventa}
+                className={`
+                  ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
+                  hover:bg-[#026452] transition
+                `}
+              >
+                <td className="px-4 py-2 w-44 font-medium">
+                  {row.preventa}
+                </td>
+
+                {CATEGORIAS.map((cat) => {
+                  const precio = row[`c_${cat}`];
+                  const vs = row[`v_${cat}`];
+
+                  return (
+                    <React.Fragment key={`${row.preventa}-${cat}`}>
+                      <td className="px-4 py-2 w-24 text-right text-blue-400 font-semibold">
+                        {money(precio)}
+                      </td>
+
+                      <td
+                        className={`
+                          px-4 py-2 w-28 text-right font-semibold
+                          ${vs == null
+                            ? "text-gray-400"
+                            : vs >= 0
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }
+                        `}
+                      >
+                        {variacion(vs)}
+                      </td>
+                    </React.Fragment>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

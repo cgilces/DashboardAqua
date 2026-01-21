@@ -5,16 +5,26 @@
   background: #2c574b60;
   color: white;
   width: 250px;
-  height: 100vh;
+  height: 100vh;              /* ✅ ALTURA FIJA */
   position: fixed;
   left: 0;
   top: 0;
+  bottom: 0;                 /* ✅ FIX */
   transition: 0.3s ease;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
   z-index: 999;
+}
+
+/* 🔒 FIX: asegurar altura completa siempre */
+.sidebar,
+.sidebar.open,
+.sidebar.closed {
+  height: 100vh !important;
+  top: 0 !important;
+  bottom: 0 !important;
 }
 
 /* Scroll */
@@ -84,7 +94,6 @@
   cursor: pointer;
   font-weight: bold;
 }
-
 
 /* ==============================
    MENÚ PRINCIPAL
@@ -181,7 +190,7 @@
 /* Corrección de alineación del botón hamburguesa */
 @media (min-width: 900px) {
   .sidebar.closed ~ .toggle-btn {
-    left: 75px !important; /* antes 15px → ahora bien alineado */
+    left: 75px !important;
   }
 
   .sidebar.open ~ .toggle-btn {
@@ -223,7 +232,6 @@
 ============================== */
 @media (max-width: 600px) {
 
-  /* Sidebar siempre cerrado al iniciar */
   .sidebar {
     width: 0 !important;
     left: 0 !important;
@@ -232,6 +240,8 @@
     border-right: 1px solid rgba(255,255,255,0.1);
     transition: left .3s ease, width .3s ease;
     overflow-y: auto;
+    height: 100vh !important;        /* ✅ FIX MOBILE */
+    max-height: 100vh !important;   /* ✅ FIX MOBILE */
   }
 
   .sidebar.open {
@@ -269,6 +279,7 @@
     margin-top: 85px;
   }
 }
+
 /* FIX: centrar también el item activo en sidebar cerrado */
 .sidebar.closed .active-menu {
   width: 100% !important;
@@ -282,4 +293,16 @@
 .sidebar.closed .active-menu svg {
   margin: 0 auto !important;
   display: block !important;
+}
+
+.menu-icon img {
+  width: 50px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.menu-icon svg {
+  width: 35px;
+  height: 35px;
+  object-fit: contain;
 }

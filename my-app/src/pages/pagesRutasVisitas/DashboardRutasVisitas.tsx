@@ -6,6 +6,7 @@ import { Header } from "../../components/common/Header";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import TablaVentasBase from "../../components/ComponentBotellon/TablaVentasBase";
 import ResumenVentasCanalUSD from "../../components/ComponentBotellon/ResumenVentasCanalUSD";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 
 /* ================================
    📅 MESES
@@ -40,7 +41,7 @@ const SECCIONES = [
   { key: "VIP", titulo: "VIP", excel: "vip" },
 ];
 
-export default function DashboardBotellon() {
+export default function DashboardRutasVisitas() {
   /* ================================
      📆 FECHAS
   ================================ */
@@ -125,33 +126,31 @@ export default function DashboardBotellon() {
           lowerKey,
           {
             monto: total?.dolares ?? 0,
+            mesAnterior: vs?.monto_anterior ?? 0,
+            variacionAbs: vs?.variacion_abs ?? 0,
+            variacionPorc: vs?.variacion_porc ?? 0,
             unidades: total?.unidades ?? 0,
-            vsMesAnterior: {
-              monto_anterior: vs?.monto_anterior ?? 0,
-              variacion_abs: vs?.variacion_abs ?? 0,
-              variacion_porc: vs?.variacion_porc ?? 0,
-            },
           },
         ];
       })
     );
   }, [botellones]);
 
-  console.log("resumenVentasUSD keys:", Object.keys(resumenVentasUSD || {}));
-
   return (
     <DashboardLayout>
       <div className="main-content min-h-screen text-white px-10 py-6 bg-gradient-to-b from-[#012E24] to-[#014434]">
         <Header />
+
         {/* ================= HEADER ================= */}
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
-            <img src={logo} className="h-16" alt="Logo" />
+            <LocalShippingIcon sx={{ fontSize: 50 }} />
+
             <div>
-              <h1 className="text-3xl font-bold">Dashboard Botellones</h1>
-              <p className="text-sm text-gray-300">
+              <h1 className="text-3xl font-bold">Visitas Rutas</h1>
+              {/* <p className="text-sm text-gray-300">
                 Órdenes + Facturas por grupo comercial
-              </p>
+              </p> */}
             </div>
           </div>
 
@@ -195,38 +194,6 @@ export default function DashboardBotellon() {
           </div>
         )}
 
-        {/* ================= RESUMEN USD ================= */}
-        {isAdmin && resumenVentasUSD && (
-          <ResumenVentasCanalUSD
-            titulo="Ventas USD Botellón"
-            canales={[
-              "domicilio",
-              "empresas",
-              "mayorista",
-              "quito",
-              "rural",
-              "televenta_vip",
-              "tiendas",
-              "tiendas_vip",
-              "vip",
-            ]}
-            data={resumenVentasUSD}
-          />
-        )}
-
-        {/* ================= TABLAS ================= */}
-        {mostrarTablas &&
-          SECCIONES.map((s) => (
-            <TablaVentasBase
-              key={s.key}
-              titulo={s.titulo}
-              data={botellones?.[s.key]?.detalle}
-              nombreHojaExcel={s.titulo}
-              nombreArchivoExcel={s.excel}
-              anio={anioSeleccionado}
-              mes={mesSeleccionado}
-            />
-          ))}
 
       </div>
     </DashboardLayout>

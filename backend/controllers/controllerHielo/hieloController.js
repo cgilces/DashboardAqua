@@ -140,7 +140,7 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 
 
 
-// Función de ejemplo para obtener metas históricas
+// Función para obtener metas históricas
 const metaHistoricaHielo = async () => {
     try {
         const [resultados] = await sequelize.query(`
@@ -228,23 +228,26 @@ const getDiasHabilesTranscurridos = (anio, mes, festivos = []) => {
 
 // Festivos (definidos por las fechas)
 const festivos = [
-  new Date(2025, 0, 1), // 1 de enero
-  new Date(2025, 4, 1), // Día del trabajo
-  new Date(2025, 11, 25), // 25 de diciembre - Navidad
-  new Date(2026, 0, 1), // 1 de enero - Año Nuevo
-  new Date(2026, 1, 16), // 16 de febrero - Carnaval
-  new Date(2026, 1, 17), // 17 de febrero - Carnaval
-  new Date(2026, 2, 29), // 29 de marzo - Semana Santa (Jueves Santo)
-  new Date(2026, 2, 30), // 30 de marzo - Semana Santa (Viernes Santo)
-  new Date(2026, 4, 1), // 1 de mayo - Día del Trabajo
-  new Date(2026, 7, 10), // 10 de agosto - Primer Grito de Independencia
-  new Date(2026, 9, 9), // 9 de octubre - Independencia de Guayaquil
-  new Date(2026, 10, 2), // 2 de noviembre - Día de los Difuntos
-  new Date(2026, 10, 3), // 3 de noviembre - Independencia de Cuenca
-  new Date(2026, 11, 6), // 6 de diciembre - Día de la Independencia de Quito
-  new Date(2026, 11, 8), // 8 de diciembre - Día de la Inmaculada Concepción
-  new Date(2026, 11, 25) // 25 de diciembre - Navidad
+  // 2025
+  new Date(2025, 0, 1),    // 1 enero 2025 - Año Nuevo
+  new Date(2025, 4, 1),    // 1 mayo 2025 - Día del Trabajo
+  new Date(2025, 11, 25),  // 25 diciembre 2025 - Navidad
+
+  // 2026
+  new Date(2026, 0, 1),    // 1 enero 2026 - Año Nuevo
+  new Date(2026, 1, 16),   // 16 febrero 2026 - Carnaval (lunes)
+  new Date(2026, 1, 17),   // 17 febrero 2026 - Carnaval (martes)
+  new Date(2026, 3, 2),    // 2 abril 2026 - Jueves Santo
+  new Date(2026, 3, 3),    // 3 abril 2026 - Viernes Santo
+  new Date(2026, 4, 1),    // 1 mayo 2026 - Día del Trabajo
+  new Date(2026, 7, 10),   // 10 agosto 2026 - Primer Grito de Independencia
+  new Date(2026, 9, 9),    // 9 octubre 2026 - Independencia de Guayaquil
+  new Date(2026, 10, 2),   // 2 noviembre 2026 - Día de los Difuntos
+  new Date(2026, 10, 3),   // 3 noviembre 2026 - Independencia de Cuenca
+  new Date(2026, 11, 6),   // 6 diciembre 2026 - Fundación de Quito (local)
+  new Date(2026, 11, 25)   // 25 diciembre 2026 - Navidad
 ];
+
 
 // ===============================
 //  DÍAS LABORABLES DEL MES (L–S)

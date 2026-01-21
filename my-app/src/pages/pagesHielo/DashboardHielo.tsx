@@ -116,9 +116,6 @@ const DashboardHielo: React.FC = () => {
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
             <img src={logo}   className="h-16 w-auto transition-all duration-300" alt="Logo" />
-
-
-
             <div>
               <h1 className="text-3xl font-bold tracking-wide">
                 Dashboard Hielo

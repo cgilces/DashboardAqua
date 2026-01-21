@@ -1,115 +1,262 @@
 const Sequelize = require("sequelize");
-const { sequelize } = require("../../models");
+const db = require("../../db");
 
 /**
  * =====================================================
- * MAPA DE GRUPOS → PREFIJO RUTA
+ * 🧩 FUNCIÓN SEGURA PARA GENERAR FECHAS PG EN UTC
  * =====================================================
  */
-const GRUPOS_RUTA = {
-  DOMICILIO: "A",
-  EMPRESAS: "E",
-  MAYORISTA: "M",
-  RURAL: "R",
-  TIENDAS: "T",
-  VIP: "V",
-};
+function obtenerRangoFechasPG(anio, mes) {
+  const inicio = new Date(Date.UTC(anio, mes - 1, 1));
+  const fin = new Date(Date.UTC(anio, mes, 1));
+
+  const fInicio = inicio.toISOString().replace("T", " ").substring(0, 19);
+  const fFin = fin.toISOString().replace("T", " ").substring(0, 19);
+
+  return { fInicio, fFin };
+}
 
 /**
  * =====================================================
- * GET CLIENTES BOTELLONES
+ * 📅 FORMATEADOR SEGURO DE FECHA
  * =====================================================
- * /api/botellones/clientes?grupo=RURAL
- * /api/botellones/clientes?ruta=R1
- * /api/botellones/clientes?grupo=RURAL&ruta=R1
  */
-async function obtenerClientesBotellon(req, res) {
+function formatFecha(fecha) {
+  if (!fecha) return null;
+  const d = new Date(fecha);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().split("T")[0];
+}
+
+/**
+ * =====================================================
+ * 🎯 CONTROLADOR PRINCIPAL
+ * =====================================================
+ */
+const obtenerClientesBotellon = async (req, res) => {
+  console.log(
+    "▶️ [detallePreventa] Inicio obtenerClientesBotellon, params:",
+    req.params
+  );
+
   try {
-    const { grupo, ruta } = req.query;
+    const { ruta, anio, mes } = req.params;
 
-    let whereSQL = "";
-    let replacements = {};
-
-    // ==========================
-    // PRIORIDAD: RUTA
-    // ==========================
-    if (ruta) {
-      whereSQL = `c.ruta_asignada ILIKE :ruta`;
-      replacements.ruta = ruta;
-    }
-    // ==========================
-    // SI NO HAY RUTA → USAR GRUPO
-    // ==========================
-    else if (grupo) {
-      const prefijo = GRUPOS_RUTA[grupo];
-
-      if (!prefijo) {
-        return res.status(400).json({
-          error: "Grupo no válido",
-        });
-      }
-
-      whereSQL = `c.ruta_asignada ILIKE :prefijo`;
-      replacements.prefijo = `${prefijo}%`;
-    }
-    // ==========================
-    // NINGÚN FILTRO
-    // ==========================
-    else {
+    if (!ruta || !anio || !mes) {
       return res.status(400).json({
-        error: "Debe enviar al menos ?ruta o ?grupo",
+        error: "Debe enviar /ruta/anio/mes",
       });
     }
 
-    // ==========================
-    // QUERY FINAL (INCLUYE TOTAL BOTELLONES EN ENTERO)
-    // ==========================
-    const sql = `
+    const anioNum = parseInt(anio);
+    const mesNum = parseInt(mes);
+
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12) {
+      return res.status(400).json({
+        error: "Mes o año inválido",
+      });
+    }
+
+    // ================= FECHAS =================
+    const { fInicio, fFin } = obtenerRangoFechasPG(anioNum, mesNum);
+
+    const rutaUpper = ruta.trim().toUpperCase();
+
+    // =====================================================
+    // 1️⃣ CLIENTES ASIGNADOS A LA RUTA
+    // =====================================================
+    const clientesRuta = await db.query(
+      `
+      SELECT codigo_cliente, nombre_cliente, direccion_entrega, ruta_asignada
+      FROM clientes_ventas
+      WHERE ruta_asignada ILIKE :ruta;
+    `,
+      {
+        replacements: { ruta: rutaUpper },
+        type: db.QueryTypes.SELECT,
+      }
+    );
+
+    console.log(
+      `ℹ️ [detallePreventa] Clientes en ruta ${rutaUpper}:`,
+      clientesRuta
+    );
+
+    // =====================================================
+    // 2️⃣ CLIENTES CON CONSUMO EN EL MES
+    // =====================================================
+    const clientesConConsumoRows = await db.query(
+      `
+      SELECT DISTINCT customer_code
+      FROM ordenes
+      WHERE seller_code = :ruta
+        AND type = 2
+        AND status = 5
+        AND fecha_entrega >= :inicio
+        AND fecha_entrega < :fin;
+    `,
+      {
+        replacements: { ruta: rutaUpper, inicio: fInicio, fin: fFin },
+        type: db.QueryTypes.SELECT,
+      }
+    );
+
+    const clientesConConsumo = new Set(
+      clientesConConsumoRows.map((c) => c.customer_code)
+    );
+
+    // =====================================================
+    // 3️⃣ CONSUMO ACTUAL / ANTERIOR
+    // =====================================================
+    const clientesConsumoData = await db.query(
+      `
+      SELECT 
+        customer_code,
+        SUM(CASE WHEN fecha_entrega >= :inicio AND fecha_entrega < :fin THEN total ELSE 0 END) AS consumo_actual,
+        SUM(CASE WHEN fecha_entrega < :inicio THEN total ELSE 0 END) AS consumo_anterior
+      FROM ordenes
+      WHERE seller_code = :ruta
+        AND type = 2
+        AND status = 5
+      GROUP BY customer_code;
+    `,
+      {
+        replacements: { ruta: rutaUpper, inicio: fInicio, fin: fFin },
+        type: db.QueryTypes.SELECT,
+      }
+    );
+
+    // =====================================================
+    // 4️⃣ PRODUCTOS VENDIDOS POR CLIENTE
+    // =====================================================
+    const productosVendidosCantidad = await db.query(
+      `
       SELECT
-        c.codigo_cliente,
-        c.nombre_cliente,
-        c.direccion_entrega,
-        c.telefono,
-        c.email,
-        c.ruta_asignada,
-        FLOOR(SUM(dd.cantidad)) AS total_botellones  -- Redondeo a entero
-      FROM clientes_ventas c
-      JOIN ordenes o ON o.customer_code = c.codigo_cliente
+        o.customer_code,
+        SUM(dd.cantidad) AS unidades_vendidas_cliente
+      FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
-      WHERE ${whereSQL}
-      GROUP BY
-        c.codigo_cliente,
-        c.nombre_cliente,
-        c.direccion_entrega,
-        c.telefono,
-        c.email,
-        c.ruta_asignada
-      ORDER BY
-        c.ruta_asignada,
-        c.nombre_cliente
-    `;
+      WHERE o.type = 2
+        AND o.status = 5
+        AND o.seller_code = :ruta
+        AND o.fecha_entrega >= :inicio
+        AND o.fecha_entrega < :fin
+      GROUP BY o.customer_code;
+    `,
+      {
+        replacements: { ruta: rutaUpper, inicio: fInicio, fin: fFin },
+        type: db.QueryTypes.SELECT,
+      }
+    );
 
-    const clientes = await sequelize.query(sql, {
-      replacements,
-      type: Sequelize.QueryTypes.SELECT,
+    const mapProductos = new Map();
+    productosVendidosCantidad.forEach((p) => {
+      mapProductos.set(
+        p.customer_code,
+        Number(p.unidades_vendidas_cliente) || 0
+      );
     });
 
-    console.log("🔎 CLIENTES BOTELLONES", clientes.length);
+    // =====================================================
+    // 5️⃣ ÚLTIMA VISITA
+    // =====================================================
+    const ultimasVisitas = await db.query(
+      `
+      SELECT customer_code, MAX(fecha_entrega) AS ultima_visita
+      FROM (
+        SELECT customer_code, fecha_entrega FROM ordenes
+        UNION ALL
+        SELECT customer_code, fecha_entrega FROM facturas
+      ) x
+      GROUP BY customer_code;
+    `,
+      { type: db.QueryTypes.SELECT }
+    );
 
-    return res.status(200).json({
-      grupo: grupo || null,
-      ruta: ruta || null,
-      total: clientes.length,
-      clientes,
+    const mapUltimaVisita = new Map(
+      ultimasVisitas.map((v) => [v.customer_code, v.ultima_visita])
+    );
+
+    // =====================================================
+    // 6️⃣ ÚLTIMA FACTURA
+    // =====================================================
+    const ultimasFacturas = await db.query(
+      `
+      SELECT 
+        customer_code,
+        MAX(COALESCE(fecha_autorizacion, fecha_entrega, fecha_creacion)) AS ultima_factura
+      FROM facturas
+      GROUP BY customer_code;
+    `,
+      { type: db.QueryTypes.SELECT }
+    );
+
+    const mapUltimaFactura = new Map(
+      ultimasFacturas.map((v) => [v.customer_code, v.ultima_factura])
+    );
+
+    // =====================================================
+    // 7️⃣ UNIFICAR CLIENTES
+    // =====================================================
+    const clientesRutaConDetalles = clientesRuta.map((cliente) => {
+      const consumo =
+        clientesConsumoData.find(
+          (c) => c.customer_code === cliente.codigo_cliente
+        ) || {};
+
+      const actual = Number(consumo.consumo_actual) || 0;
+      const anterior = Number(consumo.consumo_anterior) || 0;
+
+      const porcentaje =
+        anterior === 0
+          ? "100%"
+          : (((actual - anterior) / anterior) * 100).toFixed(2) + "%";
+
+      return {
+        codigo_cliente: cliente.codigo_cliente,
+        nombre_cliente: cliente.nombre_cliente,
+        direccion_entrega: cliente.direccion_entrega,
+        ultima_visita: formatFecha(
+          mapUltimaVisita.get(cliente.codigo_cliente)
+        ),
+        ultima_factura: formatFecha(
+          mapUltimaFactura.get(cliente.codigo_cliente)
+        ),
+        consumo_actual: actual.toFixed(2),
+        consumo_anterior: anterior.toFixed(2),
+        max_consumo: Math.max(actual, anterior).toFixed(2),
+        porcentaje_cambio: porcentaje,
+        tuvo_consumo: clientesConConsumo.has(cliente.codigo_cliente)
+          ? "Sí"
+          : "No",
+        cantidad_productos: mapProductos.get(cliente.codigo_cliente) || 0,
+      };
     });
 
+    // =====================================================
+    // ✅ RESPUESTA FINAL
+    // =====================================================
+    return res.json({
+      ruta: rutaUpper,
+      anio: anioNum,
+      mes: mesNum,
+      rangoFechas: { inicio: fInicio, fin: fFin },
+      resumenClientes: {
+        totalClientesRuta: clientesRuta.length,
+        clientesConConsumo: clientesConConsumo.size,
+        clientesSinConsumo:
+          clientesRuta.length - clientesConConsumo.size,
+      },
+      clientesRuta: clientesRutaConDetalles,
+    });
   } catch (error) {
-    console.error("❌ ERROR CLIENTES BOTELLONES:", error);
+    console.error("❌ [detallePreventa] ERROR:", error);
     return res.status(500).json({
-      message: "Error al obtener clientes de botellones",
+      error: "Error al obtener detalle de ruta",
+      detalle: error.message,
     });
   }
-}
+};
 
 module.exports = {
   obtenerClientesBotellon,

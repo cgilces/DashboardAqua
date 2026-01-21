@@ -1,93 +1,143 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
+import toast from "react-hot-toast";
+
+
+// 🔹 BASE DINÁMICA (LOCAL / PRODUCCIÓN)
+const API_BASE =
+  // import.meta.env.VITE_API_URL || 
+  "http://localhost:5000";
 
 const BotonActualizarSincronizacion = () => {
   const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncDate, setLastSyncDate] = useState(""); // Estado para almacenar la última fecha de sincronización
+  const [lastSyncDate, setLastSyncDate] = useState("");
+  const [progress, setProgress] = useState<number>(0);
 
-  // Obtener la última fecha de sincronización al cargar el componente
+  // 🔹 Última sincronización
   useEffect(() => {
-    const fetchLastSyncDate = async () => {
+    fetch(`${API_BASE}/api/sync/last-sync`)
+      .then(res => res.json())
+      .then(data => {
+        setLastSyncDate(data.lastSync || "No se ha sincronizado aún");
+      })
+      .catch(() => {
+        setLastSyncDate("Error al obtener fecha de sincronización");
+      });
+  }, []);
+
+  // 🔹 Polling de estado
+  useEffect(() => {
+    if (!isSyncing) return;
+
+    const startTime = Date.now();
+    let lastPercent = 0;
+
+    const interval = setInterval(async () => {
       try {
-        // Realizar la petición al backend para obtener la última fecha de sincronización
-        const response = await fetch('http://localhost:5000/api/sync/last-sync');
-        const data = await response.json();
+        const res = await fetch(`${API_BASE}/api/sync/status`);
+        const data = await res.json();
 
-        // Verificar si la respuesta tiene el campo 'lastSync' y actualizar el estado
-        if (data.lastSync) {
-          setLastSyncDate(data.lastSync); // Actualizar con la fecha de sincronización recibida
-        } else {
-          setLastSyncDate('No se ha sincronizado aún');
+        const percent = data.percent ?? 0;
+        setProgress(percent);
+
+        // ⏱️ timeout máximo (20 min)
+        if (Date.now() - startTime > 20 * 60 * 1000) {
+          clearInterval(interval);
+          setIsSyncing(false);
+          alert(
+            "⚠️ La sincronización está tardando más de lo esperado.\nPuedes refrescar más tarde para ver el resultado."
+          );
+          return;
         }
-      } catch (error) {
-        console.error("Error al obtener la última fecha de sincronización:", error);
-        setLastSyncDate('Error al obtener fecha de sincronización');
+
+        //  CONDICIÓN SEGURA DE FIN
+        if (data.running === false && data.finishedAt) {
+          clearInterval(interval);
+          setIsSyncing(false);
+          setProgress(100);
+
+          const last = await fetch(`${API_BASE}/api/sync/last-sync`);
+          const lastData = await last.json();
+          setLastSyncDate(lastData.lastSync || "");
+
+          setTimeout(() => {
+            alert(" Actualización exitosa. La pantalla se refrescará.");
+            window.location.reload();
+          }, 800);
+
+          return;
+        }
+
+        lastPercent = percent;
+      } catch (err) {
+        console.error("Error consultando estado:", err);
+        //  NO rompemos el polling por un error puntual
       }
-    };
+    }, 4000); // ⏳ más relajado para producción
 
-    // Llamada para obtener la última sincronización
-    fetchLastSyncDate();
-  }, []); // Se ejecuta solo una vez al montar el componente
+    return () => clearInterval(interval);
+  }, [isSyncing]);
 
+
+  // 🔹 Iniciar sincronización
   const handleSync = async () => {
-    setIsSyncing(true); // Establecer el estado de sincronización a 'en proceso'
-    console.log('Iniciando sincronización...');
-
-    // Obtener la fecha actual
-    const today = new Date();
-    console.log('Fecha actual:', today);
-
-    // Obtener la fecha del día anterior
-    const lastSyncDate = new Date(today);
-    lastSyncDate.setDate(today.getDate() - 1); // Restar un día
-    lastSyncDate.setHours(23, 59, 59, 999); // Establecer la hora a 11:59:59.999 PM
-
-    // Formatear las fechas en formato YYYY-MM-DD
-    const startDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]; // Primer día del mes
-    const endDate = lastSyncDate.toISOString().split('T')[0]; // Día anterior a las 11:59 p.m.
-
-    console.log('Fecha de inicio del mes:', startDate);
-    console.log('Fecha de fin (día anterior a las 11:59 p.m.):', endDate);
-
-    // Realizar la petición a la API para sincronizar
     try {
-      console.log(`Haciendo petición a la API: http://localhost:5000/api/sync/sincronizar?desde=${startDate}&hasta=${endDate}`);
-      const response = await fetch(`http://localhost:5000/api/sync/sincronizar?desde=${startDate}&hasta=${endDate}`);
-      const data = await response.json();
+      setIsSyncing(true);
+      setProgress(0);
 
-      console.log('Respuesta de la API:', data);
+      const today = new Date();
+      const startDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        1
+      ).toISOString().split("T")[0];
 
-      if (response.ok) {
-        console.log('Sincronización completada con éxito');
-        alert("Sincronización completada");
+      const endDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate() - 1
+      ).toISOString().split("T")[0];
 
-        // Actualizar la última fecha de sincronización con la fecha de 'endDate' de la respuesta
-        setLastSyncDate(data.endDate); // Usar 'endDate' de la respuesta
-      } else {
-        throw new Error("Error en la sincronización");
+      const res = await fetch(
+        `${API_BASE}/api/sync/sincronizar?desde=${startDate}&hasta=${endDate}`
+      );
+
+      if (!res.ok) {
+        throw new Error("No se pudo iniciar la sincronización");
       }
     } catch (error: any) {
-      console.error('Error en la sincronización:', error);
-      alert("Hubo un error al sincronizar: " + error.message);
-    } finally {
-      setIsSyncing(false); // Restablecer el estado de sincronización
-      console.log('Sincronización finalizada');
+      setIsSyncing(false);
+      setProgress(0);
+      alert("Error al iniciar sincronización: " + error.message);
     }
   };
 
   return (
-    <div>
-      {/* Mostrar la última fecha de sincronización */}
-      <div className="text-center text-sm text-gray-500 mb-4">
-        {`Última fecha de sincronización fue: ${lastSyncDate}`}
+    <div className="text-center">
+      <div className="text-sm text-gray-500 mb-3">
+        Última sincronización: {lastSyncDate}
       </div>
 
-      {/* Botón para iniciar la sincronización */}
-      <button 
-        onClick={handleSync} 
-        disabled={isSyncing} // Deshabilitar el botón durante la sincronización
-        className={`bg-[#0db48b] hover:bg-[#0aa77e] px-6 py-3 rounded-lg shadow-lg transition-all hover:bg-[#058A73] focus:outline-none ${isSyncing ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+      {isSyncing && (
+        <div className="mb-3">
+          <div className="text-sm mb-1">
+            Sincronizando... {progress}%
+          </div>
+          <div className="w-full bg-gray-200 rounded">
+            <div
+              className="bg-[#0db48b] h-2 rounded transition-all"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={handleSync}
+        disabled={isSyncing}
+        className={`bg-[#0db48b] px-6 py-3 rounded-lg shadow-lg transition-all
+          ${isSyncing ? "opacity-60 cursor-not-allowed" : "hover:bg-[#058A73]"}`}
       >
-        {isSyncing ? 'Sincronizando...' : 'Actualizar Sincronización'}
+        {isSyncing ? "Sincronizando..." : "Actualizar Sincronización"}
       </button>
     </div>
   );

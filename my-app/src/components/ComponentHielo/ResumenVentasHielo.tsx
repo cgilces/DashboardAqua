@@ -1,24 +1,32 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../components/auth/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { BsDownload } from "react-icons/bs";
 
-const ResumenVentasHielo = ({
-  data,
-  anio,
-  mes,
-}: {
-  data: any[];
-  anio: string;
-  mes: string;
-}) => {
+type SortDirection = "asc" | "desc";
+
+interface SortConfig {
+  key: string;
+  direction: SortDirection;
+}
+
+const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; mes: string; }) => {
+  const navigate = useNavigate();
+
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
 
-  const [sortConfig, setSortConfig] = useState({
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
     key: "usuario",
     direction: "asc",
   });
-  const [sortedData, setSortedData] = useState(data);
+
+  const [sortedData, setSortedData] = useState<any[]>([]);
+
+  useEffect(() => {
+    setSortedData(data);
+  }, [data]);
 
   if (!data || data.length === 0) {
     return <p className="text-gray-400 text-center">No hay datos para mostrar.</p>;
@@ -42,7 +50,6 @@ const ResumenVentasHielo = ({
     0
   );
 
-
   const totalProyeccion = sortedData.reduce(
     (acc, r) => acc + Number(r.proyeccion || 0),
     0
@@ -54,74 +61,12 @@ const ResumenVentasHielo = ({
   );
 
   // ==========================
-  // 📤 EXPORTAR EXCEL
+  // 🔀 ORDENAMIENTO
   // ==========================
-  const exportarTablaExcel = () => {
-    if (!sortedData || sortedData.length === 0) return;
 
-    try {
-      const datosExportar = sortedData.map((r, index) => ({
-        "N°": index + 1,
-        "Usuario": r.usuario,
-        "Unidades": r.cantidadVendida ?? 0,
-        "Dólares": r.totalConIVA ?? 0,
-        "Meta Histórica": r.meta?.meta_historica ?? 0,
-        "Vs Mes Anterior": r.vsMesAnterior?.variacion_abs ?? 0,
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(datosExportar);
-
-      // Título
-      XLSX.utils.sheet_add_aoa(
-        ws,
-        [[`RESUMEN VENTAS HIELO - ${mes}/${anio}`]],
-        { origin: "A1" }
-      );
-
-      // Fila Totales
-      const filaTotales = {
-        "N°": "TOTAL",
-        "Usuario": "",
-        "Unidades": totalUnidades,
-        "Dólares": totalUSD,
-        "Meta Histórica": totalMetaHistorica,
-        "proyeccion": totalProyeccion,
-        "Vs Mes Anterior": totalVsMesAnterior,
-      };
-
-      XLSX.utils.sheet_add_json(ws, [filaTotales], {
-        skipHeader: true,
-        origin: -1,
-      });
-
-      // Auto ancho columnas
-      const columnas = Object.keys(datosExportar[0]);
-      ws["!cols"] = columnas.map((col: any) => {
-        const maxLen = Math.max(
-          col.length,
-          ...datosExportar.map((r) => String(r[col]).length)
-        );
-        return { wch: maxLen + 4 };
-      });
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "ResumenHielo");
-
-      XLSX.writeFile(
-        wb,
-        `resumen_ventas_hielo_${mes}_${anio}.xlsx`,
-        { compression: true }
-      );
-    } catch (error) {
-      console.error("❌ Error exportando Excel:", error);
-    }
-  };
-
-  // ==========================
-  // 🔀 ORDENAR
-  // ==========================
   const requestSort = (key: string) => {
-    let direction = "asc";
+    let direction: SortDirection = "asc";
+
     if (sortConfig.key === key && sortConfig.direction === "asc") {
       direction = "desc";
     }
@@ -129,8 +74,20 @@ const ResumenVentasHielo = ({
     setSortConfig({ key, direction });
 
     const sorted = [...sortedData].sort((a, b) => {
-      const aVal = a[key];
-      const bVal = b[key];
+      const getValue = (row: any) => {
+        switch (key) {
+          case "meta":
+            // Convertir el valor de "meta_historica" de string a número
+            return parseFloat(row.meta?.meta_historica || "0");
+          case "vsMesAnterior":
+            return row.vsMesAnterior?.variacion_abs ?? 0;
+          default:
+            return row[key];
+        }
+      };
+
+      const aVal = getValue(a);
+      const bVal = getValue(b);
 
       if (typeof aVal === "string" && typeof bVal === "string") {
         return direction === "asc"
@@ -148,41 +105,140 @@ const ResumenVentasHielo = ({
     setSortedData(sorted);
   };
 
-  return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
 
-      {/* ==========================
-         HEADER + EXPORTAR
-      ========================== */}
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold px-4 py-3 text-blue-300">
+
+  const iconoOrden = (key: string) =>
+    sortConfig.key === key
+      ? sortConfig.direction === "asc"
+        ? "↑"
+        : "↓"
+      : "↕";
+
+  // ==========================
+  // 📤 EXPORTAR EXCEL
+  // ==========================
+  const exportarTablaExcel = () => {
+    if (!sortedData || sortedData.length === 0) return;
+
+    const datosExportar = sortedData.map((r, index) => ({
+      "N°": index + 1,
+      Usuario: r.usuario,
+      Unidades: r.cantidadVendida ?? 0,
+      Dólares: r.totalConIVA ?? 0,
+      "Meta Histórica": r.meta?.meta_historica ?? 0,
+      Proyección: r.proyeccion ?? 0,
+      "Vs Mes Anterior": r.vsMesAnterior?.variacion_abs ?? 0,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(datosExportar);
+
+    XLSX.utils.sheet_add_aoa(
+      ws,
+      [[`RESUMEN VENTAS HIELO - ${mes}/${anio}`]],
+      { origin: "A1" }
+    );
+
+    XLSX.utils.sheet_add_json(
+      ws,
+      [
+        {
+          "N°": "TOTAL",
+          Usuario: "",
+          Unidades: totalUnidades,
+          Dólares: totalUSD,
+          "Meta Histórica": totalMetaHistorica,
+          Proyección: totalProyeccion,
+          "Vs Mes Anterior": totalVsMesAnterior,
+        },
+      ],
+      { skipHeader: true, origin: -1 }
+    );
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ResumenHielo");
+
+    XLSX.writeFile(
+      wb,
+      `resumen_ventas_hielo_${mes}_${anio}.xlsx`,
+      { compression: true }
+    );
+  };
+
+  return (
+    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mb-8">
+      {/* HEADER */}
+
+      <div className="
+  flex flex-col gap-4
+  md:flex-row md:items-center md:justify-between
+  mb-4
+">
+        {/* TÍTULO */}
+        <h2
+          className="
+    text-lg md:text-xl
+    font-bold
+    px-4 py-2
+    text-blue-300
+    leading-tight
+    text-center md:text-left
+  "
+        >
           Resumen de Ventas de Hielo
         </h2>
 
+
+        {/* BOTÓN EXPORTAR */}
         {isAdmin && (
-          <div className="flex gap-4 mb-4">
+          <div className="flex md:justify-end ">
             <button
               onClick={exportarTablaExcel}
-              className="bg-[#0db48b] hover:bg-[#0aa77e] text-black font-semibold px-4 py-2 rounded-lg shadow-md transition flex items-center gap-2"
+              className="
+          flex items-center justify-center gap-2
+          w-full md:w-auto
+          px-4 py-2
+          rounded-lg
+          border border-[#0db48b]/60
+          bg-[#0db48b]/20
+          text-white font-semibold
+          shadow-md
+          hover:bg-[#0db48b]/30
+          hover:shadow-lg
+          active:scale-[0.98]
+          transition-all
+        "
             >
-              <span>📥</span> Exportar
+              <BsDownload size={16} className="text-white shrink-0" />
+              <span>Exportar</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* ==========================
-         TABLA
-      ========================== */}
+
+
+      {/* TABLA */}
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
-            <th className="px-4 py-3 text-left">Usuario</th>
-            <th className="px-4 py-3 text-right">Unidades</th>
-            <th className="px-4 py-3 text-right">Dólares</th>
-            <th className="px-4 py-3 text-right">Meta</th>
-            <th className="px-4 py-3 text-right">Proyección	</th>
-            <th className="px-4 py-3 text-right">Vs Mes Anterior</th>
+            <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort("usuario")}>
+              Usuario {iconoOrden("usuario")}
+            </th>
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("cantidadVendida")}>
+              Unidades {iconoOrden("cantidadVendida")}
+            </th>
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("totalConIVA")}>
+              Dólares {iconoOrden("totalConIVA")}
+            </th>
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("meta")}>
+              Meta {iconoOrden("meta")}
+            </th>
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("proyeccion")}>
+              Proyección {iconoOrden("proyeccion")}
+            </th>
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("vsMesAnterior")}>
+              Vs Mes Anterior {iconoOrden("vsMesAnterior")}
+            </th>
           </tr>
         </thead>
 
@@ -190,18 +246,16 @@ const ResumenVentasHielo = ({
           {sortedData.map((r, i) => (
             <tr
               key={i}
-              className={`${i % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57]`}
+              onClick={() => navigate(`/detalle-hielo/${r.usuario}/${anio}/${mes}`)}  // Redirige al hacer clic en cualquier fila
+              className={`${i % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] cursor-pointer`}  // Agrega cursor pointer para mostrar que es clickeable
             >
               <td className="px-4 py-2 text-blue-300 font-bold">{r.usuario}</td>
-
               <td className="px-4 py-2 text-right text-green-400 font-bold">
                 {Number(r.cantidadVendida).toLocaleString()}
               </td>
-
               <td className="px-4 py-2 text-right text-blue-300 font-bold">
                 ${Number(r.totalConIVA).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
-
               <td className="px-4 py-2 text-right">
                 {r.meta
                   ? `${Number(r.meta.meta_historica).toLocaleString("es-EC", {
@@ -211,16 +265,13 @@ const ResumenVentasHielo = ({
                   })})`
                   : "–"}
               </td>
-              {/* <td></td> */}
-
               <td className="px-4 py-2 text-right font-bold">
                 {r.vsMesAnterior && r.vsMesAnterior.variacion_porc !== null ? (
                   <span
                     className={`inline-flex items-center gap-1
         ${r.vsMesAnterior.variacion_porc >= 0
                         ? "text-green-400"
-                        : "text-red-400"}
-      `}
+                        : "text-red-400"}`}
                   >
                     (
                     {r.vsMesAnterior.variacion_porc > 0 ? "+" : ""}
@@ -238,7 +289,6 @@ const ResumenVentasHielo = ({
                   <span className="text-gray-400">–</span>
                 )}
               </td>
-
 
               <td
                 className={`px-4 py-2 text-right font-bold ${r.vsMesAnterior?.variacion_abs > 0
@@ -258,6 +308,10 @@ const ResumenVentasHielo = ({
           ))}
         </tbody>
 
+
+
+
+
         <tfoot className="bg-[#014434] font-bold text-gray-200 border-t border-[#046C5E]">
           <tr>
             <td className="px-4 py-3 text-left">Total</td>
@@ -274,7 +328,7 @@ const ResumenVentasHielo = ({
               ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
 
 
-              
+
             </td>
 
             <td className="px-4 py-3 text-right text-blue-400">
@@ -282,6 +336,15 @@ const ResumenVentasHielo = ({
             </td>
           </tr>
         </tfoot>
+
+
+
+
+
+
+
+
+
       </table>
     </div>
   );

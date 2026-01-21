@@ -29,12 +29,20 @@ app.use("/api/metas", metasRoutes);
 
 // RUTAS BOTELLONES
 const botellonesRoutes = require("./routes/rutasBotellones/rutasBotellones");
+const detalleBotellonesRoutes = require("./routes/rutasBotellones/detalleBotellonesRoutes");
+
 app.use("/api/botellones", botellonesRoutes);
+app.use("/api/botellones", detalleBotellonesRoutes);
+
+
 
 
 // RUTAS HIELO
 const HieloRoutes = require("./routes/rutasHielo/rutasHielo");
+const detalleHieloRoutes = require("./routes/rutasHielo/detalleHieloRoutes");
 app.use("/api/hielo", HieloRoutes);
+app.use("/api/hielo", detalleHieloRoutes);
+
 
 
 

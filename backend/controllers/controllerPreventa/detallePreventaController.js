@@ -133,44 +133,6 @@ const obtenerDetalleRuta = async (req, res) => {
     // ============================================================
     console.log("🧾 [detallePreventa] Consultando productos vendidos...");
 
-    // const productosVendidosSQL = `
-    //   SELECT
-    //       o.customer_code,         -- Código del cliente
-    //       dd.descripcion AS producto,
-    //       SUM(dd.cantidad) AS unidades_vendidas  -- Suma de la cantidad de productos vendidos
-    //   FROM ordenes o
-    //   JOIN detalle_documento dd
-    //       ON dd.documento_code = o.code
-    //   WHERE 
-    //       o.type = 2
-    //       AND o.status = 5
-    //       AND o.seller_code = :ruta
-    //       AND o.fecha_entrega >= :inicio
-    //       AND o.fecha_entrega < :fin
-    //   GROUP BY o.customer_code, dd.descripcion
-    //   ORDER BY unidades_vendidas DESC;
-    // `;
-
-    //  const productosVendidosSQL = `
-    //   SELECT
-    //       dd.descripcion AS producto,
-    //       SUM(dd.cantidad) AS unidades_vendidas,
-    //       SUM(dd.total) AS monto_usd
-    //   FROM ordenes o
-    //   JOIN detalle_documento dd
-    //       ON dd.documento_code = o.code
-    //   WHERE 
-    //       o.type = 2
-    //       AND o.status = 5
-    //       AND o.seller_code = :ruta
-    //       AND o.fecha_entrega >= :inicio
-    //       AND o.fecha_entrega <  :fin
-    //   GROUP BY dd.descripcion
-    //   ORDER BY unidades_vendidas DESC;
-    // `;
-
-
-
     const productosVendidosSQL = `
   SELECT
       dd.descripcion AS producto,
@@ -370,8 +332,6 @@ const obtenerDetalleRuta = async (req, res) => {
       return res.status(500).json({ error: "Error al obtener detalle de ruta", detalle: error.message });
     }
   };
-
-
 
 
 
