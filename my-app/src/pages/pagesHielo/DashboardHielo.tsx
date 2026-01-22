@@ -107,7 +107,7 @@ const DashboardHielo: React.FC = () => {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#012E24] to-[#014434]">
+      <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#162B25] to-[#162B25]">
         <Header />
 
         {/* ============================

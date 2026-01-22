@@ -138,7 +138,7 @@ export default function DashboardRutasVisitas() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-10 py-6 bg-gradient-to-b from-[#012E24] to-[#014434]">
+      <div className="main-content min-h-screen text-white px-10 py-6 bg-gradient-to-b ">
         <Header />
 
         {/* ================= HEADER ================= */}

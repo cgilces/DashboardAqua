@@ -102,7 +102,7 @@ const DetallePreventasPage: React.FC = () => {
 
   if (cargando) {
     return (
-      <div className="flex flex-col justify-center items-center h-screen bg-[#012E24] text-gray-300">
+      <div className="flex flex-col justify-center items-center h-screen bg-[#] text-gray-300">
         <div className="w-10 h-10 border-4 border-t-[#74ab3c] border-gray-700 rounded-full animate-spin mb-4"></div>
         <p>Cargando datos de {ruta}...</p>
       </div>
@@ -159,7 +159,7 @@ const DetallePreventasPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#012E24] text-white p-8">
+    <div className="min-h-screen bg-[#] text-white p-8">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">

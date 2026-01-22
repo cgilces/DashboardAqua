@@ -6,7 +6,7 @@
 @layer base {
   body {
     @apply text-white font-sans;
-    background: linear-gradient(180deg, #012E24 0%, #014434 100%);
+    background: linear-gradient(180deg, #162B25 100%, #162B25 100%);
     font-family: 'Poppins', sans-serif !important;
     overflow-x: hidden;
   }

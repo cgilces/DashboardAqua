@@ -104,9 +104,9 @@
   margin: 0;
 }
 
-.sidebar ul li {
-  padding: 8px 10px;
-}
+/* .sidebar ul li {
+  padding: px 10px;
+} */
 
 .menu-item {
   display: flex;
@@ -176,7 +176,7 @@
    CONTENT
 ============================== */
 .main-content {
-  width: calc(100% - 250px);
+  width: calc(100% - 220px);
   margin-left: 250px;
   padding: 20px;
   transition: margin-left .3s ease, width .3s ease;

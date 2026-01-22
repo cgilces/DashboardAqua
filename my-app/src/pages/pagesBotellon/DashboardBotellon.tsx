@@ -141,7 +141,7 @@ export default function DashboardBotellon() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-10 py-6 bg-gradient-to-b from-[#012E24] to-[#014434]">
+      <div className="main-content min-h-screen text-white px-10 py-6 bg-gradient-to-b from-[#162B25] to-[#162B25]">
         <Header />
         {/* ================= HEADER ================= */}
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">

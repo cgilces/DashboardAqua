@@ -165,7 +165,7 @@ const resumirDescartablePorCanal = (ventas: any) => {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#012E24] to-[#014434]">
+      <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#] to-[#014434]">
         <Header />
 
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">

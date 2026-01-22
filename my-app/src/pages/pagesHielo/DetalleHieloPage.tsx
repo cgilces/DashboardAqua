@@ -163,7 +163,7 @@ const DetalleHieloPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#012E24] text-white p-8">
+    <div className="min-h-screen  text-white p-8">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">

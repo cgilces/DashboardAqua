@@ -49,7 +49,7 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
 }) => {
   return (
     <div className="grid grid-cols-1 gap-6 mb-10">
-      <div className="bg-[#012E24] border border-[#046C5E] rounded-xl p-6">
+      <div className="bg-[#] border border-[#046C5E] rounded-xl p-6">
         <h3 className="text-sm text-emerald-300 mb-6 uppercase">
           {titulo}
         </h3>
