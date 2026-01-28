@@ -41,7 +41,7 @@ const DetalleRutaDescartable = () => {
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-green-300">
-                    Detalle de Ruta Descargable {usuario} — {mes}/{anio}
+                    Detalle de Ruta Descartable {usuario} — {mes}/{anio}
                 </h1>
 
                 <Link

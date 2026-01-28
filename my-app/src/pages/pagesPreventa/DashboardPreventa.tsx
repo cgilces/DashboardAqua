@@ -10,7 +10,7 @@ import CostoPromedioProductos from "../../components/ComponentPreventa/CostoProm
 import { Header } from "../../components/common/Header";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
-import { API_URL } from "../../config/api";
+// import { API_URL } from "../../config/api";
 
 // Diccionario de meses
 const meses: Record<any, number> = {
@@ -78,13 +78,15 @@ export default function DashboardPreventa() {
   const kpis = datos?.kpisGenerales;
   const resumen = datos?.resumenGeneral;
   const comp = datos?.comparativaMesAnterior;
+  const resumenVentasPorCanal = datos?.resumenVentasPorCanal || {};
+
 
   const { user } = useAuth();
   const isVendedor = user?.role === "VENDEDOR";
   const isAdmin = user?.role === "ADMIN";
 
   // ===============================
-  // 🔥 AGREGACIÓN TIENDAS / RURAL
+  //  AGREGACIÓN TIENDAS / RURAL
   // ===============================
   const agruparCanal = (items: any[], campoMonto: "monto" | "dolares") => {
     return items.reduce(
@@ -104,64 +106,64 @@ export default function DashboardPreventa() {
   };
 
 
-// ===============================
-// 🔥 RESUMEN DESCARTABLE POR CANAL
-// ===============================
-const resumirDescartablePorCanal = (ventas: any) => {
-  let monto = 0;
-  let unidades = 0;
-  let mesAnterior = 0;
+  // ===============================
+  //  RESUMEN DESCARTABLE POR CANAL
+  // ===============================
+  const resumirDescartablePorCanal = (ventas: any) => {
+    let monto = 0;
+    let unidades = 0;
+    let mesAnterior = 0;
 
-  Object.values(ventas || {}).forEach((v: any) => {
-    monto += Number(v.dolares || 0);
-    unidades += Number(v.unidades || 0);
-    mesAnterior += Number(v.vsMesAnterior?.monto_anterior || 0);
-  });
+    Object.values(ventas || {}).forEach((v: any) => {
+      monto += Number(v.dolares || 0);
+      unidades += Number(v.unidades || 0);
+      mesAnterior += Number(v.vsMesAnterior?.monto_anterior || 0);
+    });
 
-  const variacionAbs = monto - mesAnterior;
-  const variacionPorc =
-    mesAnterior > 0 ? (variacionAbs / mesAnterior) * 100 : 0;
+    const variacionAbs = monto - mesAnterior;
+    const variacionPorc =
+      mesAnterior > 0 ? (variacionAbs / mesAnterior) * 100 : 0;
 
-  return {
-    monto,
-    unidades,
-    mesAnterior,
-    variacionAbs,
-    variacionPorc,
+    return {
+      monto,
+      unidades,
+      mesAnterior,
+      variacionAbs,
+      variacionPorc,
+    };
   };
-};
 
 
 
   const resumenVentasUSD: any = datos
-  ? {
-    tiendas: (() => {
-      const r = agruparCanal(datos.rankingPreventas || [], "monto");
-      return {
-        ...r,
-        variacionPorc:
-          r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : 0,
-      };
-    })(),
+    ? {
+      tiendas: (() => {
+        const r = agruparCanal(datos.rankingPreventas || [], "monto");
+        return {
+          ...r,
+          variacionPorc:
+            r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : 0,
+        };
+      })(),
 
-    rural: (() => {
-      const r = agruparCanal(datos.rankingRutasR || [], "dolares");
-      return {
-        ...r,
-        variacionPorc:
-          r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : 0,
-      };
-    })(),
+      rural: (() => {
+        const r = agruparCanal(datos.rankingRutasR || [], "dolares");
+        return {
+          ...r,
+          variacionPorc:
+            r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : 0,
+        };
+      })(),
 
-    Descartable_Por_Canal: resumirDescartablePorCanal(
-      datos.ventasDescartablePorCanal || {}
-    ),
-  }
-  : null;
+      Descartable_Por_Canal: resumirDescartablePorCanal(
+        datos.ventasDescartablePorCanal || {}
+      ),
+    }
+    : null;
 
 
- 
-  
+
+
 
   return (
     <DashboardLayout>
@@ -172,7 +174,7 @@ const resumirDescartablePorCanal = (ventas: any) => {
           <div className="flex items-center gap-4">
             <img src={logo} className="h-12" alt="Logo" />
             <div>
-              <h1 className="text-3xl font-bold">Dashboard de Preventas</h1>
+              <h1 className="text-3xl font-bold">DASHBOARD DESCARTABLE</h1>
               <p className="text-sm text-gray-300">
                 Órdenes, clientes y comparativas
               </p>
@@ -218,60 +220,58 @@ const resumirDescartablePorCanal = (ventas: any) => {
         {datos && !cargando && kpis && (
           <>
             {/* ================= CARD VENTAS USD ================= */}
-            {isAdmin && resumenVentasUSD && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-                <div className="bg-[#012E24] border border-[#046C5E] rounded-xl p-6 md:col-span-2">
-                  <h3 className="text-sm text-gray-300 mb-4 uppercase">
-                    Ventas USD
-                  </h3>
+            {isAdmin && resumenVentasPorCanal && (
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
+                {Object.values(resumenVentasPorCanal).map((canal: any) => (
+                  <div
+                    key={canal.canal}
+                    className="
+          bg-[#012E24] border border-[#046C5E] rounded-xl p-4
+          text-center md:text-left
+          flex flex-col items-center md:items-start
+        "
+                  >
+                    <p className="uppercase mb-1 font-bold text-base md:text-xs        
+                    text-blue-300       text-center md:text-left ">
+                      {canal.canal}
+                    </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {["tiendas", "rural", "Descartable_Por_Canal"].map((canal) => (
+                    <p className="text-2xl font-bold">
+                      $
+                      {canal.monto.toLocaleString("es-EC", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </p>
 
-                      <div
-                        key={canal}
-                        className="border border-[#046C5E] rounded-lg p-4"
-                      >
-                        <p className="text-xs text-gray-400 uppercase">
-                          {canal}
-                        </p>
+                    <p className="text-xs text-gray-300">
+                      Mes anterior: $
+                      {canal.mesAnterior.toLocaleString("es-EC", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </p>
 
-                        <p className="text-3xl font-bold">
-                          $
-                          {resumenVentasUSD[canal].monto.toLocaleString(
-                            "es-EC",
-                            { minimumFractionDigits: 2 }
-                          )}
-                        </p>
+                    <p
+                      className={`text-xs font-semibold ${canal.variacionAbs >= 0
+                          ? "text-green-400"
+                          : "text-red-400"
+                        }`}
+                    >
+                      Variación:{" "}
+                      {canal.variacionAbs.toLocaleString("es-EC", {
+                        minimumFractionDigits: 2,
+                      })}{" "}
+                      ({canal.variacionPorc.toFixed(1)}%)
+                    </p>
 
-                        <p className="text-xs text-gray-300">
-                          Mes anterior: $
-                          {resumenVentasUSD[canal].mesAnterior.toLocaleString(
-                            "es-EC"
-                          )}
-                        </p>
-
-                        <p
-                          className={`text-xs font-semibold ${resumenVentasUSD[canal].variacionAbs >= 0
-                            ? "text-green-400"
-                            : "text-red-400"
-                            }`}
-                        >
-                          Variación:{" "}
-                          {resumenVentasUSD[canal].variacionAbs.toLocaleString()}{" "}
-                          ({resumenVentasUSD[canal].variacionPorc.toFixed(1)}%)
-                        </p>
-
-                        <p className="text-xs text-gray-300 mt-1">
-                          Unidades:{" "}
-                          {resumenVentasUSD[canal].unidades.toLocaleString()}
-                        </p>
-                      </div>
-                    ))}
+                    <p className="text-xs text-gray-300 mt-1">
+                      Unidades: {canal.unidades.toLocaleString("es-EC")}
+                    </p>
                   </div>
-                </div>
+                ))}
               </div>
             )}
+
+
 
             {(isVendedor || isAdmin) && (
               <RankingPreventas datos={datos} anio={anioSeleccionado} mes={mesSeleccionado} />

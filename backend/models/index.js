@@ -1,6 +1,8 @@
 const sequelize = require('../db');  // Conexión a la base de datos
 
-// Importar los modelos
+// ===========================
+// IMPORTAR MODELOS
+// ===========================
 const Factura = require('./factura');
 const DetalleDocumento = require('./detalleDocumento');
 const MetaPreventa = require('./metaPreventa');
@@ -9,16 +11,14 @@ const ClienteVenta = require('./clienteVenta');
 const Orden = require('./orden');
 const SincronizacionVenta = require('./SincronizacionVenta');
 const DireccionesCliente = require('./DireccionesCliente');
+const ClienteUsuarioVenta = require('./ClienteUsuarioVenta'); //  NUEVO
 
-
-// Asegúrate de importar tu modelo 'AppUser' (o como lo hayas nombrado)
-const AppUser = require('./appUser');  // Ruta correcta para importar el modelo AppUser
+// Usuario de la app
+const AppUser = require('./appUser');
 
 // ===========================
-// RELACIONES ENTRE MODELOS
+// RELACIONES FACTURAS
 // ===========================
-
-// Relaciones de Facturas con otras tablas
 Factura.belongsTo(RutaPreventa, {
   foreignKey: 'route_code',
   targetKey: 'codigo_ruta',
@@ -31,7 +31,6 @@ Factura.belongsTo(ClienteVenta, {
   as: 'cliente_venta'
 });
 
-// Relación de Detalles de Factura
 Factura.hasMany(DetalleDocumento, {
   foreignKey: 'documento_code',
   sourceKey: 'code'
@@ -43,7 +42,7 @@ DetalleDocumento.belongsTo(Factura, {
 });
 
 // ===========================
-// RELACIONES DE ORDENES (PREVENTAS)
+// RELACIONES ÓRDENES
 // ===========================
 Orden.belongsTo(RutaPreventa, {
   foreignKey: 'route_code',
@@ -57,7 +56,6 @@ Orden.belongsTo(ClienteVenta, {
   as: 'cliente_venta'
 });
 
-// Detalles de las Órdenes
 Orden.hasMany(DetalleDocumento, {
   foreignKey: 'documento_code',
   sourceKey: 'code'
@@ -76,16 +74,42 @@ MetaPreventa.belongsTo(RutaPreventa, {
   targetKey: 'codigo_ruta'
 });
 
-// Exportar todos los modelos correctamente
+// ===========================
+// 🔥 NUEVAS RELACIONES
+// CLIENTE ↔ USUARIO (N a N)
+// ===========================
+ClienteUsuarioVenta.belongsTo(ClienteVenta, {
+  foreignKey: 'codigo_cliente',
+  targetKey: 'codigo_cliente',
+  as: 'cliente'
+});
+
+ClienteVenta.hasMany(ClienteUsuarioVenta, {
+  foreignKey: 'codigo_cliente',
+  sourceKey: 'codigo_cliente',
+  as: 'usuarios'
+});
+
+// (Opcional futuro)
+// ClienteUsuarioVenta.belongsTo(AppUser, {
+//   foreignKey: 'seller_code',
+//   targetKey: 'codigo_usuario',
+//   as: 'usuario'
+// });
+
+// ===========================
+// EXPORTS
+// ===========================
 module.exports = {
   Factura,
   DetalleDocumento,
   MetaPreventa,
   RutaPreventa,
   ClienteVenta,
+  ClienteUsuarioVenta, //  EXPORTADO
   Orden,
   SincronizacionVenta,
   DireccionesCliente,
-  AppUser,  // Asegúrate de exportar AppUser aquí
-  sequelize, // Exportar la conexión a la base de datos
+  AppUser,
+  sequelize,
 };

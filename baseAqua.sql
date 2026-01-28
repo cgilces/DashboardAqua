@@ -152,3 +152,35 @@ CREATE TABLE IF NOT EXISTS sincronizaciones_ventas (
     estado VARCHAR(20),
     mensaje TEXT
 );
+
+
+
+
+
+
+-------------------------------------------------
+-- 9. Tabla: clientes_usuarios_ventas
+-- Relación N a N entre clientes y vendedores
+-------------------------------------------------
+select * from clientes_usuarios_ventas;
+select * from clientes_ventas cv ;
+
+CREATE TABLE IF NOT EXISTS clientes_usuarios_ventas (
+    id_relacion SERIAL PRIMARY KEY,
+    codigo_cliente VARCHAR(50) NOT NULL,
+    seller_code VARCHAR(50) NOT NULL,
+    ruta_code VARCHAR(50),
+    tipo_atencion VARCHAR(20), -- PREVENTA / TELEVENTA / VIP
+    ultima_atencion TIMESTAMP,
+
+    UNIQUE (codigo_cliente, seller_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cuv_cliente
+    ON clientes_usuarios_ventas(codigo_cliente);
+
+CREATE INDEX IF NOT EXISTS idx_cuv_seller
+    ON clientes_usuarios_ventas(seller_code);
+
+CREATE INDEX IF NOT EXISTS idx_cuv_ruta
+    ON clientes_usuarios_ventas(ruta_code);

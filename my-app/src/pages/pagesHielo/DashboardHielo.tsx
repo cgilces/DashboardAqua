@@ -5,6 +5,8 @@ import ResumenVentasHielo from "../../components/ComponentHielo/ResumenVentasHie
 import KpisHielo from "../../components/ComponentHielo/KpisHielo";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import { Header } from "../../components/common/Header";
+// import { API_URL } from "../../config/api";
+
 
 /* ============================
    MESES
@@ -49,6 +51,9 @@ const DashboardHielo: React.FC = () => {
       try {
         const response = await fetch(
           `http://localhost:5000/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
+          // `${API_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
+
+          
         );
 
         if (!response.ok) {
@@ -110,7 +115,8 @@ const DashboardHielo: React.FC = () => {
       <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#162B25] to-[#162B25]">
         <Header />
 
-        {/* ============================
+        {
+        /* ============================
            HEADER
         ============================ */}
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">

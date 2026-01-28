@@ -3,56 +3,73 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 
-
-const login = require('./routes/login/loginRoutes');
-const crearUsuario = require('./routes/login/usuariosRoutes');
-
-
-const syncRoutes = require("./routes/rutasPreventas/sincronizacionRoutes");
-const ventasRoutes = require("./routes/rutasPreventas/ventasRoutes");
-const detallePreventaRoutes = require("./routes/rutasPreventas/detallePreventaRoutes");
-const metasRoutes = require("./routes/rutasPreventas/metasRoutes");
 const app = express();
 
-app.use(cors());
+// ======================================================
+// 🌐 CORS (LOCAL + PRODUCCIÓN)
+// ======================================================
+const allowedOrigins = [
+  "https://dashboard.aqua.com.ec",
+  "https://api.aqua.com.ec",
+  "http://localhost:5173",
+  "http://localhost:3000"
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Permite Postman, cron, jobs internos
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(express.json());
 
+// ======================================================
+// 🔐 AUTH
+// ======================================================
+app.use("/api/login", require("./routes/login/loginRoutes"));
+app.use("/api/usuarios", require("./routes/login/usuariosRoutes"));
 
-app.use('/api/login', login);
-app.use('/api/usuarios', crearUsuario);
+// ======================================================
+// 📦 PREVENTAS
+// ======================================================
+app.use("/api/sync", require("./routes/rutasPreventas/sincronizacionRoutes"));
+app.use("/api/ventas", require("./routes/rutasPreventas/ventasRoutes"));
+app.use("/api/ventas", require("./routes/rutasPreventas/detallePreventaRoutes"));
+app.use("/api/metas", require("./routes/rutasPreventas/metasRoutes"));
 
-// RUTAS PREVENTAS
-app.use("/api/sync", syncRoutes);
-app.use('/api/ventas', ventasRoutes);
-app.use("/api/ventas", detallePreventaRoutes);
-app.use("/api/metas", metasRoutes);
+// ======================================================
+// 🚚 BOTELLONES
+// ======================================================
+app.use("/api/botellones", require("./routes/rutasBotellones/rutasBotellones"));
+app.use("/api/botellones", require("./routes/rutasBotellones/detalleBotellonesRoutes"));
 
-// RUTAS BOTELLONES
-const botellonesRoutes = require("./routes/rutasBotellones/rutasBotellones");
-const detalleBotellonesRoutes = require("./routes/rutasBotellones/detalleBotellonesRoutes");
+// ======================================================
+// ❄️ HIELO
+// ======================================================
+app.use("/api/hielo", require("./routes/rutasHielo/rutasHielo"));
+app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
 
-app.use("/api/botellones", botellonesRoutes);
-app.use("/api/botellones", detalleBotellonesRoutes);
+// ======================================================
+// ❤️ HEALTHCHECK
+// ======================================================
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
 
-
-
-
-// RUTAS HIELO
-const HieloRoutes = require("./routes/rutasHielo/rutasHielo");
-const detalleHieloRoutes = require("./routes/rutasHielo/detalleHieloRoutes");
-app.use("/api/hielo", HieloRoutes);
-app.use("/api/hielo", detalleHieloRoutes);
-
-
-
-
-
+// ======================================================
+// 🚀 START SERVER
+// ======================================================
 const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, () => {
   console.log(`✅ API escuchando en puerto ${PORT}`);
 });
-
-
-// 🔥 iniciar cron
-require('./cron/tareasCron');

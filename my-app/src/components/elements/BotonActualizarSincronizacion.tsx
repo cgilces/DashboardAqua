@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
+// import { API_URL } from '../../c';
 
-const API_BASE =
+const API_URL =
   // import.meta.env.VITE_API_URL ||
   "http://localhost:5000";
 
@@ -25,7 +26,7 @@ const BotonActualizarSincronizacion = () => {
   useEffect(() => {
     console.log("📥 Cargando última fecha de sincronización...");
 
-    fetch(`${API_BASE}/api/sync/last-sync`)
+    fetch(`${API_URL}/api/sync/last-sync`)
       .then(res => {
         console.log("📥 Respuesta last-sync:", res.status);
         return res.json();
@@ -56,7 +57,7 @@ const BotonActualizarSincronizacion = () => {
       try {
         console.log("🔄 Consultando /api/sync/status...");
 
-        const res = await fetch(`${API_BASE}/api/sync/status`);
+        const res = await fetch(`${API_URL}/api/sync/status`);
         console.log("🔄 Status HTTP:", res.status);
 
         if (!res.ok) return;
@@ -84,7 +85,7 @@ const BotonActualizarSincronizacion = () => {
           setProgress(100);
 
           console.log("📥 Actualizando last-sync después de finalizar...");
-          const last = await fetch(`${API_BASE}/api/sync/last-sync`);
+          const last = await fetch(`${API_URL}/api/sync/last-sync`);
           const lastData = await last.json();
           console.log("📥 Nuevo last-sync:", lastData);
 
@@ -132,7 +133,7 @@ const BotonActualizarSincronizacion = () => {
       setIsSyncing(true);
       setProgress(0);
 
-      const url = `${API_BASE}/api/sync/sincronizar?desde=${fechaInicio}&hasta=${fechaFin}`;
+      const url = `${API_URL}/api/sync/sincronizar?desde=${fechaInicio}&hasta=${fechaFin}`;
       console.log("🔗 URL sincronización:", url);
 
       const res = await fetch(url);

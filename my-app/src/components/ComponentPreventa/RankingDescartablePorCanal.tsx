@@ -90,40 +90,49 @@ const RankingDescartablePorCanal = ({
   // ============================
   //  ORDENAR
   // ============================
-  const requestSort = (key: keyof VentaDescartable) => {
-    let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
+ 
+const requestSort = (key: keyof VentaDescartable) => {
+  let direction = "asc";
+  if (sortConfig.key === key && sortConfig.direction === "asc") {
+    direction = "desc";
+  }
+
+  setSortConfig({ key, direction });
+
+  const sorted = [...sortedData].sort((a, b) => {
+    // ORDEN ALFABÉTICO PARA 'seller_code'
+    if (key === "seller_code") {
+      return direction === "asc"
+        ? a.seller_code.localeCompare(b.seller_code)
+        : b.seller_code.localeCompare(a.seller_code);
     }
 
-    setSortConfig({ key, direction });
-
-    const sorted = [...sortedData].sort((a, b) => {
-      // 🔤 ORDEN ALFABÉTICO PARA USUARIO
-      if (key === "seller_code") {
-        return direction === "asc"
-          ? a.seller_code.localeCompare(b.seller_code)
-          : b.seller_code.localeCompare(a.seller_code);
-      }
-
-      // 💰 VS MES ANTERIOR
-      if (key === "vsMesAnterior") {
-        const aVal = a.vsMesAnterior?.monto_anterior || 0;
-        const bVal = b.vsMesAnterior?.monto_anterior || 0;
-        return direction === "asc" ? aVal - bVal : bVal - aVal;
-      }
-
-      // 🔢 CAMPOS NUMÉRICOS
-      const aVal = Number(a[key] || 0);
-      const bVal = Number(b[key] || 0);
+    // 💰 Ordenar por 'vsMesAnterior' usando el campo 'variacion' o 'variacion_abs'
+    if (key === "vsMesAnterior") {
+      const aVal = a.vsMesAnterior?.variacion_abs || 0;  // Cambié a 'variacion_abs' o 'variacion'
+      const bVal = b.vsMesAnterior?.variacion_abs || 0;
       return direction === "asc" ? aVal - bVal : bVal - aVal;
-    });
+    }
 
-    setSortedData(sorted);
-  };
+    // ORDENAR EL CAMPO 'meta_historica' dentro de 'meta'
+    if (key === "meta") {
+      const aVal = Number(a.meta?.meta_historica || 0);  // Acceder a 'meta_historica'
+      const bVal = Number(b.meta?.meta_historica || 0);  // Acceder a 'meta_historica'
+      return direction === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    // CAMPOS NUMÉRICOS (para otros campos)
+    const aVal = Number(a[key] || 0);
+    const bVal = Number(b[key] || 0);
+    return direction === "asc" ? aVal - bVal : bVal - aVal;
+  });
+
+  setSortedData(sorted);
+};
+
 
   // ============================
-  // 📤 EXCEL
+  //  EXCEL
   // ============================
   const exportarExcel = () => {
     const datos = sortedData.map((r, i) => ({

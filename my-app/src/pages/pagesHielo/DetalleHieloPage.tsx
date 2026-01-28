@@ -1,28 +1,45 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+
 import { useParams, Link } from "react-router-dom";
 import * as XLSX from "xlsx";
+// import { API_URL } from "../../config/api";
+
 
 const DetalleHieloPage: React.FC = () => {
   const { ruta, anio, mes } = useParams();
   const [productos, setProductos] = useState<any[]>([]);
   const [resumenClientes, setResumenClientes] = useState<any>(null);
-  const [clientesSinConsumo, setClientesSinConsumo] = useState<any[]>([]);
+  // const [clientesSinConsumo, setClientesSinConsumo] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
   const [filtroConsumo, setFiltroConsumo] = useState("Todos"); // 'Todos', 'Sí', 'No'
   const [clientesRuta, setClientesRuta] = useState<any[]>([]);  // Clientes asignados a la ruta
   const [terminoBusqueda, setTerminoBusqueda] = useState(""); // Estado para el término de búsqueda
 
+
   // PAGINACIÓN
   const [paginaActual, setPaginaActual] = useState(1);
   const clientesPorPagina = 60;
 
+
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [filtroConsumo, terminoBusqueda]);
+
+
   const clientesFiltrados = clientesRuta.filter((cliente) =>
-    cliente.nombre_cliente.toLowerCase().includes(terminoBusqueda.toLowerCase())
+  // cliente.nombre_cliente.toLowerCase().includes(terminoBusqueda.toLowerCase())
+  (cliente.nombre_cliente ?? "").toLowerCase().includes(terminoBusqueda.toLowerCase())
+
   );
 
   // Ordenación
-  const [sortConfig, setSortConfig] = useState({ key: "codigo_cliente", direction: "asc" });
-
+  const [sortConfig, setSortConfig] = useState({
+    key: "codigo_cliente",
+    direction: "asc"
+  });
+  /* =======================
+     VALIDACIÓN RUTA
+  ======================= */
   if (!ruta || !anio || !mes) {
     return (
       <div className="text-white p-10">
@@ -33,36 +50,53 @@ const DetalleHieloPage: React.FC = () => {
 
   // Función para ordenar las columnas
   const requestSort = (key: string) => {
-    let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
-    }
-    setSortConfig({ key, direction });
+    setPaginaActual(1);
 
-    const sorted = [...clientesRuta].sort((a, b) => {
-      const aValue = a[key];
-      const bValue = b[key];
+    setSortConfig((prev) => {
+      let direction: "asc" | "desc" = "asc";
+
+      if (prev.key === key && prev.direction === "asc") {
+        direction = "desc";
+      }
+
+      return { key, direction };
+    });
+  };
+
+  const clientesOrdenados = useMemo(() => {
+    const sorted = [...clientesFiltrados];
+
+    sorted.sort((a, b) => {
+      const aValue = a[sortConfig.key];
+      const bValue = b[sortConfig.key];
 
       if (typeof aValue === "string" && typeof bValue === "string") {
-        return direction === "asc" ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+        return sortConfig.direction === "asc"
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
       }
 
       if (typeof aValue === "number" && typeof bValue === "number") {
-        return direction === "asc" ? aValue - bValue : bValue - aValue;
+        return sortConfig.direction === "asc"
+          ? aValue - bValue
+          : bValue - aValue;
       }
 
       return 0;
     });
 
-    setClientesRuta(sorted);
-  };
+    return sorted;
+  }, [clientesFiltrados, sortConfig]);
+
 
   useEffect(() => {
     setCargando(true);
 
-    fetch(`
-      http://localhost:5000/api/hielo/detalle-hielo/${ruta}/${anio}/${mes}
-      `)
+    fetch(
+      `http://localhost:5000/api/hielo/detalle-hielo/${ruta}/${anio}/${mes}`
+      // `${API_URL}/api/hielo/detalle-hielo/${ruta}/${anio}/${mes}`
+
+    )
 
 
       .then((res) => res.json())
@@ -100,9 +134,9 @@ const DetalleHieloPage: React.FC = () => {
   const indicePrimero = indiceUltimo - clientesPorPagina;
 
   // Aquí usamos clientesFiltrados para la paginación
-  const clientesPagina = clientesFiltrados.slice(indicePrimero, indiceUltimo);
+  const clientesPagina = clientesOrdenados.slice(indicePrimero, indiceUltimo);
 
-  const totalPaginas = Math.ceil(clientesFiltrados.length / clientesPorPagina);
+  const totalPaginas = Math.ceil(clientesOrdenados.length / clientesPorPagina);
 
   if (cargando) {
     return (
@@ -113,13 +147,32 @@ const DetalleHieloPage: React.FC = () => {
     );
   }
 
+
+
+
+  type ClienteExportExcel = {
+    Ruta: string;
+    Código: any;
+    Cliente: any;
+    Dirección: any;
+    "Última visita": any;
+    "Última factura": any;
+    "Consumo Actual": any;
+    Max_Por_Mes: any;
+    Cantidad: any;
+    "Porcentaje Cambio": any;
+    "Tuvo Consumo": any;
+  };
+
+
   const exportarClientesRuta = () => {
     if (!clientesRuta || clientesRuta.length === 0) return;
 
     try {
       const rutaUpper = (ruta || "").toUpperCase();
 
-      const datosExportar = clientesRuta.map((c) => ({
+
+      const datosExportar: ClienteExportExcel[] = clientesRuta.map((c) => ({
         Ruta: rutaUpper,
         Código: c.codigo_cliente,
         Cliente: c.nombre_cliente,
@@ -127,11 +180,13 @@ const DetalleHieloPage: React.FC = () => {
         "Última visita": c.ultima_visita || "—",
         "Última factura": c.ultima_factura || "—",
         "Consumo Actual": c.consumo_actual,
-        "Max_Por_Mes": c.max_consumo,
-        "Cantidad": c.cantidad_productos,
+        Cantidad: c.cantidad_productos,
         "Porcentaje Cambio": c.porcentaje_cambio,
         "Tuvo Consumo": c.tuvo_consumo,
       }));
+
+
+
 
       // Crear hoja de Excel
       const ws = XLSX.utils.json_to_sheet(datosExportar);
@@ -141,7 +196,12 @@ const DetalleHieloPage: React.FC = () => {
       XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
 
       // Auto-ajustar el ancho de las columnas
-      const columnas = Object.keys(datosExportar[0]);
+      // const columnas = Object.keys(datosExportar[0]);
+
+      const columnas = Object.keys(
+        datosExportar[0]
+      ) as (keyof ClienteExportExcel)[];
+
 
       ws["!cols"] = columnas.map((col) => {
         const maxLong = Math.max(
@@ -161,6 +221,9 @@ const DetalleHieloPage: React.FC = () => {
       // console.error("❌ Error exportando Excel:", error);
     }
   };
+
+
+
 
   return (
     <div className="min-h-screen  text-white p-8">
@@ -319,14 +382,17 @@ const DetalleHieloPage: React.FC = () => {
               {/* TABLA */}
               <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
                 <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+
                   <tr>
+                    <th className="px-4 py-3 text-left">N°</th>
+
                     {[
+
                       ["Código", "codigo_cliente"],
                       ["Cliente", "nombre_cliente"],
                       ["Cod_Dirección", "direccion_entrega"],
-                      ["Consumo Prime", "max_consumo"],
-                      ["Cantidad", "cantidad_productos"],
-                      ["Consumo Actual", "consumo_actual"],
+                      ["Cantidad Actual", "cantidad_productos"],
+                      ["Consumo Actual($)", "consumo_actual"],
                       ["VS MES ANT", "porcentaje_cambio"],
                       ["Última visita", "ultima_visita"],
                       ["Última factura", "ultima_factura"],
@@ -355,22 +421,65 @@ const DetalleHieloPage: React.FC = () => {
                     <tr
                       key={idx}
                       className={`
-                ${c.tuvo_consumo === "No"
+        ${c.tuvo_consumo === "No"
                           ? "bg-[rgba(220,38,38,0.6)]"
                           : idx % 2 === 0
                             ? "bg-[#013d32]"
                             : "bg-[#014f3e]"
                         }
-                hover:bg-[#026452] transition
-              `}
+        hover:bg-[#026452] transition
+      `}
                     >
+                      {/* N° */}
+                      <td className="px-4 py-2 text-white font-semibold">
+                        {(paginaActual - 1) * clientesPorPagina + idx + 1}
+
+                      </td>
+
+
                       <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
                       <td className="px-4 py-2 text-white">{c.nombre_cliente}</td>
                       <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
-                      <td className="px-4 py-2 text-white">{c.max_consumo}</td>
                       <td className="px-4 py-2 text-white">{c.cantidad_productos}</td>
-                      <td className="px-4 py-2 text-white">{c.consumo_actual}</td>
-                      <td className="px-4 py-2 text-white">{c.porcentaje_cambio}</td>
+                      <td className="px-4 py-2 text-white">${c.consumo_actual}</td>
+
+
+            <td className="px-4 py-2">
+                  {c.vsMesAnterior ? (
+                    <span
+                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold
+        ${c.vsMesAnterior.variacion_abs > 0
+                          ? "bg-green-900/40 text-green-400"
+                          : c.vsMesAnterior.variacion_abs < 0
+                            ? "bg-red-900/40 text-red-400"
+                            : "bg-gray-700/40 text-gray-300"
+                        }`}
+                    >
+                      (
+                      {c.vsMesAnterior.variacion_abs > 0 && "+"}
+                      {c.vsMesAnterior.variacion_porc}
+                      )
+                      <span className="font-semibold">
+                        $
+                        {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </span>
+                  ) : (
+                    ""
+                  )}
+                </td>
+
+
+
+
+
+             
+  
+
+
 
                       <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
                         {c.ultima_visita ?? "—"}
@@ -390,12 +499,11 @@ const DetalleHieloPage: React.FC = () => {
                     </tr>
                   ))}
                 </tbody>
+
               </table>
             </div>
             {/* PAGINACIÓN (se mantiene igual) */}
             {/* …tu bloque de paginación sin cambios… */}
-
-
             <div className="flex justify-center mt-6 gap-2">
               <button
                 disabled={paginaActual === 1}
@@ -422,7 +530,7 @@ const DetalleHieloPage: React.FC = () => {
                   pages.push(totalPaginas);
                 }
 
-                return pages.map((num:any, idx) =>
+                return pages.map((num: any, idx) =>
                   num === "..." ? (
                     <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
                   ) : (

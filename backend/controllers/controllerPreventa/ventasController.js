@@ -842,11 +842,6 @@ const calcularVentasDescartableConComparativa = async (anioNum, mesNum) => {
 
 
 
-
-
-
-
-
 //Crear la función SQL que obtiene precios promedio por preventa
 const obtenerPrecioPromedioPorPreventa = async (anioNum, mesNum) => {
   const inicio = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
@@ -1277,8 +1272,103 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 };
 
 
+
+
+// ======================================================
+// 🆕 AGRUPAR DESCARTABLE POR CANAL (CARDS DASHBOARD)
+// ======================================================
+const agruparDescartablePorCanalResumen = (ventasPorPreventa = {}) => {
+  const resumen = {
+    DOMICILIO: {
+      canal: "DOMICILIO",
+      unidades: 0,
+      monto: 0,
+      mesAnterior: 0,
+      variacionAbs: 0,
+      variacionPorc: 0,
+    },
+    MAYORISTA: {
+      canal: "MAYORISTA",
+      unidades: 0,
+      monto: 0,
+      mesAnterior: 0,
+      variacionAbs: 0,
+      variacionPorc: 0,
+    },
+    VIP: {
+      canal: "VIP",
+      unidades: 0,
+      monto: 0,
+      mesAnterior: 0,
+      variacionAbs: 0,
+      variacionPorc: 0,
+    },
+  };
+
+  Object.values(ventasPorPreventa).forEach((v) => {
+    const seller = v.seller_code || "";
+
+    let canal = null;
+    if (seller.startsWith("A")) canal = "DOMICILIO";
+    else if (seller.startsWith("M")) canal = "MAYORISTA";
+    else if (seller.startsWith("V")) canal = "VIP";
+
+    if (!canal) return;
+
+    resumen[canal].unidades += Number(v.unidades || 0);
+    resumen[canal].monto += Number(v.dolares || 0);
+    resumen[canal].mesAnterior += Number(
+      v.vsMesAnterior?.monto_anterior || 0
+    );
+  });
+
+  Object.keys(resumen).forEach((c) => {
+    const r = resumen[c];
+    r.variacionAbs = r.monto - r.mesAnterior;
+    r.variacionPorc =
+      r.mesAnterior > 0 ? (r.variacionAbs / r.mesAnterior) * 100 : null;
+  });
+
+  return resumen;
+};
+
+
+
+// ======================================================
+// 🆕 RESUMIR RANKING (TIENDAS / RURAL) PARA CARDS
+// ======================================================
+const resumirRankingParaCard = (ranking = [], canal) => {
+  const resumen = {
+    canal,
+    unidades: 0,
+    monto: 0,
+    mesAnterior: 0,
+    variacionAbs: 0,
+    variacionPorc: 0
+  };
+
+  ranking.forEach(r => {
+    resumen.unidades += Number(r.unidades || 0);
+    resumen.monto += Number(r.proyeccion || r.monto || 0);
+
+    if (r.vsMesAnterior) {
+      resumen.mesAnterior += Number(r.vsMesAnterior.monto_anterior || 0);
+    }
+  });
+
+  resumen.variacionAbs = resumen.monto - resumen.mesAnterior;
+  resumen.variacionPorc =
+    resumen.mesAnterior > 0
+      ? (resumen.variacionAbs / resumen.mesAnterior) * 100
+      : null;
+
+  return resumen;
+};
+
+
+
 // ===================================
-// 📊 Endpoint Dashboard Preventas
+//  Endpoint Dashboard Preventas
 // ===================================
 const obtenerDatosDashboard = async (req, res) => {
   try {
@@ -1391,6 +1481,28 @@ const obtenerDatosDashboard = async (req, res) => {
     // ======================================================
     const ventasDescartableConComparativa = await calcularVentasDescartableConComparativa(anioNum, mesNum);
 
+    const resumenDescartablePorCanal =
+      agruparDescartablePorCanalResumen(ventasDescartableConComparativa);
+
+
+    // ======================================================
+    // 🆕 RESUMEN UNIFICADO POR CANAL (CARDS DASHBOARD)
+    // ======================================================
+    const resumenVentasPorCanal = {
+      TIENDAS: resumirRankingParaCard(
+        resumenActual.rankingPreventas,
+        "TIENDAS"
+      ),
+
+      RURAL: resumirRankingParaCard(
+        resumenActual.rankingRutasR,
+        "RURAL"
+      ),
+
+      ...resumenDescartablePorCanal
+    };
+
+
 
     // ======================================================
     // 🆕 PERIODOS ANTERIORES EN KPIS GENERALES
@@ -1438,10 +1550,20 @@ const obtenerDatosDashboard = async (req, res) => {
     // ================================================
     return res.status(200).json({
       ...publicResumen,
+
       comparativaMesAnterior,
       topClientes: resumenActual.topClientes,
-      ventasDescartablePorCanal: ventasDescartableConComparativa,  // Agregado aquí
-      precioPromedioTabla
+      precioPromedioTabla,
+
+      // ============================
+      // 📊 TABLA (detalle por preventa)
+      // ============================
+      ventasDescartablePorCanal: ventasDescartableConComparativa,
+
+      // ============================
+      // 🧱 CARDS DASHBOARD (UNIFICADAS)
+      // ============================
+      resumenVentasPorCanal
     });
 
   } catch (error) {

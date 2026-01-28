@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import LoginScreen from "./pages/Login";
+
+import Dashboardconsolidado from "./pages/pagesConsolidado/Dashboardconsolidado";
+
 import DashboardPreventa from "./pages/pagesPreventa/DashboardPreventa";
 import DetallePreventasPage from "./pages/pagesPreventa/DetallePreventasPage";
 import ConfigurarMetas from "./pages/pagesPreventa/ConfigurarMetas";
@@ -17,7 +20,7 @@ import DetalleHieloPage from "./pages/pagesHielo/DetalleHieloPage";
 import DashboardRutasVisitas from "./pages/pagesRutasVisitas/DashboardRutasVisitas";
 
 import { AuthProvider } from "./components/auth/AuthContext";
-import { SyncProvider } from "./context/SyncContext"; // 👈 NUEVO
+import { SyncProvider } from "./context/SyncContext"; //  NUEVO
 
 import { Toaster } from "react-hot-toast";
 
@@ -30,9 +33,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Toaster position="top-right" reverseOrder={false} />
       <AuthProvider>
-        <SyncProvider> {/* 👈 ENVUELVE TODO */}
+        <SyncProvider> {/*  ENVUELVE TODO */}
           <Routes>
             <Route path="/" element={<LoginScreen />} />
+
+            {/* consolidado */}
+            <Route path="/dashboard/consolidado" element={<Dashboardconsolidado />} />
+
+
+
             {/* PREVENTA */}
             <Route path="/dashboard/preventa" element={<DashboardPreventa />} />
             <Route path="/detalle-ruta/:ruta/:anio/:mes" element={<DetallePreventasPage />} />
@@ -51,6 +60,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
             {/* VISITAS */}
             <Route path="/dashboard/rutas-visitas" element={<DashboardRutasVisitas />} />
+
+
+
           </Routes>
         </SyncProvider>
       </AuthProvider>

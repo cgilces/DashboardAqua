@@ -42,16 +42,31 @@ const RankingRutasR = ({
     try {
       const rutaUpper = "Ranking Rutas"; // Si deseas agregar alguna otra variable aquí, puedes hacerlo
 
+      type ExcelRow = {
+        "N*": number;
+        Usuario: string;
+        Unidades: string;
+        Dólares: string;
+        Meta: string;
+        Proyección: string;
+        "Vs Mes Anterior": string;
+      };
+
+
       // 1️⃣ Formato de los datos a exportar
-      const datosExportar = sortedData.map((r, index) => ({
+      const datosExportar: ExcelRow[] = sortedData.map((r, index) => ({
         "N*": index + 1,
-        "Usuario": r.usuario, // Cambié `p.preventa` por `r.usuario`
-        "Unidades": r.unidades?.toLocaleString() ?? "0",
-        "Dólares": (r.dolares?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "0.00"),
-        "Meta": (r.meta?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "0.00"),
-        "Proyección": (r.proyeccion?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "0.00"),
-        "Vs Mes Anterior": (r.vsMesAnterior?.variacion_abs?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "Sin datos"),
+        Usuario: r.usuario,
+        Unidades: r.unidades?.toLocaleString() ?? "0",
+        Dólares: r.dolares?.toLocaleString("es-EC", { minimumFractionDigits: 2 }) ?? "0.00",
+        Meta: r.meta?.toLocaleString("es-EC", { minimumFractionDigits: 2 }) ?? "0.00",
+        Proyección: r.proyeccion?.toLocaleString("es-EC", { minimumFractionDigits: 2 }) ?? "0.00",
+        "Vs Mes Anterior":
+          r.vsMesAnterior?.variacion_abs?.toLocaleString("es-EC", {
+            minimumFractionDigits: 2,
+          }) ?? "Sin datos",
       }));
+
 
       // 2️⃣ Crear hoja de trabajo
       const ws = XLSX.utils.json_to_sheet(datosExportar);
@@ -75,14 +90,15 @@ const RankingRutasR = ({
       XLSX.utils.sheet_add_json(ws, [filaTotales], { skipHeader: true, origin: -1 });
 
       // 5️⃣ Auto-ajustar el ancho de las columnas
-      const columnas = Object.keys(datosExportar[0]);
-      ws['!cols'] = columnas.map((col: any) => {
+      const columnas = Object.keys(datosExportar[0]) as (keyof ExcelRow)[];
+      ws["!cols"] = columnas.map((col) => {
         const maxLong = Math.max(
           col.length,
           ...datosExportar.map((row) => String(row[col]).length)
         );
-        return { wch: maxLong + 4 }; // +4 para margen visual
+        return { wch: maxLong + 4 };
       });
+
 
       // 6️⃣ Crear el libro de trabajo Excel
       const wb = XLSX.utils.book_new();
@@ -99,42 +115,84 @@ const RankingRutasR = ({
 
 
 
+  // // Función para ordenar los datos
+  // const requestSort = (key: any) => {
+  //   let direction = 'asc';
+  //   if (sortConfig.key === key && sortConfig.direction === 'asc') {
+  //     direction = 'desc';
+  //   }
+
+  //   setSortConfig({ key, direction });
+
+  //   const sorted = [...data].sort((a, b) => {
+  //     // Obtener el valor a comparar dependiendo de la clave
+  //     const aValue = key === 'vsMesAnterior'
+  //       ? a[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
+  //       : a[key]; // En el caso de otras columnas, simplemente usamos el valor
+
+  //     const bValue = key === 'vsMesAnterior'
+  //       ? b[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
+  //       : b[key]; // En el caso de otras columnas, simplemente usamos el valor
+
+  //     // Comparar los valores
+  //     if (typeof aValue === 'string' && typeof bValue === 'string') {
+  //       return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+  //     }
+
+  //     if (typeof aValue === 'number' && typeof bValue === 'number') {
+  //       return direction === 'asc' ? aValue - bValue : bValue - aValue;
+  //     }
+
+  //     return 0;
+  //   });
+
+  //   setSortedData(sorted);
+  // };
 
 
-
-
-
-
-
+  type SortKey = "N*" | "usuario" | "unidades" | "dolares" | "meta" | "proyeccion" | "vsMesAnterior";
   // Función para ordenar los datos
-  const requestSort = (key: any) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
+
+  const requestSort = (key: SortKey) => {
+    const direction =
+      sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
 
     setSortConfig({ key, direction });
 
-    const sorted = [...data].sort((a, b) => {
-      // Obtener el valor a comparar dependiendo de la clave
-      const aValue = key === 'vsMesAnterior'
-        ? a[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
-        : a[key]; // En el caso de otras columnas, simplemente usamos el valor
+    if (key === "N*") return;
 
-      const bValue = key === 'vsMesAnterior'
-        ? b[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
-        : b[key]; // En el caso de otras columnas, simplemente usamos el valor
+    const sorted = [...sortedData].sort((a, b) => {
+      let aValue: number | string = 0;
+      let bValue: number | string = 0;
 
-      // Comparar los valores
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+      switch (key) {
+        case "usuario":
+          aValue = a.usuario;
+          bValue = b.usuario;
+          break;
+
+        case "vsMesAnterior":
+          // Ordenar por 'variacion_abs' (diferencia absoluta)
+          aValue = a.vsMesAnterior?.variacion_abs ?? 0;
+          bValue = b.vsMesAnterior?.variacion_abs ?? 0;
+          break;
+
+        default:
+          aValue = a[key];
+          bValue = b[key];
       }
 
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return direction === 'asc' ? aValue - bValue : bValue - aValue;
+      // Si el valor es una cadena, ordenar como texto
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return direction === "asc"
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
       }
 
-      return 0;
+      // Si es un número, ordenar numéricamente
+      return direction === "asc"
+        ? Number(aValue) - Number(bValue)
+        : Number(bValue) - Number(aValue);
     });
 
     setSortedData(sorted);

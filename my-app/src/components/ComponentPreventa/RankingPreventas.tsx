@@ -8,6 +8,7 @@ import { BsDownload, BsGear } from "react-icons/bs";
 // Definir los tipos para los datos
 interface VsMesAnterior {
   monto_anterior: number;
+  variacion_abs: number; //  diferencia absoluta vs mes anterior
 }
 
 interface Preventa {
@@ -164,12 +165,8 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
     }
   };
 
-  // type SortKey = keyof Preventa | "N*";
-
   type SortKey = "N*" | "preventa" | "unidades" | "monto" | "meta" | "proyeccion" | "vsMesAnterior";
   // Función para ordenar los datos
-
-
 
   const requestSort = (key: SortKey) => {
     const direction =
@@ -215,11 +212,6 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
 
     setSortedData(sorted);
   };
-
-
-
-
-
 
 
   return (

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import * as XLSX from "xlsx";
+import { API_URL } from "../../config/api";
+
 
 const DetallePreventasPage: React.FC = () => {
   const { ruta, anio, mes } = useParams();
@@ -60,7 +62,10 @@ const DetallePreventasPage: React.FC = () => {
   useEffect(() => {
     setCargando(true);
 
-    fetch(`http://localhost:5000/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`)
+    fetch(
+      `http://localhost:5000/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`
+      // `${API_URL}/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`
+    )
       .then((res) => res.json())
       .then((data) => {
         // console.log("Datos FULL recibidos:", data);
@@ -109,25 +114,43 @@ const DetallePreventasPage: React.FC = () => {
     );
   }
 
+
+
+  type ExcelClienteRuta = {
+    Ruta: string;
+    Código: string | number;
+    Cliente: string;
+    Dirección: string;
+    "Última visita": string;
+    "Última factura": string;
+    "Consumo Actual": number;
+    Max_Por_Mes: number;
+    Cantidad: number;
+    "Porcentaje Cambio": number;
+    "Tuvo Consumo": string;
+  };
+
+
   const exportarClientesRuta = () => {
     if (!clientesRuta || clientesRuta.length === 0) return;
 
     try {
       const rutaUpper = (ruta || "").toUpperCase();
 
-      const datosExportar = clientesRuta.map((c) => ({
+      const datosExportar: ExcelClienteRuta[] = clientesRuta.map((c) => ({
         Ruta: rutaUpper,
         Código: c.codigo_cliente,
         Cliente: c.nombre_cliente,
         Dirección: c.direccion_entrega,
-        "Última visita": c.ultima_visita || "—",
-        "Última factura": c.ultima_factura || "—",
-        "Consumo Actual": c.consumo_actual,
-        "Max_Por_Mes": c.max_consumo,
-        "Cantidad": c.cantidad_productos,
-        "Porcentaje Cambio": c.porcentaje_cambio,
+        "Última visita": c.ultima_visita ?? "—",
+        "Última factura": c.ultima_factura ?? "—",
+        "Consumo Actual": Number(c.consumo_actual || 0),
+        Max_Por_Mes: Number(c.max_consumo || 0),
+        Cantidad: Number(c.cantidad_productos || 0),
+        "Porcentaje Cambio": Number(c.porcentaje_cambio || 0),
         "Tuvo Consumo": c.tuvo_consumo,
       }));
+
 
       // Crear hoja de Excel
       const ws = XLSX.utils.json_to_sheet(datosExportar);
@@ -137,15 +160,15 @@ const DetallePreventasPage: React.FC = () => {
       XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
 
       // Auto-ajustar el ancho de las columnas
-      const columnas = Object.keys(datosExportar[0]);
-
+      const columnas = Object.keys(datosExportar[0]) as (keyof ExcelClienteRuta)[];
       ws["!cols"] = columnas.map((col) => {
         const maxLong = Math.max(
           col.length,
           ...datosExportar.map((row) => String(row[col]).length)
         );
-        return { wch: maxLong + 4 }; // +4 para margen visual
+        return { wch: maxLong + 4 };
       });
+
 
       // Crear libro de trabajo
       const wb = XLSX.utils.book_new();
@@ -320,9 +343,8 @@ const DetallePreventasPage: React.FC = () => {
                       ["Código", "codigo_cliente"],
                       ["Cliente", "nombre_cliente"],
                       ["Cod_Dirección", "direccion_entrega"],
-                      ["Consumo Prime", "max_consumo"],
-                      ["Cantidad", "cantidad_productos"],
-                      ["Consumo Actual", "consumo_actual"],
+                      ["Cantidad Actual", "cantidad_productos"],
+                      ["Consumo Actual($)", "consumo_actual"],
                       ["VS MES ANT", "porcentaje_cambio"],
                       ["Última visita", "ultima_visita"],
                       ["Última factura", "ultima_factura"],
@@ -363,11 +385,35 @@ const DetallePreventasPage: React.FC = () => {
                       <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
                       <td className="px-4 py-2 text-white">{c.nombre_cliente}</td>
                       <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
-                      <td className="px-4 py-2 text-white">{c.max_consumo}</td>
                       <td className="px-4 py-2 text-white">{c.cantidad_productos}</td>
                       <td className="px-4 py-2 text-white">{c.consumo_actual}</td>
-                      <td className="px-4 py-2 text-white">{c.porcentaje_cambio}</td>
-
+                      <td className="px-4 py-2">
+                        {c.vsMesAnterior ? (
+                          <span
+                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold
+        ${c.vsMesAnterior.variacion_abs > 0
+                                ? "bg-green-900/40 text-green-400"
+                                : c.vsMesAnterior.variacion_abs < 0
+                                  ? "bg-red-900/40 text-red-400"
+                                  : "bg-gray-700/40 text-gray-300"
+                              }`}
+                          >
+                            (
+                            {c.vsMesAnterior.variacion_abs > 0 && "+"}
+                            {c.vsMesAnterior.variacion_porc}
+                            )
+                            <span className="font-semibold">
+                              $
+                              {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </span>
+                        ) : (
+                          ""
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
                         {c.ultima_visita ?? "—"}
                       </td>
@@ -418,7 +464,7 @@ const DetallePreventasPage: React.FC = () => {
                   pages.push(totalPaginas);
                 }
 
-                return pages.map((num:any, idx) =>
+                return pages.map((num: any, idx) =>
                   num === "..." ? (
                     <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
                   ) : (

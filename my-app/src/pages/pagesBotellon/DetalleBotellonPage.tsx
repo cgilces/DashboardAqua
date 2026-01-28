@@ -6,7 +6,10 @@ const DetalleBotellonPage: React.FC = () => {
   // ==========================
   // PARAMETROS CORRECTOS
   // ==========================
-  const { ruta } = useParams<{ ruta: string }>();
+  // const { usuario } = useParams<{ usuario: string }>();
+  const { usuario } = useParams<{ usuario: string }>();
+
+
   const [searchParams] = useSearchParams();
 
   const anio = searchParams.get("anio");
@@ -39,13 +42,15 @@ const DetalleBotellonPage: React.FC = () => {
   // ==========================
   // VALIDACIÓN
   // ==========================
-  if (!ruta || !anio || !mes) {
+  if (!usuario || !anio || !mes) {
     return (
       <div className="text-white p-10">
         <h1>Parámetros inválidos</h1>
       </div>
     );
   }
+
+
 
   // ==========================
   // ORDENAR
@@ -85,7 +90,7 @@ const DetalleBotellonPage: React.FC = () => {
     setCargando(true);
 
     fetch(
-      `http://localhost:5000/api/botellones/detalle-botellones/${ruta}/${anio}/${mes}`
+      `http://localhost:5000/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`
     )
       .then((res) => res.json())
       .then((data) => {
@@ -115,7 +120,7 @@ const DetalleBotellonPage: React.FC = () => {
         setResumenClientes(data.resumenClientes);
       })
       .finally(() => setCargando(false));
-  }, [ruta, anio, mes, filtroConsumo]);
+  }, [usuario, anio, mes, filtroConsumo]);
 
   // ==========================
   // FILTRO + PAGINACIÓN
@@ -138,7 +143,7 @@ const DetalleBotellonPage: React.FC = () => {
   const exportarClientesRuta = () => {
     if (clientesRuta.length === 0) return;
 
-    const rutaUpper = ruta.toUpperCase();
+    const rutaUpper = usuario.toUpperCase();
 
     const datos = clientesRuta.map((c) => ({
       Ruta: rutaUpper,
@@ -169,140 +174,326 @@ const DetalleBotellonPage: React.FC = () => {
   if (cargando) {
     return (
       <div className="flex justify-center items-center h-screen bg-[#012E24] text-gray-300">
-        <p>Cargando datos de {ruta}...</p>
+        <p>Cargando datos de {usuario}...</p>
       </div>
     );
   }
 
-  // ==========================
-  // RENDER
-  // ==========================
   return (
-    <div className="min-h-screen bg-[#012E24] text-white p-8">
+    <div className="min-h-screen  text-white p-8">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">
-          Detalle de {ruta} — {mes}/{anio}
+          Detalle de {usuario} — {mes}/{anio}
         </h1>
 
         <Link
           to="/dashboard/botellon"
-          className="px-4 py-2 bg-[#046C5E] rounded-lg hover:bg-[#058A73]"
+          className="px-4 py-2 bg-[#046C5E] rounded-lg hover:bg-[#058A73] transition"
         >
-          ← Volver
+          ← Volver al Dashboard
         </Link>
       </div>
 
-      {/* RESUMEN */}
+      {/* ===================== RESUMEN CLIENTES ===================== */}
       {resumenClientes && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          <div className="p-5 bg-[#01382D] rounded-lg">
-            <p>Clientes asignados</p>
-            <p className="text-3xl font-bold text-green-400">
+          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
+            <h3 className="text-gray-200 text-sm mb-1">Clientes asignados</h3>
+            <p className="text-4xl font-bold text-green-400">
               {resumenClientes.totalClientesRuta}
             </p>
           </div>
 
-          <div className="p-5 bg-[#01382D] rounded-lg">
-            <p>Con consumo</p>
-            <p className="text-3xl font-bold text-blue-400">
+          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
+            <h3 className="text-gray-200 text-sm mb-1">Clientes con consumo</h3>
+            <p className="text-4xl font-bold text-blue-400">
               {resumenClientes.clientesConConsumo}
             </p>
           </div>
 
-          <div className="p-5 bg-[#01382D] rounded-lg">
-            <p>Sin consumo</p>
-            <p className="text-3xl font-bold text-red-400">
+          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
+            <h3 className="text-gray-200 text-sm mb-1">Clientes sin consumo</h3>
+            <p className="text-4xl font-bold text-red-400">
               {resumenClientes.clientesSinConsumo}
             </p>
           </div>
         </div>
       )}
 
-      {/* CLIENTES */}
-      <h2 className="text-xl font-bold mb-4">Clientes de Ruta</h2>
+      {/* ===================== PRODUCTOS VENDIDOS ===================== */}
+      <h1 className="text-center text-xl font-bold mb-4">
+        PRODUCTOS VENDIDOS
+      </h1>
 
-      <input
-        value={terminoBusqueda}
-        onChange={(e) => setTerminoBusqueda(e.target.value)}
-        placeholder="Buscar cliente"
-        className="mb-4 px-4 py-2 bg-[#046C5E] rounded-md w-full md:w-1/3"
-      />
+      {productos.length > 0 ? (
+        <table className="min-w-full text-sm border border-[#046C5E] rounded-lg mb-12">
+          <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+            <tr>
+              <th className="px-4 py-3 text-left">Producto</th>
+              <th className="px-4 py-3 text-right">Unidades</th>
+              <th className="px-4 py-3 text-right">Dólares</th>
+            </tr>
+          </thead>
 
-      <table className="min-w-full text-sm border border-[#046C5E]">
-        <thead className="bg-[#014434]">
-          <tr>
-            {[
-              ["Código", "codigo_cliente"],
-              ["Cliente", "nombre_cliente"],
-              ["Dirección", "direccion_entrega"],
-              ["Consumo", "consumo_actual"],
-              ["Tuvo", "tuvo_consumo"],
-            ].map(([label, key]) => (
-              <th
-                key={key}
-                onClick={() => requestSort(key)}
-                className="px-4 py-3 cursor-pointer"
+          <tbody>
+            {productos.map((p, idx) => (
+              <tr
+                key={idx}
+                className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
+                  } hover:bg-[#026452] transition`}
               >
-                {label}
-              </th>
+                <td className="px-4 py-2">{p.descripcion}</td>
+                <td className="px-4 py-2 text-right text-green-400 font-semibold">
+                  {p.unidades.toLocaleString()}
+                </td>
+                <td className="px-4 py-2 text-right text-blue-400 font-semibold">
+                  ${p.monto.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </td>
+              </tr>
             ))}
-          </tr>
-        </thead>
 
-        <tbody>
-          {clientesPagina.map((c, idx) => (
-            <tr
-              key={idx}
-              className={`${
-                c.tuvo_consumo === "No"
+            {/* TOTAL */}
+            <tr className="bg-[#022d24] font-bold">
+              <td className="px-4 py-3 text-right uppercase">Total</td>
+              <td className="px-4 py-3 text-right text-green-500">
+                {productos
+                  .reduce((acc, p) => acc + p.unidades, 0)
+                  .toLocaleString()}
+              </td>
+              <td className="px-4 py-3 text-right text-blue-500">
+                ${productos
+                  .reduce((acc, p) => acc + p.monto, 0)
+                  .toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-center text-gray-400 mt-10">
+          No se encontraron productos facturados para esta ruta.
+        </p>
+      )}
+      <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
+
+        {/* ===================== CLIENTES ===================== */}
+        <h1 className="text-center text-xl font-bold mt-10 mb-4">
+          CLIENTES DE RUTA
+        </h1>
+
+        {/* ACCIONES */}
+        {/* ACCIONES */}
+        <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-4">
+          <button
+            onClick={exportarClientesRuta}
+            className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+            </svg>
+            Exportar clientes S/C
+          </button>
+
+          <div>
+            <label htmlFor="filtroConsumo" className="text-white mr-2">
+              Filtrar por consumo Mes_Actual:
+            </label>
+            <select
+              id="filtroConsumo"
+              value={filtroConsumo}
+              onChange={(e) => setFiltroConsumo(e.target.value)}
+              className="px-4 py-2 bg-[#046C5E] text-white font-semibold rounded-md"
+            >
+              <option value="Todos">Todos</option>
+              <option value="Sí">Con Consumo</option>
+              <option value="No">Sin Consumo</option>
+            </select>
+          </div>
+        </div>
+
+        {/* BUSCADOR */}
+        <div className="flex justify-center mb-4">
+          <div className="relative w-full sm:w-3/4 md:w-1/2 lg:w-1/3">
+            <input
+              type="text"
+              placeholder="Buscar por nombre de cliente"
+              value={terminoBusqueda}
+              onChange={(e) => setTerminoBusqueda(e.target.value)}
+              className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm
+                       focus:outline-none focus:ring-2 focus:ring-[#74ab3c]"
+            />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M18 10a8 8 0 10-8 8 8 8 0 008-8z" />
+            </svg>
+          </div>
+        </div>
+        {/* TABLA CLIENTES */}
+        <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
+          <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+            <tr>
+              <th className="px-4 py-3">N°</th>
+              {[
+                ["Código", "codigo_cliente"],
+                ["Cliente", "nombre_cliente"],
+                ["Cod_Dirección", "direccion_entrega"],
+                ["Maximo Consumo", "max_consumo"],
+                ["Cantidad Actual", "cantidad_productos"],
+                ["Consumo Actual($)", "consumo_actual"],
+                ["VS MES ANT", "vsMesAnterior"],
+                ["Última visita", "ultima_visita"],
+                ["Última factura", "ultima_factura"],
+                ["Tuvo consumo", "tuvo_consumo"],
+              ].map(([label, key]) => (
+                <th
+                  key={key}
+                  onClick={() => requestSort(key)}
+                  className="px-4 py-3 cursor-pointer"
+                >
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {clientesPagina.map((c, idx) => (
+              <tr
+                key={idx}
+                className={`${c.tuvo_consumo === "No"
                   ? "bg-red-900/60"
                   : idx % 2 === 0
-                  ? "bg-[#013d32]"
-                  : "bg-[#014f3e]"
-              }`}
-            >
-              <td className="px-4 py-2">{c.codigo_cliente}</td>
-              <td className="px-4 py-2">{c.nombre_cliente}</td>
-              <td className="px-4 py-2">{c.direccion_entrega}</td>
-              <td className="px-4 py-2">{c.consumo_actual}</td>
-              <td className="px-4 py-2 font-bold">{c.tuvo_consumo}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                    ? "bg-[#013d32]"
+                    : "bg-[#014f3e]"
+                  } hover:bg-[#026452] transition`}
+              >
+                <td className="px-4 py-2">
+                  {(paginaActual - 1) * clientesPorPagina + idx + 1}
+                </td>
+                <td className="px-4 py-2">{c.codigo_cliente}</td>
+                <td className="px-4 py-2">{c.nombre_cliente}</td>
+                <td className="px-4 py-2">{c.direccion_entrega}</td>
+                <td className="px-4 py-2">{c.consumo_actual}</td>
 
-      {/* PAGINACIÓN */}
-      <div className="flex justify-center gap-2 mt-6">
-        <button
-          disabled={paginaActual === 1}
-          onClick={() => setPaginaActual(paginaActual - 1)}
-        >
-          ←
-        </button>
+                <td className="px-4 py-2">{c.cantidad_botellon}</td>
+                <td className="px-4 py-2">{c.consumo_actual}</td>
 
-        <span>
-          Página {paginaActual} / {totalPaginas}
-        </span>
 
-        <button
-          disabled={paginaActual === totalPaginas}
-          onClick={() => setPaginaActual(paginaActual + 1)}
-        >
-          →
-        </button>
+                <td className="px-4 py-2">
+                  {c.vsMesAnterior ? (
+                    <span
+                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold
+        ${c.vsMesAnterior.variacion_abs > 0
+                          ? "bg-green-900/40 text-green-400"
+                          : c.vsMesAnterior.variacion_abs < 0
+                            ? "bg-red-900/40 text-red-400"
+                            : "bg-gray-700/40 text-gray-300"
+                        }`}
+                    >
+                      (
+                      {c.vsMesAnterior.variacion_abs > 0 && "+"}
+                      {c.vsMesAnterior.variacion_porc}
+                      )
+                      <span className="font-semibold">
+                        $
+                        {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+
+
+
+                <td className="px-0 py-2">{c.ultima_visita}</td>
+                <td className="px-2 py-2">{c.ultima_factura}</td>
+
+                <td
+                  className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí"
+                    ? "text-green-500"
+                    : "text-red-500"
+                    }`}
+                >
+                  {c.tuvo_consumo}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* PAGINACIÓN */}
+        {/* ===================== PAGINACIÓN ===================== */}
+
+
+        <div className="flex justify-center mt-6 gap-2">
+          <button
+            disabled={paginaActual === 1}
+            onClick={() => setPaginaActual(paginaActual - 1)}
+            className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1 ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
+          >
+            <span className="sm:hidden">←</span>
+            <span className="hidden sm:inline">← Anterior</span>
+          </button>
+
+          {(() => {
+            const pages = [];
+            const maxVisible = 5;
+
+            if (totalPaginas <= maxVisible) {
+              for (let i = 1; i <= totalPaginas; i++) pages.push(i);
+            } else {
+              pages.push(1);
+              if (paginaActual > 3) pages.push("...");
+              const start = Math.max(2, paginaActual - 1);
+              const end = Math.min(totalPaginas - 1, paginaActual + 1);
+              for (let i = start; i <= end; i++) pages.push(i);
+              if (paginaActual < totalPaginas - 2) pages.push("...");
+              pages.push(totalPaginas);
+            }
+
+            return pages.map((num: any, idx) =>
+              num === "..." ? (
+                <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
+              ) : (
+                <button key={`page-${idx}-${num}`} onClick={() => setPaginaActual(num)} className={`px-3 py-1 rounded-md ${paginaActual === num ? "bg-green-500 text-black font-bold" : "bg-[#01382D] hover:bg-[#025f4b]"}`}>
+                  {num}
+                </button>
+              )
+            );
+          })()}
+
+          <button
+            disabled={paginaActual === totalPaginas}
+            onClick={() => setPaginaActual(paginaActual + 1)}
+            className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
+          >
+            <span className="sm:hidden">→</span>
+            <span className="hidden sm:inline">Siguiente →</span>
+          </button>
+        </div>
+
+
       </div>
 
-      <div className="mt-6">
-        <button
-          onClick={exportarClientesRuta}
-          className="px-4 py-2 bg-[#046C5E] rounded-lg"
-        >
-          Exportar Excel
-        </button>
-      </div>
     </div>
   );
+
 };
 
 export default DetalleBotellonPage;

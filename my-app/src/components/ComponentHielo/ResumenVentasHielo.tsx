@@ -182,11 +182,9 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
     text-blue-300
     leading-tight
     text-center md:text-left
-  "
-        >
+  ">
           Resumen de Ventas de Hielo
         </h2>
-
 
         {/* BOTÓN EXPORTAR */}
         {isAdmin && (
@@ -308,10 +306,6 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
           ))}
         </tbody>
 
-
-
-
-
         <tfoot className="bg-[#014434] font-bold text-gray-200 border-t border-[#046C5E]">
           <tr>
             <td className="px-4 py-3 text-left">Total</td>
@@ -336,14 +330,6 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
             </td>
           </tr>
         </tfoot>
-
-
-
-
-
-
-
-
 
       </table>
     </div>
