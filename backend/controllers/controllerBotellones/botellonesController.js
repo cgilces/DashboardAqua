@@ -193,8 +193,211 @@ const getDiasLaborablesMes = (anio, mes) => {
    CONSULTA POR GRUPO BOTELLÓN
 ====================================================== */
 // const obtenerGrupoBotellon = async (config, anio, mes) => {
-const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
+// const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
 
+//   const { inicio, fin } = getRangoFechas(anio, mes);
+
+//   const { inicio: inicioAnt, fin: finAnt } = getRangoFechas(
+//     mes === 1 ? anio - 1 : anio,
+//     mes === 1 ? 12 : mes - 1
+//   );
+
+//   const diasTrans = getDiasHabilesTranscurridos(anio, mes);
+//   const diasMes = getDiasLaborablesMes(anio, mes);
+
+
+
+//   const sql = `
+// SELECT
+//   grupo,
+//   codigo,
+//   SUM(unidades) AS unidades,
+//   SUM(dolares)  AS dolares
+// FROM (
+
+//   /* ===================== ORDENES ===================== */
+//   SELECT
+//     CASE
+//       WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+//       WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+//       WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+//       WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
+//       WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
+//       -- ⚠️ VIP EXCLUIDO A PROPÓSITO (solo facturas)
+//     END AS grupo,
+//     o.seller_code AS codigo,
+//     SUM(dd.cantidad) AS unidades,
+//     SUM(dd.total) AS dolares
+//   FROM ordenes o
+//   JOIN detalle_documento dd
+//     ON dd.documento_code = o.code
+//   WHERE
+//     o.status IN (2,4,5)
+//     AND dd.descripcion_categoria = 'BOTELLÓN'
+//     AND (
+//       o.seller_code ILIKE 'M%'
+//       OR o.seller_code ILIKE 'TV%'
+//       OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
+//       OR o.seller_code ILIKE 'R%'
+//       OR o.seller_code = '148399'
+//     )
+//     AND o.fecha_creacion >= :inicio
+//     AND o.fecha_creacion <  :fin
+//   GROUP BY grupo, o.seller_code
+
+//   UNION ALL
+
+//   /* ===================== FACTURAS ===================== */
+//   SELECT
+//     CASE
+//       WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+//       WHEN f.seller_code ILIKE 'A%'  THEN 'DOMICILIO'
+//       WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
+//       WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
+//       WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+//       WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+//       WHEN f.seller_code ILIKE 'V%'  THEN 'VIP'
+//       WHEN f.seller_code IN ('10','18','27') THEN 'VIP'
+//       WHEN f.seller_code = 'U1'      THEN 'QUITO'
+//       ELSE 'OTROS'
+//     END AS grupo,
+//     f.seller_code AS codigo,
+//     SUM(dd.cantidad) AS unidades,
+//     SUM(dd.total) AS dolares
+//   FROM facturas f
+//   JOIN detalle_documento dd
+//     ON dd.documento_code = f.code
+//   WHERE
+//     f.status IN (2,4,5)
+//     AND dd.descripcion_categoria = 'BOTELLÓN'
+//     AND f.fecha_entrega >= :inicio
+//     AND f.fecha_entrega <  :fin
+//   GROUP BY grupo, f.seller_code
+
+// ) t
+// WHERE grupo = :grupo
+// GROUP BY grupo, codigo
+// ORDER BY codigo;
+
+// `;
+
+
+
+
+
+//   // const sql =
+//   //   `
+//   //     SELECT
+//   //     codigo,
+//   //     SUM(unidades) AS unidades,
+//   //     SUM(dolares)  AS dolares
+//   //   FROM (
+
+//   //     SELECT
+//   //       o.seller_code AS codigo,
+//   //       SUM(dd.cantidad) AS unidades,
+//   //       SUM(dd.total) AS dolares
+//   //     FROM ordenes o
+//   //     JOIN detalle_documento dd
+//   //       ON dd.documento_code = o.code
+//   //     WHERE
+//   //       o.status IN (2,4,5)
+//   //       AND dd.descripcion_categoria = 'BOTELLÓN'
+//   //       AND o.seller_code ILIKE 'M%'
+//   //       AND o.fecha_creacion >= DATE '2025-12-01'
+//   //       AND o.fecha_creacion <  DATE '2026-01-01'
+//   //     GROUP BY o.seller_code
+
+//   //     UNION ALL
+
+//   //     SELECT
+//   //       f.seller_code AS codigo,
+//   //       SUM(dd.cantidad) AS unidades,
+//   //       SUM(dd.total) AS dolares
+//   //     FROM facturas f
+//   //     JOIN detalle_documento dd
+//   //       ON dd.documento_code = f.code
+//   //     WHERE
+//   //       f.status IN (2,4,5)
+//   //       AND dd.descripcion_categoria = 'BOTELLÓN'
+//   //       AND (
+//   //         f.seller_code ILIKE 'A%'                      -- DOMICILIO
+//   //         OR f.seller_code ILIKE 'E%'                   -- EMPRESAS
+//   //         OR f.seller_code ILIKE 'R%'                   -- RURAL
+//   //         OR (f.seller_code ILIKE 'T%' AND f.seller_code NOT ILIKE 'TV%') -- TIENDAS
+//   //         OR f.seller_code ILIKE 'TV%'                  -- TIENDAS VIP
+//   //         OR f.seller_code ILIKE 'V%'                   -- VIP
+//   //         OR f.seller_code IN ('10','18','27')          -- VIP especiales
+//   //         OR f.seller_code = 'U1'                       -- QUITO
+//   //         OR f.seller_code = '148399'                   -- TELEVENTA VIP
+//   //       )
+//   //       AND f.fecha_entrega >= DATE '2025-12-01'
+//   //       AND f.fecha_entrega <  DATE '2026-01-01'
+//   //     GROUP BY f.seller_code
+
+//   //   ) t
+//   //   GROUP BY codigo
+//   //   ORDER BY codigo;   
+//   // `;
+
+//   const actual = await sequelize.query(sql, {
+//     replacements: { inicio, fin, grupo: nombreGrupo },
+//     type: Sequelize.QueryTypes.SELECT,
+//   });
+
+//   const anterior = await sequelize.query(sql, {
+//     replacements: {
+//       inicio: inicioAnt,
+//       fin: finAnt,
+//       grupo: nombreGrupo,
+//     },
+//     type: Sequelize.QueryTypes.SELECT,
+//   });
+
+
+//   const mapAnterior = {};
+//   anterior.forEach(r => mapAnterior[r.codigo] = Number(r.dolares) || 0);
+
+//   const metas = await metaHistoricaBotellon();
+
+//   return {
+//     total: {
+//       unidades: actual.reduce((a, r) => a + Number(r.unidades), 0),
+//       dolares: actual.reduce((a, r) => a + Number(r.dolares), 0),
+//     },
+//     detalle: actual.map(r => {
+//       const ant = mapAnterior[r.codigo] || 0;
+//       const variacionAbs = r.dolares - ant;
+//       const variacionPorc = ant > 0 ? (variacionAbs / ant) * 100 : null;
+
+//       const proyeccion =
+//         diasTrans > 0 ? (r.dolares / diasTrans) * diasMes : 0;
+
+//       const meta = metas.find(m => m.codigo === r.codigo);
+
+//       return {
+//         codigo: r.codigo,
+//         unidades: Number(r.unidades),
+//         dolares: Number(r.dolares),
+//         meta: {
+//           meta_historica: meta
+//             ? Number(meta.meta_historica_usd).toFixed(2)
+//             : "0.00",
+//           mes_mayor_consumo: meta?.mes_meta_historica || null,
+//         },
+
+//         proyeccion: Number(proyeccion.toFixed(2)),
+//         vsMesAnterior: {
+//           monto_anterior: ant,
+//           variacion_abs: Number(variacionAbs.toFixed(2)),
+//           variacion_porc: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
+//         },
+//       };
+//     }),
+//   };
+// };
+
+const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
   const { inicio, fin } = getRangoFechas(anio, mes);
 
   const { inicio: inicioAnt, fin: finAnt } = getRangoFechas(
@@ -205,146 +408,83 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
   const diasTrans = getDiasHabilesTranscurridos(anio, mes);
   const diasMes = getDiasLaborablesMes(anio, mes);
 
-
-
   const sql = `
-SELECT
-  grupo,
-  codigo,
-  SUM(unidades) AS unidades,
-  SUM(dolares)  AS dolares
-FROM (
-
-  /* ===================== ORDENES ===================== */
   SELECT
-    CASE
-      WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
-      WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
-      WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
-      WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
-      WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
-      -- ⚠️ VIP EXCLUIDO A PROPÓSITO (solo facturas)
-    END AS grupo,
-    o.seller_code AS codigo,
-    SUM(dd.cantidad) AS unidades,
-    SUM(dd.total) AS dolares
-  FROM ordenes o
-  JOIN detalle_documento dd
-    ON dd.documento_code = o.code
-  WHERE
-    o.status IN (2,4,5)
-    AND dd.descripcion_categoria = 'BOTELLÓN'
-    AND (
-      o.seller_code ILIKE 'M%'
-      OR o.seller_code ILIKE 'TV%'
-      OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
-      OR o.seller_code ILIKE 'R%'
-      OR o.seller_code = '148399'
-    )
-    AND o.fecha_creacion >= :inicio
-    AND o.fecha_creacion <  :fin
-  GROUP BY grupo, o.seller_code
+    grupo,
+    codigo,
+    SUM(unidades) AS unidades,
+    SUM(dolares)  AS dolares
+  FROM (
+    /* ===================== ORDENES ===================== */
+    SELECT
+      CASE
+        WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+        WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+        WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+        WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
+        WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
+      END AS grupo,
+      o.seller_code AS codigo,
+      SUM(dd.cantidad) AS unidades,
+      SUM(dd.total) AS dolares
+    FROM ordenes o
+    JOIN detalle_documento dd
+      ON dd.documento_code = o.code
+    WHERE
+      o.status IN (2,4,5)
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND (
+        o.seller_code ILIKE 'M%'
+        OR o.seller_code ILIKE 'TV%'
+        OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
+        OR o.seller_code ILIKE 'R%'
+        OR o.seller_code = '148399'
+      )
+      AND o.fecha_creacion >= :inicio
+      AND o.fecha_creacion <  :fin
+    GROUP BY grupo, o.seller_code
 
-  UNION ALL
+    UNION ALL
 
-  /* ===================== FACTURAS ===================== */
-  SELECT
-    CASE
-      WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
-      WHEN f.seller_code ILIKE 'A%'  THEN 'DOMICILIO'
-      WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
-      WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
-      WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
-      WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
-      WHEN f.seller_code ILIKE 'V%'  THEN 'VIP'
-      WHEN f.seller_code IN ('10','18','27') THEN 'VIP'
-      WHEN f.seller_code = 'U1'      THEN 'QUITO'
-      ELSE 'OTROS'
-    END AS grupo,
-    f.seller_code AS codigo,
-    SUM(dd.cantidad) AS unidades,
-    SUM(dd.total) AS dolares
-  FROM facturas f
-  JOIN detalle_documento dd
-    ON dd.documento_code = f.code
-  WHERE
-    f.status IN (2,4,5)
-    AND dd.descripcion_categoria = 'BOTELLÓN'
-    AND f.fecha_entrega >= :inicio
-    AND f.fecha_entrega <  :fin
-  GROUP BY grupo, f.seller_code
+    /* ===================== FACTURAS ===================== */
+    SELECT
+      CASE
+        WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+        WHEN f.seller_code ILIKE 'A%'  THEN 'DOMICILIO'
+        WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
+        WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
+        WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+        WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+        WHEN f.seller_code ILIKE 'V%'  THEN 'VIP'
+        WHEN f.seller_code IN ('10','18','27') THEN 'VIP'
+        WHEN f.seller_code = 'U1'      THEN 'QUITO'
+        ELSE 'OTROS'
+      END AS grupo,
+      f.seller_code AS codigo,
+      SUM(dd.cantidad) AS unidades,
+      SUM(dd.total) AS dolares
+    FROM facturas f
+    JOIN detalle_documento dd
+      ON dd.documento_code = f.code
+    WHERE
+      f.status IN (2,4,5)
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND f.fecha_entrega >= :inicio
+      AND f.fecha_entrega <  :fin
+    GROUP BY grupo, f.seller_code
+  ) t
+  WHERE grupo = :grupo
+  GROUP BY grupo, codigo
+  ORDER BY codigo;
+  `;
 
-) t
-WHERE grupo = :grupo
-GROUP BY grupo, codigo
-ORDER BY codigo;
-
-`;
-
-
-
-
-
-  // const sql =
-  //   `
-  //     SELECT
-  //     codigo,
-  //     SUM(unidades) AS unidades,
-  //     SUM(dolares)  AS dolares
-  //   FROM (
-
-  //     SELECT
-  //       o.seller_code AS codigo,
-  //       SUM(dd.cantidad) AS unidades,
-  //       SUM(dd.total) AS dolares
-  //     FROM ordenes o
-  //     JOIN detalle_documento dd
-  //       ON dd.documento_code = o.code
-  //     WHERE
-  //       o.status IN (2,4,5)
-  //       AND dd.descripcion_categoria = 'BOTELLÓN'
-  //       AND o.seller_code ILIKE 'M%'
-  //       AND o.fecha_creacion >= DATE '2025-12-01'
-  //       AND o.fecha_creacion <  DATE '2026-01-01'
-  //     GROUP BY o.seller_code
-
-  //     UNION ALL
-
-  //     SELECT
-  //       f.seller_code AS codigo,
-  //       SUM(dd.cantidad) AS unidades,
-  //       SUM(dd.total) AS dolares
-  //     FROM facturas f
-  //     JOIN detalle_documento dd
-  //       ON dd.documento_code = f.code
-  //     WHERE
-  //       f.status IN (2,4,5)
-  //       AND dd.descripcion_categoria = 'BOTELLÓN'
-  //       AND (
-  //         f.seller_code ILIKE 'A%'                      -- DOMICILIO
-  //         OR f.seller_code ILIKE 'E%'                   -- EMPRESAS
-  //         OR f.seller_code ILIKE 'R%'                   -- RURAL
-  //         OR (f.seller_code ILIKE 'T%' AND f.seller_code NOT ILIKE 'TV%') -- TIENDAS
-  //         OR f.seller_code ILIKE 'TV%'                  -- TIENDAS VIP
-  //         OR f.seller_code ILIKE 'V%'                   -- VIP
-  //         OR f.seller_code IN ('10','18','27')          -- VIP especiales
-  //         OR f.seller_code = 'U1'                       -- QUITO
-  //         OR f.seller_code = '148399'                   -- TELEVENTA VIP
-  //       )
-  //       AND f.fecha_entrega >= DATE '2025-12-01'
-  //       AND f.fecha_entrega <  DATE '2026-01-01'
-  //     GROUP BY f.seller_code
-
-  //   ) t
-  //   GROUP BY codigo
-  //   ORDER BY codigo;   
-  // `;
-
+  // Ventas actuales
   const actual = await sequelize.query(sql, {
     replacements: { inicio, fin, grupo: nombreGrupo },
     type: Sequelize.QueryTypes.SELECT,
   });
 
+  // Ventas del mes anterior
   const anterior = await sequelize.query(sql, {
     replacements: {
       inicio: inicioAnt,
@@ -354,21 +494,47 @@ ORDER BY codigo;
     type: Sequelize.QueryTypes.SELECT,
   });
 
-
+  // Mapeo de ventas del mes anterior por código de ruta
   const mapAnterior = {};
-  anterior.forEach(r => mapAnterior[r.codigo] = Number(r.dolares) || 0);
+  anterior.forEach(r => mapAnterior[r.codigo] = {
+    dolares: Number(r.dolares) || 0,
+    unidades: Number(r.unidades) || 0
+  });
 
   const metas = await metaHistoricaBotellon();
 
+  // Total de ventas (actual + mes anterior) con sus respectivas variaciones
+  const totalActual = actual.reduce((acc, r) => {
+    acc.unidades += Number(r.unidades);
+    acc.dolares += Number(r.dolares);
+    return acc;
+  }, { unidades: 0, dolares: 0 });
+
+  // Calcular el total del mes anterior
+  const totalAnterior = {
+    unidades: anterior.reduce((acc, r) => acc + (mapAnterior[r.codigo]?.unidades || 0), 0),
+    dolares: anterior.reduce((acc, r) => acc + (mapAnterior[r.codigo]?.dolares || 0), 0)
+  };
+
+  // Variación
+  const variacionAbs = totalActual.dolares - totalAnterior.dolares;
+  const variacionPorc = totalAnterior.dolares > 0 ? (variacionAbs / totalAnterior.dolares) * 100 : 0;
+
   return {
     total: {
-      unidades: actual.reduce((a, r) => a + Number(r.unidades), 0),
-      dolares: actual.reduce((a, r) => a + Number(r.dolares), 0),
+      unidades: totalActual.unidades,
+      dolares: totalActual.dolares,
+      mesAnterior: {
+        dolares: totalAnterior.dolares,
+        variacionAbs,
+        variacionPorc,
+        unidades: totalAnterior.unidades
+      }
     },
     detalle: actual.map(r => {
-      const ant = mapAnterior[r.codigo] || 0;
-      const variacionAbs = r.dolares - ant;
-      const variacionPorc = ant > 0 ? (variacionAbs / ant) * 100 : null;
+      const ant = mapAnterior[r.codigo] || { dolares: 0, unidades: 0 };
+      const variacionAbs = r.dolares - ant.dolares;
+      const variacionPorc = ant.dolares > 0 ? (variacionAbs / ant.dolares) * 100 : null;
 
       const proyeccion =
         diasTrans > 0 ? (r.dolares / diasTrans) * diasMes : 0;
@@ -385,10 +551,9 @@ ORDER BY codigo;
             : "0.00",
           mes_mayor_consumo: meta?.mes_meta_historica || null,
         },
-
         proyeccion: Number(proyeccion.toFixed(2)),
         vsMesAnterior: {
-          monto_anterior: ant,
+          monto_anterior: ant.dolares,
           variacion_abs: Number(variacionAbs.toFixed(2)),
           variacion_porc: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
         },
@@ -396,6 +561,9 @@ ORDER BY codigo;
     }),
   };
 };
+
+
+
 
 /* ======================================================
    CONTROLLER EXPRESS

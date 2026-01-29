@@ -80,6 +80,8 @@ export default function DashboardBotellon() {
         `http://localhost:5000/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
       );
       const json = await res.json();
+      console.log("Datos del Backend:", json); // Log para verificar datos recibidos
+
 
       setBotellones(json.botellones);
     } catch (error) {
@@ -90,7 +92,7 @@ export default function DashboardBotellon() {
   };
 
   /* ================================
-     💾 PERSISTENCIA FILTROS
+      PERSISTENCIA FILTROS
   ================================ */
   useEffect(() => {
     localStorage.setItem("mesSeleccionado", mesSeleccionado);
@@ -108,8 +110,45 @@ export default function DashboardBotellon() {
   }, [botellones]);
 
   /* ================================
-     📊 RESUMEN VENTAS USD (OPTIMIZADO)
+      RESUMEN VENTAS USD (OPTIMIZADO)
   ================================ */
+
+  // const resumenVentasUSD = useMemo(() => {
+  //   if (!botellones) return null;
+
+  //   return Object.fromEntries(
+  //     SECCIONES.map((s) => {
+  //       const key = s.key;
+  //       const lowerKey = key.toLowerCase();
+
+  //       const total = botellones[key]?.total;
+  //       const vs = botellones[key]?.mesAnterior; // Accedemos a la información del mes anterior
+  //       const mesAnterior = total?.mesAnterior; //  AQUÍ ESTABA EL ERROR
+
+
+  //       return [
+  //         lowerKey,
+  //         {
+  //           monto: total?.dolares ?? 0,
+  //           unidades: total?.unidades ?? 0,
+  //           vsMesAnterior: {
+  //             monto_anterior: vs?.dolares ?? 0,
+  //             variacion_abs: vs?.variacionAbs ?? 0,
+  //             variacion_porc: vs?.variacionPorc ?? 0,
+  //             unidades: vs?.unidades ?? 0, // Incluimos la cantidad de unidades del mes anterior
+  //           },
+  //         },
+  //       ];
+  //     })
+  //   );
+  // }, [botellones]);
+
+
+  // console.log("resumenVentasUSD keys:", Object.keys(resumenVentasUSD || {}));
+
+
+
+
   const resumenVentasUSD = useMemo(() => {
     if (!botellones) return null;
 
@@ -119,7 +158,12 @@ export default function DashboardBotellon() {
         const lowerKey = key.toLowerCase();
 
         const total = botellones[key]?.total;
-        const vs = botellones[key]?.vsMesAnterior;
+        const mesAnterior = total?.mesAnterior; // ✅ AQUÍ ESTABA EL ERROR
+
+        console.log("RESUMEN", key, {
+          total,
+          mesAnterior,
+        });
 
         return [
           lowerKey,
@@ -127,17 +171,16 @@ export default function DashboardBotellon() {
             monto: total?.dolares ?? 0,
             unidades: total?.unidades ?? 0,
             vsMesAnterior: {
-              monto_anterior: vs?.monto_anterior ?? 0,
-              variacion_abs: vs?.variacion_abs ?? 0,
-              variacion_porc: vs?.variacion_porc ?? 0,
+              monto_anterior: mesAnterior?.dolares ?? 0,
+              variacion_abs: mesAnterior?.variacionAbs ?? 0,
+              variacion_porc: mesAnterior?.variacionPorc ?? 0,
+              unidades: mesAnterior?.unidades ?? 0,
             },
           },
         ];
       })
     );
   }, [botellones]);
-
-  console.log("resumenVentasUSD keys:", Object.keys(resumenVentasUSD || {}));
 
   return (
     <DashboardLayout>
