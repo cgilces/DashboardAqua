@@ -11,9 +11,8 @@ const ClienteVenta = require('./clienteVenta');
 const Orden = require('./orden');
 const SincronizacionVenta = require('./SincronizacionVenta');
 const DireccionesCliente = require('./DireccionesCliente');
-const ClienteUsuarioVenta = require('./ClienteUsuarioVenta'); //  NUEVO
-
-// Usuario de la app
+const ClienteUsuarioVenta = require('./ClienteUsuarioVenta'); //  
+const VisitaPreventa = require("./VisitaPreventa")
 const AppUser = require('./appUser');
 
 // ===========================
@@ -111,5 +110,6 @@ module.exports = {
   SincronizacionVenta,
   DireccionesCliente,
   AppUser,
+  VisitaPreventa,
   sequelize,
 };

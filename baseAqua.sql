@@ -1,15 +1,7 @@
 -- YA ESTÁS EN ventas_mv
 -- NO CREAR BASE, NO USE !!
 
--------------------------------------------------
--- 2. Tabla: rutas_preventas
--------------------------------------------------
-CREATE TABLE IF NOT EXISTS rutas_preventas (
-    id_ruta SERIAL PRIMARY KEY,
-    codigo_ruta VARCHAR(50) NOT NULL UNIQUE,
-    descripcion VARCHAR(200),
-    tipo VARCHAR(50)
-);
+
 
 -------------------------------------------------
 -- 3. Tabla: clientes_ventas
@@ -184,3 +176,113 @@ CREATE INDEX IF NOT EXISTS idx_cuv_seller
 
 CREATE INDEX IF NOT EXISTS idx_cuv_ruta
     ON clientes_usuarios_ventas(ruta_code);
+
+
+
+
+
+-- tabla visitas
+CREATE TABLE visitas_preventas (
+    id_visita SERIAL PRIMARY KEY,
+    fecha_visita DATE NOT NULL,
+    hora_visita TIMESTAMP,
+    codigo_cliente VARCHAR(50) NOT NULL,
+    seller_code VARCHAR(50) NOT NULL,
+    ruta_code VARCHAR(50) NOT NULL,
+
+    -- contexto
+    es_fuera_ruta BOOLEAN DEFAULT FALSE,
+    motivo_fuera_ruta VARCHAR(200),
+
+    -- resultado
+    hubo_venta BOOLEAN DEFAULT FALSE,
+    documento_code VARCHAR(50), -- orden o factura
+
+    latitude DECIMAL(12,8),
+    longitude DECIMAL(12,8),
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+-- =================================================
+-- CONFIGURACIÓN DE ZONA HORARIA (RECOMENDADO)
+-- =================================================
+SET TIME ZONE 'America/Guayaquil';
+
+-- =================================================
+-- FUNCIÓN GENÉRICA PARA updated_at
+-- =================================================
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =================================================
+-- TABLA: rutas_preventas
+-- =================================================
+CREATE TABLE IF NOT EXISTS rutas_preventas (
+    id_ruta SERIAL PRIMARY KEY,
+    codigo_ruta VARCHAR(50) NOT NULL UNIQUE,
+    descripcion VARCHAR(200),
+    tipo VARCHAR(50),
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Trigger updated_at rutas_preventas
+DROP TRIGGER IF EXISTS trg_rutas_preventas_updated ON rutas_preventas;
+CREATE TRIGGER trg_rutas_preventas_updated
+BEFORE UPDATE ON rutas_preventas
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+-- =================================================
+-- TABLA: route_details (planificación de rutas)
+-- =================================================
+CREATE TABLE IF NOT EXISTS route_details (
+    id SERIAL PRIMARY KEY,
+
+    codigo_ruta VARCHAR(50) NOT NULL,
+    codigo_cliente VARCHAR(50) NOT NULL,
+
+    descripcion VARCHAR(250),
+    codigo_direccion VARCHAR(50),
+
+    semana INTEGER,
+    dia INTEGER,          -- 1=domingo, 2=lunes, ...
+    secuencia INTEGER,    -- orden de visita
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT uq_route_plan
+      UNIQUE (codigo_ruta, codigo_cliente, semana, dia)
+);
+
+-- =================================================
+-- ÍNDICES PARA PERFORMANCE
+-- =================================================
+CREATE INDEX IF NOT EXISTS idx_route_details_ruta
+  ON route_details(codigo_ruta);
+
+CREATE INDEX IF NOT EXISTS idx_route_details_cliente
+  ON route_details(codigo_cliente);
+
+CREATE INDEX IF NOT EXISTS idx_route_details_semana_dia
+  ON route_details(semana, dia);
+
+-- Trigger updated_at route_details
+DROP TRIGGER IF EXISTS trg_route_details_updated ON route_details;
+CREATE TRIGGER trg_route_details_updated
+BEFORE UPDATE ON route_details
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+-- =================================================
+-- FIN DEL SCRIPT
+-- =================================================

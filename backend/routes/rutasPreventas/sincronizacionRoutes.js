@@ -1,8 +1,6 @@
 const express = require("express");
-const {
-  sincronizarVentas,
-  getLastSync
-} = require("../../controllers/controllerPreventa/sincronizacionController");
+const {  sincronizarVentas, getLastSync} = require("../../controllers/controllerPreventa/sincronizacionController");
+const {  sincronizarRutasController} = require("../../controllers/controllerSincronizaciones/sincronizacionRutasController");
 
 const syncState = require("../../controllers/controllerPreventa/syncState");
 
@@ -11,10 +9,15 @@ const router = express.Router();
 // Última sincronización
 router.get("/last-sync", getLastSync);
 
-// Iniciar sincronización
+// Iniciar sincronización invoice(Ordenes-facturas-Detalles)
 router.get("/sincronizar", sincronizarVentas);
 
-// 🔥 ESTADO DE SINCRONIZACIÓN (FALTABA)
+//  Sincronizar rutas y planificación (route_details)
+router.post("/sincronizar-rutas", sincronizarRutasController);
+
+
+
+//  ESTADO DE SINCRONIZACIÓN (FALTABA)
 router.get("/status", (req, res) => {
   res.json({
     running: syncState.running,
@@ -30,5 +33,11 @@ router.get("/status", (req, res) => {
     finishedAt: syncState.finishedAt
   });
 });
+
+
+
+
+
+
 
 module.exports = router;

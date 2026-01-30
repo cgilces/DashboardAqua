@@ -112,19 +112,20 @@ const DashboardHielo: React.FC = () => {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#162B25] to-[#162B25]">
+      <div className="main-content min-h-screen text-white px-10 py-6">
         <Header />
-
         {
         /* ============================
            HEADER
         ============================ */}
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
-            <img src={logo}   className="h-16 w-auto transition-all duration-300" alt="Logo" />
+            <img src={logo}   
+            className="h-14 w-auto transition-all duration-300" 
+            alt="Logo" />
             <div>
               <h1 className="text-3xl font-bold tracking-wide">
-                Dashboard Hielo
+                DASHBOARD HIELO
               </h1>
               <p className="text-sm text-gray-300">
                 Facturación por grupo comercial
@@ -163,6 +164,10 @@ const DashboardHielo: React.FC = () => {
             </select>
           </div>
         </header>
+
+
+
+        
 
         {/* ============================
            ESTADOS

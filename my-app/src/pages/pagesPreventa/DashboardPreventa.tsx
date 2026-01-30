@@ -167,49 +167,56 @@ export default function DashboardPreventa() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#] to-[#014434]">
+      <div className="main-content min-h-screen text-white px-10 py-6">
         <Header />
 
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
-            <img src={logo} className="h-12" alt="Logo" />
-            <div>
-              <h1 className="text-3xl font-bold">DASHBOARD DESCARTABLE</h1>
-              <p className="text-sm text-gray-300">
-                Órdenes, clientes y comparativas
-              </p>
-            </div>
+            {/* <LocalShippingIcon sx={{ fontSize: 48 }} /> */}
+            <img src={logo} 
+            className="h-14 w-auto transition-all duration-300" 
+            alt="Logo" />
+              <h1 className="text-3xl font-bold tracking-wide">
+              DASHBOARD DESCARTABLE
+              </h1>
           </div>
 
-          <BotonActualizarSincronizacion />
 
-          <div className="flex gap-3">
-            <select
-              className="bg-[#046C5E] px-4 py-2 rounded-lg"
-              value={mesSeleccionado}
-              onChange={(e) => setMesSeleccionado(e.target.value)}
-            >
-              {Object.entries(meses).map(([n, v]) => (
-                <option key={n} value={v}>
-                  {n}
-                </option>
-              ))}
-            </select>
+            {/* Botón de actualización de sincronización - Centrado en dispositivos móviles */}
+          <div className="flex justify-center w-full sm:w-auto mt-4 sm:mt-0">
+          {isAdmin && <BotonActualizarSincronizacion />}
+          </div>
 
-            <select
-              className="bg-[#046C5E] px-4 py-2 rounded-lg"
-              value={anioSeleccionado}
-              onChange={(e) => setAnioSeleccionado(e.target.value)}
-            >
-              {Array.from({ length: 5 }, (_, i) => {
-                const y = new Date().getFullYear() - i;
-                return (
-                  <option key={y} value={y}>
-                    {y}
+
+          <div className="flex gap-3 items-center">
+            <div className="flex gap-3 items-center">
+              <select
+                className="bg-[#046C5E] px-4 py-2 rounded-lg"
+                value={mesSeleccionado}
+                onChange={(e) => setMesSeleccionado(e.target.value)}
+              >
+                {Object.entries(meses).map(([n, v]) => (
+                  <option key={n} value={v}>
+                    {n}
                   </option>
-                );
-              })}
-            </select>
+                ))}
+              </select>
+
+              <select
+                className="bg-[#046C5E] px-4 py-2 rounded-lg"
+                value={anioSeleccionado}
+                onChange={(e) => setAnioSeleccionado(e.target.value)}
+              >
+                {Array.from({ length: 5 }, (_, i) => {
+                  const y = new Date().getFullYear() - i;
+                  return (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
         </header>
 
@@ -225,14 +232,9 @@ export default function DashboardPreventa() {
                 {Object.values(resumenVentasPorCanal).map((canal: any) => (
                   <div
                     key={canal.canal}
-                    className="
-          bg-[#012E24] border border-[#046C5E] rounded-xl p-4
-          text-center md:text-left
-          flex flex-col items-center md:items-start
-        "
+                    className="bg-[#012E24] border border-[#046C5E] rounded-xl p-4"
                   >
-                    <p className="uppercase mb-1 font-bold text-base md:text-xs        
-                    text-blue-300       text-center md:text-left ">
+                    <p className="text-xs text-gray-400 uppercase mb-1">
                       {canal.canal}
                     </p>
 
@@ -252,12 +254,11 @@ export default function DashboardPreventa() {
 
                     <p
                       className={`text-xs font-semibold ${canal.variacionAbs >= 0
-                          ? "text-green-400"
-                          : "text-red-400"
+                        ? "text-green-400"
+                        : "text-red-400"
                         }`}
                     >
-                      Variación:{" "}
-                      {canal.variacionAbs.toLocaleString("es-EC", {
+                      Variación: {canal.variacionAbs.toLocaleString("es-EC", {
                         minimumFractionDigits: 2,
                       })}{" "}
                       ({canal.variacionPorc.toFixed(1)}%)
@@ -270,7 +271,6 @@ export default function DashboardPreventa() {
                 ))}
               </div>
             )}
-
 
 
             {(isVendedor || isAdmin) && (

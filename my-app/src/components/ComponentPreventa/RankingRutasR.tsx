@@ -115,84 +115,42 @@ const RankingRutasR = ({
 
 
 
-  // // Función para ordenar los datos
-  // const requestSort = (key: any) => {
-  //   let direction = 'asc';
-  //   if (sortConfig.key === key && sortConfig.direction === 'asc') {
-  //     direction = 'desc';
-  //   }
-
-  //   setSortConfig({ key, direction });
-
-  //   const sorted = [...data].sort((a, b) => {
-  //     // Obtener el valor a comparar dependiendo de la clave
-  //     const aValue = key === 'vsMesAnterior'
-  //       ? a[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
-  //       : a[key]; // En el caso de otras columnas, simplemente usamos el valor
-
-  //     const bValue = key === 'vsMesAnterior'
-  //       ? b[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
-  //       : b[key]; // En el caso de otras columnas, simplemente usamos el valor
-
-  //     // Comparar los valores
-  //     if (typeof aValue === 'string' && typeof bValue === 'string') {
-  //       return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
-  //     }
-
-  //     if (typeof aValue === 'number' && typeof bValue === 'number') {
-  //       return direction === 'asc' ? aValue - bValue : bValue - aValue;
-  //     }
-
-  //     return 0;
-  //   });
-
-  //   setSortedData(sorted);
-  // };
 
 
-  type SortKey = "N*" | "usuario" | "unidades" | "dolares" | "meta" | "proyeccion" | "vsMesAnterior";
+
+
+
+
+
   // Función para ordenar los datos
-
-  const requestSort = (key: SortKey) => {
-    const direction =
-      sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+  const requestSort = (key: any) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
 
     setSortConfig({ key, direction });
 
-    if (key === "N*") return;
+    const sorted = [...data].sort((a, b) => {
+      // Obtener el valor a comparar dependiendo de la clave
+      const aValue = key === 'vsMesAnterior'
+        ? a[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
+        : a[key]; // En el caso de otras columnas, simplemente usamos el valor
 
-    const sorted = [...sortedData].sort((a, b) => {
-      let aValue: number | string = 0;
-      let bValue: number | string = 0;
+      const bValue = key === 'vsMesAnterior'
+        ? b[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
+        : b[key]; // En el caso de otras columnas, simplemente usamos el valor
 
-      switch (key) {
-        case "usuario":
-          aValue = a.usuario;
-          bValue = b.usuario;
-          break;
-
-        case "vsMesAnterior":
-          // Ordenar por 'variacion_abs' (diferencia absoluta)
-          aValue = a.vsMesAnterior?.variacion_abs ?? 0;
-          bValue = b.vsMesAnterior?.variacion_abs ?? 0;
-          break;
-
-        default:
-          aValue = a[key];
-          bValue = b[key];
+      // Comparar los valores
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
       }
 
-      // Si el valor es una cadena, ordenar como texto
-      if (typeof aValue === "string" && typeof bValue === "string") {
-        return direction === "asc"
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return direction === 'asc' ? aValue - bValue : bValue - aValue;
       }
 
-      // Si es un número, ordenar numéricamente
-      return direction === "asc"
-        ? Number(aValue) - Number(bValue)
-        : Number(bValue) - Number(aValue);
+      return 0;
     });
 
     setSortedData(sorted);

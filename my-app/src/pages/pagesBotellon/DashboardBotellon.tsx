@@ -112,43 +112,6 @@ export default function DashboardBotellon() {
   /* ================================
       RESUMEN VENTAS USD (OPTIMIZADO)
   ================================ */
-
-  // const resumenVentasUSD = useMemo(() => {
-  //   if (!botellones) return null;
-
-  //   return Object.fromEntries(
-  //     SECCIONES.map((s) => {
-  //       const key = s.key;
-  //       const lowerKey = key.toLowerCase();
-
-  //       const total = botellones[key]?.total;
-  //       const vs = botellones[key]?.mesAnterior; // Accedemos a la información del mes anterior
-  //       const mesAnterior = total?.mesAnterior; //  AQUÍ ESTABA EL ERROR
-
-
-  //       return [
-  //         lowerKey,
-  //         {
-  //           monto: total?.dolares ?? 0,
-  //           unidades: total?.unidades ?? 0,
-  //           vsMesAnterior: {
-  //             monto_anterior: vs?.dolares ?? 0,
-  //             variacion_abs: vs?.variacionAbs ?? 0,
-  //             variacion_porc: vs?.variacionPorc ?? 0,
-  //             unidades: vs?.unidades ?? 0, // Incluimos la cantidad de unidades del mes anterior
-  //           },
-  //         },
-  //       ];
-  //     })
-  //   );
-  // }, [botellones]);
-
-
-  // console.log("resumenVentasUSD keys:", Object.keys(resumenVentasUSD || {}));
-
-
-
-
   const resumenVentasUSD = useMemo(() => {
     if (!botellones) return null;
 
@@ -158,7 +121,7 @@ export default function DashboardBotellon() {
         const lowerKey = key.toLowerCase();
 
         const total = botellones[key]?.total;
-        const mesAnterior = total?.mesAnterior; // ✅ AQUÍ ESTABA EL ERROR
+        const mesAnterior = total?.mesAnterior; //  AQUÍ ESTABA EL ERROR
 
         console.log("RESUMEN", key, {
           total,
@@ -184,14 +147,18 @@ export default function DashboardBotellon() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-10 py-6 bg-gradient-to-b from-[#162B25] to-[#162B25]">
+      <div className="main-content min-h-screen text-white px-10 py-6">
         <Header />
         {/* ================= HEADER ================= */}
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
-            <img src={logo} className="h-16" alt="Logo" />
+            <img src={logo} 
+            className="h-16 w-auto transition-all duration-300" 
+            alt="Logo" />
             <div>
-              <h1 className="text-3xl font-bold">Dashboard Botellones</h1>
+              <h1 className="text-3xl font-bold tracking-wide">
+                DASHBOARD BOTELLONES
+                </h1>
               <p className="text-sm text-gray-300">
                 Órdenes + Facturas por grupo comercial
               </p>

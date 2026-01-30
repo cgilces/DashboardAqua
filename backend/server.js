@@ -59,6 +59,15 @@ app.use("/api/botellones", require("./routes/rutasBotellones/detalleBotellonesRo
 app.use("/api/hielo", require("./routes/rutasHielo/rutasHielo"));
 app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
 
+
+// ======================================================
+//  VISITAS RUTAS
+// ======================================================
+app.use("/api/visitas", require("./routes/rutasVisitas/visitasRoutes"));
+
+
+
+
 // ======================================================
 // ❤️ HEALTHCHECK
 // ======================================================

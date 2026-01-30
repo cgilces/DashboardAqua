@@ -9,6 +9,7 @@ const sequelize = require("../db");
 const {
   RutaPreventa,
   ClienteVenta,
+  VisitaPreventa,
   Factura,
   Orden,
   DetalleDocumento,
@@ -74,7 +75,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
   console.log(`🚀 SINCRONIZACIÓN ${startDate} → ${endDate}`);
   console.log(`====================================\n`);
 
-  // 🔹 INICIALIZAR ESTADO GLOBAL (PARA FRONTEND)
+  //  INICIALIZAR ESTADO GLOBAL (PARA FRONTEND)
   if (syncState) {
     syncState.running = true;
     syncState.startDate = startDate;
@@ -128,7 +129,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
       console.log(`📦 SOLICITANDO PÁGINA ${currentPage} de ${totalPages}`);
       console.log(`-------------------------------`);
 
-      // 🔹 ACTUALIZAR PROGRESO
+      //  ACTUALIZAR PROGRESO
       // if (syncState) {
       //   syncState.page = currentPage;
       //   syncState.total = totalPages;
@@ -169,7 +170,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
       const details = data.details || [];
       totalPages = data.pages || totalPages;
 
-      // 🔹 ACTUALIZAR TOTAL DE PÁGINAS
+      //  ACTUALIZAR TOTAL DE PÁGINAS
       if (syncState) {
         syncState.total = totalPages;
       }
@@ -205,131 +206,311 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
         detallesPorDocumento.get(docCode).push(d);
       }
 
+      // // ===============================
+      // // PROCESAR CABECERAS
+      // // ===============================
+      // for (const doc of headers) {
+      //   const code = normalizeCode(doc.code);
+      //   if (!code) continue;
+
+      //   let tDoc;
+      //   try {
+      //     tDoc = await sequelize.transaction();
+
+      //     const type = Number(doc.type);
+      //     const status = Number(doc.status);
+      //     const creationDate = parseUnixToDate(doc.create_date || doc.store_date);
+      //     const dispatchDate =
+      //       parseUnixToDate(doc.dispatch_date) ||
+      //       parseUnixToDate(doc.create_date) ||
+      //       parseUnixToDate(doc.store_date);
+
+      //     const customerCode = doc.customer_code || null;
+      //     const routeCode = doc.route?.code || doc.route_code || null;
+      //     const sellerCode = doc.seller_code || doc.user_code || null;
+
+      //     if (routeCode) {
+      //       await RutaPreventa.upsert(
+      //         {
+      //           codigo_ruta: routeCode,
+      //           descripcion:
+      //             doc.route?.description || doc.route_description || null,
+      //           tipo: inferTipoRuta(routeCode),
+      //         },
+      //         { transaction: tDoc }
+      //       );
+      //     }
+
+      //     if (customerCode) {
+      //       await ClienteVenta.upsert(
+      //         {
+      //           codigo_cliente: customerCode,
+      //           nombre_cliente: doc.customer_name || null,
+      //           telefono: doc.phone || null,
+      //           email: doc.email || null,
+      //           latitud: doc.latitude || null,
+      //           longitud: doc.longitude || null,
+      //           ruta_asignada: routeCode,
+      //           usuario_asignado: sellerCode,
+      //         },
+      //         { transaction: tDoc }
+      //       );
+      //     }
+
+      //     if (type === 1) {
+      //       totalFacturas++;
+      //       await Factura.upsert(
+      //         {
+      //           code,
+      //           type,
+      //           status,
+      //           fecha_creacion: creationDate,
+      //           fecha_entrega: dispatchDate,
+      //           customer_code: customerCode,
+      //           route_code: routeCode,
+      //           seller_code: sellerCode,
+      //           total: toNumber(doc.total),
+      //           subtotal: toNumber(doc.subtotal),
+      //           iva: toNumber(doc.iva),
+      //           discount: toNumber(doc.discount),
+      //         },
+      //         { transaction: tDoc }
+      //       );
+      //     } else if (type === 2) {
+      //       totalOrdenes++;
+      //       await Orden.upsert(
+      //         {
+      //           code,
+      //           type,
+      //           status,
+      //           fecha_creacion: creationDate,
+      //           fecha_entrega: dispatchDate,
+      //           customer_code: customerCode,
+      //           route_code: routeCode,
+      //           seller_code: sellerCode,
+      //           total: toNumber(doc.total),
+      //           subtotal: toNumber(doc.subtotal),
+      //           iva: toNumber(doc.iva),
+      //           discount: toNumber(doc.discount),
+      //         },
+      //         { transaction: tDoc }
+      //       );
+      //     }
+
+      //     await DetalleDocumento.destroy({
+      //       where: { documento_code: code },
+      //       transaction: tDoc,
+      //     });
+
+      //     const detallesDoc = detallesPorDocumento.get(code) || [];
+      //     for (const d of detallesDoc) {
+      //       await DetalleDocumento.create(
+      //         {
+      //           documento_code: code,
+      //           codigo_producto: d.article_code || null,
+      //           descripcion: d.article_description || "",
+      //           cantidad: toNumber(d.quantity),
+      //           precio: toNumber(d.price),
+      //           subtotal: toNumber(d.subtotal),
+      //           total: toNumber(d.total),
+      //           iva: toNumber(d.iva),
+      //           unit_alias: d.unit_alias || null,
+      //           barcode: d.barcode || null,
+      //           codigo_categoria: d.article_category_code || null,
+      //           descripcion_categoria:
+      //             d.article_category_description || null,
+      //         },
+      //         { transaction: tDoc }
+      //       );
+      //       totalDetallesInsertados++;
+      //     }
+
+      //     await tDoc.commit();
+      //   } catch (errDoc) {
+      //     if (tDoc) await tDoc.rollback();
+      //     erroresPorDocumento.push({ code, error: errDoc.message });
+      //   }
+      // }
+
+
       // ===============================
-      // PROCESAR CABECERAS
-      // ===============================
-      for (const doc of headers) {
-        const code = normalizeCode(doc.code);
-        if (!code) continue;
+// PROCESAR CABECERAS
+// ===============================
+for (const doc of headers) {
+  const code = normalizeCode(doc.code);
+  if (!code) continue;
 
-        let tDoc;
-        try {
-          tDoc = await sequelize.transaction();
+  let tDoc;
+  try {
+    tDoc = await sequelize.transaction();
 
-          const type = Number(doc.type);
-          const status = Number(doc.status);
-          const creationDate = parseUnixToDate(doc.create_date || doc.store_date);
-          const dispatchDate =
-            parseUnixToDate(doc.dispatch_date) ||
-            parseUnixToDate(doc.create_date) ||
-            parseUnixToDate(doc.store_date);
+    const type = Number(doc.type);     // 1 = factura, 2 = orden
+    const status = Number(doc.status);
 
-          const customerCode = doc.customer_code || null;
-          const routeCode = doc.route?.code || doc.route_code || null;
-          const sellerCode = doc.seller_code || doc.user_code || null;
+    const creationDate = parseUnixToDate(
+      doc.create_date || doc.store_date
+    );
 
-          if (routeCode) {
-            await RutaPreventa.upsert(
-              {
-                codigo_ruta: routeCode,
-                descripcion:
-                  doc.route?.description || doc.route_description || null,
-                tipo: inferTipoRuta(routeCode),
-              },
-              { transaction: tDoc }
-            );
-          }
+    const dispatchDate =
+      parseUnixToDate(doc.dispatch_date) ||
+      parseUnixToDate(doc.create_date) ||
+      parseUnixToDate(doc.store_date);
 
-          if (customerCode) {
-            await ClienteVenta.upsert(
-              {
-                codigo_cliente: customerCode,
-                nombre_cliente: doc.customer_name || null,
-                telefono: doc.phone || null,
-                email: doc.email || null,
-                latitud: doc.latitude || null,
-                longitud: doc.longitude || null,
-                ruta_asignada: routeCode,
-                usuario_asignado: sellerCode,
-              },
-              { transaction: tDoc }
-            );
-          }
+    const customerCode = doc.customer_code || null;
+    const routeCode = doc.route?.code || doc.route_code || null;
+    const sellerCode = doc.seller_code || doc.user_code || null;
 
-          if (type === 1) {
-            totalFacturas++;
-            await Factura.upsert(
-              {
-                code,
-                type,
-                status,
-                fecha_creacion: creationDate,
-                fecha_entrega: dispatchDate,
-                customer_code: customerCode,
-                route_code: routeCode,
-                seller_code: sellerCode,
-                total: toNumber(doc.total),
-                subtotal: toNumber(doc.subtotal),
-                iva: toNumber(doc.iva),
-                discount: toNumber(doc.discount),
-              },
-              { transaction: tDoc }
-            );
-          } else if (type === 2) {
-            totalOrdenes++;
-            await Orden.upsert(
-              {
-                code,
-                type,
-                status,
-                fecha_creacion: creationDate,
-                fecha_entrega: dispatchDate,
-                customer_code: customerCode,
-                route_code: routeCode,
-                seller_code: sellerCode,
-                total: toNumber(doc.total),
-                subtotal: toNumber(doc.subtotal),
-                iva: toNumber(doc.iva),
-                discount: toNumber(doc.discount),
-              },
-              { transaction: tDoc }
-            );
-          }
+    // ===============================
+    // UPSERT RUTA
+    // ===============================
+    if (routeCode) {
+      await RutaPreventa.upsert(
+        {
+          codigo_ruta: routeCode,
+          descripcion:
+            doc.route?.description || doc.route_description || null,
+          tipo: inferTipoRuta(routeCode),
+        },
+        { transaction: tDoc }
+      );
+    }
 
-          await DetalleDocumento.destroy({
-            where: { documento_code: code },
-            transaction: tDoc,
-          });
+    // ===============================
+    // UPSERT CLIENTE
+    // ===============================
+    let cliente = null;
+    if (customerCode) {
+      await ClienteVenta.upsert(
+        {
+          codigo_cliente: customerCode,
+          nombre_cliente: doc.customer_name || null,
+          telefono: doc.phone || null,
+          email: doc.email || null,
+          latitud: doc.latitude || null,
+          longitud: doc.longitude || null,
+          ruta_asignada: routeCode,
+          usuario_asignado: sellerCode,
+        },
+        { transaction: tDoc }
+      );
 
-          const detallesDoc = detallesPorDocumento.get(code) || [];
-          for (const d of detallesDoc) {
-            await DetalleDocumento.create(
-              {
-                documento_code: code,
-                codigo_producto: d.article_code || null,
-                descripcion: d.article_description || "",
-                cantidad: toNumber(d.quantity),
-                precio: toNumber(d.price),
-                subtotal: toNumber(d.subtotal),
-                total: toNumber(d.total),
-                iva: toNumber(d.iva),
-                unit_alias: d.unit_alias || null,
-                barcode: d.barcode || null,
-                codigo_categoria: d.article_category_code || null,
-                descripcion_categoria:
-                  d.article_category_description || null,
-              },
-              { transaction: tDoc }
-            );
-            totalDetallesInsertados++;
-          }
+      // Obtener cliente actualizado (para fuera de ruta)
+      cliente = await ClienteVenta.findOne({
+        where: { codigo_cliente: customerCode },
+        transaction: tDoc,
+      });
+    }
 
-          await tDoc.commit();
-        } catch (errDoc) {
-          if (tDoc) await tDoc.rollback();
-          erroresPorDocumento.push({ code, error: errDoc.message });
-        }
-      }
+    // ===============================
+    // FACTURA / ORDEN
+    // ===============================
+    if (type === 1) {
+      totalFacturas++;
+      await Factura.upsert(
+        {
+          code,
+          type,
+          status,
+          fecha_creacion: creationDate,
+          fecha_entrega: dispatchDate,
+          customer_code: customerCode,
+          route_code: routeCode,
+          seller_code: sellerCode,
+          total: toNumber(doc.total),
+          subtotal: toNumber(doc.subtotal),
+          iva: toNumber(doc.iva),
+          discount: toNumber(doc.discount),
+        },
+        { transaction: tDoc }
+      );
+    } else if (type === 2) {
+      totalOrdenes++;
+      await Orden.upsert(
+        {
+          code,
+          type,
+          status,
+          fecha_creacion: creationDate,
+          fecha_entrega: dispatchDate,
+          customer_code: customerCode,
+          route_code: routeCode,
+          seller_code: sellerCode,
+          total: toNumber(doc.total),
+          subtotal: toNumber(doc.subtotal),
+          iva: toNumber(doc.iva),
+          discount: toNumber(doc.discount),
+        },
+        { transaction: tDoc }
+      );
+    }
+
+    // ===============================
+    // REGISTRO DE VISITA PREVENTA
+    // ===============================
+
+    // Evitar duplicados si se vuelve a sincronizar
+    await VisitaPreventa.destroy({
+      where: { documento_code: code },
+      transaction: tDoc,
+    });
+
+    const esFueraRuta =
+      cliente && cliente.ruta_asignada
+        ? cliente.ruta_asignada !== routeCode
+        : false;
+
+    await VisitaPreventa.create(
+      {
+        fecha_visita: dispatchDate,
+        hora_visita: dispatchDate,
+        codigo_cliente: customerCode,
+        seller_code: sellerCode,
+        ruta_code: routeCode,
+        hubo_venta: true, // hay orden o factura
+        documento_code: code,
+        es_fuera_ruta: esFueraRuta,
+      },
+      { transaction: tDoc }
+    );
+
+    // ===============================
+    // DETALLES DE DOCUMENTO
+    // ===============================
+    await DetalleDocumento.destroy({
+      where: { documento_code: code },
+      transaction: tDoc,
+    });
+
+    const detallesDoc = detallesPorDocumento.get(code) || [];
+    for (const d of detallesDoc) {
+      await DetalleDocumento.create(
+        {
+          documento_code: code,
+          codigo_producto: d.article_code || null,
+          descripcion: d.article_description || "",
+          cantidad: toNumber(d.quantity),
+          precio: toNumber(d.price),
+          subtotal: toNumber(d.subtotal),
+          total: toNumber(d.total),
+          iva: toNumber(d.iva),
+          unit_alias: d.unit_alias || null,
+          barcode: d.barcode || null,
+          codigo_categoria: d.article_category_code || null,
+          descripcion_categoria:
+            d.article_category_description || null,
+        },
+        { transaction: tDoc }
+      );
+      totalDetallesInsertados++;
+    }
+
+    await tDoc.commit();
+  } catch (errDoc) {
+    if (tDoc) await tDoc.rollback();
+    erroresPorDocumento.push({ code, error: errDoc.message });
+  }
+}
+
 
       currentPage++;
     }
@@ -343,7 +524,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
       { where: { id_sync: idSync } }
     );
 
-    // 🔹 FINAL OK
+    //  FINAL OK
     if (syncState) {
       syncState.running = false;
       syncState.percent = 100;

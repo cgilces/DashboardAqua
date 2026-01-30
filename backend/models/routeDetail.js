@@ -1,10 +1,10 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../db");
 
-const RutaPreventa = sequelize.define(
-  "RutaPreventa",
+const RouteDetail = sequelize.define(
+  "RouteDetail",
   {
-    id_ruta: {
+    id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
@@ -12,17 +12,23 @@ const RutaPreventa = sequelize.define(
     codigo_ruta: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true, // 👈 existe UNIQUE real en BD
+    },
+    codigo_cliente: {
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     descripcion: DataTypes.STRING,
-    tipo: DataTypes.STRING,
+    codigo_direccion: DataTypes.STRING,
+    semana: DataTypes.INTEGER,
+    dia: DataTypes.INTEGER,
+    secuencia: DataTypes.INTEGER,
     created_at: DataTypes.DATE,
     updated_at: DataTypes.DATE,
   },
   {
-    tableName: "rutas_preventas",
-    timestamps: false, // manejado por trigger
+    tableName: "route_details",
+    timestamps: false,
   }
 );
 
-module.exports = RutaPreventa;
+module.exports = RouteDetail;
