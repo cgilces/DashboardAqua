@@ -34,8 +34,9 @@ interface Props {
   };
   requestSort: (key: keyof ClienteRuta) => void;
 
-  paginaActual: number;
-  setPaginaActual: (v: number) => void;
+ paginaActual: number;
+setPaginaActual: React.Dispatch<React.SetStateAction<number>>;
+
 }
 
 const FILAS_POR_PAGINA = 10;
@@ -186,57 +187,57 @@ export default function TablaClientesBotellon({
 
           {/* ===== TABLA ===== */}
           <table className="min-w-full border border-[#046C5E]">
-            <thead className="bg-[#003f32] text-[#7de3c8] text-[11px] uppercase sticky top-0 z-10">
-              {[
-                ["Código", "codigo_cliente"],
-                ["Cliente", "nombre_cliente"],
-                ["Dirección", "direccion_entrega"],
-                ["Ruta", "ruta_asignada"],
-                ["Consumo Prime", "max_consumo"],
-                ["Cantidad", "total_botellones"],
-                ["Consumo Actual", "consumo_actual"],
-                ["VS Mes Ant", "porcentaje_cambio"],
-                ["Última visita", "ultima_visita"],
-                ["Última factura", "ultima_factura"],
-                ["Tuvo consumo", "tuvo_consumo"],
-              ].map(([label, key]) => {
-                const columna = key as keyof ClienteRuta;
-                const activa = sortConfig.key === columna;
+          
+           <thead className="bg-[#003f32] text-[#7de3c8] text-[11px] uppercase sticky top-0 z-10">
+  <tr>
+    {[
+      ["Código", "codigo_cliente"],
+      ["Cliente", "nombre_cliente"],
+      ["Dirección", "direccion_entrega"],
+      ["Ruta", "ruta_asignada"],
+      ["Consumo Prime", "max_consumo"],
+      ["Cantidad", "total_botellones"],
+      ["Consumo Actual", "consumo_actual"],
+      ["VS Mes Ant", "porcentaje_cambio"],
+      ["Última visita", "ultima_visita"],
+      ["Última factura", "ultima_factura"],
+      ["Tuvo consumo", "tuvo_consumo"],
+    ].map(([label, key]) => {
+      const columna = key as keyof ClienteRuta;
+      const activa = sortConfig.key === columna;
 
-                return (
-                  <th
-                    key={key}
-                    onClick={() => requestSort(columna)}
-                    className="
-        px-3 py-2
-        text-center
-        cursor-pointer
-        select-none
-        whitespace-nowrap
-        border-r border-[#0b5a4a]
-        last:border-r-0
-      "
-                  >
-                    <div className="flex flex-col items-center leading-tight">
-                      {/* TEXTO */}
-                      <span className="font-semibold tracking-wide">
-                        {label}
-                      </span>
+      return (
+        <th
+          key={key}
+          onClick={() => requestSort(columna)}
+          className="
+            px-3 py-2
+            text-center
+            cursor-pointer
+            select-none
+            whitespace-nowrap
+            border-r border-[#0b5a4a]
+            last:border-r-0
+          "
+        >
+          <div className="flex flex-col items-center leading-tight">
+            <span className="font-semibold tracking-wide">
+              {label}
+            </span>
 
-                      {/* FLECHA */}
-                      <span className="text-[10px] text-[#7de3c8]">
-                        {activa
-                          ? sortConfig.direction === "asc"
-                            ? "↑"
-                            : "↓"
-                          : "↕"}
-                      </span>
-                    </div>
-                  </th>
-                );
-              })}
-
-            </thead>
+            <span className="text-[10px] text-[#7de3c8]">
+              {activa
+                ? sortConfig.direction === "asc"
+                  ? "↑"
+                  : "↓"
+                : "↕"}
+            </span>
+          </div>
+        </th>
+      );
+    })}
+  </tr>
+</thead>
 
             <tbody>
               {clientesPagina.map((c, idx) => (
@@ -270,7 +271,7 @@ export default function TablaClientesBotellon({
           <div className="flex justify-center mt-6 gap-4">
             <button
               disabled={paginaActual === 1}
-              onClick={() => setPaginaActual(p => p - 1)}
+onClick={() => setPaginaActual(p => p - 1)}
             >
               ←
             </button>

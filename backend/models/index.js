@@ -10,8 +10,8 @@ const Orden = require('./orden');
 const SincronizacionVenta = require('./SincronizacionVenta');
 const DireccionCliente = require('./DireccionCliente');
 const ClienteUsuarioVenta = require('./ClienteUsuarioVenta');
-const AppUser = require('./appUser');
-const HistorialVisitas = require('./historialVisitas');
+const AppUser = require('./AppUser');
+const HistorialVisitas = require('./HistorialVisitas');
 const Ruta = require('./Ruta');  // Aquí importamos Ruta
 const DetalleRuta = require('./DetalleRuta');
 
