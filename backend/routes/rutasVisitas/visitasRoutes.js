@@ -7,7 +7,6 @@ const { obtenerHistorialDeUsuarios } = require("../../services/syncHistorialVisi
 const { obtenerDashboardVisitas,  obtenerClientesNoVisitados} = require("../../controllers/controllerVIsitas/visitasController");
 
 router.get("/dashboard", obtenerDashboardVisitas);
-
 router.get("/no-visitados", obtenerClientesNoVisitados);
 
 // Ruta para sincronizar rutas y detalles de rutas
