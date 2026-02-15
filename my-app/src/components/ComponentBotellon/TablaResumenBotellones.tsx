@@ -187,7 +187,7 @@ export default function TablaResumenBotellones({
               <td className="px-4 py-2 text-gray-300">{idx + 1}</td>
 
               <td className="px-4 py-2 font-semibold text-white">
-                {row.grupo.replaceAll("_", " ")}
+                {row.grupo.split(",").join("")}
               </td>
 
               <td className="px-4 py-2 text-right text-green-400 font-semibold">
