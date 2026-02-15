@@ -13,7 +13,7 @@ FROM facturas
 WHERE fecha_creacion BETWEEN '2025-09-01' AND '2025-09-30';
 
 
-delete from clientes_ventas ;
+delete from clientes ;
 delete from detalle_documento  ;
 delete from facturas  ;
 delete from metas_preventas  ;
@@ -28,7 +28,7 @@ delete from rutas_preventas  ;
    2. VER TODOS LOS CLIENTES
    ============================================================ */
 -- 📌 Listado completo de clientes de ventas
-SELECT * FROM clientes_ventas cv;
+SELECT * FROM clientes cv;
 
 
 
@@ -124,7 +124,7 @@ WHERE o.route_code = 'PV9'
    8. ELIMINAR DATOS (RESET BD)
    ============================================================ */
 -- ⚠️ Reset total de tablas (solo para pruebas)
-DELETE FROM clientes_ventas;
+DELETE FROM clientes;
 DELETE FROM detalle_documento;
 DELETE FROM facturas;
 DELETE FROM metas_preventas;
@@ -226,7 +226,7 @@ WHERE fecha_creacion >= '2025-10-01'::date
    ============================================================ */
 -- 📌 Buscar cliente exacto por nombre
 SELECT * 
-FROM clientes_ventas cv 
+FROM clientes cv 
 WHERE cv.nombre_cliente = 'ALVEAR FERNANDEZ EDMUNDO FRANCISCO';
 
 
@@ -236,10 +236,10 @@ WHERE cv.nombre_cliente = 'ALVEAR FERNANDEZ EDMUNDO FRANCISCO';
    ============================================================ */
 -- 📌 Mostrar información completa de clientes duplicados
 SELECT *
-FROM clientes_ventas
+FROM clientes
 WHERE (nombre_cliente, telefono) IN (
     SELECT nombre_cliente, telefono
-    FROM clientes_ventas
+    FROM clientes
     GROUP BY nombre_cliente, telefono
     HAVING COUNT(*) > 1
 )
@@ -293,7 +293,7 @@ SELECT
    ============================================================ */
 -- 📌 Mostrar nombres repetidos en clientes
 SELECT nombre_cliente, COUNT(*) AS total
-FROM clientes_ventas
+FROM clientes
 GROUP BY nombre_cliente
 HAVING COUNT(*) > 1;
 

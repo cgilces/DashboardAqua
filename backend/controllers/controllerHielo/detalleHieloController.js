@@ -113,19 +113,23 @@ const obtenerDetalleRuta = async (req, res) => {
     // console.log("👥 [detalleHielo] Consultando clientes asignados a la ruta...");
 
     const clientesRutaSQL = `
-        SELECT DISTINCT
-          cuv.codigo_cliente,
-          cv.nombre_cliente,
-          cv.direccion_entrega
-        FROM clientes_usuarios_ventas cuv
-        JOIN clientes_ventas cv
-          ON cv.codigo_cliente = cuv.codigo_cliente
-        WHERE cuv.seller_code = :ruta
-        ORDER BY cv.nombre_cliente;
-    `;
+  SELECT DISTINCT
+    cuv.codigo_cliente,
+    cv.nombre_cliente,
+    dc.codigo_direccion_cliente,
+    dc.calle1_direccion_cliente AS direccion_cliente,  -- Usamos la columna 'calle1_direccion_cliente' como la dirección
+    dc.telefono_direccion_cliente,
+    dc.latitud_direccion_cliente,  -- Agregamos latitud
+    dc.longitud_direccion_cliente  -- Agregamos longitud
+  FROM clientes_usuarios_ventas cuv
+  JOIN clientes cv ON cv.codigo_cliente = cuv.codigo_cliente
+  JOIN direcciones_clientes dc ON dc.codigo_cliente = cv.codigo_cliente  -- Hacemos JOIN con 'direcciones_clientes'
+  WHERE cuv.seller_code = :ruta  -- Filtramos por la ruta que se pasa como parámetro
+  ORDER BY cv.nombre_cliente;
+`;
 
     const clientesRuta = await db.query(clientesRutaSQL, {
-      replacements: { ruta: rutaUpper },
+      replacements: { ruta },  // 'ruta' es el parámetro que se pasa a la consulta
       type: db.QueryTypes.SELECT,
     });
 
@@ -338,7 +342,6 @@ const obtenerDetalleRuta = async (req, res) => {
       // Calcular la variación absoluta
       const variacionAbs = consumoActual - consumoAnterior;
 
-
       // Calcular la variación porcentual
       let variacionPorc = 0;
       if (consumoAnterior > 0) {
@@ -361,26 +364,24 @@ const obtenerDetalleRuta = async (req, res) => {
       return {
         codigo_cliente: cliente.codigo_cliente,
         nombre_cliente: cliente.nombre_cliente,
-        direccion_entrega: cliente.direccion_entrega,
+        direccion_entrega: cliente.direccion_cliente,
+        telefono_cliente: cliente.telefono_direccion_cliente, // Nuevo campo
+        latitud_cliente: cliente.latitud_direccion_cliente,  // Nuevo campo
+        longitud_cliente: cliente.longitud_direccion_cliente,  // Nuevo campo
         ultima_visita: formatFecha(mapUltimaVisita.get(cliente.codigo_cliente)),
         ultima_factura: formatFecha(mapUltimaFactura.get(cliente.codigo_cliente)),
         consumo_actual: consumoActual.toFixed(2),
         tuvo_consumo: clientesConConsumo.has(cliente.codigo_cliente) ? 'Sí' : 'No',
         cantidad_productos: cantidadProductosVendidos,  // Agregar cantidad de productos vendidos
-        // Agregar vsMesAnterior con la estructura solicitada
         vsMesAnterior: {
           monto_anterior: consumoAnterior.toFixed(2),
           variacion_abs: variacionAbs.toFixed(2),
-          // variacion_porc: variacionPorc
           variacion_porc: `${variacionPorc.toFixed(2)}%`,
-
         }
       };
     });
 
-
     // console.log("✅ [detalleHielo] Resumen clientes:", clientesRutaConDetalles);
-
     // Definir el total de clientes en la ruta
     const totalClientesRuta = clientesRuta.length;  // Número total de clientes asignados a la ruta
     const totalSin = clientesRuta.length - clientesConConsumo.size;  // Número de clientes sin consumo

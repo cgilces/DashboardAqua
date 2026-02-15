@@ -66,6 +66,7 @@ export default function DashboardPreventa() {
         `http://localhost:5000/api/ventas/dashboard?anio=${anio}&mes=${mes}`
       );
       const data: any = await res.json();
+      console.log("data que llego del bakend es:", data)
       setDatos(data);
       setTopClientesState(data.topClientes || []);
     } catch (error) {
@@ -173,18 +174,18 @@ export default function DashboardPreventa() {
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
             {/* <LocalShippingIcon sx={{ fontSize: 48 }} /> */}
-            <img src={logo} 
-            className="h-14 w-auto transition-all duration-300" 
-            alt="Logo" />
-              <h1 className="text-3xl font-bold tracking-wide">
+            <img src={logo}
+              className="h-14 w-auto transition-all duration-300"
+              alt="Logo" />
+            <h1 className="text-3xl font-bold tracking-wide">
               DASHBOARD DESCARTABLE
-              </h1>
+            </h1>
           </div>
 
 
-            {/* Botón de actualización de sincronización - Centrado en dispositivos móviles */}
+          {/* Botón de actualización de sincronización - Centrado en dispositivos móviles */}
           <div className="flex justify-center w-full sm:w-auto mt-4 sm:mt-0">
-          {isAdmin && <BotonActualizarSincronizacion />}
+            {isAdmin && <BotonActualizarSincronizacion />}
           </div>
 
 
@@ -261,8 +262,9 @@ export default function DashboardPreventa() {
                       Variación: {canal.variacionAbs.toLocaleString("es-EC", {
                         minimumFractionDigits: 2,
                       })}{" "}
-                      ({canal.variacionPorc.toFixed(1)}%)
+                      ({(canal.variacionPorc || 0).toFixed(1)}%)
                     </p>
+
 
                     <p className="text-xs text-gray-300 mt-1">
                       Unidades: {canal.unidades.toLocaleString("es-EC")}

@@ -80,19 +80,19 @@ const KpisHielo: React.FC<Props> = ({ kpis, comparativa }) => {
           {formatVariacion(comparativa?.unidades)}
         </p>
 
-        <p className="text-xs mt-4 mb-1">
+        {/* <p className="text-xs mt-4 mb-1">
           TARGET MENSUAL
           <span className="float-right">
             {cumplimientoUnidadesVisual.toFixed(1)}%
           </span>
-        </p>
+        </p> */}
 
-        <div className="h-3 bg-[#02483A] rounded-full overflow-hidden">
+        {/* <div className="h-3 bg-[#02483A] rounded-full overflow-hidden">
           <div
             className="h-full bg-[#04C29B] rounded-full transition-all"
             style={{ width: `${cumplimientoUnidadesVisual}%` }}
           />
-        </div>
+        </div> */}
       </div>
 
       {/* ============================
@@ -109,7 +109,7 @@ const KpisHielo: React.FC<Props> = ({ kpis, comparativa }) => {
           {formatVariacion(comparativa?.monto)}
         </p>
 
-        <p className="text-xs mt-4 mb-1">
+        {/* <p className="text-xs mt-4 mb-1">
           TARGET MENSUAL
           <span className="float-right">
             {cumplimientoUSDVisual.toFixed(1)}%
@@ -121,7 +121,7 @@ const KpisHielo: React.FC<Props> = ({ kpis, comparativa }) => {
             className="h-full bg-[#4c8cb4] rounded-full transition-all"
             style={{ width: `${cumplimientoUSDVisual}%` }}
           />
-        </div>
+        </div> */}
       </div>
 
       {/* ============================

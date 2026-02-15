@@ -60,30 +60,38 @@ const obtenerDetalleRuta = async (req, res) => {
     }
 
     const { fInicio, fFin } = obtenerRangoFechasPG(anioNum, mesNum);
-    const { inicio: antInicio, fin: antFin } =  obtenerRangoMesAnterior(anioNum, mesNum);
+    const { inicio: antInicio, fin: antFin } = obtenerRangoMesAnterior(anioNum, mesNum);
 
     const rutaUpper = ruta.trim().toUpperCase();
 
     /* ========================================================
        1️⃣ CLIENTES ASIGNADOS A LA RUTA
     ======================================================== */
+
     const clientesRutaSQL = `
-      SELECT DISTINCT
-        cuv.codigo_cliente,
-        cv.nombre_cliente,
-        cv.direccion_entrega,
-        cv.telefono
-      FROM clientes_usuarios_ventas cuv
-      JOIN clientes_ventas cv
-        ON cv.codigo_cliente = cuv.codigo_cliente
-      WHERE cuv.seller_code = :ruta
-      ORDER BY cv.nombre_cliente;
-    `;
+  SELECT DISTINCT
+    cuv.codigo_cliente,
+    cv.nombre_cliente,
+    dc.codigo_direccion_cliente,
+    dc.calle1_direccion_cliente AS direccion_cliente,  -- Usamos la columna 'calle1_direccion_cliente' como la dirección
+    dc.telefono_direccion_cliente,
+    dc.latitud_direccion_cliente,  -- Agregamos latitud
+    dc.longitud_direccion_cliente  -- Agregamos longitud
+  FROM clientes_usuarios_ventas cuv
+  JOIN clientes cv ON cv.codigo_cliente = cuv.codigo_cliente
+  JOIN direcciones_clientes dc ON dc.codigo_cliente = cv.codigo_cliente  -- Hacemos JOIN con 'direcciones_clientes'
+  WHERE cuv.seller_code = :ruta  -- Filtramos por la ruta que se pasa como parámetro
+  ORDER BY cv.nombre_cliente;
+`;
 
     const clientesRuta = await db.query(clientesRutaSQL, {
-      replacements: { ruta: rutaUpper },
+      replacements: { ruta },  // 'ruta' es el parámetro que se pasa a la consulta
       type: db.QueryTypes.SELECT,
     });
+
+
+
+
 
     /* ========================================================
        2️⃣ CLIENTES CON CONSUMO EN EL MES ACTUAL
@@ -243,12 +251,14 @@ const obtenerDetalleRuta = async (req, res) => {
         variacionPorc = 100;
       }
 
-      return {
+    return {
         codigo_cliente: c.codigo_cliente,
         nombre_cliente: c.nombre_cliente,
-        direccion_entrega: c.direccion_entrega,
-        telefono: c.telefono,
-
+        direccion_cliente: c.direccion_cliente,
+        telefono_direccion_cliente: c.telefono_direccion_cliente,
+        latitud_direccion_cliente: c.latitud_direccion_cliente,  // Latitud
+        longitud_direccion_cliente: c.longitud_direccion_cliente,  // Longitud
+        codigo_direccion_cliente: c.codigo_direccion_cliente,  // Código dirección
         ultima_visita: formatFecha(
           mapUltimaVisita.get(c.codigo_cliente)
         ),

@@ -68,7 +68,7 @@ const obtenerClientesBotellon = async (req, res) => {
     const clientesRuta = await db.query(
       `
       SELECT codigo_cliente, nombre_cliente, direccion_entrega, ruta_asignada
-      FROM clientes_ventas
+      FROM clientes
       WHERE ruta_asignada ILIKE :ruta;
     `,
       {

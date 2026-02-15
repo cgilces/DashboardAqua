@@ -1,4 +1,6 @@
-const { Orden, RutaPreventa } = require("../../models");
+const { Orden,
+  // RutaPreventa 
+} = require("../../models");
 const db = require("../../db");
 const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
@@ -105,22 +107,45 @@ const obtenerDetalleRuta = async (req, res) => {
 
     const sellerCode = rutaUpper; // PV1, H1, etc.
 
+    // const clientesRutaSQL = `
+    //             SELECT DISTINCT
+    //               cuv.codigo_cliente,
+    //               cv.nombre_cliente,
+    //               cv.direccion_entrega
+    //             FROM clientes_usuarios_ventas cuv
+    //             JOIN clientes cv
+    //               ON cv.codigo_cliente = cuv.codigo_cliente
+    //             WHERE cuv.seller_code = :sellerCode
+    //             ORDER BY cv.nombre_cliente;
+    //           `;
+
+    // const clientesRuta = await db.query(clientesRutaSQL, {
+    //   replacements: { sellerCode },
+    //   type: db.QueryTypes.SELECT,
+    // });
+
     const clientesRutaSQL = `
-                SELECT DISTINCT
-                  cuv.codigo_cliente,
-                  cv.nombre_cliente,
-                  cv.direccion_entrega
-                FROM clientes_usuarios_ventas cuv
-                JOIN clientes_ventas cv
-                  ON cv.codigo_cliente = cuv.codigo_cliente
-                WHERE cuv.seller_code = :sellerCode
-                ORDER BY cv.nombre_cliente;
-              `;
+  SELECT DISTINCT
+    cuv.codigo_cliente,
+    cv.nombre_cliente,
+    dc.codigo_direccion_cliente,
+    dc.calle1_direccion_cliente AS direccion_cliente,  -- Usamos la columna 'calle1_direccion_cliente' como la dirección
+    dc.telefono_direccion_cliente,
+    dc.latitud_direccion_cliente,  -- Agregamos latitud
+    dc.longitud_direccion_cliente  -- Agregamos longitud
+  FROM clientes_usuarios_ventas cuv
+  JOIN clientes cv ON cv.codigo_cliente = cuv.codigo_cliente
+  JOIN direcciones_clientes dc ON dc.codigo_cliente = cv.codigo_cliente  -- Hacemos JOIN con 'direcciones_clientes'
+  WHERE cuv.seller_code = :ruta  -- Filtramos por la ruta que se pasa como parámetro
+  ORDER BY cv.nombre_cliente;
+`;
 
     const clientesRuta = await db.query(clientesRutaSQL, {
-      replacements: { sellerCode },
+      replacements: { ruta },  // 'ruta' es el parámetro que se pasa a la consulta
       type: db.QueryTypes.SELECT,
     });
+
+
 
     //  console.log(
     //   "👥 [detallePreventa] Total clientes asignados:",
@@ -343,62 +368,32 @@ const obtenerDetalleRuta = async (req, res) => {
       );
     });
 
-    // Ahora, unificar los datos de los clientes con y sin consumo
+    // Unificar clientes con detalles de consumo
     const clientesRutaConDetalles = clientesRuta.map((cliente) => {
-      // Buscar los datos de consumo de cada cliente
       const consumoData = clientesConsumoData.find((c) => c.customer_code === cliente.codigo_cliente) || {};
+      const consumoActual = Number(consumoData.consumo_actual) || 0;
+      const consumoAnterior = Number(consumoData.consumo_anterior) || 0;
 
-      // Asegurarse de que consumoActual y consumoAnterior sean números
-      const consumoActual = Number(consumoData.consumo_actual) || 0;  // Si es NaN, asigna 0
-      const consumoAnterior = Number(consumoData.consumo_anterior) || 0;  // Si es NaN, asigna 0
-
-      // Calcular el porcentaje de cambio correctamente
-
-      // Calcular la variación absoluta
       const variacionAbs = consumoActual - consumoAnterior;
-
-      // Calcular la variación porcentual
-      let variacionPorc = 0;
-      if (consumoAnterior > 0) {
-        variacionPorc = (variacionAbs / consumoAnterior) * 100;
-      } else if (consumoActual > 0) {
-        variacionPorc = 100;
-      }
-
-
-
-      // const porcentajeCambio = consumoAnterior === 0
-      //   ? '100%'
-      //   : ((consumoActual - consumoAnterior) / consumoAnterior * 100).toFixed(2) + '%';
-
-      // Obtener la cantidad de productos vendidos en el mes actual para el cliente
-      let cantidadProductosVendidos = clienteProductosVendidos.get(cliente.codigo_cliente) || 0;
-
-      // Asegurarse de que la cantidad de productos sea un número
-      cantidadProductosVendidos = Number(cantidadProductosVendidos);  // Forzamos a convertirlo en un número
-
-      // Verificamos si la conversión fue exitosa
-      if (isNaN(cantidadProductosVendidos)) {
-        cantidadProductosVendidos = 0;  // Si no es un número válido, lo asignamos como 0
-      }
+      const variacionPorc = consumoAnterior > 0 ? (variacionAbs / consumoAnterior) * 100 : 100;
 
       return {
         codigo_cliente: cliente.codigo_cliente,
         nombre_cliente: cliente.nombre_cliente,
-        direccion_entrega: cliente.direccion_entrega,
-        ultima_visita: formatFecha(mapUltimaVisita.get(cliente.codigo_cliente)),
-        ultima_factura: formatFecha(mapUltimaFactura.get(cliente.codigo_cliente)),
+        direccion_entrega: cliente.direccion_cliente,
+        telefono_cliente: cliente.telefono_direccion_cliente || "—",  // Teléfono
+        latitud_cliente: cliente.latitud_direccion_cliente || "—",  // Latitud
+        longitud_cliente: cliente.longitud_direccion_cliente || "—",  // Longitud
+        ultima_visita: formatFecha(cliente.ultima_visita),
+        ultima_factura: formatFecha(cliente.ultima_factura),
         consumo_actual: consumoActual.toFixed(2),
         max_consumo: Math.max(consumoActual, consumoAnterior).toFixed(2),
-        // Agregar vsMesAnterior con la estructura solicitada
         vsMesAnterior: {
           monto_anterior: consumoAnterior.toFixed(2),
           variacion_abs: variacionAbs.toFixed(2),
           variacion_porc: `${variacionPorc.toFixed(2)}%`,
-
         },
         tuvo_consumo: clientesConConsumo.has(cliente.codigo_cliente) ? 'Sí' : 'No',
-        cantidad_productos: cantidadProductosVendidos,  // Agregar cantidad de productos vendidos
       };
     });
 

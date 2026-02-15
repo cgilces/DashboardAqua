@@ -125,7 +125,7 @@ const DetallePreventasPage: React.FC = () => {
     "Última factura": string;
     "Consumo Actual": number;
     Max_Por_Mes: number;
-    Cantidad: number;
+    // Cantidad: number;
     "Porcentaje Cambio": number;
     "Tuvo Consumo": string;
   };
@@ -146,7 +146,7 @@ const DetallePreventasPage: React.FC = () => {
         "Última factura": c.ultima_factura ?? "—",
         "Consumo Actual": Number(c.consumo_actual || 0),
         Max_Por_Mes: Number(c.max_consumo || 0),
-        Cantidad: Number(c.cantidad_productos || 0),
+        // Cantidad: Number(c.cantidad_productos || 0),
         "Porcentaje Cambio": Number(c.porcentaje_cambio || 0),
         "Tuvo Consumo": c.tuvo_consumo,
       }));
@@ -338,17 +338,23 @@ const DetallePreventasPage: React.FC = () => {
               {/* TABLA */}
               <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
                 <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+
                   <tr>
+                    <th className="px-4 py-3">N°</th>
                     {[
                       ["Código", "codigo_cliente"],
                       ["Cliente", "nombre_cliente"],
-                      ["Cod_Dirección", "direccion_entrega"],
-                      ["Cantidad Actual", "cantidad_productos"],
+                      ["Dirección", "direccion_cliente"],
+                      ["#Teléfono", "telefono_cliente"],
+                      ["Latitud", "latitud_direccion_cliente"],
+                      ["Longitud", "longitud_direccion_cliente"],
+                      // ["Cantidad Actual", "cantidad_botellon"],
                       ["Consumo Actual($)", "consumo_actual"],
-                      ["VS MES ANT", "porcentaje_cambio"],
-                      ["Última visita", "ultima_visita"],
-                      ["Última factura", "ultima_factura"],
-                      ["Tuvo consumo", "tuvo_consumo"],
+                      ["VS MES ANT", "vsMesAnterior"],
+                      ["Última Visita", "ultima_visita"],
+                      ["Última Factura", "ultima_factura"],
+                      ["Tuvo Consumo", "tuvo_consumo"],
+
                     ].map(([label, key]) => (
                       <th
                         key={key}
@@ -382,10 +388,18 @@ const DetallePreventasPage: React.FC = () => {
                 hover:bg-[#026452] transition
               `}
                     >
+                      <td className="px-4 py-2">
+                        {(paginaActual - 1) * clientesPorPagina + idx + 1}
+                      </td>
                       <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
                       <td className="px-4 py-2 text-white">{c.nombre_cliente}</td>
                       <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
-                      <td className="px-4 py-2 text-white">{c.cantidad_productos}</td>
+
+                      <td className="px-2 py-2">{c.telefono_cliente || "Sin Número"}</td>
+                      <td className="px-2 py-2">{c.latitud_cliente || "Sin Número"}</td>
+                      <td className="px-2 py-2">{c.longitud_cliente || "Sin Número"}</td>
+
+                      {/* <td className="px-4 py-2 text-white">{c.cantidad_productos}</td> */}
                       <td className="px-4 py-2 text-white">{c.consumo_actual}</td>
                       <td className="px-4 py-2">
                         {c.vsMesAnterior ? (

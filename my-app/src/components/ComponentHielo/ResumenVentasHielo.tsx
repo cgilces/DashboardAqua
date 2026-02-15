@@ -249,35 +249,34 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
             >
               <td className="px-4 py-2 text-blue-300 font-bold">{r.usuario}</td>
               <td className="px-4 py-2 text-right text-green-400 font-bold">
-                {Number(r.cantidadVendida).toLocaleString()}
+                {Number(r.cantidadVendida ?? 0).toLocaleString()}
               </td>
               <td className="px-4 py-2 text-right text-blue-300 font-bold">
-                ${Number(r.totalConIVA).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                ${Number(r.totalConIVA ?? 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
               <td className="px-4 py-2 text-right">
                 {r.meta
-                  ? `${Number(r.meta.meta_historica).toLocaleString("es-EC", {
+                  ? `${Number(r.meta.meta_historica ?? 0).toLocaleString("es-EC", {
                     minimumFractionDigits: 2,
                   })} (${new Date(r.meta.mes_mayor_consumo).toLocaleDateString("es-EC", {
                     month: "long",
                   })})`
                   : "–"}
               </td>
+
               <td className="px-4 py-2 text-right font-bold">
                 {r.vsMesAnterior && r.vsMesAnterior.variacion_porc !== null ? (
                   <span
                     className={`inline-flex items-center gap-1
-        ${r.vsMesAnterior.variacion_porc >= 0
-                        ? "text-green-400"
-                        : "text-red-400"}`}
+            ${r.vsMesAnterior.variacion_porc >= 0 ? "text-green-400" : "text-red-400"}`}
                   >
                     (
                     {r.vsMesAnterior.variacion_porc > 0 ? "+" : ""}
-                    {r.vsMesAnterior.variacion_porc.toFixed(1)}%
+                    {(r.vsMesAnterior.variacion_porc ?? 0).toFixed(1)}%
                     )
                     <span className="text-blue-300">
                       $
-                      {Number(r.proyeccion).toLocaleString("es-EC", {
+                      {Number(r.proyeccion ?? 0).toLocaleString("es-EC", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -297,14 +296,15 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
                   }`}
               >
                 {r.vsMesAnterior
-                  ? `(${r.vsMesAnterior.variacion_porc.toFixed(2)}%) $${Math.abs(
-                    r.vsMesAnterior.variacion_abs
+                  ? `(${(r.vsMesAnterior.variacion_porc ?? 0).toFixed(2)}%) $${Math.abs(
+                    r.vsMesAnterior.variacion_abs ?? 0
                   ).toLocaleString("es-EC", { minimumFractionDigits: 2 })}`
                   : "–"}
               </td>
             </tr>
           ))}
         </tbody>
+
 
         <tfoot className="bg-[#014434] font-bold text-gray-200 border-t border-[#046C5E]">
           <tr>
@@ -320,9 +320,6 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
             </td>
             <td className="px-4 py-3 text-right text-blue-400">
               ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-
-
-
             </td>
 
             <td className="px-4 py-3 text-right text-blue-400">

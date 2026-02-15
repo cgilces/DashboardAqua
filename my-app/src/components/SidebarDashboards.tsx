@@ -22,7 +22,6 @@ export default function SidebarDashboards() {
 
   const menuItems = [
     { name: "CONSOLIDADO", icon: <BarChart />, path: "/dashboard/consolidado" },
-    { name: "PREVENTA", icon: <Storefront />, path: "/dashboard/preventa" },
     { name: "BOTELLÓN", icon: <img src={botellon} />, path: "/dashboard/botellon" },
     { name: "DESCARTABLE", icon: <img src={botelladescartable} />, path: "/dashboard/preventa" },
     { name: "HIELO", icon: <img src={imagenhielo} />, path: "/dashboard/hielo" },

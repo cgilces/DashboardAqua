@@ -16,6 +16,7 @@
     "@mui/material": "^6.4.7",
     "@mui/system": "^6.4.6",
     "axios": "^1.8.1",
+    "bcryptjs": "^3.0.3",
     "bootstrap": "^5.3.3",
     "bootstrap-icons": "^1.11.3",
     "date-fns": "^4.1.0",

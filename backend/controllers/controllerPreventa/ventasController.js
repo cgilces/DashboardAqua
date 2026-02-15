@@ -2,7 +2,7 @@
 const {
   Orden,
   DetalleDocumento,
-  RutaPreventa,
+  // RutaPreventa,
   ClienteVenta,
   MetaPreventa,
 } = require("../../models");
@@ -333,7 +333,7 @@ const obtenerTop20Clientes = async (anioNum, mesNum) => {
     FROM facturas f
     JOIN detalle_documento dd
         ON dd.documento_code = f.code
-    LEFT JOIN clientes_ventas c
+    LEFT JOIN clientes c
         ON c.codigo_cliente = f.customer_code
     WHERE
       f.type = 1

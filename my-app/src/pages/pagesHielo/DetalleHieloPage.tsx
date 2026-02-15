@@ -27,8 +27,8 @@ const DetalleHieloPage: React.FC = () => {
 
 
   const clientesFiltrados = clientesRuta.filter((cliente) =>
-  // cliente.nombre_cliente.toLowerCase().includes(terminoBusqueda.toLowerCase())
-  (cliente.nombre_cliente ?? "").toLowerCase().includes(terminoBusqueda.toLowerCase())
+    // cliente.nombre_cliente.toLowerCase().includes(terminoBusqueda.toLowerCase())
+    (cliente.nombre_cliente ?? "").toLowerCase().includes(terminoBusqueda.toLowerCase())
 
   );
 
@@ -53,40 +53,83 @@ const DetalleHieloPage: React.FC = () => {
     setPaginaActual(1);
 
     setSortConfig((prev) => {
-      let direction: "asc" | "desc" = "asc";
+      let direction: "asc" | "desc" = "asc";  // Por defecto, orden ascendente
 
+      // Si la columna ya está ordenada y la dirección es ascendente, alternamos a descendente
       if (prev.key === key && prev.direction === "asc") {
         direction = "desc";
       }
 
-      return { key, direction };
+      return { key, direction };  // Actualizamos la clave y la dirección
     });
   };
 
   const clientesOrdenados = useMemo(() => {
-    const sorted = [...clientesFiltrados];
+    const sorted = [...clientesFiltrados];  // Copiar los datos filtrados para no mutar el estado original
 
     sorted.sort((a, b) => {
-      const aValue = a[sortConfig.key];
-      const bValue = b[sortConfig.key];
+      let aValue = a[sortConfig.key];
+      let bValue = b[sortConfig.key];
 
+
+      
+
+      // Acceder a 'variacion_abs' de 'vsMesAnterior'
+      // const aVariacionAbs = a.vsMesAnterior ? parseFloat(a.vsMesAnterior.variacion_abs) : 0;
+      // const bVariacionAbs = b.vsMesAnterior ? parseFloat(b.vsMesAnterior.variacion_abs) : 0;
+      // // Comparar por la propiedad 'variacion_abs'
+      // if (sortConfig.direction === "desc") {
+      //   return aVariacionAbs - bVariacionAbs;  // Orden ascendente
+      // } else {
+      //   return bVariacionAbs - aVariacionAbs;  // Orden descendente
+      // }
+
+      
+
+
+      // Si estamos ordenando por "Consumo Actual", calcular la diferencia
+      if (sortConfig.key === "consumo_actual") {
+        const aConsumoActual = a.consumo_actual || 0;
+        const bConsumoActual = b.consumo_actual || 0;
+        const aConsumoAnterior = a.consumo_mes_anterior || 0;  // Suponiendo que el campo de consumo del mes anterior se llama 'consumo_mes_anterior'
+        const bConsumoAnterior = b.consumo_mes_anterior || 0;
+
+        // Calculamos la diferencia
+        aValue = aConsumoActual - aConsumoAnterior;
+        bValue = bConsumoActual - bConsumoAnterior;
+      }
+
+      // Ordenación de valores numéricos generales
+      if (typeof aValue === "number" && typeof bValue === "number") {
+        return sortConfig.direction === "asc" ? aValue - bValue : bValue - aValue;
+      }
+
+      // Ordenación de valores alfabéticos (por si se ordenan otros campos)
       if (typeof aValue === "string" && typeof bValue === "string") {
         return sortConfig.direction === "asc"
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
       }
 
-      if (typeof aValue === "number" && typeof bValue === "number") {
-        return sortConfig.direction === "asc"
-          ? aValue - bValue
-          : bValue - aValue;
+      const aLatitud = parseFloat(a.latitud_cliente);  // Convertir latitud a número
+      const bLatitud = parseFloat(b.latitud_cliente);  // Convertir latitud a número
+
+      // Ordenar por latitud
+      if (sortConfig.direction === "asc") {
+        return aLatitud - bLatitud;  // Orden ascendente
+      } else {
+        return bLatitud - aLatitud;  // Orden descendente
       }
 
-      return 0;
+      return 0;  // Si no es comparable, no ordenamos
+
+
+
     });
 
-    return sorted;
-  }, [clientesFiltrados, sortConfig]);
+    return sorted;  // Retornamos el array ordenado
+  }, [clientesFiltrados, sortConfig]);  // Dependencias: se vuelve a ejecutar cuando 'clientesFiltrados' o 'sortConfig' cambian
+
 
 
   useEffect(() => {
@@ -158,11 +201,16 @@ const DetalleHieloPage: React.FC = () => {
     "Última visita": any;
     "Última factura": any;
     "Consumo Actual": any;
-    Max_Por_Mes: any;
     Cantidad: any;
     "Porcentaje Cambio": any;
     "Tuvo Consumo": any;
+    "Teléfono": any;
+    "Latitud": any;
+    "Longitud": any;
+    "VS Mes Anterior ($)": any;
+    "VS Mes Anterior (%)": any;
   };
+
 
 
   const exportarClientesRuta = () => {
@@ -170,7 +218,6 @@ const DetalleHieloPage: React.FC = () => {
 
     try {
       const rutaUpper = (ruta || "").toUpperCase();
-
 
       const datosExportar: ClienteExportExcel[] = clientesRuta.map((c) => ({
         Ruta: rutaUpper,
@@ -183,10 +230,12 @@ const DetalleHieloPage: React.FC = () => {
         Cantidad: c.cantidad_productos,
         "Porcentaje Cambio": c.porcentaje_cambio,
         "Tuvo Consumo": c.tuvo_consumo,
+        "Teléfono": c.telefono_cliente || "—", // Teléfono (vacío si no tiene)
+        "Latitud": c.latitud_cliente || "—", // Latitud (vacío si no tiene)
+        "Longitud": c.longitud_cliente || "—", // Longitud (vacío si no tiene)
+        "VS Mes Anterior ($)": c.vsMesAnterior ? `$${Math.abs(c.vsMesAnterior.variacion_abs).toFixed(2)}` : "—", // VS Mes Anterior (diferencia absoluta)
+        "VS Mes Anterior (%)": c.vsMesAnterior ? `${c.vsMesAnterior.variacion_porc}%` : "—", // Variación porcentual
       }));
-
-
-
 
       // Crear hoja de Excel
       const ws = XLSX.utils.json_to_sheet(datosExportar);
@@ -196,12 +245,7 @@ const DetalleHieloPage: React.FC = () => {
       XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
 
       // Auto-ajustar el ancho de las columnas
-      // const columnas = Object.keys(datosExportar[0]);
-
-      const columnas = Object.keys(
-        datosExportar[0]
-      ) as (keyof ClienteExportExcel)[];
-
+      const columnas = Object.keys(datosExportar[0]) as (keyof ClienteExportExcel)[];
 
       ws["!cols"] = columnas.map((col) => {
         const maxLong = Math.max(
@@ -224,9 +268,8 @@ const DetalleHieloPage: React.FC = () => {
 
 
 
-
   return (
-    <div className="min-h-screen  text-white p-8">
+    <div className="min-h-screen text-white p-8">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">
@@ -262,7 +305,7 @@ const DetalleHieloPage: React.FC = () => {
       <h1 className="text-center text-xl font-bold mb-4">PRODUCTOS VENDIDOS</h1>
 
       {productos.length > 0 ? (
-        <table className="min-w-full text-sm border border-[#046C5E] rounded-lg mb-12">
+        <table className="w-full text-sm border border-[#046C5E] rounded-lg mb-12">
           <thead className="bg-[#014434] text-green-300 uppercase text-xs">
             <tr>
               <th className="px-4 py-3 text-left">Producto</th>
@@ -292,37 +335,26 @@ const DetalleHieloPage: React.FC = () => {
 
             {/* 🔹 FILA TOTAL */}
             <tr className="bg-[#022d24] border-[#74ab3c] font-bold">
-              <td className="px-4 py-3 text-right text-white uppercase">
-                Total
-              </td>
+              <td className="px-4 py-3 text-right text-white uppercase">Total</td>
               <td className="px-4 py-3 text-right text-green-500">
-                {productos
-                  .reduce((acc, p) => acc + p.unidades, 0)
-                  .toLocaleString()}
+                {productos.reduce((acc, p) => acc + p.unidades, 0).toLocaleString()}
               </td>
               <td className="px-4 py-3 text-right text-blue-500">
-                ${productos
-                  .reduce((acc, p) => acc + p.monto, 0)
-                  .toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+                ${productos.reduce((acc, p) => acc + p.monto, 0).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </td>
             </tr>
           </tbody>
         </table>
       ) : (
-        <p className="text-center text-gray-400 mt-10">
-          No se encontraron productos facturados para esta ruta.
-        </p>
+        <p className="text-center text-gray-400 mt-10">No se encontraron productos facturados para esta ruta.</p>
       )}
-
 
       {/* tabla CLIENTES */}
       <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-        <h1 className="text-center text-xl font-bold mt-10 mb-4">
-          CLIENTES DE RUTA
-        </h1>
+        <h1 className="text-center text-xl font-bold mt-10 mb-4">CLIENTES DE RUTA</h1>
         {clientesRuta.length > 0 ? (
           <>
             <div className="mb-6">
@@ -382,15 +414,16 @@ const DetalleHieloPage: React.FC = () => {
               {/* TABLA */}
               <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
                 <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-
                   <tr>
                     <th className="px-4 py-3 text-left">N°</th>
-
                     {[
-
                       ["Código", "codigo_cliente"],
                       ["Cliente", "nombre_cliente"],
-                      ["Cod_Dirección", "direccion_entrega"],
+                      ["Dirección", "direccion_entrega"],
+                      ["#Teléfono", "telefono_direccion_cliente"],
+                      ["Latitud", "latitud_direccion_cliente"],
+                      ["Longitud", "longitud_direccion_cliente"],
+
                       ["Cantidad Actual", "cantidad_productos"],
                       ["Consumo Actual($)", "consumo_actual"],
                       ["VS MES ANT", "porcentaje_cambio"],
@@ -420,66 +453,59 @@ const DetalleHieloPage: React.FC = () => {
                   {clientesPagina.map((c, idx) => (
                     <tr
                       key={idx}
-                      className={`
-        ${c.tuvo_consumo === "No"
-                          ? "bg-[rgba(220,38,38,0.6)]"
-                          : idx % 2 === 0
-                            ? "bg-[#013d32]"
-                            : "bg-[#014f3e]"
-                        }
-        hover:bg-[#026452] transition
-      `}
+                      className={`${c.tuvo_consumo === "No"
+                        ? "bg-[rgba(220,38,38,0.6)]"
+                        : idx % 2 === 0
+                          ? "bg-[#013d32]"
+                          : "bg-[#014f3e]"
+                        } hover:bg-[#026452] transition`}
                     >
                       {/* N° */}
                       <td className="px-4 py-2 text-white font-semibold">
                         {(paginaActual - 1) * clientesPorPagina + idx + 1}
-
                       </td>
-
 
                       <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
                       <td className="px-4 py-2 text-white">{c.nombre_cliente}</td>
                       <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
+
+                      <td className="px-4 py-2 text-white">{c.telefono_cliente  || "Sin Número"}</td>
+
+                      <td className="px-4 py-2 text-white">{c.latitud_cliente}</td>
+                      <td className="px-4 py-2 text-white">{c.longitud_cliente}</td>
+
+
+
                       <td className="px-4 py-2 text-white">{c.cantidad_productos}</td>
                       <td className="px-4 py-2 text-white">${c.consumo_actual}</td>
 
-
-            <td className="px-4 py-2">
-                  {c.vsMesAnterior ? (
-                    <span
-                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold
+                      <td className="px-4 py-2">
+                        {c.vsMesAnterior ? (
+                          <span
+                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold
         ${c.vsMesAnterior.variacion_abs > 0
-                          ? "bg-green-900/40 text-green-400"
-                          : c.vsMesAnterior.variacion_abs < 0
-                            ? "bg-red-900/40 text-red-400"
-                            : "bg-gray-700/40 text-gray-300"
-                        }`}
-                    >
-                      (
-                      {c.vsMesAnterior.variacion_abs > 0 && "+"}
-                      {c.vsMesAnterior.variacion_porc}
-                      )
-                      <span className="font-semibold">
-                        $
-                        {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </span>
-                  ) : (
-                    ""
-                  )}
-                </td>
-
-
-
-
-
-             
-  
-
-
+                                ? "bg-green-900/40 text-green-400"
+                                : c.vsMesAnterior.variacion_abs < 0
+                                  ? "bg-red-900/40 text-red-400"
+                                  : "bg-gray-700/40 text-gray-300"
+                              }`}
+                          >
+                            (
+                            {c.vsMesAnterior.variacion_abs > 0 && "+"}
+                            {c.vsMesAnterior.variacion_porc}
+                            )
+                            <span className="font-semibold">
+                              $
+                              {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </span>
+                        ) : (
+                          ""
+                        )}
+                      </td>
 
                       <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
                         {c.ultima_visita ?? "—"}
@@ -489,26 +515,23 @@ const DetalleHieloPage: React.FC = () => {
                       </td>
 
                       <td
-                        className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí"
-                          ? "text-green-500"
-                          : "text-red-500"
-                          }`}
+                        className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí" ? "text-green-500" : "text-red-500"}`}
                       >
                         {c.tuvo_consumo}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-
               </table>
             </div>
             {/* PAGINACIÓN (se mantiene igual) */}
-            {/* …tu bloque de paginación sin cambios… */}
             <div className="flex justify-center mt-6 gap-2">
               <button
                 disabled={paginaActual === 1}
                 onClick={() => setPaginaActual(paginaActual - 1)}
-                className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1 ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
+                className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1
+                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                  : "bg-[#046C5E] hover:bg-[#058A73]"} `}
               >
                 <span className="sm:hidden">←</span>
                 <span className="hidden sm:inline">← Anterior</span>
@@ -534,7 +557,13 @@ const DetalleHieloPage: React.FC = () => {
                   num === "..." ? (
                     <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
                   ) : (
-                    <button key={`page-${idx}-${num}`} onClick={() => setPaginaActual(num)} className={`px-3 py-1 rounded-md ${paginaActual === num ? "bg-green-500 text-black font-bold" : "bg-[#01382D] hover:bg-[#025f4b]"}`}>
+                    <button
+                      key={`page-${idx}-${num}`}
+                      onClick={() => setPaginaActual(num)}
+                      className={`px-3 py-1 rounded-md ${paginaActual === num
+                        ? "bg-green-500 text-black font-bold"
+                        : "bg-[#01382D] hover:bg-[#025f4b]"} `}
+                    >
                       {num}
                     </button>
                   )
@@ -544,7 +573,9 @@ const DetalleHieloPage: React.FC = () => {
               <button
                 disabled={paginaActual === totalPaginas}
                 onClick={() => setPaginaActual(paginaActual + 1)}
-                className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
+                className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas
+                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                  : "bg-[#046C5E] hover:bg-[#058A73]"} `}
               >
                 <span className="sm:hidden">→</span>
                 <span className="hidden sm:inline">Siguiente →</span>
@@ -555,9 +586,11 @@ const DetalleHieloPage: React.FC = () => {
           <p className="text-center text-gray-400 mt-10">Sin consumo</p>
         )}
       </div>
-
     </div>
   );
+
+
+
 };
 
 export default DetalleHieloPage;

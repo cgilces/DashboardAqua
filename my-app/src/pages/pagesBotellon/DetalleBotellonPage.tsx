@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import * as XLSX from "xlsx";
+// import { API_URL } from "../../config/api";
+
 
 const DetalleBotellonPage: React.FC = () => {
   // ==========================
@@ -64,9 +66,23 @@ const DetalleBotellonPage: React.FC = () => {
     setSortConfig({ key, direction });
 
     const sorted = [...clientesRuta].sort((a, b) => {
-      const aVal = a[key];
-      const bVal = b[key];
+      let aVal = a[key];
+      let bVal = b[key];
 
+      // Si el campo es "consumo_actual", asegúrate de que se convierte a un número
+      if (key === "consumo_actual") {
+        aVal = parseFloat(aVal) || 0; // Si no se puede convertir a número, se asigna 0
+        bVal = parseFloat(bVal) || 0; // Lo mismo para bVal
+      }
+
+
+      // Si estamos ordenando por "vsMesAnterior.variacion_abs"
+      if (key === "vsMesAnterior") {
+        aVal = a[key]?.variacion_abs || 0; // Obtener variacion_abs o 0 si no está definido
+        bVal = b[key]?.variacion_abs || 0; // Obtener variacion_abs o 0 si no está definido
+      }
+
+      // Si los valores son de tipo string
       if (typeof aVal === "string" && typeof bVal === "string") {
         return direction === "asc"
           ? aVal.localeCompare(bVal)
@@ -90,6 +106,8 @@ const DetalleBotellonPage: React.FC = () => {
     setCargando(true);
 
     fetch(
+      // `${API_URL}/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`
+
       `http://localhost:5000/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`
     )
       .then((res) => res.json())
@@ -154,7 +172,7 @@ const DetalleBotellonPage: React.FC = () => {
       "Última factura": c.ultima_factura || "—",
       "Consumo Actual": c.consumo_actual,
       "Consumo Máx": c.max_consumo,
-      "Cantidad": c.cantidad_productos,
+      "Cantidad": c.cantidad_botellon,
       "Tuvo Consumo": c.tuvo_consumo,
     }));
 
@@ -180,7 +198,7 @@ const DetalleBotellonPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen  text-white p-8">
+    <div className="min-h-screen text-white p-5">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">
@@ -227,7 +245,7 @@ const DetalleBotellonPage: React.FC = () => {
       </h1>
 
       {productos.length > 0 ? (
-        <table className="min-w-full text-sm border border-[#046C5E] rounded-lg mb-12">
+        <table className="w-full text-sm border border-[#046C5E] rounded-lg mb-12">
           <thead className="bg-[#014434] text-green-300 uppercase text-xs">
             <tr>
               <th className="px-4 py-3 text-left">Producto</th>
@@ -240,8 +258,7 @@ const DetalleBotellonPage: React.FC = () => {
             {productos.map((p, idx) => (
               <tr
                 key={idx}
-                className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
-                  } hover:bg-[#026452] transition`}
+                className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#026452] transition`}
               >
                 <td className="px-4 py-2">{p.descripcion}</td>
                 <td className="px-4 py-2 text-right text-green-400 font-semibold">
@@ -260,17 +277,13 @@ const DetalleBotellonPage: React.FC = () => {
             <tr className="bg-[#022d24] font-bold">
               <td className="px-4 py-3 text-right uppercase">Total</td>
               <td className="px-4 py-3 text-right text-green-500">
-                {productos
-                  .reduce((acc, p) => acc + p.unidades, 0)
-                  .toLocaleString()}
+                {productos.reduce((acc, p) => acc + p.unidades, 0).toLocaleString()}
               </td>
               <td className="px-4 py-3 text-right text-blue-500">
-                ${productos
-                  .reduce((acc, p) => acc + p.monto, 0)
-                  .toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+                ${productos.reduce((acc, p) => acc + p.monto, 0).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </td>
             </tr>
           </tbody>
@@ -280,14 +293,14 @@ const DetalleBotellonPage: React.FC = () => {
           No se encontraron productos facturados para esta ruta.
         </p>
       )}
+
+      {/* ===================== CLIENTES ===================== */}
       <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
 
-        {/* ===================== CLIENTES ===================== */}
         <h1 className="text-center text-xl font-bold mt-10 mb-4">
           CLIENTES DE RUTA
         </h1>
 
-        {/* ACCIONES */}
         {/* ACCIONES */}
         <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-4">
           <button
@@ -325,8 +338,7 @@ const DetalleBotellonPage: React.FC = () => {
               placeholder="Buscar por nombre de cliente"
               value={terminoBusqueda}
               onChange={(e) => setTerminoBusqueda(e.target.value)}
-              className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm
-                       focus:outline-none focus:ring-2 focus:ring-[#74ab3c]"
+              className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#74ab3c]"
             />
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -340,112 +352,122 @@ const DetalleBotellonPage: React.FC = () => {
             </svg>
           </div>
         </div>
+
         {/* TABLA CLIENTES */}
-        <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-          <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-            <tr>
-              <th className="px-4 py-3">N°</th>
-              {[
-                ["Código", "codigo_cliente"],
-                ["Cliente", "nombre_cliente"],
-                ["Cod_Dirección", "direccion_entrega"],
-                ["Maximo Consumo", "max_consumo"],
-                ["Cantidad Actual", "cantidad_productos"],
-                ["Consumo Actual($)", "consumo_actual"],
-                ["VS MES ANT", "vsMesAnterior"],
-                ["Última visita", "ultima_visita"],
-                ["Última factura", "ultima_factura"],
-                ["Tuvo consumo", "tuvo_consumo"],
-              ].map(([label, key]) => (
-                <th
-                  key={key}
-                  onClick={() => requestSort(key)}
-                  className="px-4 py-3 cursor-pointer"
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
+            <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+              <tr>
+                <th className="px-4 py-3">N°</th>
+                {[
+                  ["Código", "codigo_cliente"],
+                  ["Cliente", "nombre_cliente"],
+                  ["Dirección", "direccion_cliente"],
+                  ["#Teléfono", "telefono_cliente"],
+                  ["Latitud", "latitud_direccion_cliente"],
+                  ["Longitud", "longitud_direccion_cliente"],
+                  ["Cantidad Actual", "cantidad_botellon"],
+                  ["Consumo Actual($)", "consumo_actual"],
+                  ["VS MES ANT", "vsMesAnterior"],
+                  ["Última Visita", "ultima_visita"],
+                  ["Última Factura", "ultima_factura"],
+                  ["Tuvo Consumo", "tuvo_consumo"],
+                  
+                ].map(([label, key]) => (
+                  <th
+                    key={key}
+                    onClick={() => requestSort(key)}
+                    className="px-4 py-3 cursor-pointer"
+                  >
+                    {label}
+                    <span className="text-[#6BAF8E] ml-1">
+                      {sortConfig.key === key
+                        ? sortConfig.direction === "asc"
+                          ? "↑"
+                          : "↓"
+                        : "↕"}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {clientesPagina.map((c, idx) => (
+                <tr
+                  key={idx}
+                  className={`${c.tuvo_consumo === "No"
+                    ? "bg-red-900/60"
+                    : idx % 2 === 0
+                      ? "bg-[#013d32]"
+                      : "bg-[#014f3e]"
+                    } hover:bg-[#026452] transition`}
                 >
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-
-          <tbody>
-            {clientesPagina.map((c, idx) => (
-              <tr
-                key={idx}
-                className={`${c.tuvo_consumo === "No"
-                  ? "bg-red-900/60"
-                  : idx % 2 === 0
-                    ? "bg-[#013d32]"
-                    : "bg-[#014f3e]"
-                  } hover:bg-[#026452] transition`}
-              >
-                <td className="px-4 py-2">
-                  {(paginaActual - 1) * clientesPorPagina + idx + 1}
-                </td>
-                <td className="px-4 py-2">{c.codigo_cliente}</td>
-                <td className="px-4 py-2">{c.nombre_cliente}</td>
-                <td className="px-4 py-2">{c.direccion_entrega}</td>
-                <td className="px-4 py-2">{c.consumo_actual}</td>
-
-                <td className="px-4 py-2">{c.cantidad_botellon}</td>
-                <td className="px-4 py-2">{c.consumo_actual}</td>
-
-
-                <td className="px-4 py-2">
-                  {c.vsMesAnterior ? (
-                    <span
-                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold
-        ${c.vsMesAnterior.variacion_abs > 0
+                  <td className="px-4 py-2">
+                    {(paginaActual - 1) * clientesPorPagina + idx + 1}
+                  </td>
+                  <td className="px-4 py-2">{c.codigo_cliente}</td>
+                  <td className="px-4 py-2">{c.nombre_cliente}</td>
+                  <td className="px-4 py-2">{c.direccion_cliente}</td>
+                  <td className="px-2 py-2">{c.telefono_direccion_cliente || "Sin Número"}</td>
+                  <td className="px-2 py-2">{c.latitud_direccion_cliente}</td>
+                  <td className="px-4 py-2">{c.longitud_direccion_cliente}</td>
+                  <td className="px-4 py-2">{c.cantidad_botellon}</td>
+                  <td className="px-2 py-2">{c.consumo_actual}</td>
+                  <td className="px-0 py-2">
+                    {c.vsMesAnterior ? (
+                      <span
+                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold ${c.vsMesAnterior.variacion_abs > 0
                           ? "bg-green-900/40 text-green-400"
                           : c.vsMesAnterior.variacion_abs < 0
                             ? "bg-red-900/40 text-red-400"
                             : "bg-gray-700/40 text-gray-300"
-                        }`}
-                    >
-                      (
-                      {c.vsMesAnterior.variacion_abs > 0 && "+"}
-                      {c.vsMesAnterior.variacion_porc}
-                      )
-                      <span className="font-semibold">
-                        $
-                        {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                          }`}
+                      >
+                        (
+                        {c.vsMesAnterior.variacion_abs > 0 && "+"}
+                        {c.vsMesAnterior.variacion_porc}
+                        )
+                        <span className="font-semibold">
+                          $
+                          {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
                       </span>
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-0 py-2" style={{ whiteSpace: 'nowrap' }}>
+                    {c.ultima_visita || "Sin Fecha"}
+                  </td>
+                  <td className="px-3 py-2" style={{ whiteSpace: 'nowrap' }}>
+                    {c.ultima_factura || "Sin Fecha"}
+                  </td>
+                  <td
+                    className={`px-2 py-2 font-bold ${c.tuvo_consumo === "Sí" ? "text-green-500" : "text-red-500"}`}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    {c.tuvo_consumo}
+                  </td>
 
-
-
-                <td className="px-0 py-2">{c.ultima_visita}</td>
-                <td className="px-2 py-2">{c.ultima_factura}</td>
-
-                <td
-                  className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí"
-                    ? "text-green-500"
-                    : "text-red-500"
-                    }`}
-                >
-                  {c.tuvo_consumo}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {/* PAGINACIÓN */}
-        {/* ===================== PAGINACIÓN ===================== */}
-
-
         <div className="flex justify-center mt-6 gap-2">
           <button
             disabled={paginaActual === 1}
             onClick={() => setPaginaActual(paginaActual - 1)}
-            className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1 ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
+            className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1
+              ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+              : "bg-[#046C5E] hover:bg-[#058A73]"
+              }`}
           >
             <span className="sm:hidden">←</span>
             <span className="hidden sm:inline">← Anterior</span>
@@ -469,9 +491,18 @@ const DetalleBotellonPage: React.FC = () => {
 
             return pages.map((num: any, idx) =>
               num === "..." ? (
-                <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
+                <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">
+                  ...
+                </span>
               ) : (
-                <button key={`page-${idx}-${num}`} onClick={() => setPaginaActual(num)} className={`px-3 py-1 rounded-md ${paginaActual === num ? "bg-green-500 text-black font-bold" : "bg-[#01382D] hover:bg-[#025f4b]"}`}>
+                <button
+                  key={`page-${idx}-${num}`}
+                  onClick={() => setPaginaActual(num)}
+                  className={`px-3 py-1 rounded-md ${paginaActual === num
+                    ? "bg-green-500 text-black font-bold"
+                    : "bg-[#01382D] hover:bg-[#025f4b]"
+                    }`}
+                >
                   {num}
                 </button>
               )
@@ -481,18 +512,19 @@ const DetalleBotellonPage: React.FC = () => {
           <button
             disabled={paginaActual === totalPaginas}
             onClick={() => setPaginaActual(paginaActual + 1)}
-            className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
+            className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas
+              ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+              : "bg-[#046C5E] hover:bg-[#058A73]"
+              }`}
           >
             <span className="sm:hidden">→</span>
             <span className="hidden sm:inline">Siguiente →</span>
           </button>
         </div>
-
-
       </div>
-
     </div>
   );
+
 
 };
 

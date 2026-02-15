@@ -6,19 +6,11 @@ const syncState = require("../../controllers/controllerPreventa/syncState");
 
 const router = express.Router();
 
-// Última sincronización
-router.get("/last-sync", getLastSync);
 
-// Iniciar sincronización invoice(Ordenes-facturas-Detalles)
-router.get("/sincronizar", sincronizarVentas);
-
-//  Sincronizar rutas y planificación (route_details)
-router.post("/sincronizar-rutas", sincronizarRutasController);
-
-
-
-//  ESTADO DE SINCRONIZACIÓN (FALTABA)
-router.get("/status", (req, res) => {
+router.get("/last-sync", getLastSync); // Última sincronización
+router.get("/sincronizar", sincronizarVentas); // Iniciar sincronización invoice(Ordenes-facturas-Detalles)
+router.post("/sincronizar-rutas", sincronizarRutasController); //  Sincronizar rutas y planificación (route_details)
+router.get("/status", (req, res) => { //  ESTADO DE SINCRONIZACIÓN (FALTABA)
   res.json({
     running: syncState.running,
     startDate: syncState.startDate,

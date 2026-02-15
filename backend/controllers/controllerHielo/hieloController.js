@@ -2,8 +2,8 @@ const {
     Orden,
     Factura,
     DetalleDocumento,
-    RutaPreventa,
-    ClienteVenta,
+    // RutaPreventa,
+    // ClienteVenta,
     MetaPreventa,
 } = require("../../models");
 

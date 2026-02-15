@@ -12,7 +12,7 @@ const Orden = sequelize.define('Orden', {
   status: DataTypes.INTEGER,  // 2 = Confirmado
   fecha_creacion: DataTypes.DATE,
   fecha_entrega: DataTypes.DATE,
-  customer_code: DataTypes.STRING,  // Relacionado con clientes_ventas.codigo_cliente
+  customer_code: DataTypes.STRING,  // Relacionado con clientes.codigo_cliente
   route_code: DataTypes.STRING,  // Relacionado con rutas_preventas.codigo_ruta
   seller_code: DataTypes.STRING,  // Relacionado con rutas_preventas.codigo_ruta
   total: DataTypes.DECIMAL(18, 2),

@@ -1,12 +1,9 @@
--- YA ESTÁS EN ventas_mv
--- NO CREAR BASE, NO USE !!
-
 
 
 -------------------------------------------------
--- 3. Tabla: clientes_ventas
+-- 3. Tabla: clientes
 -------------------------------------------------
-CREATE TABLE IF NOT EXISTS clientes_ventas (
+CREATE TABLE IF NOT EXISTS clientes (
     id_cliente SERIAL PRIMARY KEY,
     codigo_cliente VARCHAR(50) NOT NULL UNIQUE,
     nombre_cliente VARCHAR(250),
@@ -19,7 +16,7 @@ CREATE TABLE IF NOT EXISTS clientes_ventas (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cliente_ruta
-    ON clientes_ventas(ruta_asignada);
+    ON clientes(ruta_asignada);
 
 -------------------------------------------------
 -- 4. Tabla: ordenes
@@ -155,7 +152,7 @@ CREATE TABLE IF NOT EXISTS sincronizaciones_ventas (
 -- Relación N a N entre clientes y vendedores
 -------------------------------------------------
 select * from clientes_usuarios_ventas;
-select * from clientes_ventas cv ;
+select * from clientes cv ;
 
 CREATE TABLE IF NOT EXISTS clientes_usuarios_ventas (
     id_relacion SERIAL PRIMARY KEY,
@@ -181,28 +178,7 @@ CREATE INDEX IF NOT EXISTS idx_cuv_ruta
 
 
 
--- tabla visitas
-CREATE TABLE visitas_preventas (
-    id_visita SERIAL PRIMARY KEY,
-    fecha_visita DATE NOT NULL,
-    hora_visita TIMESTAMP,
-    codigo_cliente VARCHAR(50) NOT NULL,
-    seller_code VARCHAR(50) NOT NULL,
-    ruta_code VARCHAR(50) NOT NULL,
 
-    -- contexto
-    es_fuera_ruta BOOLEAN DEFAULT FALSE,
-    motivo_fuera_ruta VARCHAR(200),
-
-    -- resultado
-    hubo_venta BOOLEAN DEFAULT FALSE,
-    documento_code VARCHAR(50), -- orden o factura
-
-    latitude DECIMAL(12,8),
-    longitude DECIMAL(12,8),
-
-    created_at TIMESTAMP DEFAULT NOW()
-);
 
 
 -- =================================================
@@ -224,45 +200,76 @@ $$ LANGUAGE plpgsql;
 -- =================================================
 -- TABLA: rutas_preventas
 -- =================================================
-CREATE TABLE IF NOT EXISTS rutas_preventas (
-    id_ruta SERIAL PRIMARY KEY,
-    codigo_ruta VARCHAR(50) NOT NULL UNIQUE,
-    descripcion VARCHAR(200),
-    tipo VARCHAR(50),
-
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE rutas (
+    codigo_ruta VARCHAR(255) PRIMARY KEY NOT NULL,  -- Código único para la ruta
+    descripcion VARCHAR(255),                      -- Descripción de la ruta
+    tipo VARCHAR(50) NOT NULL,                     -- Tipo de ruta (PREVENTA, TELEVENTA, etc.)
+    status VARCHAR(255),
+    c INT,                                         -- Creado por (usuario)
+    u INT,                                         -- Actualizado por (usuario)
+    c_by VARCHAR(15),                                      -- ID del creador
+    u_by VARCHAR(15),                                       -- ID de quien actualiza
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Fecha de creación
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP -- Fecha de actualización
 );
+-- Crear función para el trigger
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- Trigger updated_at rutas_preventas
-DROP TRIGGER IF EXISTS trg_rutas_preventas_updated ON rutas_preventas;
-CREATE TRIGGER trg_rutas_preventas_updated
-BEFORE UPDATE ON rutas_preventas
-FOR EACH ROW
-EXECUTE FUNCTION set_updated_at();
+-- Crear trigger que ejecutará la función en cada UPDATE
+CREATE TRIGGER update_rutas_updated_at
+  BEFORE UPDATE ON rutas
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
+
 
 -- =================================================
 -- TABLA: route_details (planificación de rutas)
 -- =================================================
-CREATE TABLE IF NOT EXISTS route_details (
-    id SERIAL PRIMARY KEY,
 
-    codigo_ruta VARCHAR(50) NOT NULL,
-    codigo_cliente VARCHAR(50) NOT NULL,
 
-    descripcion VARCHAR(250),
-    codigo_direccion VARCHAR(50),
-
-    semana INTEGER,
-    dia INTEGER,          -- 1=domingo, 2=lunes, ...
-    secuencia INTEGER,    -- orden de visita
-
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-
-    CONSTRAINT uq_route_plan
-      UNIQUE (codigo_ruta, codigo_cliente, semana, dia)
+CREATE TABLE route_details (
+    id SERIAL PRIMARY KEY,                          -- Identificador único para cada detalle de ruta
+    codigo_ruta VARCHAR(255) NOT NULL,               -- Código de la ruta
+    codigo_cliente VARCHAR(255) NOT NULL,            -- Código del cliente
+    descripcion VARCHAR(255),                        -- Descripción del detalle
+    codigo_direccion VARCHAR(255),                   -- Código de dirección del cliente
+    semana INT NOT NULL,                             -- Semana de la ruta
+    dia INT NOT NULL,                                -- Día de la semana
+    secuencia INT DEFAULT 0,                         -- Secuencia de la ruta
+    status VARCHAR(50),                              -- Estado de la ruta (0, 1, etc.)
+    c INT,                                           -- Creado por (usuario)
+    u INT,                                           -- Actualizado por (usuario)
+    c_by VARCHAR(15),                                      -- ID del creador
+    u_by VARCHAR(15),                                          -- ID de quien actualiza
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Fecha de creación
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Fecha de actualización
+    route_code_lookup VARCHAR(255),                  -- Descripción de la ruta (lookup)
+    customer_code_lookup VARCHAR(255),               -- Descripción del cliente (lookup)
+    customer_address_code_lookup VARCHAR(255),       -- Descripción de la dirección (lookup)
+    CONSTRAINT fk_ruta FOREIGN KEY (codigo_ruta) REFERENCES rutas(codigo_ruta),  -- Relación con la tabla rutas
+    UNIQUE (codigo_ruta, codigo_cliente, semana, dia)  -- Clave única compuesta
 );
+-- Crear función para el trigger
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Crear trigger que ejecutará la función en cada UPDATE
+CREATE TRIGGER update_route_details_updated_at
+  BEFORE UPDATE ON route_details
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
+
 
 -- =================================================
 -- ÍNDICES PARA PERFORMANCE

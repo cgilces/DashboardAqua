@@ -14,6 +14,7 @@ const Factura = sequelize.define("Factura", {
   fecha_autorizacion: DataTypes.DATE,
   fecha_entrega: DataTypes.DATE,
   customer_code: DataTypes.STRING,
+  customer_address_code : DataTypes.STRING,
   route_code: DataTypes.STRING, // Relacionado con ruta_preventas.codigo_ruta
   seller_code: DataTypes.STRING,
   total: DataTypes.DECIMAL(18, 2),

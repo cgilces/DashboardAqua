@@ -19,6 +19,10 @@ const ClienteUsuarioVenta = sequelize.define(
       type: DataTypes.STRING(50),
       allowNull: false,
     },
+    codigo_direccion_cliente: {
+      type: DataTypes.TEXT,
+      allowNull: false
+    },
 
     ruta_code: {
       type: DataTypes.STRING(50),

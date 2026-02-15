@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from "react";
-// import { API_URL } from '../../c';
 
-const API_URL =
-  // import.meta.env.VITE_API_URL ||
-  "http://localhost:5000";
+// URL base de la API
+const API_URL = "http://localhost:5000";  // Si tu API está en localhost
 
-const BotonActualizarSincronizacion = () => {
+const BotonHistorialRutas = () => {
   /* =====================================================
    * 🔄 Estados principales
    * ===================================================== */
@@ -19,27 +17,6 @@ const BotonActualizarSincronizacion = () => {
   const [openModal, setOpenModal] = useState(false);
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
-
-  /* =====================================================
-   * 📥 Última sincronización
-   * ===================================================== */
-  useEffect(() => {
-    console.log("📥 Cargando última fecha de sincronización...");
-
-    fetch(`${API_URL}/api/sync/last-sync`)
-      .then(res => {
-        console.log("📥 Respuesta last-sync:", res.status);
-        return res.json();
-      })
-      .then(data => {
-        console.log("📥 Datos last-sync:", data);
-        setLastSyncDate(data?.lastSync || "No se ha sincronizado aún");
-      })
-      .catch(err => {
-        console.error("❌ Error obteniendo last-sync:", err);
-        setLastSyncDate("Error al obtener fecha");
-      });
-  }, []);
 
   /* =====================================================
    * 🔁 Polling de estado
@@ -68,40 +45,39 @@ const BotonActualizarSincronizacion = () => {
         setProgress(data.percent ?? 0);
 
         // ⏱️ Timeout máximo
-          if (Date.now() - startTime > 30 * 60 * 1000) {
-
-            console.warn("⏱️ Timeout alcanzado (30 min)");
-            clearInterval(interval);
-            setIsSyncing(false);
-            alert("⚠️ La sincronización está tardando más de lo esperado.");
-            return;
-          }
-
-          // ✅ Finalización
-          if (!data.running && data.finishedAt) {
-            console.log("✅ Sincronización finalizada:", data.finishedAt);
-
-            clearInterval(interval);
-            setIsSyncing(false);
-            setProgress(100);
-
-            console.log("📥 Actualizando last-sync después de finalizar...");
-            const last = await fetch(`${API_URL}/api/sync/last-sync`);
-            const lastData = await last.json();
-            console.log("📥 Nuevo last-sync:", lastData);
-
-            setLastSyncDate(lastData?.lastSync || "");
-
-            setTimeout(() => {
-              console.log("🔄 Recargando pantalla...");
-              alert("✅ Sincronización completada, Actualizar");
-              window.location.reload();
-            }, 800);
-          }
-        } catch (err) {
-          console.error("❌ Error consultando estado:", err);
+        if (Date.now() - startTime > 30 * 60 * 1000) {
+          console.warn("⏱️ Timeout alcanzado (30 min)");
+          clearInterval(interval);
+          setIsSyncing(false);
+          alert("⚠️ La sincronización está tardando más de lo esperado.");
+          return;
         }
-      }, 4000);
+
+        // ✅ Finalización
+        if (!data.running && data.finishedAt) {
+          console.log("✅ Sincronización finalizada:", data.finishedAt);
+
+          clearInterval(interval);
+          setIsSyncing(false);
+          setProgress(100);
+
+          console.log("📥 Actualizando last-sync después de finalizar...");
+          const last = await fetch(`${API_URL}/api/sync/last-sync`);
+          const lastData = await last.json();
+          console.log("📥 Nuevo last-sync:", lastData);
+
+          setLastSyncDate(lastData?.lastSync || "");
+
+          setTimeout(() => {
+            console.log("🔄 Recargando pantalla...");
+            alert("✅ Sincronización completada, Actualizar");
+            window.location.reload();
+          }, 800);
+        }
+      } catch (err) {
+        console.error("❌ Error consultando estado:", err);
+      }
+    }, 4000);
 
     return () => {
       console.log("🧹 Limpiando intervalo de polling");
@@ -134,10 +110,19 @@ const BotonActualizarSincronizacion = () => {
       setIsSyncing(true);
       setProgress(0);
 
-      const url = `${API_URL}/api/sync/sincronizar?desde=${fechaInicio}&hasta=${fechaFin}`;
+      // Reemplaza esta URL con la correcta para las visitas
+      const url = `${API_URL}/api/visitas/historialvisitas`;  // URL correcta para las visitas
       console.log("🔗 URL sincronización:", url);
 
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          filter: { start_date: fechaInicio, end_date: fechaFin },
+        }),
+      });
       console.log("🚀 Respuesta iniciar sync:", res.status);
 
       if (!res.ok) {
@@ -160,7 +145,7 @@ const BotonActualizarSincronizacion = () => {
     <>
       <div className="text-center">
         <div className="text-sm text-gray-500 mb-4 text-center">
-          Última sincronización: <strong>{lastSyncDate}</strong>
+          Historial Visitas
         </div>
 
         <div className="text-center">
@@ -173,10 +158,18 @@ const BotonActualizarSincronizacion = () => {
             className={`px-6 py-3 rounded-xl shadow-lg font-medium transition
               ${isSyncing
                 ? "bg-gray-400 cursor-not-allowed"
-                : "bg-[#0db48b] text-white hover:bg-[#058A73]"
-              }`}
+                : "bg-[#0db48b] text-white hover:bg-[#058A73]"}`
+            }
           >
-            {isSyncing ? "Sincronizando..." : "Sincronizar Ordenes/Facturas"}
+            {isSyncing ? (
+              "Sincronizando..."
+            ) : (
+              <>
+                {"Sincronizar"}
+                <br />
+                {"Historial Visitas"}
+              </>
+            )}
           </button>
         </div>
 
@@ -198,7 +191,7 @@ const BotonActualizarSincronizacion = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="bg-[#162B25] rounded-2xl shadow-xl w-full max-w-md p-6 animate-fade-in">
               <h2 className="text-lg font-semibold mb-4 text-white">
-                Seleccionar rango de sincronización
+                Rango de sincronización visitas
               </h2>
 
               <div className="space-y-4">
@@ -259,4 +252,4 @@ const BotonActualizarSincronizacion = () => {
   );
 };
 
-export default BotonActualizarSincronizacion;
+export default BotonHistorialRutas;
