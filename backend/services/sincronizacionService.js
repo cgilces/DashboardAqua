@@ -10,8 +10,7 @@ const path = require("path");
 const sequelize = require("../db");
 const {
   Clientes,
-  Ruta,
-  DetalleRuta,
+  TipoNegocio,
   ClienteUsuarioVenta, //  NUEVO
   Factura,
   Orden,
@@ -72,6 +71,22 @@ const logErrorsToFile = (errores, filename = "errores.txt") => {
     console.error("❌ Error escribiendo archivo de log de errores:", err);
   }
 };
+
+
+const sanitizeCoordinate = (value, tipo) => {
+  if (!value) return null;
+
+  const num = parseFloat(value);
+
+  if (!Number.isFinite(num)) return null;
+
+  // Validación geográfica real
+  if (tipo === "lat" && (num < -90 || num > 90)) return null;
+  if (tipo === "lon" && (num < -180 || num > 180)) return null;
+
+  return Number(num.toFixed(8));
+};
+
 
 // ================================================================
 // SERVICIO PRINCIPAL
@@ -251,6 +266,33 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
             return ecuadorTime;
           };
 
+
+          // // ----- Tipo  de Negocio
+          const businessTypeCode = doc.business_type_code || null;
+          const businessTypeDescription = doc.business_type_description || null;
+
+          // Crear tipo de negocio solo si existe código
+          if (businessTypeCode) {
+            await TipoNegocio.upsert(
+              {
+                codigo: businessTypeCode,
+                descripcion: businessTypeDescription || businessTypeCode,
+                estado: 1,
+                fecha_creacion: new Date(),
+                fecha_actualizacion: new Date(),
+              },
+              {
+                transaction: tDoc,
+                conflictFields: ["codigo"],
+              }
+            );
+          }
+
+
+
+
+
+
           // // ----- CLIENTE
           if (customerCode) {
             await Clientes.upsert(
@@ -261,6 +303,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
                 nombre_cliente: doc.customer_name || null,
                 nombre_comercial_cliente: doc.company_name || doc.customer_name || null,
                 contacto_cliente: doc.contact || null,
+                codigo_tipo_negocio: doc.business_type_code || null,
                 codigo_moneda_cliente: doc.currency_code || 'USD',
                 codigo_lista_precio_cliente: doc.price_list_code || null,
                 metodo_pago_cliente: doc.payment_method_description || null,
@@ -300,8 +343,9 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
                 telefono_direccion_cliente: doc.phone || null,
                 fax_direccion_cliente: doc.fax || null,
                 email_direccion_cliente: doc.email || null,
-                latitud_direccion_cliente: doc.address_lat || null,
-                longitud_direccion_cliente: doc.address_lon || null,
+                latitud_direccion_cliente: sanitizeCoordinate(doc.address_lat, "lat"),
+                longitud_direccion_cliente: sanitizeCoordinate(doc.address_lon, "lon"),
+
                 fecha_ultima_visita_direccion_cliente: parseUnixToEcuadorTime(doc.last_visit_date) || null,
                 estado_direccion_cliente: doc.location_status || 1,
                 estado_ubicacion_direccion_cliente: doc.geo_area_code || 3,
@@ -310,74 +354,11 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
               },
               {
                 transaction: tDoc,
-                conflictFields: ['codigo_cliente'],  // Aseguramos que 'codigo_cliente' sea único también aquí
+                conflictFields: ['codigo_cliente', 'codigo_direccion_cliente']
               }
             );
             console.log(`Dirección del cliente ${customerCode} insertada/actualizada.`);
           }
-
-
-          // // ----- RUTA
-          // if (routeCode) {
-          //   await Ruta.upsert(
-          //     {
-          //       codigo: doc.route.code || null,  // Código de la ruta
-          //       descripcion: doc.route.description || null,  // Descripción de la ruta
-          //       // tipo: doc.type || 0,  // Tipo de ruta
-          //       // estado: doc.status || 0,  // Estado de la ruta
-          //       creado_por: doc.c || null,  // Usuario que creó la ruta
-          //       actualizado_por: doc.u || null,  // Usuario que actualizó la ruta
-          //       // creado_por_id: doc.c_by || null,  // ID del usuario que creó
-          //       // actualizado_por_id: doc.u_by || null,  // ID del usuario que actualizó
-          //     },
-          //     { transaction: tDoc }
-          //   );
-          //   console.log(`Ruta ${routeCode} insertada/actualizada.`);
-          // }
-
-
-          // Función para generar el código único basado en los valores
-          // function generateCode(routeCode, customerCode, week, day, sequence) {
-          //   const inputString = `${routeCode}-${customerCode}-${week}-${day}-${sequence}`;
-          //   const hash = crypto.createHash('md5');  // Usamos md5 o sha256 si lo prefieres
-          //   hash.update(inputString);  // Se genera el hash a partir de la cadena
-          //   return hash.digest('hex');  // Devuelve el hash en formato hexadecimal
-          // }
-
-          // // // ----- DETALLE DE RUTA
-          // if (routeCode && customerCode) {
-          //   const uniqueCode = generateCode(routeCode, customerCode, doc.route.week, doc.route.day, doc.route.sequence);  // Generar código único
-
-          //   await DetalleRuta.upsert(
-          //     {
-          //       codigo: uniqueCode,  // Código único de detalle de ruta
-          //       codigo_ruta: doc.route.code,  // Código de la ruta
-          //       codigo_cliente: doc.customer_code,  // Usar codigo_cliente correctamente
-          //       codigo_direccion_cliente: doc.customer_address_code || customerCode,  // Código de la dirección del cliente
-          //       semana: doc.route.week || 1,  // Semana de la ruta
-          //       dia: doc.route.day || 1,  // Día de la ruta
-          //       secuencia: doc.route.sequence || 0,  // Secuencia del detalle
-          //       estado: doc.status || 0,  // Estado del detalle
-          //       datos: doc.data || null,  // Almacenamiento de datos adicionales
-          //       creado_por: doc.c || null,  // Usuario que creó el detalle
-          //       actualizado_por: doc.u || null,  // Usuario que actualizó el detalle
-          //       creado_por_id: doc.c_by || null,  // ID de usuario que creó
-          //       actualizado_por_id: doc.u_by || null,  // ID de usuario que actualizó
-          //       ruta_codigo_lookup: doc.route_code_lookup || null,  // Descripción de la ruta
-          //       cliente_codigo_lookup: doc.customer_name || null,  // Nombre del cliente
-          //       direccion_codigo_lookup: doc.customer_address_code || null,  // Código de dirección del cliente
-          //     },
-          //     {
-          //       transaction: tDoc,
-          //       conflictFields: ['codigo']  // Asegúrate de usar los campos de conflicto correctos
-          //     }
-          //   );
-          //   console.log(`Detalle de ruta para cliente ${customerCode} insertado/actualizado.`);
-          // }
-
-
-
-
 
 
           // // ----- FACTURA / ORDEN
@@ -443,21 +424,21 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
               `👤 Relacionando cliente ${customerCode} con usuario ${sellerCode}`
             );
 
-          await ClienteUsuarioVenta.upsert(
-            {
-              codigo_cliente: customerCode,
-              seller_code: sellerCode,
-              ruta_code: routeCode || null,
-              tipo_atencion: inferTipoRuta(routeCode),
-              ultima_atencion: creationDate,
-              codigo_direccion_cliente: doc.customer_address_code || 'DEFAULT',  // Aquí se asigna desde los datos del documento
+            await ClienteUsuarioVenta.upsert(
+              {
+                codigo_cliente: customerCode,
+                seller_code: sellerCode,
+                ruta_code: routeCode || null,
+                tipo_atencion: inferTipoRuta(routeCode),
+                ultima_atencion: creationDate,
+                codigo_direccion_cliente: doc.customer_address_code || 'DEFAULT',  // Aquí se asigna desde los datos del documento
 
-            },
-            {
-              transaction: tDoc,
-              conflictFields: ["codigo_cliente", "seller_code"],
-            }
-          );
+              },
+              {
+                transaction: tDoc,
+                conflictFields: ["codigo_cliente", "seller_code"],
+              }
+            );
 
 
           }

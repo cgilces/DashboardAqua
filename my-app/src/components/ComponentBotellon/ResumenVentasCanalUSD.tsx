@@ -12,9 +12,12 @@ interface VsMesAnterior {
 
 interface CanalVentasUSD {
   monto?: number;
-  unidades?: number;
+  proyeccion?: number;          // USD proyectado
+  proyeccion_unidades?: number; //  nuevo
+  unidades?: number;            // acumulado real
   vsMesAnterior?: VsMesAnterior;
 }
+
 
 interface Props {
   titulo?: string;
@@ -54,70 +57,95 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
         {titulo}
       </h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {canales.map((canal) => {
           const d = data[canal];
           if (!d) return null;
 
-          const monto = d.monto ?? 0;
-          const unidades = d.unidades ?? 0;
-
+          const proyeccionUSD = d.proyeccion ?? 0;
+          const proyeccionUnidades = d.proyeccion_unidades ?? 0;
+          const unidadesActuales = d.unidades ?? 0;
           const mesAnterior = d.vsMesAnterior;
           const montoAnterior = mesAnterior?.monto_anterior ?? 0;
           const variacionAbs = mesAnterior?.variacion_abs ?? 0;
           const variacionPorc = mesAnterior?.variacion_porc ?? 0;
 
+
+          //  OCULTAR CARD SI UNIDADES ES 0
+          if (proyeccionUnidades === 0 && proyeccionUSD === 0) return null;
+
           return (
             <div
               key={canal}
               className="
-                bg-[#012E24] border border-[#046C5E] rounded-xl p-4
-                text-center md:text-left
-                flex flex-col items-center md:items-start
+                bg-gradient-to-br from-[#012E24] to-[#014034]
+                border border-[#046C5E]/40
+                rounded-2xl p-6
+                shadow-lg
+                flex flex-col
+                transition-all duration-300
+                hover:shadow-xl
               "
-            >
+                        >
               {/* CANAL */}
-              <p
-                className="
-                  uppercase mb-1 font-bold
-                  text-base md:text-xs
-                  text-blue-300
-                  text-center md:text-left
-                "
-              >
+              <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-5">
                 {CANALES_LABELS[canal] ?? canal}
               </p>
 
-              {/* MONTO */}
-              <p className="text-2xl font-bold text-white">
-                {money(monto)}
-              </p>
+              {/* PROYECCIÓN EN 2 COLUMNAS */}
+              <div className="grid grid-cols-2 gap-6 mb-4">
+
+                {/* UNIDADES */}
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">
+                    Proyección Unidades
+                  </p>
+                  <p className="
+                          font-bold text-white
+                          text-xl
+                          sm:text-2xl
+                          xl:text-3xl
+                          whitespace-nowrap
+                        ">
+                    {proyeccionUnidades.toLocaleString("es-EC")}
+                  </p>
+                </div>
+
+                {/* DÓLARES */}
+                <div className="text-right border-l border-[#046C5E]/40 pl-4">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">
+                    Proyección DÓLARES
+                  </p>
+                  <p className="
+                      font-bold text-emerald-400
+                      text-xl
+                      sm:text-2xl
+                      xl:text-3xl
+                    ">
+                    {money(proyeccionUSD)}
+                  </p>
+                </div>
+
+              </div>
 
               {/* MES ANTERIOR */}
-              <p className="text-xs text-gray-300">
-                Mes anterior: {money(montoAnterior)}
+              <p className="text-xs text-gray-400 mb-1">
+                Mes anterior:{" "}
+                <span className="text-white font-medium">
+                  {money(montoAnterior)}
+                </span>
               </p>
 
               {/* VARIACIÓN */}
               <p
-                className={`text-xs font-semibold ${
-                  variacionAbs >= 0 ? "text-green-400" : "text-red-400"
-                }`}
+                className={`text-sm font-semibold ${variacionAbs >= 0 ? "text-green-400" : "text-red-400"
+                  }`}
               >
-                Variación:{" "}
-                {variacionAbs >= 0 ? "+" : "-"}
-                {money(Math.abs(variacionAbs))} (
-                {variacionPorc.toFixed(1)}%)
-              </p>
-
-              {/* UNIDADES */}
-              <p className="text-xs text-gray-300 mt-1">
-                Unidades:{" "}
-                <span className="font-semibold">
-                  {unidades.toLocaleString("es-EC")}
-                </span>
+                {variacionAbs >= 0 ? "▲" : "▼"}{" "}
+                {money(Math.abs(variacionAbs))} ({variacionPorc.toFixed(1)}%)
               </p>
             </div>
+
           );
         })}
       </div>

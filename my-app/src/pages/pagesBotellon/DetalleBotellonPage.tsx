@@ -363,16 +363,20 @@ const DetalleBotellonPage: React.FC = () => {
                   ["Código", "codigo_cliente"],
                   ["Cliente", "nombre_cliente"],
                   ["Dirección", "direccion_cliente"],
+                  ["Tipo Negocio", "tipo_negocio"],
+
                   ["#Teléfono", "telefono_cliente"],
                   ["Latitud", "latitud_direccion_cliente"],
                   ["Longitud", "longitud_direccion_cliente"],
                   ["Cantidad Actual", "cantidad_botellon"],
                   ["Consumo Actual($)", "consumo_actual"],
+                  ["Maximo Consumo($)", "maximo_consumo"],
+
                   ["VS MES ANT", "vsMesAnterior"],
                   ["Última Visita", "ultima_visita"],
                   ["Última Factura", "ultima_factura"],
                   ["Tuvo Consumo", "tuvo_consumo"],
-                  
+
                 ].map(([label, key]) => (
                   <th
                     key={key}
@@ -409,37 +413,73 @@ const DetalleBotellonPage: React.FC = () => {
                   <td className="px-4 py-2">{c.codigo_cliente}</td>
                   <td className="px-4 py-2">{c.nombre_cliente}</td>
                   <td className="px-4 py-2">{c.direccion_cliente}</td>
+                  <td className="px-4 py-2 text-white">{c.tipo_negocio}</td>
                   <td className="px-2 py-2">{c.telefono_direccion_cliente || "Sin Número"}</td>
                   <td className="px-2 py-2">{c.latitud_direccion_cliente}</td>
                   <td className="px-4 py-2">{c.longitud_direccion_cliente}</td>
                   <td className="px-4 py-2">{c.cantidad_botellon}</td>
                   <td className="px-2 py-2">{c.consumo_actual}</td>
-                  <td className="px-0 py-2">
+                  <td className="px-4 py-2">
+                    <div className="flex flex-col leading-tight">
+
+                      {/* Monto máximo */}
+                      <span className="text-white  text-sm">
+                        ${Number(c.max_consumo).toLocaleString("es-EC", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+
+                      {/* Mes */}
+                      <span className="text-xs text-[#6BAF8E] font-medium">
+                        {c.mes_max_consumo_nombre ?? ""}
+                      </span>
+
+                    </div>
+                  </td>
+                  <td className="px-6 py-2">
                     {c.vsMesAnterior ? (
-                      <span
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold ${c.vsMesAnterior.variacion_abs > 0
-                          ? "bg-green-900/40 text-green-400"
-                          : c.vsMesAnterior.variacion_abs < 0
-                            ? "bg-red-900/40 text-red-400"
-                            : "bg-gray-700/40 text-gray-300"
-                          }`}
-                      >
-                        (
-                        {c.vsMesAnterior.variacion_abs > 0 && "+"}
-                        {c.vsMesAnterior.variacion_porc}
-                        )
-                        <span className="font-semibold">
-                          $
-                          {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
+                      <div className="flex flex-col leading-tight">
+
+                        {/* Diferencia en dólares */}
+                        <span
+                          className={`text-sm font-bold
+          ${c.vsMesAnterior.variacion_abs > 0
+                              ? "text-green-400"
+                              : c.vsMesAnterior.variacion_abs < 0
+                                ? "text-red-400"
+                                : "text-gray-300"
+                            }`}
+                        >
+                          {c.vsMesAnterior.variacion_abs > 0 && "+"}$
+                          {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString("es-EC", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
                         </span>
-                      </span>
+
+                        {/* Porcentaje */}
+                        <span
+                          className={`text-xs font-semibold
+          ${c.vsMesAnterior.variacion_abs > 0
+                              ? "text-green-300"
+                              : c.vsMesAnterior.variacion_abs < 0
+                                ? "text-red-300"
+                                : "text-gray-400"
+                            }`}
+                        >
+                          (
+                          {c.vsMesAnterior.variacion_abs > 0 && "+"}
+                          {c.vsMesAnterior.variacion_porc}
+                          )
+                        </span>
+
+                      </div>
                     ) : (
-                      "—"
+                      <span className="text-gray-500">—</span>
                     )}
                   </td>
+
                   <td className="px-0 py-2" style={{ whiteSpace: 'nowrap' }}>
                     {c.ultima_visita || "Sin Fecha"}
                   </td>

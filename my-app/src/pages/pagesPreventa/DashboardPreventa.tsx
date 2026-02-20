@@ -229,17 +229,25 @@ export default function DashboardPreventa() {
           <>
             {/* ================= CARD VENTAS USD ================= */}
             {isAdmin && resumenVentasPorCanal && (
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
+              <div className="
+              grid grid-cols-1 md:grid-cols-5 gap-6 mb-10"
+              >
                 {Object.values(resumenVentasPorCanal).map((canal: any) => (
                   <div
                     key={canal.canal}
                     className="bg-[#012E24] border border-[#046C5E] rounded-xl p-4"
                   >
-                    <p className="text-xs text-gray-400 uppercase mb-1">
+                    <p        className="
+                  uppercase mb-1 font-bold
+                  text-base md:text-xs
+                  text-blue-300
+                  text-center md:text-left
+                ">
                       {canal.canal}
                     </p>
 
                     <p className="text-2xl font-bold">
+                      <span className="text-sm text-gray-400 mr-1">Proyección:</span>
                       $
                       {canal.monto.toLocaleString("es-EC", {
                         minimumFractionDigits: 2,

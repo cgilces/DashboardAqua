@@ -23,7 +23,10 @@ export interface ItemDetalleVentas {
     unidades: number;
     dolares: number;
     meta: MetaHistorica;
-    proyeccion: number;
+    proyeccion: {
+        dolares: number
+        unidades: number
+    };
     vsMesAnterior?: VsMesAnterior | null;
 }
 
@@ -57,8 +60,19 @@ const TablaVentasBase: React.FC<Props> = ({
     anio,
     mes,
 }) => {
+    //  FILTRAR filas con unidades en 0
+    const dataFiltrada = data.filter(
+        (r) =>
+            r.unidades > 0 ||
+            r.dolares > 0 ||
+            (r.proyeccion?.dolares || 0) > 0 ||
+            (r.proyeccion?.unidades || 0) > 0
+    );
 
-    if (!Array.isArray(data) || data.length === 0) {
+
+
+    if (!Array.isArray(dataFiltrada) || dataFiltrada.length === 0) {
+
         return (
             <div className="bg-[#012E24] text-gray-400 rounded-lg p-4 border border-[#046C5E]">
                 No hay datos para {titulo}
@@ -77,7 +91,8 @@ const TablaVentasBase: React.FC<Props> = ({
         | "unidades"
         | "dolares"
         | "meta"
-        | "proyeccion"
+        | "proyeccion_dolares"
+        | "proyeccion_unidades"
         | "vsMesAnterior";
 
     const [sortConfig, setSortConfig] = useState<{
@@ -96,13 +111,21 @@ const TablaVentasBase: React.FC<Props> = ({
         }));
     };
 
-    const sortedData = [...data].sort((a, b) => {
+    const sortedData = [...dataFiltrada].sort((a, b) => {
         const getValue = (item: ItemDetalleVentas) => {
             switch (sortConfig.key) {
                 case "meta":
                     return Number(item.meta?.meta_historica || 0);
+
                 case "vsMesAnterior":
                     return Number(item.vsMesAnterior?.variacion_abs || 0);
+
+                case "proyeccion_dolares":
+                    return Number(item.proyeccion?.dolares || 0);
+
+                case "proyeccion_unidades":
+                    return Number(item.proyeccion?.unidades || 0);
+
                 default:
                     return (item as any)[sortConfig.key] ?? 0;
             }
@@ -130,8 +153,15 @@ const TablaVentasBase: React.FC<Props> = ({
         (a, r) => a + Number(r.meta?.meta_historica || 0),
         0
     );
-    const totalProyeccion = sortedData.reduce((a, r) => a + r.proyeccion, 0);
-    const totalvsmesanterior = sortedData.reduce((a, r) => a + (r.vsMesAnterior?.variacion_abs || 0), 0);
+    const totalProyeccionDolares = sortedData.reduce(
+        (a, r) => a + (r.proyeccion?.dolares || 0),
+        0
+    );
+
+    const totalProyeccionUnidades = sortedData.reduce(
+        (a, r) => a + (r.proyeccion?.unidades || 0),
+        0
+    ); const totalvsmesanterior = sortedData.reduce((a, r) => a + (r.vsMesAnterior?.variacion_abs || 0), 0);
 
 
     /* ============================
@@ -143,7 +173,8 @@ const TablaVentasBase: React.FC<Props> = ({
             Unidades: r.unidades,
             Dólares: r.dolares,
             Meta: Number(r.meta?.meta_historica || 0),
-            Proyección: r.proyeccion,
+            "Proyección USD": r.proyeccion?.dolares ?? 0,
+            "Proyección Unidades": r.proyeccion?.unidades ?? 0,
             "Vs Mes Anterior (%)": r.vsMesAnterior?.variacion_abs ?? "",
         }));
 
@@ -157,7 +188,7 @@ const TablaVentasBase: React.FC<Props> = ({
                     Unidades: totalUnidades,
                     Dólares: totalDolares,
                     Meta: totalMeta,
-                    Proyección: totalProyeccion,
+                    // Proyección: totalProyeccion,
                     "Vs Mes Anterior (%)": totalvsmesanterior,
                 },
             ],
@@ -234,8 +265,18 @@ const TablaVentasBase: React.FC<Props> = ({
                         <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer">
                             META {iconSort("meta")}
                         </th>
-                        <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer">
-                            PROYECCIÓN {iconSort("proyeccion")}
+                        <th
+                            onClick={() => requestSort("proyeccion_unidades")}
+                            className="px-4 py-3 text-right cursor-pointer"
+                        >
+                            PROYECCIÓN_UNIDADES {iconSort("proyeccion_unidades")}
+                        </th>
+
+                        <th
+                            onClick={() => requestSort("proyeccion_dolares")}
+                            className="px-4 py-3 text-right cursor-pointer"
+                        >
+                            PROYECCIÓN_USD {iconSort("proyeccion_dolares")}
                         </th>
                         <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer">
                             VS MES ANTERIOR {iconSort("vsMesAnterior")}
@@ -282,8 +323,23 @@ const TablaVentasBase: React.FC<Props> = ({
                                     : "—"}
                             </td>
 
+
+                            <td className="px-4 py-2 text-right text-green-400 font-bold">
+
+                                <span className="text-xs text-gray-300">
+                                    {row.proyeccion?.unidades?.toLocaleString("es-EC")} 
+                                </span>
+
+
+                            </td>
+
                             <td className="px-4 py-2 text-right text-blue-400 font-bold">
-                                {money(row.proyeccion)}
+                                <div className="flex flex-col items-end">
+                                    <span className="text-blue-400 font-bold">
+                                        {money(row.proyeccion?.dolares)}
+                                    </span>
+
+                                </div>
                             </td>
 
                             <td className="px-4 py-2 text-right font-bold">
@@ -312,18 +368,27 @@ const TablaVentasBase: React.FC<Props> = ({
                 <tfoot className="bg-[#014434] font-bold border-t border-[#046C5E]">
                     <tr>
                         <td className="px-4 py-3">TOTAL GENERAL</td>
+
                         <td className="px-4 py-3 text-right">
                             {totalUnidades.toLocaleString("es-EC")}
                         </td>
+
                         <td className="px-4 py-3 text-right">
                             {money(totalDolares)}
                         </td>
+
                         <td className="px-4 py-3 text-right">
                             {money(totalMeta)}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                            {money(totalProyeccion)}
+
+                        <td className="px-4 py-3 text-right text-green-400">
+                            {totalProyeccionUnidades.toLocaleString("es-EC")}
                         </td>
+
+                        <td className="px-4 py-3 text-right text-blue-400">
+                            {money(totalProyeccionDolares)}
+                        </td>
+
                         <td className="px-4 py-3 text-right">
                             {money(totalvsmesanterior)}
                         </td>

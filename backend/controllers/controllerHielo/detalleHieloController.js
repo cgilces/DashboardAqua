@@ -71,7 +71,7 @@ const obtenerDetalleRuta = async (req, res) => {
     }
 
     // ============================================================
-    // 🗓 USO DE FUNCIÓN SEGURA PARA FECHAS PG
+    //  USO DE FUNCIÓN SEGURA PARA FECHAS PG
     // ============================================================
     // Obtener las fechas del mes actual y del mes anterior
     const { fInicio, fFin } = obtenerRangoFechasPG(anioNum, mesNum);
@@ -85,8 +85,6 @@ const obtenerDetalleRuta = async (req, res) => {
     console.log("📅 Rango mes anterior:");
     console.log(`Fecha de inicio: ${antInicio}`);
     console.log(`Fecha de fin: ${antFin}`);
-    // const rutaUpper = ruta.trim().toUpperCase();
-
 
     console.log("🧮 [detalleHielo] Rango de fechas calculado (SEGURIDAD UTC):", {
       anioNum,
@@ -94,18 +92,24 @@ const obtenerDetalleRuta = async (req, res) => {
       fInicio,
       fFin,
     });
-    // const rutaUpper = ruta.trim().toUpperCase();
-    // Suponiendo que la ruta incluye 'h3', dejamos esta parte sin cambios
-    let rutaOriginal = ruta.trim();
-    // Identificamos si contiene 'h3' y la dejamos intacta
-    if (rutaOriginal.toLowerCase() === 'h3') {
-      // Si la ruta es igual a 'h3', no la convertimos a mayúsculas
-      rutaUpper = 'h3';  // Mantener 'h3' como está
+
+
+    // ============================================================
+    // NORMALIZAR RUTA (solo una vez)
+    // ============================================================
+
+    let rutaUpper;
+
+    const rutaOriginal = ruta?.trim();
+
+    if (rutaOriginal?.toLowerCase() === "h3") {
+      rutaUpper = "h3";
     } else {
-      // Convertir el resto de la ruta a mayúsculas
-      rutaUpper = rutaOriginal.toUpperCase();
+      rutaUpper = rutaOriginal?.toUpperCase();
     }
-    // console.log(rutaUpper);  // Ahora 'h3' no se convertirá a mayúsculas
+
+    console.log("🔎 Ruta normalizada:", rutaUpper);
+
 
     // ============================================================
     // 1) CONSULTAR CLIENTES ASIGNADOS A LA RUTA
@@ -113,27 +117,41 @@ const obtenerDetalleRuta = async (req, res) => {
     // console.log("👥 [detalleHielo] Consultando clientes asignados a la ruta...");
 
     const clientesRutaSQL = `
-  SELECT DISTINCT
-    cuv.codigo_cliente,
-    cv.nombre_cliente,
-    dc.codigo_direccion_cliente,
-    dc.calle1_direccion_cliente AS direccion_cliente,  -- Usamos la columna 'calle1_direccion_cliente' como la dirección
-    dc.telefono_direccion_cliente,
-    dc.latitud_direccion_cliente,  -- Agregamos latitud
-    dc.longitud_direccion_cliente  -- Agregamos longitud
-  FROM clientes_usuarios_ventas cuv
-  JOIN clientes cv ON cv.codigo_cliente = cuv.codigo_cliente
-  JOIN direcciones_clientes dc ON dc.codigo_cliente = cv.codigo_cliente  -- Hacemos JOIN con 'direcciones_clientes'
-  WHERE cuv.seller_code = :ruta  -- Filtramos por la ruta que se pasa como parámetro
-  ORDER BY cv.nombre_cliente;
-`;
+          SELECT DISTINCT ON (cuv.codigo_cliente)
+              cuv.codigo_cliente,
+              cv.nombre_cliente,
+              cv.codigo_tipo_negocio,
+              tn.descripcion AS tipo_negocio,
+              dc.codigo_direccion_cliente,
+              dc.calle1_direccion_cliente AS direccion_cliente,
+              dc.telefono_direccion_cliente,
+              dc.latitud_direccion_cliente,
+              dc.longitud_direccion_cliente,
+              cuv.seller_code
+          FROM public.clientes_usuarios_ventas cuv
+          LEFT JOIN public.clientes cv 
+              ON cv.codigo_cliente = cuv.codigo_cliente
+          LEFT JOIN public.tipos_negocio tn
+              ON tn.codigo = cv.codigo_tipo_negocio
+          LEFT JOIN public.direcciones_clientes dc 
+              ON dc.codigo_cliente = cv.codigo_cliente
+          WHERE UPPER(TRIM(cuv.seller_code)) = :ruta
+          ORDER BY cuv.codigo_cliente, dc.fecha_creacion_direccion_cliente DESC;
+      `;
+
+
 
     const clientesRuta = await db.query(clientesRutaSQL, {
-      replacements: { ruta },  // 'ruta' es el parámetro que se pasa a la consulta
+      replacements: { ruta: rutaUpper }, // AQUÍ es importante
       type: db.QueryTypes.SELECT,
     });
 
-    // console.log("👥 [detalleHielo] Total clientes asignados:", clientesRuta.length);
+
+
+    console.log("👥 Total clientes:", clientesRuta.length);
+
+
+
 
     // ============================================================
     // 2) CONSULTAR CLIENTES CON CONSUMO EN EL MES
@@ -194,6 +212,71 @@ const obtenerDetalleRuta = async (req, res) => {
     });
 
     console.log("📊 [detalleHielo] Datos de consumo obtenidos:", clientesConsumoData);
+
+
+
+
+    /* ========================================================
+    CONSUMO MÁXIMO ANUAL HIELO
+======================================================== */
+
+    const fechaInicioAnio = `${anioNum}-01-01 00:00:00`;
+    const fechaFinAnio = `${anioNum + 1}-01-01 00:00:00`;
+
+    const consumoMaximoAnualSQL = `
+        WITH consumo_mensual AS (
+            SELECT 
+                f.customer_code,
+                DATE_TRUNC('month', f.fecha_entrega) AS mes,
+                SUM(d.total) AS consumo_mes
+            FROM facturas f
+            JOIN detalle_documento d 
+                ON d.documento_code = f.code
+            WHERE 
+                f.seller_code = :ruta
+                AND f.status IN ('2','4','5')
+                AND d.codigo_categoria = '40'
+                AND f.fecha_entrega >= :inicioAnio
+                AND f.fecha_entrega <  :finAnio
+            GROUP BY f.customer_code, DATE_TRUNC('month', f.fecha_entrega)
+        )
+        SELECT DISTINCT ON (customer_code)
+            customer_code,
+            consumo_mes,
+            mes
+        FROM consumo_mensual
+        ORDER BY customer_code, consumo_mes DESC;
+        `;
+
+    const consumoMaximoAnual = await db.query(consumoMaximoAnualSQL, {
+      replacements: {
+        ruta: rutaUpper,
+        inicioAnio: fechaInicioAnio,
+        finAnio: fechaFinAnio,
+      },
+      type: db.QueryTypes.SELECT,
+    });
+
+
+    const mapMaxConsumoAnual = new Map(
+      consumoMaximoAnual.map(c => [
+        c.customer_code,
+        {
+          monto: Number(c.consumo_mes) || 0,
+          mes: c.mes
+        }
+      ])
+    );
+
+
+    const meses = [
+      "Enero", "Febrero", "Marzo", "Abril",
+      "Mayo", "Junio", "Julio", "Agosto",
+      "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    ];
+
+
+
 
 
     // ============================================================
@@ -361,10 +444,27 @@ const obtenerDetalleRuta = async (req, res) => {
         cantidadProductosVendidos = 0;  // Si no es un número válido, lo asignamos como 0
       }
 
+
+      const maxData = mapMaxConsumoAnual.get(cliente.codigo_cliente) || {
+        monto: 0,
+        mes: null
+      };
+
+      const mesNumero = maxData.mes
+        ? new Date(maxData.mes).getUTCMonth()
+        : null;
+
+      const mesNombre = mesNumero !== null
+        ? meses[mesNumero]
+        : null;
+
+
       return {
         codigo_cliente: cliente.codigo_cliente,
         nombre_cliente: cliente.nombre_cliente,
         direccion_entrega: cliente.direccion_cliente,
+        codigo_tipo_negocio: cliente.codigo_tipo_negocio || null,
+        tipo_negocio: cliente.tipo_negocio || "SIN CLASIFICAR",
         telefono_cliente: cliente.telefono_direccion_cliente, // Nuevo campo
         latitud_cliente: cliente.latitud_direccion_cliente,  // Nuevo campo
         longitud_cliente: cliente.longitud_direccion_cliente,  // Nuevo campo
@@ -373,6 +473,10 @@ const obtenerDetalleRuta = async (req, res) => {
         consumo_actual: consumoActual.toFixed(2),
         tuvo_consumo: clientesConConsumo.has(cliente.codigo_cliente) ? 'Sí' : 'No',
         cantidad_productos: cantidadProductosVendidos,  // Agregar cantidad de productos vendidos
+        max_consumo: maxData.monto.toFixed(2),
+        mes_max_consumo: mesNumero !== null ? mesNumero + 1 : null,
+        mes_max_consumo_nombre: mesNombre,
+
         vsMesAnterior: {
           monto_anterior: consumoAnterior.toFixed(2),
           variacion_abs: variacionAbs.toFixed(2),

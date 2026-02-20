@@ -65,24 +65,32 @@ const obtenerDetalleRuta = async (req, res) => {
     const rutaUpper = ruta.trim().toUpperCase();
 
     /* ========================================================
-       1️⃣ CLIENTES ASIGNADOS A LA RUTA
+        CLIENTES ASIGNADOS A LA RUTA
     ======================================================== */
 
     const clientesRutaSQL = `
-  SELECT DISTINCT
-    cuv.codigo_cliente,
-    cv.nombre_cliente,
-    dc.codigo_direccion_cliente,
-    dc.calle1_direccion_cliente AS direccion_cliente,  -- Usamos la columna 'calle1_direccion_cliente' como la dirección
-    dc.telefono_direccion_cliente,
-    dc.latitud_direccion_cliente,  -- Agregamos latitud
-    dc.longitud_direccion_cliente  -- Agregamos longitud
-  FROM clientes_usuarios_ventas cuv
-  JOIN clientes cv ON cv.codigo_cliente = cuv.codigo_cliente
-  JOIN direcciones_clientes dc ON dc.codigo_cliente = cv.codigo_cliente  -- Hacemos JOIN con 'direcciones_clientes'
-  WHERE cuv.seller_code = :ruta  -- Filtramos por la ruta que se pasa como parámetro
-  ORDER BY cv.nombre_cliente;
-`;
+                      SELECT DISTINCT
+                              cuv.codigo_cliente,
+                              cv.nombre_cliente,
+                              cv.codigo_tipo_negocio,
+                              tn.descripcion AS tipo_negocio,
+                              dc.codigo_direccion_cliente,
+                              dc.calle1_direccion_cliente AS direccion_cliente,
+                              dc.telefono_direccion_cliente,
+                              dc.latitud_direccion_cliente,
+                              dc.longitud_direccion_cliente,
+                              cuv.seller_code
+                          FROM public.clientes_usuarios_ventas cuv
+                          LEFT JOIN public.clientes cv 
+                              ON cv.codigo_cliente = cuv.codigo_cliente
+                          LEFT JOIN public.tipos_negocio tn
+                              ON tn.codigo = cv.codigo_tipo_negocio
+                          LEFT JOIN public.direcciones_clientes dc 
+                              ON dc.codigo_cliente = cv.codigo_cliente
+                          WHERE UPPER(TRIM(cuv.seller_code)) = :ruta
+                          ORDER BY cv.nombre_cliente;
+
+                        `;
 
     const clientesRuta = await db.query(clientesRutaSQL, {
       replacements: { ruta },  // 'ruta' es el parámetro que se pasa a la consulta
@@ -157,8 +165,74 @@ const obtenerDetalleRuta = async (req, res) => {
       type: db.QueryTypes.SELECT,
     });
 
+
+
     /* ========================================================
-       4️⃣ PRODUCTOS VENDIDOS
+    CONSUMO MÁXIMO ANUAL BOTELLÓN
+======================================================== */
+
+    const fechaInicioAnio = `${anioNum}-01-01 00:00:00`;
+    const fechaFinAnio = `${anioNum + 1}-01-01 00:00:00`;
+
+    const consumoMaximoAnualSQL = `
+WITH consumo_mensual AS (
+    SELECT 
+        f.customer_code,
+        DATE_TRUNC('month', f.fecha_entrega) AS mes,
+        SUM(d.total) AS consumo_mes
+    FROM facturas f
+    JOIN detalle_documento d 
+        ON d.documento_code = f.code
+    WHERE 
+        f.seller_code = :ruta
+        AND f.status IN ('2','4','5')
+        AND d.codigo_categoria = '5'
+        AND f.fecha_entrega >= :inicioAnio
+        AND f.fecha_entrega <  :finAnio
+    GROUP BY f.customer_code, DATE_TRUNC('month', f.fecha_entrega)
+)
+SELECT DISTINCT ON (customer_code)
+    customer_code,
+    consumo_mes,
+    mes
+FROM consumo_mensual
+ORDER BY customer_code, consumo_mes DESC;
+`;
+
+    const consumoMaximoAnual = await db.query(consumoMaximoAnualSQL, {
+      replacements: {
+        ruta: rutaUpper,
+        inicioAnio: fechaInicioAnio,
+        finAnio: fechaFinAnio,
+      },
+      type: db.QueryTypes.SELECT,
+    });
+
+    const mapMaxConsumoAnual = new Map(
+      consumoMaximoAnual.map(c => [
+        c.customer_code,
+        {
+          monto: Number(c.consumo_mes) || 0,
+          mes: c.mes
+        }
+      ])
+    );
+
+    const meses = [
+      "Enero", "Febrero", "Marzo", "Abril",
+      "Mayo", "Junio", "Julio", "Agosto",
+      "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    ];
+
+
+
+
+
+
+
+
+    /* ========================================================
+       4️ PRODUCTOS VENDIDOS
     ======================================================== */
     const productosVendidosSQL = `
       SELECT
@@ -233,7 +307,7 @@ const obtenerDetalleRuta = async (req, res) => {
     );
 
     /* ========================================================
-       7️⃣ ARMADO FINAL
+        ARMADO FINAL
     ======================================================== */
     const clientesRutaFinal = clientesRuta.map((c) => {
       const consumo =
@@ -251,10 +325,28 @@ const obtenerDetalleRuta = async (req, res) => {
         variacionPorc = 100;
       }
 
-    return {
+      const maxData = mapMaxConsumoAnual.get(c.codigo_cliente) || {
+        monto: 0,
+        mes: null
+      };
+
+      const mesNumero = maxData.mes
+        ? new Date(maxData.mes).getUTCMonth()
+        : null;
+
+      const mesNombre = mesNumero !== null
+        ? meses[mesNumero]
+        : null;
+
+
+
+
+      return {
         codigo_cliente: c.codigo_cliente,
         nombre_cliente: c.nombre_cliente,
         direccion_cliente: c.direccion_cliente,
+        codigo_tipo_negocio: c.codigo_tipo_negocio || null,
+        tipo_negocio: c.tipo_negocio || "SIN CLASIFICAR",
         telefono_direccion_cliente: c.telefono_direccion_cliente,
         latitud_direccion_cliente: c.latitud_direccion_cliente,  // Latitud
         longitud_direccion_cliente: c.longitud_direccion_cliente,  // Longitud
@@ -267,6 +359,11 @@ const obtenerDetalleRuta = async (req, res) => {
         ),
 
         consumo_actual: actual.toFixed(2),
+
+        max_consumo: maxData.monto.toFixed(2),
+        mes_max_consumo: mesNumero !== null ? mesNumero + 1 : null,
+        mes_max_consumo_nombre: mesNombre,
+
 
         vsMesAnterior: {
           monto_anterior: Number(anterior.toFixed(2)),

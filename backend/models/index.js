@@ -14,6 +14,8 @@ const AppUser = require('./AppUser');
 const HistorialVisitas = require('./HistorialVisitas');
 const Ruta = require('./Ruta');  // Aquí importamos Ruta
 const DetalleRuta = require('./DetalleRuta');
+const TipoNegocio = require("./tipos_negocio");
+
 
 // Establecer relaciones
 
@@ -95,6 +97,13 @@ HistorialVisitas.belongsTo(Orden, {  // Relación con el modelo Orden
   as: 'orden',  // Alias que usamos en las consultas `include`
 });
 
+// Relación
+Clientes.belongsTo(TipoNegocio, {
+  foreignKey: "codigo_tipo_negocio",
+  targetKey: "codigo",
+  as: "tipo_negocio",
+});
+
 
 // Exportar los modelos para que estén disponibles en otras partes de la aplicación
 module.exports = {
@@ -110,5 +119,6 @@ module.exports = {
   HistorialVisitas,  // Exportamos HistorialVisitas
   Ruta,  // Exportamos Ruta
   DetalleRuta,  // Exportamos DetalleRuta
+  TipoNegocio,  // Exportamos TipoNegocio
   sequelize,  // Exportamos la conexión a la base de datos
 };

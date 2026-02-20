@@ -33,6 +33,12 @@ const DashboardHielo: React.FC = () => {
   const [resumenUsuariosVentasHielo, setResumenUsuariosVentasHielo] =
     useState<any[]>([]);
 
+  const totalProyeccion = resumenUsuariosVentasHielo.reduce(
+    (acc, r) => acc + Number(r.proyeccion || 0),
+    0
+  );
+
+
   const [kpisHielo, setKpisHielo] = useState<any | null>(null);
   const [comparativaMesAnterior, setComparativaMesAnterior] =
     useState<any | null>(null);
@@ -53,7 +59,7 @@ const DashboardHielo: React.FC = () => {
           `http://localhost:5000/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
           // `${API_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
 
-          
+
         );
 
         if (!response.ok) {
@@ -120,9 +126,9 @@ const DashboardHielo: React.FC = () => {
         ============================ */}
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
-            <img src={logo}   
-            className="h-14 w-auto transition-all duration-300" 
-            alt="Logo" />
+            <img src={logo}
+              className="h-14 w-auto transition-all duration-300"
+              alt="Logo" />
             <div>
               <h1 className="text-3xl font-bold tracking-wide">
                 DASHBOARD HIELO
@@ -133,7 +139,7 @@ const DashboardHielo: React.FC = () => {
             </div>
           </div>
 
-           {/* Botón de actualización de sincronización - Centrado en dispositivos móviles */}
+          {/* Botón de actualización de sincronización - Centrado en dispositivos móviles */}
           <div className="flex justify-center w-full sm:w-auto mt-4 sm:mt-0">
             <BotonActualizarSincronizacion />
           </div>
@@ -167,7 +173,7 @@ const DashboardHielo: React.FC = () => {
 
 
 
-        
+
 
         {/* ============================
            ESTADOS
@@ -189,7 +195,9 @@ const DashboardHielo: React.FC = () => {
           <KpisHielo
             kpis={kpisHielo}
             comparativa={comparativaMesAnterior}
+            totalProyeccion={totalProyeccion}
           />
+
         )}
 
         {/* ============================

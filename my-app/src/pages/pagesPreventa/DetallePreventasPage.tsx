@@ -18,9 +18,12 @@ const DetallePreventasPage: React.FC = () => {
   const [paginaActual, setPaginaActual] = useState(1);
   const clientesPorPagina = 60;
 
-  const clientesFiltrados = clientesRuta.filter((cliente) =>
-    cliente.nombre_cliente.toLowerCase().includes(terminoBusqueda.toLowerCase())
+  const clientesFiltrados = (clientesRuta || []).filter((cliente) =>
+    String(cliente?.nombre_cliente || "")
+      .toLowerCase()
+      .includes(String(terminoBusqueda || "").toLowerCase())
   );
+
 
   // Ordenación
   const [sortConfig, setSortConfig] = useState({ key: "codigo_cliente", direction: "asc" });
@@ -41,23 +44,60 @@ const DetallePreventasPage: React.FC = () => {
     }
     setSortConfig({ key, direction });
 
+    const getComparable = (row: any) => {
+      // ✅ Caso especial: VS MES ANT (objeto)
+      if (key === "vsMesAnterior") {
+        const abs = Number(row?.vsMesAnterior?.variacion_abs);
+        if (Number.isFinite(abs)) return abs;
+
+        // fallback si variacion_abs viene como string "$1.23" o "1.23"
+        const rawAbs = String(row?.vsMesAnterior?.variacion_abs ?? "")
+          .replace(/[^\d.-]/g, "");
+        const absParsed = Number(rawAbs);
+        if (Number.isFinite(absParsed)) return absParsed;
+
+        // como último fallback, ordenar por porcentaje
+        const rawPorc = String(row?.vsMesAnterior?.variacion_porc ?? "")
+          .replace("%", "")
+          .replace(",", ".")
+          .trim();
+        const porc = Number(rawPorc);
+        return Number.isFinite(porc) ? porc : 0;
+      }
+
+      // ✅ Números que te llegan como string (ej: "65.34")
+      const val = row?.[key];
+      const num = Number(String(val).replace(",", "."));
+      if (Number.isFinite(num) && String(val).match(/^-?\d+([.,]\d+)?$/)) return num;
+
+      // ✅ Strings normales
+      if (typeof val === "string") return val.toLowerCase();
+
+      // ✅ Números reales
+      if (typeof val === "number") return val;
+
+      return val ?? "";
+    };
+
     const sorted = [...clientesRuta].sort((a, b) => {
-      const aValue = a[key];
-      const bValue = b[key];
+      const aVal = getComparable(a);
+      const bVal = getComparable(b);
 
-      if (typeof aValue === "string" && typeof bValue === "string") {
-        return direction === "asc" ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+      // comparar números
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return direction === "asc" ? aVal - bVal : bVal - aVal;
       }
 
-      if (typeof aValue === "number" && typeof bValue === "number") {
-        return direction === "asc" ? aValue - bValue : bValue - aValue;
-      }
-
-      return 0;
+      // comparar strings
+      return direction === "asc"
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
     });
 
     setClientesRuta(sorted);
   };
+
+
 
   useEffect(() => {
     setCargando(true);
@@ -117,18 +157,22 @@ const DetallePreventasPage: React.FC = () => {
 
 
   type ExcelClienteRuta = {
-    Ruta: string;
     Código: string | number;
     Cliente: string;
     Dirección: string;
-    "Última visita": string;
-    "Última factura": string;
-    "Consumo Actual": number;
-    Max_Por_Mes: number;
-    // Cantidad: number;
-    "Porcentaje Cambio": number;
+    "Tipo Negocio": string;
+    Teléfono: string;
+    Latitud: string;
+    Longitud: string;
+    "Cantidad Actual": number;
+    "Consumo Actual($)": number;
+    "Max Consumo($)": number;
+    "VS MES ANT": string;
+    "Última Visita": string;
+    "Última Factura": string;
     "Tuvo Consumo": string;
   };
+
 
 
   const exportarClientesRuta = () => {
@@ -138,18 +182,29 @@ const DetallePreventasPage: React.FC = () => {
       const rutaUpper = (ruta || "").toUpperCase();
 
       const datosExportar: ExcelClienteRuta[] = clientesRuta.map((c) => ({
-        Ruta: rutaUpper,
         Código: c.codigo_cliente,
         Cliente: c.nombre_cliente,
-        Dirección: c.direccion_entrega,
-        "Última visita": c.ultima_visita ?? "—",
-        "Última factura": c.ultima_factura ?? "—",
-        "Consumo Actual": Number(c.consumo_actual || 0),
-        Max_Por_Mes: Number(c.max_consumo || 0),
-        // Cantidad: Number(c.cantidad_productos || 0),
-        "Porcentaje Cambio": Number(c.porcentaje_cambio || 0),
+        Dirección: c.direccion_entrega ?? "",
+        "Tipo Negocio": c.tipo_negocio ?? "SIN CLASIFICAR",
+        Teléfono: c.telefono_cliente ?? "",
+        Latitud: c.latitud_cliente ?? "",
+        Longitud: c.longitud_cliente ?? "",
+        "Cantidad Actual": Number(c.cantidad_productos || 0),
+        "Consumo Actual($)": Number(c.consumo_actual || 0),
+        "Max Consumo($)": Number(c.max_consumo || 0),
+
+        // VS MES ANT formateado
+        "VS MES ANT": c.vsMesAnterior
+          ? `${c.vsMesAnterior.variacion_abs > 0 ? "+" : ""}${Number(
+            c.vsMesAnterior.variacion_abs || 0
+          ).toFixed(2)} (${c.vsMesAnterior.variacion_porc})`
+          : "",
+
+        "Última Visita": c.ultima_visita ?? "—",
+        "Última Factura": c.ultima_factura ?? "—",
         "Tuvo Consumo": c.tuvo_consumo,
       }));
+
 
 
       // Crear hoja de Excel
@@ -182,7 +237,9 @@ const DetallePreventasPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#] text-white p-8">
+    // <div className="min-h-screen bg-[#] text-white p-8">
+    <div className="min-h-screen text-white p-5">
+
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">
@@ -275,235 +332,280 @@ const DetallePreventasPage: React.FC = () => {
 
 
       {/* tabla CLIENTES */}
-      <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-        <h1 className="text-center text-xl font-bold mt-10 mb-4">
-          CLIENTES DE RUTA
-        </h1>
-        {clientesRuta.length > 0 ? (
-          <>
-            <div className="mb-6">
-              {/* ACCIONES */}
-              <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-4">
-                <button
-                  onClick={exportarClientesRuta}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-                  </svg>
-                  Exportar clientes S/C
-                </button>
+      <div className="overflow-x-auto scrollbar-hide">
 
-                <div>
-                  <label htmlFor="filtroConsumo" className="text-white mr-2">
-                    Filtrar por consumo Mes_Actual:
-                  </label>
-                  <select
-                    id="filtroConsumo"
-                    value={filtroConsumo}
-                    onChange={(e) => setFiltroConsumo(e.target.value)}
-                    className="px-4 py-2 bg-[#046C5E] text-white font-semibold rounded-md"
+        <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
+          <h1 className="text-center text-xl font-bold mt-10 mb-4">
+            CLIENTES DE RUTA
+          </h1>
+          {clientesRuta.length > 0 ? (
+            <>
+              <div className="mb-6">
+                {/* ACCIONES */}
+                <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-4">
+                  <button
+                    onClick={exportarClientesRuta}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
                   >
-                    <option value="Todos">Todos</option>
-                    <option value="Sí">Con Consumo</option>
-                    <option value="No">Sin Consumo</option>
-                  </select>
-                </div>
-              </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                    </svg>
+                    Exportar clientes S/C
+                  </button>
 
-              {/* BUSCADOR */}
-              <div className="flex justify-center mb-4">
-                <div className="relative w-full sm:w-3/4 md:w-1/2 lg:w-1/3">
-                  <input
-                    type="text"
-                    placeholder="Buscar por nombre de cliente"
-                    value={terminoBusqueda}
-                    onChange={(e) => setTerminoBusqueda(e.target.value)}
-                    className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm
+                  <div>
+                    <label htmlFor="filtroConsumo" className="text-white mr-2">
+                      Filtrar por consumo Mes_Actual:
+                    </label>
+                    <select
+                      id="filtroConsumo"
+                      value={filtroConsumo}
+                      onChange={(e) => setFiltroConsumo(e.target.value)}
+                      className="px-4 py-2 bg-[#046C5E] text-white font-semibold rounded-md"
+                    >
+                      <option value="Todos">Todos</option>
+                      <option value="Sí">Con Consumo</option>
+                      <option value="No">Sin Consumo</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* BUSCADOR */}
+                <div className="flex justify-center mb-4">
+                  <div className="relative w-full sm:w-3/4 md:w-1/2 lg:w-1/3">
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre de cliente"
+                      value={terminoBusqueda}
+                      onChange={(e) => setTerminoBusqueda(e.target.value)}
+                      className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#74ab3c]"
-                  />
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M18 10a8 8 0 10-8 8 8 8 0 008-8z" />
-                  </svg>
+                    />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M18 10a8 8 0 10-8 8 8 8 0 008-8z" />
+                    </svg>
+                  </div>
                 </div>
-              </div>
 
-              {/* TABLA */}
-              <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-                <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+                {/* TABLA clientes*/}
 
-                  <tr>
-                    <th className="px-4 py-3">N°</th>
-                    {[
-                      ["Código", "codigo_cliente"],
-                      ["Cliente", "nombre_cliente"],
-                      ["Dirección", "direccion_cliente"],
-                      ["#Teléfono", "telefono_cliente"],
-                      ["Latitud", "latitud_direccion_cliente"],
-                      ["Longitud", "longitud_direccion_cliente"],
-                      // ["Cantidad Actual", "cantidad_botellon"],
-                      ["Consumo Actual($)", "consumo_actual"],
-                      ["VS MES ANT", "vsMesAnterior"],
-                      ["Última Visita", "ultima_visita"],
-                      ["Última Factura", "ultima_factura"],
-                      ["Tuvo Consumo", "tuvo_consumo"],
+                <div className="overflow-x-auto scrollbar-hide">
+                  <table className="w-full table-fixed text-sm border border-[#046C5E] rounded-lg">
 
-                    ].map(([label, key]) => (
-                      <th
-                        key={key}
-                        className="px-4 py-3 text-left cursor-pointer"
-                        onClick={() => requestSort(key)}
-                      >
-                        {label}
-                        <span className="text-[#6BAF8E] ml-1">
-                          {sortConfig.key === key
-                            ? sortConfig.direction === "asc"
-                              ? "↑"
-                              : "↓"
-                            : "↕"}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
+                    <thead className="bg-[#014434] text-green-300 uppercase text-xs">
 
-                <tbody>
-                  {clientesPagina.map((c, idx) => (
-                    <tr
-                      key={idx}
-                      className={`
+                      <tr>
+                        <th className="px-4 py-3">N°</th>
+                        {[
+                          ["Código", "codigo_cliente"],
+                          ["Cliente", "nombre_cliente"],
+                          ["Dirección", "direccion_entrega"],
+                          ["Tipo Negocio", "tipo_negocio"],
+                          ["Teléfono", "telefono_cliente"],
+                          ["Latitud", "latitud_cliente"],
+                          ["Longitud", "longitud_cliente"],
+                          ["Cantidad Actual", "cantidad_productos"],
+                          ["Consumo Actual($)", "consumo_actual"],
+                          ["Max Consumo($)", "max_consumo"],
+                          ["VS MES ANT", "vsMesAnterior"],
+                          ["Última Visita", "ultima_visita"],
+                          ["Última Factura", "ultima_factura"],
+                          ["Tuvo Consumo", "tuvo_consumo"],
+
+                        ].map(([label, key]) => (
+                          <th
+                            key={key}
+                            className="px-4 py-3 text-left cursor-pointer"
+                            onClick={() => requestSort(key)}
+                          >
+                            {label}
+                            <span className="text-[#6BAF8E] ml-1">
+                              {sortConfig.key === key
+                                ? sortConfig.direction === "asc"
+                                  ? "↑"
+                                  : "↓"
+                                : "↕"}
+                            </span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {clientesPagina.map((c, idx) => (
+                        <tr
+                          key={idx}
+                          className={`
                 ${c.tuvo_consumo === "No"
-                          ? "bg-[rgba(220,38,38,0.6)]"
-                          : idx % 2 === 0
-                            ? "bg-[#013d32]"
-                            : "bg-[#014f3e]"
-                        }
+                              ? "bg-[rgba(220,38,38,0.6)]"
+                              : idx % 2 === 0
+                                ? "bg-[#013d32]"
+                                : "bg-[#014f3e]"
+                            }
                 hover:bg-[#026452] transition
               `}
-                    >
-                      <td className="px-4 py-2">
-                        {(paginaActual - 1) * clientesPorPagina + idx + 1}
-                      </td>
-                      <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
-                      <td className="px-4 py-2 text-white">{c.nombre_cliente}</td>
-                      <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
+                        >
+                          <td className="px-4 py-2">
+                            {(paginaActual - 1) * clientesPorPagina + idx + 1}
+                          </td>
+                          <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
+                          <td className="px-0 py-4 text-white">{c.nombre_cliente}</td>
+                          <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
+                          <td className="px-4 py-2 text-white">{c.tipo_negocio}</td>
 
-                      <td className="px-2 py-2">{c.telefono_cliente || "Sin Número"}</td>
-                      <td className="px-2 py-2">{c.latitud_cliente || "Sin Número"}</td>
-                      <td className="px-2 py-2">{c.longitud_cliente || "Sin Número"}</td>
 
-                      {/* <td className="px-4 py-2 text-white">{c.cantidad_productos}</td> */}
-                      <td className="px-4 py-2 text-white">{c.consumo_actual}</td>
-                      <td className="px-4 py-2">
-                        {c.vsMesAnterior ? (
-                          <span
-                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold
-        ${c.vsMesAnterior.variacion_abs > 0
-                                ? "bg-green-900/40 text-green-400"
-                                : c.vsMesAnterior.variacion_abs < 0
-                                  ? "bg-red-900/40 text-red-400"
-                                  : "bg-gray-700/40 text-gray-300"
+                          <td className="px-0 py-2">{c.telefono_cliente || "Sin Número"}</td>
+                          <td className="px-3 py-2">{c.latitud_cliente || "Sin Número"}</td>
+                          <td className="px-2 py-2">{c.longitud_cliente || "Sin Número"}</td>
+
+                          <td className="px-8 py-2 text-white">{c.cantidad_productos}</td>
+                          <td className="px-4 py-2 text-white">{c.consumo_actual}</td>
+
+                          <td className="px-4 py-2">
+                            <div className="flex flex-col leading-tight">
+
+                              {/* Monto máximo */}
+                              <span className="text-white  text-sm">
+                                ${Number(c.max_consumo).toLocaleString("es-EC", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+
+                              {/* Mes */}
+                              <span className="text-xs text-[#6BAF8E] font-medium">
+                                {c.mes_max_consumo_nombre ?? ""}
+                              </span>
+
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-2">
+                            {c.vsMesAnterior ? (
+                              <div className="flex flex-col leading-tight">
+
+                                {/* Monto diferencia */}
+                                <span
+                                  className={`text-sm font-bold
+          ${c.vsMesAnterior.variacion_abs > 0
+                                      ? "text-green-400"
+                                      : c.vsMesAnterior.variacion_abs < 0
+                                        ? "text-red-400"
+                                        : "text-gray-300"
+                                    }`}
+                                >
+                                  {c.vsMesAnterior.variacion_abs > 0 && ""}$
+                                  {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString("es-EC", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+
+                                {/* Porcentaje */}
+                                <span
+                                  className={`text-xs font-semibold
+          ${c.vsMesAnterior.variacion_abs > 0
+                                      ? "text-green-300"
+                                      : c.vsMesAnterior.variacion_abs < 0
+                                        ? "text-red-300"
+                                        : "text-gray-400"
+                                    }`}
+                                >
+                                  (
+                                  {c.vsMesAnterior.variacion_abs > 0 && "+"}
+                                  {c.vsMesAnterior.variacion_porc}
+                                  )
+                                </span>
+
+                              </div>
+                            ) : (
+                              ""
+                            )}
+                          </td>
+
+                          <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
+                            {c.ultima_visita ?? "—"}
+                          </td>
+                          <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
+                            {c.ultima_factura ?? "—"}
+                          </td>
+
+                          <td
+                            className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí"
+                              ? "text-green-500"
+                              : "text-red-500"
                               }`}
                           >
-                            (
-                            {c.vsMesAnterior.variacion_abs > 0 && "+"}
-                            {c.vsMesAnterior.variacion_porc}
-                            )
-                            <span className="font-semibold">
-                              $
-                              {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </span>
-                          </span>
-                        ) : (
-                          ""
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
-                        {c.ultima_visita ?? "—"}
-                      </td>
-                      <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
-                        {c.ultima_factura ?? "—"}
-                      </td>
+                            {c.tuvo_consumo}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-                      <td
-                        className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí"
-                          ? "text-green-500"
-                          : "text-red-500"
-                          }`}
-                      >
-                        {c.tuvo_consumo}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {/* PAGINACIÓN (se mantiene igual) */}
-            {/* …tu bloque de paginación sin cambios… */}
+              {/* …Paginación… */}
+              <div className="flex justify-center mt-6 gap-2">
+                <button
+                  disabled={paginaActual === 1}
+                  onClick={() => setPaginaActual(paginaActual - 1)}
+                  className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1 ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
+                >
+                  <span className="sm:hidden">←</span>
+                  <span className="hidden sm:inline">← Anterior</span>
+                </button>
 
+                {(() => {
+                  const pages = [];
+                  const maxVisible = 5;
 
-            <div className="flex justify-center mt-6 gap-2">
-              <button
-                disabled={paginaActual === 1}
-                onClick={() => setPaginaActual(paginaActual - 1)}
-                className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1 ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
-              >
-                <span className="sm:hidden">←</span>
-                <span className="hidden sm:inline">← Anterior</span>
-              </button>
+                  if (totalPaginas <= maxVisible) {
+                    for (let i = 1; i <= totalPaginas; i++) pages.push(i);
+                  } else {
+                    pages.push(1);
+                    if (paginaActual > 3) pages.push("...");
+                    const start = Math.max(2, paginaActual - 1);
+                    const end = Math.min(totalPaginas - 1, paginaActual + 1);
+                    for (let i = start; i <= end; i++) pages.push(i);
+                    if (paginaActual < totalPaginas - 2) pages.push("...");
+                    pages.push(totalPaginas);
+                  }
 
-              {(() => {
-                const pages = [];
-                const maxVisible = 5;
+                  return pages.map((num: any, idx) =>
+                    num === "..." ? (
+                      <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
+                    ) : (
+                      <button key={`page-${idx}-${num}`} onClick={() => setPaginaActual(num)} className={`px-3 py-1 rounded-md ${paginaActual === num ? "bg-green-500 text-black font-bold" : "bg-[#01382D] hover:bg-[#025f4b]"}`}>
+                        {num}
+                      </button>
+                    )
+                  );
+                })()}
 
-                if (totalPaginas <= maxVisible) {
-                  for (let i = 1; i <= totalPaginas; i++) pages.push(i);
-                } else {
-                  pages.push(1);
-                  if (paginaActual > 3) pages.push("...");
-                  const start = Math.max(2, paginaActual - 1);
-                  const end = Math.min(totalPaginas - 1, paginaActual + 1);
-                  for (let i = start; i <= end; i++) pages.push(i);
-                  if (paginaActual < totalPaginas - 2) pages.push("...");
-                  pages.push(totalPaginas);
-                }
+                <button
+                  disabled={paginaActual === totalPaginas}
+                  onClick={() => setPaginaActual(paginaActual + 1)}
+                  className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
+                >
+                  <span className="sm:hidden">→</span>
+                  <span className="hidden sm:inline">Siguiente →</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-center text-gray-400 mt-10">Sin consumo</p>
+          )}
+        </div>
 
-                return pages.map((num: any, idx) =>
-                  num === "..." ? (
-                    <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
-                  ) : (
-                    <button key={`page-${idx}-${num}`} onClick={() => setPaginaActual(num)} className={`px-3 py-1 rounded-md ${paginaActual === num ? "bg-green-500 text-black font-bold" : "bg-[#01382D] hover:bg-[#025f4b]"}`}>
-                      {num}
-                    </button>
-                  )
-                );
-              })()}
-
-              <button
-                disabled={paginaActual === totalPaginas}
-                onClick={() => setPaginaActual(paginaActual + 1)}
-                className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-[#046C5E] hover:bg-[#058A73]"}`}
-              >
-                <span className="sm:hidden">→</span>
-                <span className="hidden sm:inline">Siguiente →</span>
-              </button>
-            </div>
-          </>
-        ) : (
-          <p className="text-center text-gray-400 mt-10">Sin consumo</p>
-        )}
       </div>
-
     </div>
   );
 };

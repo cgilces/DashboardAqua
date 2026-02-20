@@ -72,7 +72,7 @@ const DetalleHieloPage: React.FC = () => {
       let bValue = b[sortConfig.key];
 
 
-      
+
 
       // Acceder a 'variacion_abs' de 'vsMesAnterior'
       // const aVariacionAbs = a.vsMesAnterior ? parseFloat(a.vsMesAnterior.variacion_abs) : 0;
@@ -84,7 +84,7 @@ const DetalleHieloPage: React.FC = () => {
       //   return bVariacionAbs - aVariacionAbs;  // Orden descendente
       // }
 
-      
+
 
 
       // Si estamos ordenando por "Consumo Actual", calcular la diferencia
@@ -198,13 +198,14 @@ const DetalleHieloPage: React.FC = () => {
     Código: any;
     Cliente: any;
     Dirección: any;
+    "Teléfono": any;
+    tipo_negocio: any;
+
     "Última visita": any;
     "Última factura": any;
     "Consumo Actual": any;
     Cantidad: any;
-    "Porcentaje Cambio": any;
     "Tuvo Consumo": any;
-    "Teléfono": any;
     "Latitud": any;
     "Longitud": any;
     "VS Mes Anterior ($)": any;
@@ -224,15 +225,15 @@ const DetalleHieloPage: React.FC = () => {
         Código: c.codigo_cliente,
         Cliente: c.nombre_cliente,
         Dirección: c.direccion_entrega,
-        "Última visita": c.ultima_visita || "—",
-        "Última factura": c.ultima_factura || "—",
-        "Consumo Actual": c.consumo_actual,
-        Cantidad: c.cantidad_productos,
-        "Porcentaje Cambio": c.porcentaje_cambio,
-        "Tuvo Consumo": c.tuvo_consumo,
+        tipo_negocio: c.tipo_negocio || "—", // Tipo de negocio (vacío si no tiene)
         "Teléfono": c.telefono_cliente || "—", // Teléfono (vacío si no tiene)
+        "Consumo_Actual($)": c.consumo_actual,
+        Cantidad: c.cantidad_productos,
+        "Tuvo Consumo": c.tuvo_consumo,
         "Latitud": c.latitud_cliente || "—", // Latitud (vacío si no tiene)
         "Longitud": c.longitud_cliente || "—", // Longitud (vacío si no tiene)
+        "Última visita": c.ultima_visita || "—",
+        "Última factura": c.ultima_factura || "—",
         "VS Mes Anterior ($)": c.vsMesAnterior ? `$${Math.abs(c.vsMesAnterior.variacion_abs).toFixed(2)}` : "—", // VS Mes Anterior (diferencia absoluta)
         "VS Mes Anterior (%)": c.vsMesAnterior ? `${c.vsMesAnterior.variacion_porc}%` : "—", // Variación porcentual
       }));
@@ -353,238 +354,282 @@ const DetalleHieloPage: React.FC = () => {
       )}
 
       {/* tabla CLIENTES */}
-      <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-        <h1 className="text-center text-xl font-bold mt-10 mb-4">CLIENTES DE RUTA</h1>
-        {clientesRuta.length > 0 ? (
-          <>
-            <div className="mb-6">
-              {/* ACCIONES */}
-              <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-4">
-                <button
-                  onClick={exportarClientesRuta}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-                  </svg>
-                  Exportar clientes S/C
-                </button>
 
-                <div>
-                  <label htmlFor="filtroConsumo" className="text-white mr-2">
-                    Filtrar por consumo Mes_Actual:
-                  </label>
-                  <select
-                    id="filtroConsumo"
-                    value={filtroConsumo}
-                    onChange={(e) => setFiltroConsumo(e.target.value)}
-                    className="px-4 py-2 bg-[#046C5E] text-white font-semibold rounded-md"
+      <div className="overflow-x-auto scrollbar-hide">
+
+        <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
+          <h1 className="text-center text-xl font-bold mt-10 mb-4">CLIENTES DE RUTA</h1>
+          {clientesRuta.length > 0 ? (
+            <>
+              <div className="mb-6">
+                {/* ACCIONES */}
+                <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-4">
+                  <button
+                    onClick={exportarClientesRuta}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
                   >
-                    <option value="Todos">Todos</option>
-                    <option value="Sí">Con Consumo</option>
-                    <option value="No">Sin Consumo</option>
-                  </select>
-                </div>
-              </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                    </svg>
+                    Exportar clientes S/C
+                  </button>
 
-              {/* BUSCADOR */}
-              <div className="flex justify-center mb-4">
-                <div className="relative w-full sm:w-3/4 md:w-1/2 lg:w-1/3">
-                  <input
-                    type="text"
-                    placeholder="Buscar por nombre de cliente"
-                    value={terminoBusqueda}
-                    onChange={(e) => setTerminoBusqueda(e.target.value)}
-                    className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm
-                       focus:outline-none focus:ring-2 focus:ring-[#74ab3c]"
-                  />
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M18 10a8 8 0 10-8 8 8 8 0 008-8z" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* TABLA */}
-              <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-                <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-                  <tr>
-                    <th className="px-4 py-3 text-left">N°</th>
-                    {[
-                      ["Código", "codigo_cliente"],
-                      ["Cliente", "nombre_cliente"],
-                      ["Dirección", "direccion_entrega"],
-                      ["#Teléfono", "telefono_direccion_cliente"],
-                      ["Latitud", "latitud_direccion_cliente"],
-                      ["Longitud", "longitud_direccion_cliente"],
-
-                      ["Cantidad Actual", "cantidad_productos"],
-                      ["Consumo Actual($)", "consumo_actual"],
-                      ["VS MES ANT", "porcentaje_cambio"],
-                      ["Última visita", "ultima_visita"],
-                      ["Última factura", "ultima_factura"],
-                      ["Tuvo consumo", "tuvo_consumo"],
-                    ].map(([label, key]) => (
-                      <th
-                        key={key}
-                        className="px-4 py-3 text-left cursor-pointer"
-                        onClick={() => requestSort(key)}
-                      >
-                        {label}
-                        <span className="text-[#6BAF8E] ml-1">
-                          {sortConfig.key === key
-                            ? sortConfig.direction === "asc"
-                              ? "↑"
-                              : "↓"
-                            : "↕"}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {clientesPagina.map((c, idx) => (
-                    <tr
-                      key={idx}
-                      className={`${c.tuvo_consumo === "No"
-                        ? "bg-[rgba(220,38,38,0.6)]"
-                        : idx % 2 === 0
-                          ? "bg-[#013d32]"
-                          : "bg-[#014f3e]"
-                        } hover:bg-[#026452] transition`}
+                  <div>
+                    <label htmlFor="filtroConsumo" className="text-white mr-2">
+                      Filtrar por consumo Mes_Actual:
+                    </label>
+                    <select
+                      id="filtroConsumo"
+                      value={filtroConsumo}
+                      onChange={(e) => setFiltroConsumo(e.target.value)}
+                      className="px-4 py-2 bg-[#046C5E] text-white font-semibold rounded-md"
                     >
-                      {/* N° */}
-                      <td className="px-4 py-2 text-white font-semibold">
-                        {(paginaActual - 1) * clientesPorPagina + idx + 1}
-                      </td>
+                      <option value="Todos">Todos</option>
+                      <option value="Sí">Con Consumo</option>
+                      <option value="No">Sin Consumo</option>
+                    </select>
+                  </div>
+                </div>
 
-                      <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
-                      <td className="px-4 py-2 text-white">{c.nombre_cliente}</td>
-                      <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
+                {/* BUSCADOR */}
+                <div className="flex justify-center mb-4">
+                  <div className="relative w-full sm:w-3/4 md:w-1/2 lg:w-1/3">
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre de cliente"
+                      value={terminoBusqueda}
+                      onChange={(e) => setTerminoBusqueda(e.target.value)}
+                      className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm
+                       focus:outline-none focus:ring-2 focus:ring-[#74ab3c]"
+                    />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M18 10a8 8 0 10-8 8 8 8 0 008-8z" />
+                    </svg>
+                  </div>
+                </div>
 
-                      <td className="px-4 py-2 text-white">{c.telefono_cliente  || "Sin Número"}</td>
+                {/* TABLA */}
+                <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
+                  <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+                    <tr>
+                      <th className="px-4 py-3 text-left">N°</th>
+                      {[
+                        ["Código", "codigo_cliente"],
+                        ["Cliente", "nombre_cliente"],
+                        ["Dirección", "direccion_entrega"],
+                        ["Tipo Negocio", "tipo_negocio"],
 
-                      <td className="px-4 py-2 text-white">{c.latitud_cliente}</td>
-                      <td className="px-4 py-2 text-white">{c.longitud_cliente}</td>
+                        ["#Teléfono", "telefono_direccion_cliente"],
+                        ["Latitud", "latitud_direccion_cliente"],
+                        ["Longitud", "longitud_direccion_cliente"],
+
+                        ["Cantidad Actual", "cantidad_productos"],
+                        ["Consumo Actual($)", "consumo_actual"],
+                        ["Maximo Consumo($)", "maximo_consumo"],
+
+                        ["VS MES ANT", "porcentaje_cambio"],
+                        ["Última visita", "ultima_visita"],
+                        ["Última factura", "ultima_factura"],
+                        ["Tuvo consumo", "tuvo_consumo"],
+                      ].map(([label, key]) => (
+                        <th
+                          key={key}
+                          className="px-4 py-3 text-left cursor-pointer"
+                          onClick={() => requestSort(key)}
+                        >
+                          {label}
+                          <span className="text-[#6BAF8E] ml-1">
+                            {sortConfig.key === key
+                              ? sortConfig.direction === "asc"
+                                ? "↑"
+                                : "↓"
+                              : "↕"}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {clientesPagina.map((c, idx) => (
+                      <tr
+                        key={idx}
+                        className={`${c.tuvo_consumo === "No"
+                          ? "bg-[rgba(220,38,38,0.6)]"
+                          : idx % 2 === 0
+                            ? "bg-[#013d32]"
+                            : "bg-[#014f3e]"
+                          } hover:bg-[#026452] transition`}
+                      >
+                        {/* N° */}
+                        <td className="px-4 py-2 text-white font-semibold">
+                          {(paginaActual - 1) * clientesPorPagina + idx + 1}
+                        </td>
+
+                        <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
+                        <td className="px-4 py-2 text-white">{c.nombre_cliente}</td>
+                        <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
+                        <td className="px-4 py-2 text-white">{c.tipo_negocio}</td>
 
 
+                        <td className="px-4 py-2 text-white">{c.telefono_cliente || "Sin Número"}</td>
 
-                      <td className="px-4 py-2 text-white">{c.cantidad_productos}</td>
-                      <td className="px-4 py-2 text-white">${c.consumo_actual}</td>
+                        <td className="px-4 py-2 text-white">{c.latitud_cliente}</td>
+                        <td className="px-4 py-2 text-white">{c.longitud_cliente}</td>
+                        <td className="px-4 py-2 text-white">{c.cantidad_productos}</td>
+                        <td className="px-4 py-2 text-white">${c.consumo_actual}</td>
 
-                      <td className="px-4 py-2">
-                        {c.vsMesAnterior ? (
-                          <span
-                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold
-        ${c.vsMesAnterior.variacion_abs > 0
-                                ? "bg-green-900/40 text-green-400"
-                                : c.vsMesAnterior.variacion_abs < 0
-                                  ? "bg-red-900/40 text-red-400"
-                                  : "bg-gray-700/40 text-gray-300"
-                              }`}
-                          >
-                            (
-                            {c.vsMesAnterior.variacion_abs > 0 && "+"}
-                            {c.vsMesAnterior.variacion_porc}
-                            )
-                            <span className="font-semibold">
-                              $
-                              {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString(undefined, {
+                        <td className="px-4 py-2">
+                          <div className="flex flex-col leading-tight">
+
+                            {/* Monto máximo */}
+                            <span className="text-white  text-sm">
+                              ${Number(c.max_consumo).toLocaleString("es-EC", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
                             </span>
-                          </span>
-                        ) : (
-                          ""
-                        )}
-                      </td>
 
-                      <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
-                        {c.ultima_visita ?? "—"}
-                      </td>
-                      <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
-                        {c.ultima_factura ?? "—"}
-                      </td>
+                            {/* Mes */}
+                            <span className="text-xs text-[#6BAF8E] font-medium">
+                              {c.mes_max_consumo_nombre ?? ""}
+                            </span>
 
-                      <td
-                        className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí" ? "text-green-500" : "text-red-500"}`}
+                          </div>
+                        </td>
+
+
+
+                        <td className="px-6 py-4">
+                          {c.vsMesAnterior ? (
+                            <div className="flex flex-col leading-tight">
+
+                              {/* Diferencia en dólares */}
+                              <span
+                                className={`text-sm font-bold
+          ${c.vsMesAnterior.variacion_abs > 0
+                                    ? "text-green-400"
+                                    : c.vsMesAnterior.variacion_abs < 0
+                                      ? "text-red-400"
+                                      : "text-gray-300"
+                                  }`}
+                              >
+                                {c.vsMesAnterior.variacion_abs > 0 && "+"}$
+                                {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString("es-EC", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+
+                              {/* Porcentaje */}
+                              <span
+                                className={`text-xs font-semibold
+          ${c.vsMesAnterior.variacion_abs > 0
+                                    ? "text-green-300"
+                                    : c.vsMesAnterior.variacion_abs < 0
+                                      ? "text-red-300"
+                                      : "text-gray-400"
+                                  }`}
+                              >
+                                (
+                                {c.vsMesAnterior.variacion_abs > 0 && "+"}
+                                {c.vsMesAnterior.variacion_porc}
+                                )
+                              </span>
+
+                            </div>
+                          ) : (
+                            <span className="text-gray-500">—</span>
+                          )}
+                        </td>
+
+
+                        <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
+                          {c.ultima_visita ?? "—"}
+                        </td>
+                        <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
+                          {c.ultima_factura ?? "—"}
+                        </td>
+
+                        <td
+                          className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí" ? "text-green-500" : "text-red-500"}`}
+                        >
+                          {c.tuvo_consumo}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* PAGINACIÓN (se mantiene igual) */}
+              <div className="flex justify-center mt-6 gap-2">
+                <button
+                  disabled={paginaActual === 1}
+                  onClick={() => setPaginaActual(paginaActual - 1)}
+                  className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1
+                    ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                    : "bg-[#046C5E] hover:bg-[#058A73]"} `}
+                >
+                  <span className="sm:hidden">←</span>
+                  <span className="hidden sm:inline">← Anterior</span>
+                </button>
+
+                {(() => {
+                  const pages = [];
+                  const maxVisible = 5;
+
+                  if (totalPaginas <= maxVisible) {
+                    for (let i = 1; i <= totalPaginas; i++) pages.push(i);
+                  } else {
+                    pages.push(1);
+                    if (paginaActual > 3) pages.push("...");
+                    const start = Math.max(2, paginaActual - 1);
+                    const end = Math.min(totalPaginas - 1, paginaActual + 1);
+                    for (let i = start; i <= end; i++) pages.push(i);
+                    if (paginaActual < totalPaginas - 2) pages.push("...");
+                    pages.push(totalPaginas);
+                  }
+
+                  return pages.map((num: any, idx) =>
+                    num === "..." ? (
+                      <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
+                    ) : (
+                      <button
+                        key={`page-${idx}-${num}`}
+                        onClick={() => setPaginaActual(num)}
+                        className={`px-3 py-1 rounded-md ${paginaActual === num
+                          ? "bg-green-500 text-black font-bold"
+                          : "bg-[#01382D] hover:bg-[#025f4b]"} `}
                       >
-                        {c.tuvo_consumo}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {/* PAGINACIÓN (se mantiene igual) */}
-            <div className="flex justify-center mt-6 gap-2">
-              <button
-                disabled={paginaActual === 1}
-                onClick={() => setPaginaActual(paginaActual - 1)}
-                className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1
-                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                  : "bg-[#046C5E] hover:bg-[#058A73]"} `}
-              >
-                <span className="sm:hidden">←</span>
-                <span className="hidden sm:inline">← Anterior</span>
-              </button>
+                        {num}
+                      </button>
+                    )
+                  );
+                })()}
 
-              {(() => {
-                const pages = [];
-                const maxVisible = 5;
-
-                if (totalPaginas <= maxVisible) {
-                  for (let i = 1; i <= totalPaginas; i++) pages.push(i);
-                } else {
-                  pages.push(1);
-                  if (paginaActual > 3) pages.push("...");
-                  const start = Math.max(2, paginaActual - 1);
-                  const end = Math.min(totalPaginas - 1, paginaActual + 1);
-                  for (let i = start; i <= end; i++) pages.push(i);
-                  if (paginaActual < totalPaginas - 2) pages.push("...");
-                  pages.push(totalPaginas);
-                }
-
-                return pages.map((num: any, idx) =>
-                  num === "..." ? (
-                    <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
-                  ) : (
-                    <button
-                      key={`page-${idx}-${num}`}
-                      onClick={() => setPaginaActual(num)}
-                      className={`px-3 py-1 rounded-md ${paginaActual === num
-                        ? "bg-green-500 text-black font-bold"
-                        : "bg-[#01382D] hover:bg-[#025f4b]"} `}
-                    >
-                      {num}
-                    </button>
-                  )
-                );
-              })()}
-
-              <button
-                disabled={paginaActual === totalPaginas}
-                onClick={() => setPaginaActual(paginaActual + 1)}
-                className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas
-                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                  : "bg-[#046C5E] hover:bg-[#058A73]"} `}
-              >
-                <span className="sm:hidden">→</span>
-                <span className="hidden sm:inline">Siguiente →</span>
-              </button>
-            </div>
-          </>
-        ) : (
-          <p className="text-center text-gray-400 mt-10">Sin consumo</p>
-        )}
+                <button
+                  disabled={paginaActual === totalPaginas}
+                  onClick={() => setPaginaActual(paginaActual + 1)}
+                  className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas
+                    ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                    : "bg-[#046C5E] hover:bg-[#058A73]"} `}
+                >
+                  <span className="sm:hidden">→</span>
+                  <span className="hidden sm:inline">Siguiente →</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-center text-gray-400 mt-10">Sin consumo</p>
+          )}
+        </div>
       </div>
     </div>
   );

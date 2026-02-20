@@ -7,6 +7,10 @@ import BotonActualizarSincronizacion from "../../components/elements/BotonActual
 import TablaVentasBase from "../../components/ComponentBotellon/TablaVentasBase";
 import ResumenVentasCanalUSD from "../../components/ComponentBotellon/ResumenVentasCanalUSD";
 // import { API_URL } from "../../config/api";
+import ChatFlotante from "../../components/elements/ChatFlotante";
+
+
+
 
 
 /* ================================
@@ -31,15 +35,18 @@ const meses: Record<string, number> = {
    🧠 SECCIONES BOTELLÓN
 ================================ */
 const SECCIONES = [
-  { key: "DOMICILIO", titulo: "Domicilio", excel: "domicilio" },
-  { key: "EMPRESAS", titulo: "Empresas", excel: "empresas" },
-  { key: "MAYORISTA", titulo: "Mayorista", excel: "mayorista" },
-  { key: "QUITO", titulo: "Quito", excel: "quito" },
-  { key: "RURAL", titulo: "Rural", excel: "rural" },
-  { key: "TELEVENTA_VIP", titulo: "Televentas VIP", excel: "televentas_vip" },
-  { key: "TIENDAS", titulo: "Tiendas", excel: "tiendas" },
+
   { key: "TIENDAS_VIP", titulo: "Tiendas VIP", excel: "tiendas_vip" },
+  { key: "TIENDAS", titulo: "Tiendas", excel: "tiendas" },
+  { key: "EMPRESAS", titulo: "Empresas", excel: "empresas" },
   { key: "VIP", titulo: "VIP", excel: "vip" },
+
+  { key: "MAYORISTA", titulo: "Mayorista", excel: "mayorista" },
+  { key: "DOMICILIO", titulo: "Domicilio", excel: "domicilio" },
+  { key: "RURAL", titulo: "Rural", excel: "rural" },
+
+  { key: "QUITO", titulo: "Quito", excel: "quito" },
+  { key: "TELEVENTA_VIP", titulo: "Televentas VIP", excel: "televentas_vip" },
 ];
 
 export default function DashboardBotellon() {
@@ -80,7 +87,7 @@ export default function DashboardBotellon() {
 
       const res = await fetch(
         `http://localhost:5000/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
-                // `${API_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
+        // `${API_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
 
       );
       const json = await res.json();
@@ -125,7 +132,21 @@ export default function DashboardBotellon() {
         const lowerKey = key.toLowerCase();
 
         const total = botellones[key]?.total;
-        const mesAnterior = total?.mesAnterior; //  AQUÍ ESTABA EL ERROR
+        const detalle = botellones[key]?.detalle || [];
+        const mesAnterior = total?.mesAnterior;
+
+        //  SUMAR PROYECCIÓN DESDE DETALLE
+        const proyeccionTotal = detalle.reduce(
+          (acc: number, item: any) =>
+            acc + Number(item.proyeccion?.dolares || 0),
+          0
+        );
+
+        const proyeccionTotalUnidades = detalle.reduce(
+          (acc: number, item: any) =>
+            acc + Number(item.proyeccion?.unidades || 0),
+          0
+        );
 
         console.log("RESUMEN", key, {
           total,
@@ -136,6 +157,8 @@ export default function DashboardBotellon() {
           lowerKey,
           {
             monto: total?.dolares ?? 0,
+            proyeccion: proyeccionTotal,
+            proyeccion_unidades: proyeccionTotalUnidades,
             unidades: total?.unidades ?? 0,
             vsMesAnterior: {
               monto_anterior: mesAnterior?.dolares ?? 0,
@@ -156,13 +179,13 @@ export default function DashboardBotellon() {
         {/* ================= HEADER ================= */}
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
-            <img src={logo} 
-            className="h-16 w-auto transition-all duration-300" 
-            alt="Logo" />
+            <img src={logo}
+              className="h-16 w-auto transition-all duration-300"
+              alt="Logo" />
             <div>
               <h1 className="text-3xl font-bold tracking-wide">
                 DASHBOARD BOTELLÓN
-                </h1>
+              </h1>
               <p className="text-sm text-gray-300">
                 Órdenes + Facturas por grupo comercial
               </p>
@@ -171,7 +194,7 @@ export default function DashboardBotellon() {
 
           {isAdmin && <BotonActualizarSincronizacion />}
 
-       
+
           <div className="flex gap-3">
             <select
               className="bg-[#046C5E] px-4 py-2 rounded-lg"
@@ -215,15 +238,16 @@ export default function DashboardBotellon() {
           <ResumenVentasCanalUSD
             titulo="Ventas USD Botellón"
             canales={[
-              "domicilio",
-              "empresas",
-              "mayorista",
-              "quito",
-              "rural",
-              "televenta_vip",
-              "tiendas",
               "tiendas_vip",
+              "tiendas",
+              "empresas",
               "vip",
+              "mayorista",
+              "domicilio",
+              "rural",
+              "quito",
+              "televenta_vip",
+
             ]}
             data={resumenVentasUSD}
           />
@@ -231,17 +255,34 @@ export default function DashboardBotellon() {
 
         {/* ================= TABLAS ================= */}
         {mostrarTablas &&
-          SECCIONES.map((s) => (
-            <TablaVentasBase
-              key={s.key}
-              titulo={s.titulo}
-              data={botellones?.[s.key]?.detalle}
-              nombreHojaExcel={s.titulo}
-              nombreArchivoExcel={s.excel}
-              anio={anioSeleccionado}
-              mes={mesSeleccionado}
-            />
-          ))}
+          SECCIONES.map((s) => {
+            const detalle = botellones?.[s.key]?.detalle ?? [];
+
+            // 🔥 Filtrar también aquí a nivel sección
+            const detalleFiltrado = detalle.filter(
+              (r: any) =>
+                r.unidades > 0 ||
+                r.dolares > 0 ||
+                (r.proyeccion?.dolares || 0) > 0 ||
+                (r.proyeccion?.unidades || 0) > 0
+            );
+
+            if (detalleFiltrado.length === 0) return null;
+
+            return (
+              <TablaVentasBase
+                key={s.key}
+                titulo={s.titulo}
+                data={detalleFiltrado}
+                nombreHojaExcel={s.titulo}
+                nombreArchivoExcel={s.excel}
+                anio={anioSeleccionado}
+                mes={mesSeleccionado}
+              />
+            );
+          })}
+
+        <ChatFlotante />
 
       </div>
     </DashboardLayout>

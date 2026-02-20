@@ -26,7 +26,10 @@ interface Props {
     unidades: Variacion;
     monto: Variacion;
   };
+
+  totalProyeccion: number; // ESTA LÍNEA FALTABA
 }
+
 
 /* ============================
    HELPERS
@@ -51,7 +54,7 @@ const colorVariacion = (v?: Variacion) => {
 /* ============================
    COMPONENTE
 ============================ */
-const KpisHielo: React.FC<Props> = ({ kpis, comparativa }) => {
+const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion }) => {
   // 🔒 LIMITAMOS BARRAS AL 100%
   const cumplimientoUnidadesVisual = Math.min(
     100,
@@ -64,124 +67,107 @@ const KpisHielo: React.FC<Props> = ({ kpis, comparativa }) => {
   );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
 
-      {/* ============================
-         KPI UNIDADES
-      ============================ */}
-      <div className="bg-[#012E24] border border-[#046C5E] rounded-xl p-6">
-        <h3 className="text-gray-300 text-sm">Unidades Hielo</h3>
+      {/* ===========================
+        CARD UNIDADES HIELO
+    =========================== */}
+      <div className="
+      bg-gradient-to-br from-[#012E24] to-[#014034]
+      border border-[#046C5E]/40
+      rounded-2xl p-6
+      shadow-lg
+      transition-all duration-300
+      hover:shadow-xl
+    ">
+        <p className="uppercase tracking-wider text-xs text-blue-300 font-bold mb-4 text-center">
 
-        <p className="text-4xl font-bold">
+          Unidades Hielo
+        </p>
+
+        <p className="text-4xl font-bold text-white">
+          <span className="text-sm text-gray-400 mr-1">Unidades:</span>
           {kpis.unidadesTotales.toLocaleString("es-EC")}
         </p>
 
-        <p className={`text-xs mt-1 ${colorVariacion(comparativa?.unidades)}`}>
-          {formatVariacion(comparativa?.unidades)}
-        </p>
-
-        {/* <p className="text-xs mt-4 mb-1">
-          TARGET MENSUAL
-          <span className="float-right">
-            {cumplimientoUnidadesVisual.toFixed(1)}%
-          </span>
-        </p> */}
-
-        {/* <div className="h-3 bg-[#02483A] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[#04C29B] rounded-full transition-all"
-            style={{ width: `${cumplimientoUnidadesVisual}%` }}
-          />
-        </div> */}
-      </div>
-
-      {/* ============================
-         KPI USD
-      ============================ */}
-      <div className="bg-[#012E24] border border-[#046C5E] rounded-xl p-6">
-        <h3 className="text-gray-300 text-sm">Ventas USD</h3>
-
-        <p className="text-4xl font-bold">
-          {money(kpis.montoTotal)}
-        </p>
-
-        <p className={`text-xs mt-1 ${colorVariacion(comparativa?.monto)}`}>
-          {formatVariacion(comparativa?.monto)}
-        </p>
-
-        {/* <p className="text-xs mt-4 mb-1">
-          TARGET MENSUAL
-          <span className="float-right">
-            {cumplimientoUSDVisual.toFixed(1)}%
-          </span>
-        </p>
-
-        <div className="h-3 bg-[#02483A] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[#4c8cb4] rounded-full transition-all"
-            style={{ width: `${cumplimientoUSDVisual}%` }}
-          />
-        </div> */}
-      </div>
-
-      {/* ============================
-         COMPARATIVA MES ANTERIOR
-      ============================ */}
-      <div className="bg-[#012E24] border border-[#046C5E] rounded-xl p-6">
-        <h3 className="text-gray-300 text-sm mb-3">
-          Comparativa Mes Anterior
-        </h3>
-
         {comparativa?.unidades && (
-          <div className="mb-4">
-            <p className="text-sm font-semibold text-white">Unidades</p>
-
-            <p className="text-xs text-gray-300">
+          <div className="mt-4 border-t border-[#046C5E]/40 pt-3 text-sm">
+            <p className="text-gray-400">
               Mes anterior:{" "}
-              <span className="font-semibold">
+              <span className="text-white font-medium">
                 {comparativa.unidades.anterior.toLocaleString("es-EC")}
               </span>
             </p>
 
-            <p className="text-xs text-gray-300">
+            <p className="text-gray-400">
               Mes actual:{" "}
-              <span className="font-semibold">
+              <span className="text-white font-medium">
                 {comparativa.unidades.actual.toLocaleString("es-EC")}
               </span>
             </p>
 
-            <p className={`text-xs font-bold ${colorVariacion(comparativa.unidades)}`}>
-              {formatVariacion(comparativa.unidades)}
+            <p className={`font-semibold ${colorVariacion(comparativa.unidades)}`}>
+              {comparativa.unidades.variacionAbs >= 0 ? "▲" : "▼"}{" "}
+              {comparativa.unidades.variacionPorc?.toFixed(1)}%{" "}
+              ({comparativa.unidades.variacionAbs >= 0 ? "+" : ""}
+              {comparativa.unidades.variacionAbs.toLocaleString("es-EC")})
             </p>
           </div>
         )}
 
-        {comparativa?.monto && (
-          <div>
-            <p className="text-sm font-semibold text-white">Monto USD</p>
+      </div>
 
-            <p className="text-xs text-gray-300">
+      {/* ===========================
+        CARD VENTAS USD
+    =========================== */}
+      <div className="
+      bg-gradient-to-br from-[#012E24] to-[#014034]
+      border border-[#046C5E]/40
+      rounded-2xl p-6
+      shadow-lg
+      transition-all duration-300
+      hover:shadow-xl
+    ">
+        <p className="uppercase tracking-wider text-xs text-blue-300 font-bold mb-4 text-center">
+          Ventas USD
+        </p>
+
+        <p className="text-4xl font-bold text-emerald-400">
+          <span className="text-sm text-gray-400 mr-1">Proyección_Dolares:</span>
+
+          {money(kpis.montoTotal)}
+        </p>
+
+        {comparativa?.monto && (
+          <div className="mt-4 border-t border-[#046C5E]/40 pt-3 text-sm">
+            <p className="text-gray-400">
               Mes anterior:{" "}
-              <span className="font-semibold">
+              <span className="text-white font-medium">
                 {money(comparativa.monto.anterior)}
               </span>
             </p>
 
-            <p className="text-xs text-gray-300">
+            <p className="text-gray-400">
               Mes actual:{" "}
-              <span className="font-semibold">
+              <span className="text-white font-medium">
                 {money(comparativa.monto.actual)}
               </span>
             </p>
 
-            <p className={`text-xs font-bold ${colorVariacion(comparativa.monto)}`}>
-              {formatVariacion(comparativa.monto)}
+            <p className={`font-semibold ${colorVariacion(comparativa.monto)}`}>
+              {comparativa.monto.variacionAbs >= 0 ? "▲" : "▼"}{" "}
+              {comparativa.monto.variacionPorc?.toFixed(1)}%{" "}
+              ({comparativa.monto.variacionAbs >= 0 ? "+" : ""}
+              {money(Math.abs(comparativa.monto.variacionAbs))})
             </p>
           </div>
         )}
+
       </div>
+
     </div>
   );
+
 };
 
 export default KpisHielo;

@@ -39,10 +39,20 @@ const obtenerHistorialDeUsuarios = async (startDate, endDate) => {
       action: "getUserHistory",
       page: currentPage.toString(),
       limit: 1000,  // Intentamos obtener más registros por página
+      // filter: {
+      //   day_start: startDate,
+      //   day_end: endDate,
+      // },
+
       filter: {
-        day_start: startDate,
-        day_end: endDate,
-      },
+          // process_status: "0,1,2,3,4,5",
+          // type: "1,2",
+          // status: "0,1,2,5,10",
+          start_date: startDate,
+          end_date: endDate,
+          limit: 1000,
+          page: currentPage,
+        },
     });
 
     const totalPagesData = historialResp.data?.pages || 1;
