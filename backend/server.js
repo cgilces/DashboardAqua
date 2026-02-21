@@ -66,6 +66,7 @@ app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
 app.use("/api/visitas", require("./routes/rutasVisitas/visitasRoutes"));
 
 
+app.use("/api/bot", require("./routes/rutasbotinteligente/chat.routes"));
 
 
 // ======================================================

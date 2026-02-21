@@ -1,20 +1,19 @@
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { AppUser } = require('../../models');
+const config = require('../../config');
 
-
-
-// Control de intentos fallidos en memoria
 const loginAttempts = {};
 const MAX_ATTEMPTS = 5;
-const BLOCK_TIME = 5 * 60 * 1000; // 5 minutos
+const BLOCK_TIME = 5 * 60 * 1000;
 
 const login = async (req, res) => {
   const ip = req.ip || req.connection.remoteAddress;
+  const isDev = process.env.NODE_ENV !== "production";
 
   try {
     let { usuario, clave } = req.body;
 
-    // --- VALIDACIÓN DE CAMPOS VACÍOS ---
     if (!usuario || !clave) {
       return res.status(400).json({
         ok: false,
@@ -25,7 +24,6 @@ const login = async (req, res) => {
     usuario = usuario.toString().trim().toUpperCase();
     clave = clave.toString().trim();
 
-    // --- DETECTAR SI ESTÁ INGRESANDO UN CORREO ---
     const esEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(usuario);
     if (esEmail) {
       return res.status(400).json({
@@ -34,7 +32,6 @@ const login = async (req, res) => {
       });
     }
 
-    // --- VERIFICAR BLOQUEO POR INTENTOS ---
     if (loginAttempts[ip] && loginAttempts[ip].blockedUntil > Date.now()) {
       const remaining = Math.ceil((loginAttempts[ip].blockedUntil - Date.now()) / 1000);
       return res.status(429).json({
@@ -43,10 +40,7 @@ const login = async (req, res) => {
       });
     }
 
-    // --- BUSCAR USUARIO ---
-    const user = await AppUser.findOne({
-      where: { usuario }
-    });
+    const user = await AppUser.findOne({ where: { usuario } });
 
     if (!user) {
       registerFailedAttempt(ip);
@@ -56,7 +50,6 @@ const login = async (req, res) => {
       });
     }
 
-    // --- VALIDAR CONTRASEÑA ---
     const isMatch = await bcrypt.compare(clave, user.clave);
 
     if (!isMatch) {
@@ -67,8 +60,28 @@ const login = async (req, res) => {
       });
     }
 
-    // --- LOGIN EXITOSO ---
     resetAttempts(ip);
+
+    // 🔥 GENERAR TOKEN JWT
+    const token = jwt.sign(
+      {
+        id: user.id,
+        usuario: user.usuario,
+        rol: user.rol
+      },
+      config.JWT_SECRET,
+      {
+        expiresIn: config.JWT_EXPIRES_IN,
+        algorithm: "HS256"
+      }
+    );
+
+    if (isDev) {
+      console.log("----- LOGIN EXITOSO -----");
+      console.log("Usuario:", user.usuario);
+      console.log("Rol:", user.rol);
+      console.log("Token generado (parcial):", token.substring(0, 20) + "...");
+    }
 
     return res.status(200).json({
       ok: true,
@@ -82,9 +95,9 @@ const login = async (req, res) => {
             ? user.rutas_asignadas
             : user.rutas_asignadas.split(',').map(r => r.trim())
           : [],
-
         creado_en: user.creado_en
-      }
+      },
+      token
     });
 
   } catch (error) {

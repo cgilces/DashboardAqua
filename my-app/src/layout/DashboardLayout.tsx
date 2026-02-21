@@ -1,6 +1,5 @@
 import SidebarDashboards from "../components/SidebarDashboards";
 import { ReactNode } from "react";
-import ChatFlotante from "../components/elements/ChatFlotante";
 import "./DashboardLayout.css";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -10,8 +9,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <div className="layout-content">
         {children}
 
-        {/* AQUÍ VA EL CHAT GLOBAL */}
-        <ChatFlotante />
+       
       </div>
     </div>
   );
