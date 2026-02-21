@@ -1,25 +1,243 @@
+------------------------------------------------------------
+-- TABLA: app_users
+-- Tu SQL estaba incorrecto, ahora coincide CON TU MODELO Sequelize
+-- Modelo usado: AppUser.js
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS app_users (
+    id SERIAL PRIMARY KEY,
+    usuario TEXT UNIQUE NOT NULL,
+    clave TEXT NOT NULL,
+    rol TEXT CHECK (rol IN ('ADMIN', 'VENDEDOR', 'DESPACHADOR')) NOT NULL,
+    rutas_asignadas TEXT[],
+    creado_en TIMESTAMP DEFAULT NOW(),
+    actualizado_en TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_app_users_rol
+    ON app_users(rol);
 
 
--------------------------------------------------
--- 3. Tabla: clientes
--------------------------------------------------
-CREATE TABLE IF NOT EXISTS clientes (
-    id_cliente SERIAL PRIMARY KEY,
-    codigo_cliente VARCHAR(50) NOT NULL UNIQUE,
-    nombre_cliente VARCHAR(250),
-    direccion_entrega VARCHAR(500),
-    telefono VARCHAR(50),
-    email VARCHAR(100),
-    latitud DECIMAL(12,8),
-    longitud DECIMAL(12,8),
-    ruta_asignada VARCHAR(50)
+    
+CREATE TABLE productos (
+    codigo_producto VARCHAR(50) PRIMARY KEY,
+    nombre_producto VARCHAR(255) NOT NULL,
+    nombre_alterno VARCHAR(150),
+    codigo_barras VARCHAR(100),
+    codigo_marca VARCHAR(50),
+    codigo_categoria VARCHAR(50),
+    codigo_subcategoria VARCHAR(50),
+    codigo_familia VARCHAR(50),
+    codigo_unidad_medida VARCHAR(50),
+    codigo_tipo_inventario VARCHAR(50),
+    costo NUMERIC(12,2),
+    ultimo_costo NUMERIC(12,2),
+    estado INTEGER, -- 1 = Activo, 0 = Inactivo
+    tipo_producto INTEGER
+
 );
 
-CREATE INDEX IF NOT EXISTS idx_cliente_ruta
-    ON clientes(ruta_asignada);
+CREATE INDEX idx_productos_categoria ON productos(codigo_categoria);
+CREATE INDEX idx_productos_marca ON productos(codigo_marca);
+CREATE INDEX idx_productos_estado ON productos(estado);
+
+
+------------------------------------------------------------
+-- TABLA: tipos_negocio
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tipos_negocio (
+    id SERIAL PRIMARY KEY,
+    codigo VARCHAR(50) UNIQUE NOT NULL,
+    descripcion VARCHAR(150) NOT NULL,
+    color VARCHAR(20),
+    estado INT DEFAULT 1,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_tipos_negocio_codigo
+    ON tipos_negocio(codigo);
+
+
+
+------------------------------------------------------------
+-- TABLA: clientes
+-- Modelo usado: clientes.js
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS clientes (
+  id_cliente SERIAL PRIMARY KEY,
+  codigo_cliente VARCHAR(255) UNIQUE NOT NULL,
+  tipo_identificacion_cliente VARCHAR(50),
+  identificacion_cliente VARCHAR(20) NOT NULL,
+  nombre_cliente VARCHAR(255),
+  nombre_comercial_cliente VARCHAR(255),
+
+  -- NUEVO CAMPO
+  codigo_tipo_negocio VARCHAR(50),
+
+  contacto_cliente VARCHAR(255),
+  codigo_moneda_cliente VARCHAR(3) DEFAULT 'USD',
+  codigo_lista_precio_cliente VARCHAR(50),
+  metodo_pago_cliente VARCHAR(50),
+  codigo_grupo_cliente VARCHAR(50),
+  descuento_cliente DECIMAL(10, 2) DEFAULT 0.00,
+  objetivo_venta_cliente DECIMAL(10, 2),
+  saldo_cliente DECIMAL(10, 2) DEFAULT 0.00,
+  tiene_credito_cliente BOOLEAN DEFAULT FALSE,
+  tiene_documentos_cliente BOOLEAN DEFAULT TRUE,
+  estado_cliente INT DEFAULT 0,
+  estado_proceso_cliente INT DEFAULT 0,
+  nacionalidad_cliente VARCHAR(50),
+  codigo_usuario_asignado_cliente VARCHAR(20),
+  fecha_creacion_cliente TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  fecha_actualizacion_cliente TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  -- RELACIÓN CON TIPOS_NEGOCIO
+  CONSTRAINT fk_clientes_tipo_negocio
+    FOREIGN KEY (codigo_tipo_negocio)
+    REFERENCES tipos_negocio(codigo)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL
+);
+
+
+
+------------------------------------------------------------
+-- ÍNDICES PARA RENDIMIENTO
+------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_clientes_codigo_cliente
+    ON clientes(codigo_cliente);
+
+CREATE INDEX IF NOT EXISTS idx_clientes_identificacion_cliente
+    ON clientes(identificacion_cliente);
+
+CREATE INDEX IF NOT EXISTS idx_clientes_estado_cliente
+    ON clientes(estado_cliente);
+
+CREATE INDEX IF NOT EXISTS idx_clientes_estado_proceso_cliente
+    ON clientes(estado_proceso_cliente);
+
+CREATE INDEX IF NOT EXISTS idx_clientes_codigo_usuario_asignado
+    ON clientes(codigo_usuario_asignado_cliente);
+
+CREATE INDEX IF NOT EXISTS idx_clientes_codigo_tipo_negocio
+    ON clientes(codigo_tipo_negocio);
+
+
+
+------------------------------------------------------------
+-- TRIGGER PARA ACTUALIZAR TIMESTAMP AUTOMÁTICAMENTE
+------------------------------------------------------------
+CREATE OR REPLACE FUNCTION update_cliente_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.fecha_actualizacion_cliente = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_cliente_timestamp ON clientes;
+
+CREATE TRIGGER update_cliente_timestamp
+BEFORE UPDATE ON clientes
+FOR EACH ROW
+EXECUTE FUNCTION update_cliente_timestamp();
+
+
+
+------------------------------------------------------------
+-- VERIFICACIÓN
+------------------------------------------------------------
+SELECT * FROM clientes;
+
+
+------------------------------------------------------------
+-- TABLA: direcciones_clientes
+-- Modelo usado: direcciones_clientes.js
+------------------------------------------------------------
+CREATE TABLE direcciones_clientes (
+  id_direccion_cliente SERIAL PRIMARY KEY,
+  codigo_cliente VARCHAR(255) NOT NULL,
+  descripcion_direccion_cliente VARCHAR(255),
+  codigo_direccion_cliente VARCHAR(255),
+  calle1_direccion_cliente VARCHAR(255),
+  bloque_direccion_cliente VARCHAR(255),
+  calle2_direccion_cliente VARCHAR(255),
+  referencia_direccion_cliente VARCHAR(255),
+  codigo_postal_direccion_cliente VARCHAR(20),
+  telefono_direccion_cliente VARCHAR(50),
+  fax_direccion_cliente VARCHAR(50),
+  email_direccion_cliente VARCHAR(100),
+  latitud_direccion_cliente DECIMAL(15, 8),
+  longitud_direccion_cliente DECIMAL(15, 8),
+  fecha_ultima_visita_direccion_cliente TIMESTAMP,
+  estado_direccion_cliente INT DEFAULT 1,
+  estado_ubicacion_direccion_cliente INT DEFAULT 3,
+  fecha_creacion_direccion_cliente TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  fecha_actualizacion_direccion_cliente TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (codigo_cliente)
+    REFERENCES clientes(codigo_cliente)
+    ON DELETE CASCADE,
+
+  CONSTRAINT unique_cliente_direccion
+    UNIQUE (codigo_cliente, codigo_direccion_cliente)
+);
+
+
+-- Añadir índices adicionales para mejorar rendimiento
+CREATE INDEX idx_codigo_cliente ON direcciones_clientes(codigo_cliente);
+
+
+ALTER TABLE direcciones_clientes
+ADD CONSTRAINT unique_cliente_direccion
+UNIQUE (codigo_cliente, codigo_direccion_cliente);
+
+CREATE OR REPLACE FUNCTION update_direccion_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.fecha_actualizacion_direccion_cliente = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_direccion_timestamp
+BEFORE UPDATE ON direcciones_clientes
+FOR EACH ROW
+EXECUTE FUNCTION update_direccion_timestamp();
+
+
+
 
 -------------------------------------------------
--- 4. Tabla: ordenes
+--  Tabla: clientes_usuarios_ventas
+-- Relación N a N entre clientes y vendedores
+-------------------------------------------------
+select * from clientes_usuarios_ventas;
+select * from clientes cv ;
+
+CREATE TABLE IF NOT EXISTS clientes_usuarios_ventas (
+    id_relacion SERIAL PRIMARY KEY,
+    codigo_cliente VARCHAR(50) NOT NULL,
+    codigo_direccion_cliente VARCHAR(100);
+    seller_code VARCHAR(50) NOT NULL,
+    ruta_code VARCHAR(50),
+    tipo_atencion VARCHAR(20), -- PREVENTA / TELEVENTA / VIP
+    ultima_atencion TIMESTAMP,
+
+    UNIQUE (codigo_cliente, seller_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cuv_cliente
+    ON clientes_usuarios_ventas(codigo_cliente);
+
+CREATE INDEX IF NOT EXISTS idx_cuv_seller
+    ON clientes_usuarios_ventas(seller_code);
+
+CREATE INDEX IF NOT EXISTS idx_cuv_ruta
+    ON clientes_usuarios_ventas(ruta_code);
+
+
+-------------------------------------------------
+--  Tabla: ordenes
 -------------------------------------------------
 CREATE TABLE IF NOT EXISTS ordenes (
     id_orden SERIAL PRIMARY KEY,
@@ -53,18 +271,21 @@ CREATE INDEX IF NOT EXISTS idx_orden_customer
 CREATE INDEX IF NOT EXISTS idx_orden_seller
     ON ordenes(seller_code);
 
+
+
 -------------------------------------------------
--- 5. Tabla: facturas
+--  Tabla: facturas
 -------------------------------------------------
 CREATE TABLE IF NOT EXISTS facturas (
     id_factura SERIAL PRIMARY KEY,
-    code VARCHAR(50) NOT NULL UNIQUE,
+    code VARCHAR(30) NOT NULL UNIQUE,
     type INT,
     status INT,
     fecha_creacion TIMESTAMP,
     fecha_autorizacion TIMESTAMP,
     fecha_entrega TIMESTAMP,
-    customer_code VARCHAR(50),
+    customer_code VARCHAR(30),
+    customer_address_code VARCHAR(30),
     route_code VARCHAR(50),
     seller_code VARCHAR(50),
     total DECIMAL(18,2),
@@ -91,9 +312,13 @@ CREATE INDEX IF NOT EXISTS idx_factura_parent
 CREATE INDEX IF NOT EXISTS idx_factura_seller
     ON facturas(seller_code);
 
+
+
+
+------------------------------------------------
+-- Detalle de documentos (ordenes y facturas)
 -------------------------------------------------
--- 6. Tabla: detalle_documento
--------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS detalle_documento (
     id_detalle SERIAL PRIMARY KEY,
     documento_code VARCHAR(50),
@@ -116,21 +341,69 @@ CREATE INDEX IF NOT EXISTS idx_doc_code
 CREATE INDEX IF NOT EXISTS idx_doc_producto
     ON detalle_documento(codigo_producto);
 
--------------------------------------------------
--- 7. Tabla metas_preventas
--------------------------------------------------
-CREATE TABLE IF NOT EXISTS metas_preventas (
-    id_meta SERIAL PRIMARY KEY,
-    codigo_ruta VARCHAR(50),
-    anio INT,
-    mes INT,
-    meta_unidades INT,
-    meta_dolares DECIMAL(18,2),
-    UNIQUE (codigo_ruta, anio, mes)
-);
 
+
+ALTER TABLE detalle_documento
+ADD CONSTRAINT unique_detalle_doc
+UNIQUE (documento_code, codigo_producto, precio, cantidad);
+------------------------------------------------
+-- Tabla rutas
 -------------------------------------------------
--- 8. Tabla sincronizaciones_ventas
+
+CREATE TABLE rutas (
+    id SERIAL PRIMARY KEY,  -- Identificador único (auto-incrementable)
+    codigo VARCHAR(100) NOT NULL,  -- Código de la ruta (code)
+    descripcion VARCHAR(255),  -- Descripción de la ruta (description)
+    tipo INT,  -- Tipo de ruta (type)
+    estado INT,  -- Estado de la ruta (status)
+    creado_por INT,  -- Usuario que creó la ruta (c)
+    actualizado_por INT,  -- Usuario que actualizó la ruta (u)
+    creado_por_id VARCHAR(255),  -- ID de quien creó la ruta (c_by)
+    actualizado_por_id VARCHAR(255),  -- ID de quien actualizó la ruta (u_by)
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Fecha de creación (c)
+    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- Fecha de actualización (u)
+);
+CREATE UNIQUE INDEX rutas_codigo_unique ON public.rutas (codigo);
+
+
+------------------------------------------------
+-- Tabla detalles_rutas
+-------------------------------------------------
+CREATE TABLE detalles_rutas (
+    id SERIAL PRIMARY KEY,  -- Identificador único (auto-incrementable)
+    codigo VARCHAR(100) NOT NULL,  -- Código del detalle de la ruta (code)
+    codigo_ruta VARCHAR(100),  -- Código de la ruta (route_code)
+    route_code VARCHAR(100), 
+    codigo_cliente VARCHAR(100),  -- Código del cliente (customer_code)
+    codigo_direccion_cliente VARCHAR(100),  -- Código de la dirección del cliente (customer_address_code)
+    semana INT,  -- Semana de la ruta (week)
+    dia INT,  -- Día de la ruta (day)
+    secuencia INT,  -- Secuencia del detalle de la ruta (sequence)
+    estado INT,  -- Estado del detalle de la ruta (status)
+    datos JSONB,  -- Almacenamiento de datos adicionales (data)
+    creado_por INT,  -- Usuario que creó el detalle (c)
+    actualizado_por INT,  -- Usuario que actualizó el detalle (u)
+    creado_por_id VARCHAR(255),  -- ID del usuario que creó (c_by)
+    actualizado_por_id VARCHAR(255),  -- ID del usuario que actualizó (u_by)
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Fecha de creación (c)
+    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Fecha de actualización (u)
+    ruta_codigo_lookup VARCHAR(255),  -- Descripción de la ruta (route_code_lookup)
+    cliente_codigo_lookup VARCHAR(255),  -- Nombre del cliente (customer_code_lookup)
+    direccion_codigo_lookup VARCHAR(255)  -- Código de dirección del cliente (customer_address_code_lookup)
+);
+ALTER TABLE detalles_rutas
+ADD COLUMN customer_code VARCHAR(255);
+
+ALTER TABLE detalles_rutas
+ADD CONSTRAINT unique_codigo UNIQUE (codigo);
+
+
+delete from rutas;
+delete from detalles_rutas ;
+select * from detalles_rutas dr where dr.codigo = '1-182323-1-2' ;
+
+------------------------------------------------
+-- Tabla sincronizaciones_ventas
 -------------------------------------------------
 CREATE TABLE IF NOT EXISTS sincronizaciones_ventas (
     id_sync SERIAL PRIMARY KEY,
@@ -139,157 +412,69 @@ CREATE TABLE IF NOT EXISTS sincronizaciones_ventas (
     hasta_date DATE,
     total_registros INT,
     estado VARCHAR(20),
-    mensaje TEXT
+    mensaje VARCHAR(100)
 );
 
 
-
-
-
-
--------------------------------------------------
--- 9. Tabla: clientes_usuarios_ventas
--- Relación N a N entre clientes y vendedores
--------------------------------------------------
-select * from clientes_usuarios_ventas;
-select * from clientes cv ;
-
-CREATE TABLE IF NOT EXISTS clientes_usuarios_ventas (
-    id_relacion SERIAL PRIMARY KEY,
-    codigo_cliente VARCHAR(50) NOT NULL,
-    seller_code VARCHAR(50) NOT NULL,
-    ruta_code VARCHAR(50),
-    tipo_atencion VARCHAR(20), -- PREVENTA / TELEVENTA / VIP
-    ultima_atencion TIMESTAMP,
-
-    UNIQUE (codigo_cliente, seller_code)
+select * from historial_visitas;
+-- Crear la tabla historial_visitas si no existe
+CREATE TABLE IF NOT EXISTS historial_visitas (
+    id SERIAL PRIMARY KEY,  -- Identificador único de la visita
+    fecha_visita TIMESTAMP,  -- Fecha de la visita (en formato timestamp)
+    codigo_usuario VARCHAR(50),  -- Código del usuario que realizó la visita
+    codigo_ruta VARCHAR(50),  -- Código de la ruta asociada
+    codigo_cliente VARCHAR(50),  -- Código del cliente
+    codigo_direccion_cliente VARCHAR(50),  -- Código de la dirección del cliente
+    semana INT,  -- Semana de la visita
+    dia INT,  -- Día de la semana (1-7)
+    accion VARCHAR(50),  -- Tipo de acción (por ejemplo, "visit_start")
+    codigo_comentario VARCHAR(50),  -- Código de comentario asociado
+    comentario TEXT,  -- Comentario adicional sobre la visita
+    monto DECIMAL(18, 2),  -- Monto asociado a la visita (si aplica)
+    latitud DECIMAL(12, 8),  -- Latitud (para geolocalización)
+    longitud DECIMAL(12, 8),  -- Longitud (para geolocalización)
+    estado_proceso INT,  -- Estado del proceso (ejemplo: 0 = pendiente, 1 = completado)
+    ruptura_secuencia INT,  -- Indica si hubo una ruptura de secuencia (1 = sí, 0 = no)
+    nombre_cliente VARCHAR(250),  -- Nombre del cliente
+    nombre_empresa_cliente VARCHAR(250),  -- Nombre de la empresa del cliente (si aplica)
+    nombre_comercial_cliente VARCHAR(250),  -- Nombre comercial del cliente (si aplica)
+    tipo_identificacion_cliente VARCHAR(10),  -- Tipo de identificación del cliente (ejemplo: "C" = cédula)
+    numero_identificacion_cliente VARCHAR(20),  -- Número de identificación del cliente
+    contacto_cliente VARCHAR(50),  -- Contacto del cliente
+    comentario_cliente TEXT,  -- Comentario del cliente (si aplica)
+    estado_cliente INT,  -- Estado del cliente (ejemplo: 0 = inactivo, 1 = activo)
+    nombre_usuario VARCHAR(250),  -- Nombre del usuario que realizó la acción
+    email_usuario VARCHAR(100),  -- Email del usuario
+    email_notificacion_usuario VARCHAR(100),  -- Emails de notificación del usuario
+    identidad_usuario VARCHAR(50),  -- Identidad del usuario (si aplica)
+    tipo_identificacion_usuario VARCHAR(10),  -- Tipo de identificación del usuario
+    sucursal_usuario VARCHAR(100),  -- Sucursal del usuario (si aplica)
+    telefono_usuario VARCHAR(50),  -- Teléfono del usuario (si aplica)
+    direccion_usuario VARCHAR(500),  -- Dirección del usuario (si aplica)
+    marca_dispositivo_usuario VARCHAR(100),  -- Marca del dispositivo del usuario
+    modelo_dispositivo_usuario VARCHAR(100),  -- Modelo del dispositivo del usuario
+    numero_dispositivo_usuario VARCHAR(100),  -- Número de dispositivo del usuario
+    codigo_almacen_usuario VARCHAR(50),  -- Código del almacenamiento predeterminado del usuario
+    codigo_ruta_predeterminada_usuario VARCHAR(50),  -- Código de la ruta predeterminada del usuario
+    codigo_rol_usuario VARCHAR(50)  -- Código del rol del usuario (ejemplo: "ADMIN", "VENDEDOR")
 );
 
-CREATE INDEX IF NOT EXISTS idx_cuv_cliente
-    ON clientes_usuarios_ventas(codigo_cliente);
+-- Crear un índice único para evitar duplicados basados en la combinación de codigo_cliente, codigo_ruta y fecha_visita
+CREATE UNIQUE INDEX idx_historial_visitas_unique
+ON historial_visitas (codigo_cliente, codigo_ruta, fecha_visita);
 
-CREATE INDEX IF NOT EXISTS idx_cuv_seller
-    ON clientes_usuarios_ventas(seller_code);
+-- Crear índices no únicos para mejorar el rendimiento de las consultas
+-- Índice en codigo_usuario para acelerar las búsquedas por usuario
+CREATE INDEX idx_historial_visitas_codigo_usuario
+ON historial_visitas (codigo_usuario);
 
-CREATE INDEX IF NOT EXISTS idx_cuv_ruta
-    ON clientes_usuarios_ventas(ruta_code);
-
-
-
-
-
-
+-- Índice en accion para acelerar las búsquedas por tipo de acción
+CREATE INDEX idx_historial_visitas_accion
+ON historial_visitas (accion);
 
 
--- =================================================
--- CONFIGURACIÓN DE ZONA HORARIA (RECOMENDADO)
--- =================================================
-SET TIME ZONE 'America/Guayaquil';
 
--- =================================================
--- FUNCIÓN GENÉRICA PARA updated_at
--- =================================================
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- =================================================
--- TABLA: rutas_preventas
--- =================================================
-CREATE TABLE rutas (
-    codigo_ruta VARCHAR(255) PRIMARY KEY NOT NULL,  -- Código único para la ruta
-    descripcion VARCHAR(255),                      -- Descripción de la ruta
-    tipo VARCHAR(50) NOT NULL,                     -- Tipo de ruta (PREVENTA, TELEVENTA, etc.)
-    status VARCHAR(255),
-    c INT,                                         -- Creado por (usuario)
-    u INT,                                         -- Actualizado por (usuario)
-    c_by VARCHAR(15),                                      -- ID del creador
-    u_by VARCHAR(15),                                       -- ID de quien actualiza
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Fecha de creación
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP -- Fecha de actualización
-);
--- Crear función para el trigger
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = CURRENT_TIMESTAMP;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Crear trigger que ejecutará la función en cada UPDATE
-CREATE TRIGGER update_rutas_updated_at
-  BEFORE UPDATE ON rutas
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at();
+ALTER TABLE clientes_usuarios_ventas ADD COLUMN codigo_direccion_cliente VARCHAR(100);
 
 
--- =================================================
--- TABLA: route_details (planificación de rutas)
--- =================================================
 
-
-CREATE TABLE route_details (
-    id SERIAL PRIMARY KEY,                          -- Identificador único para cada detalle de ruta
-    codigo_ruta VARCHAR(255) NOT NULL,               -- Código de la ruta
-    codigo_cliente VARCHAR(255) NOT NULL,            -- Código del cliente
-    descripcion VARCHAR(255),                        -- Descripción del detalle
-    codigo_direccion VARCHAR(255),                   -- Código de dirección del cliente
-    semana INT NOT NULL,                             -- Semana de la ruta
-    dia INT NOT NULL,                                -- Día de la semana
-    secuencia INT DEFAULT 0,                         -- Secuencia de la ruta
-    status VARCHAR(50),                              -- Estado de la ruta (0, 1, etc.)
-    c INT,                                           -- Creado por (usuario)
-    u INT,                                           -- Actualizado por (usuario)
-    c_by VARCHAR(15),                                      -- ID del creador
-    u_by VARCHAR(15),                                          -- ID de quien actualiza
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Fecha de creación
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Fecha de actualización
-    route_code_lookup VARCHAR(255),                  -- Descripción de la ruta (lookup)
-    customer_code_lookup VARCHAR(255),               -- Descripción del cliente (lookup)
-    customer_address_code_lookup VARCHAR(255),       -- Descripción de la dirección (lookup)
-    CONSTRAINT fk_ruta FOREIGN KEY (codigo_ruta) REFERENCES rutas(codigo_ruta),  -- Relación con la tabla rutas
-    UNIQUE (codigo_ruta, codigo_cliente, semana, dia)  -- Clave única compuesta
-);
--- Crear función para el trigger
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = CURRENT_TIMESTAMP;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Crear trigger que ejecutará la función en cada UPDATE
-CREATE TRIGGER update_route_details_updated_at
-  BEFORE UPDATE ON route_details
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at();
-
-
--- =================================================
--- ÍNDICES PARA PERFORMANCE
--- =================================================
-CREATE INDEX IF NOT EXISTS idx_route_details_ruta
-  ON route_details(codigo_ruta);
-
-CREATE INDEX IF NOT EXISTS idx_route_details_cliente
-  ON route_details(codigo_cliente);
-
-CREATE INDEX IF NOT EXISTS idx_route_details_semana_dia
-  ON route_details(semana, dia);
-
--- Trigger updated_at route_details
-DROP TRIGGER IF EXISTS trg_route_details_updated ON route_details;
-CREATE TRIGGER trg_route_details_updated
-BEFORE UPDATE ON route_details
-FOR EACH ROW
-EXECUTE FUNCTION set_updated_at();
-
--- =================================================
--- FIN DEL SCRIPT
--- =================================================
