@@ -115,26 +115,26 @@ const obtenerDetalleRuta = async (req, res) => {
     console.log("🔎 Ruta char codes:", [...rutaUpper].map(c => c.charCodeAt(0)));
 
     const clientesRutaSQL = `
-                      SELECT DISTINCT
-                              cuv.codigo_cliente,
-                              cv.nombre_cliente,
-                              cv.codigo_tipo_negocio,
-                              tn.descripcion AS tipo_negocio,
-                              dc.codigo_direccion_cliente,
-                              dc.calle1_direccion_cliente AS direccion_cliente,
-                              dc.telefono_direccion_cliente,
-                              dc.latitud_direccion_cliente,
-                              dc.longitud_direccion_cliente,
-                              cuv.seller_code
-                          FROM public.clientes_usuarios_ventas cuv
-                          LEFT JOIN public.clientes cv 
-                              ON cv.codigo_cliente = cuv.codigo_cliente
-                          LEFT JOIN public.tipos_negocio tn
-                              ON tn.codigo = cv.codigo_tipo_negocio
-                          LEFT JOIN public.direcciones_clientes dc 
-                              ON dc.codigo_cliente = cv.codigo_cliente
-                          WHERE UPPER(TRIM(cuv.seller_code)) = :ruta
-                          ORDER BY cv.nombre_cliente;
+                     SELECT DISTINCT
+    cuv.codigo_cliente,
+    cv.nombre_cliente,
+    cv.codigo_tipo_negocio,
+    tn.descripcion AS tipo_negocio,
+    dc.codigo_direccion_cliente,
+    dc.calle1_direccion_cliente AS direccion_cliente,
+    dc.telefono_direccion_cliente,
+    dc.latitud_direccion_cliente,
+    dc.longitud_direccion_cliente,
+    cuv.seller_code
+FROM public.clientes_usuarios_ventas cuv
+LEFT JOIN public.clientes cv 
+    ON cv.codigo_cliente = cuv.codigo_cliente
+LEFT JOIN public.tipos_negocio tn
+    ON tn.codigo = cv.codigo_tipo_negocio
+LEFT JOIN public.direcciones_clientes dc 
+    ON dc.codigo_cliente = cv.codigo_cliente
+WHERE UPPER(TRIM(cuv.seller_code)) = :ruta
+ORDER BY cv.nombre_cliente;
 
                         `;
 
@@ -184,22 +184,31 @@ const obtenerDetalleRuta = async (req, res) => {
     // 3) CONSULTAR CONSUMO ACTUAL Y ANTERIOR
     // ============================================================
     const clientesConsumoDataSQL = `
-                SELECT 
-                    f.customer_code,
-                    SUM(CASE 
-                        WHEN f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin THEN d.total 
-                        ELSE 0 
-                    END) AS consumo_actual,
+              SELECT 
+    o.customer_code,
 
-                    SUM(CASE 
-                        WHEN f.fecha_entrega >= :antInicio AND f.fecha_entrega < :antFin THEN d.total 
-                        ELSE 0 
-                    END) AS consumo_anterior
-                FROM facturas f
-                JOIN detalle_documento d ON d.documento_code = f.code
-                WHERE f.route_code = :ruta  
-                  AND f.status IN ('2', '4', '5')  
-                GROUP BY f.customer_code
+    SUM(CASE 
+        WHEN o.fecha_entrega >= :inicio 
+         AND o.fecha_entrega <  :fin 
+        THEN d.total ELSE 0 END
+    ) AS consumo_actual,
+
+    SUM(CASE 
+        WHEN o.fecha_entrega >= :antInicio 
+         AND o.fecha_entrega <  :antFin 
+        THEN d.total ELSE 0 END
+    ) AS consumo_anterior
+
+FROM ordenes o
+JOIN detalle_documento d 
+    ON d.documento_code = o.code
+
+WHERE 
+    o.seller_code = :ruta
+    AND o.type = 2
+    AND o.status = 5
+
+GROUP BY o.customer_code;
             `;
 
     // Definir las fechas de inicio y fin para los meses actual y anterior
@@ -231,27 +240,28 @@ const obtenerDetalleRuta = async (req, res) => {
     console.log("📅 Rango anual:", { inicio: fechaInicioAnio, fin: fechaFinAnio });
 
     const consumoMaximoAnualSQL = `
-              WITH consumo_mensual AS (
-                  SELECT 
-                      f.customer_code,
-                      DATE_TRUNC('month', f.fecha_entrega) AS mes,
-                      SUM(d.total) AS consumo_mes
-                  FROM facturas f
-                  JOIN detalle_documento d 
-                      ON d.documento_code = f.code
-                  WHERE 
-                      f.route_code = :ruta
-                      AND f.status IN ('2','4','5')
-                      AND f.fecha_entrega >= :inicioAnio
-                      AND f.fecha_entrega <  :finAnio
-                  GROUP BY f.customer_code, DATE_TRUNC('month', f.fecha_entrega)
-              )
-              SELECT DISTINCT ON (customer_code)
-                  customer_code,
-                  mes,
-                  consumo_mes
-              FROM consumo_mensual
-              ORDER BY customer_code, consumo_mes DESC;
+             WITH consumo_mensual AS (
+    SELECT 
+        o.customer_code,
+        DATE_TRUNC('month', o.fecha_entrega) AS mes,
+        SUM(d.total) AS consumo_mes
+    FROM ordenes o
+    JOIN detalle_documento d 
+        ON d.documento_code = o.code
+    WHERE 
+        o.seller_code = :ruta
+        AND o.type = 2
+        AND o.status = 5
+        AND o.fecha_entrega >= :inicioAnio
+        AND o.fecha_entrega <  :finAnio
+    GROUP BY o.customer_code, DATE_TRUNC('month', o.fecha_entrega)
+)
+SELECT DISTINCT ON (customer_code)
+    customer_code,
+    mes,
+    consumo_mes
+FROM consumo_mensual
+ORDER BY customer_code, consumo_mes DESC;
               `;
 
     const consumoMaximoAnual = await db.query(consumoMaximoAnualSQL, {
@@ -283,21 +293,21 @@ const obtenerDetalleRuta = async (req, res) => {
     // console.log("🧾 [detallePreventa] Consultando productos vendidos...");
 
     const productosVendidosSQL = `
-  SELECT
-      dd.descripcion AS producto,
-      SUM(dd.cantidad) AS unidades_vendidas,
-      SUM(dd.total) AS monto_usd
-  FROM ordenes o
-  JOIN detalle_documento dd
-      ON dd.documento_code = o.code
-  WHERE 
-      o.type = 2
-      AND o.status IN ('2', '4', '5')  
-      AND o.seller_code = :ruta
-      AND o.fecha_entrega >= :inicio
-      AND o.fecha_entrega <  :fin
-  GROUP BY dd.descripcion
-  ORDER BY unidades_vendidas DESC;
+SELECT
+    dd.descripcion AS producto,
+    SUM(dd.cantidad) AS unidades_vendidas,
+    SUM(dd.total) AS monto_usd
+FROM ordenes o
+JOIN detalle_documento dd
+    ON dd.documento_code = o.code
+WHERE 
+    o.seller_code = :ruta
+    AND o.type = 2
+    AND o.status = 5
+    AND o.fecha_entrega >= :inicio
+    AND o.fecha_entrega <  :fin
+GROUP BY dd.descripcion
+ORDER BY unidades_vendidas DESC;
 `;
 
     const productosVendidos = await db.query(productosVendidosSQL, {
@@ -311,17 +321,18 @@ const obtenerDetalleRuta = async (req, res) => {
     // CONSULTAR PRODUCTOS VENDIDOS CANTIDAD POR CLIENTE EN EL MES
     const productosVendidosSQLCantidad = `
 SELECT
-    f.customer_code,
+    o.customer_code,
     SUM(dd.cantidad) AS unidades_vendidas_cliente
-FROM facturas f
+FROM ordenes o
 JOIN detalle_documento dd
-    ON dd.documento_code = f.code
+    ON dd.documento_code = o.code
 WHERE 
-    f.route_code = :ruta
-    AND f.status IN ('2','4','5')
-    AND f.fecha_entrega >= :inicio
-    AND f.fecha_entrega < :fin
-GROUP BY f.customer_code
+    o.seller_code = :ruta
+    AND o.type = 2
+    AND o.status = 5
+    AND o.fecha_entrega >= :inicio
+    AND o.fecha_entrega <  :fin
+GROUP BY o.customer_code;
 `;
 
 
@@ -340,15 +351,15 @@ GROUP BY f.customer_code
     // console.log("📅 [detallePreventa] Consultando última visita...");
 
     const ultimaVisitaSQL = `
-      SELECT
-          customer_code,
-          MAX(fecha_entrega) AS ultima_visita
-      FROM (
-          SELECT customer_code, fecha_entrega FROM ordenes
-          UNION ALL
-          SELECT customer_code, fecha_entrega FROM facturas
-      ) x
-      GROUP BY customer_code;
+   SELECT
+    customer_code,
+    MAX(fecha_entrega) AS ultima_visita
+FROM (
+    SELECT customer_code, fecha_entrega FROM ordenes
+    UNION ALL
+    SELECT customer_code, fecha_entrega FROM facturas
+) x
+GROUP BY customer_code;
     `;
 
     const ultimasVisitas = await db.query(ultimaVisitaSQL, {
@@ -367,12 +378,12 @@ GROUP BY f.customer_code
 
     const ultimaFacturaSQL = `
       SELECT 
-          customer_code,
-          MAX(
-              COALESCE(fecha_autorizacion, fecha_entrega, fecha_creacion)
-          ) AS ultima_factura
-      FROM facturas
-      GROUP BY customer_code;
+    customer_code,
+    MAX(
+        COALESCE(fecha_autorizacion, fecha_entrega, fecha_creacion)
+    ) AS ultima_factura
+FROM facturas
+GROUP BY customer_code;
     `;
 
     const ultimasFacturas = await db.query(ultimaFacturaSQL, {
@@ -531,12 +542,7 @@ const obtenerProductosVendidosRuta = async (req, res) => {
     console.log(`Fecha de fin: ${antFin}`);
 
 
-
-
-
-
     const rutaUpper = ruta.trim().toUpperCase(); // Asegurar que la ruta esté en mayúsculas
-
     // Consulta SQL para obtener los productos vendidos en la ruta en el mes de diciembre
     const productosVendidosSQL = `
       SELECT 

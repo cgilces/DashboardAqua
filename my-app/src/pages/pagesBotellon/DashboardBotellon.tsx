@@ -126,6 +126,7 @@ export default function DashboardBotellon() {
   const resumenVentasUSD = useMemo(() => {
     if (!botellones) return null;
 
+    console.log("Botellones:", botellones); // Para depurar
     return Object.fromEntries(
       SECCIONES.map((s) => {
         const key = s.key;
@@ -135,7 +136,6 @@ export default function DashboardBotellon() {
         const detalle = botellones[key]?.detalle || [];
         const mesAnterior = total?.mesAnterior;
 
-        //  SUMAR PROYECCIÓN DESDE DETALLE
         const proyeccionTotal = detalle.reduce(
           (acc: number, item: any) =>
             acc + Number(item.proyeccion?.dolares || 0),
@@ -148,7 +148,8 @@ export default function DashboardBotellon() {
           0
         );
 
-        console.log("RESUMEN", key, {
+        console.log("Mes anterior:", mesAnterior); // Verifica la variación
+        console.log("Resumen ventas USD:", {
           total,
           mesAnterior,
         });
@@ -165,6 +166,8 @@ export default function DashboardBotellon() {
               variacion_abs: mesAnterior?.variacionAbs ?? 0,
               variacion_porc: mesAnterior?.variacionPorc ?? 0,
               unidades: mesAnterior?.unidades ?? 0,
+              variacionAbsUnidades: mesAnterior?.variacionAbsUnidades ?? 0,
+              variacionPorcUnidades: mesAnterior?.variacionPorcUnidades ?? 0,
             },
           },
         ];
@@ -234,8 +237,11 @@ export default function DashboardBotellon() {
         )}
 
         {/* ================= RESUMEN USD ================= */}
+
         {isAdmin && resumenVentasUSD && (
+          // console.log("resumen ventas USD", resumenVentasUSD),
           <ResumenVentasCanalUSD
+
             titulo="Ventas USD Botellón"
             canales={[
               "tiendas_vip",
@@ -251,7 +257,9 @@ export default function DashboardBotellon() {
             ]}
             data={resumenVentasUSD}
           />
+
         )}
+
 
         {/* ================= TABLAS ================= */}
         {mostrarTablas &&

@@ -104,55 +104,143 @@ const obtenerDetalleRuta = async (req, res) => {
     /* ========================================================
        2️⃣ CLIENTES CON CONSUMO EN EL MES ACTUAL
     ======================================================== */
+
+    console.log("--------------------------------------------------");
+    console.log("🔎 DEPURANDO CLIENTES CON CONSUMO");
+    console.log("Ruta recibida:", rutaUpper);
+    console.log("Fecha inicio:", fInicio);
+    console.log("Fecha fin:", fFin);
+
     const clientesConConsumoSQL = `
-      SELECT DISTINCT f.customer_code
+  SELECT DISTINCT customer_code
+  FROM (
+
+      -- FACTURAS
+      SELECT f.customer_code
       FROM facturas f
       JOIN detalle_documento d
         ON d.documento_code = f.code
       WHERE f.seller_code = :ruta
-        AND f.status IN ('2','4','5')
+        AND f.status IN (2, 4, 5)
         AND d.codigo_categoria = '5'
         AND f.fecha_entrega >= :inicio
-        AND f.fecha_entrega <  :fin;
-    `;
+        AND f.fecha_entrega <  :fin
+
+      UNION
+
+      -- ORDENES
+      SELECT o.customer_code
+      FROM ordenes o
+      JOIN detalle_documento d
+        ON d.documento_code = o.code
+      WHERE o.seller_code = :ruta
+        AND o.status IN (2, 4, 5)
+        AND d.codigo_categoria = '5'
+        AND o.fecha_entrega >= :inicio
+        AND o.fecha_entrega <  :fin
+
+  ) AS movimientos
+`;
+
+    console.log("🧠 SQL TEMPLATE:");
+    console.log(clientesConConsumoSQL);
+
+    console.log("📦 Replacements:");
+    console.log({
+      ruta: rutaUpper,
+      inicio: fInicio,
+      fin: fFin
+    });
+
+    // SQL simulado para copiar en DBeaver
+    console.log("🧪 SQL SIMULADO PARA DB:");
+    console.log(`
+SELECT DISTINCT customer_code
+FROM (
+    SELECT f.customer_code
+    FROM facturas f
+    JOIN detalle_documento d
+      ON d.documento_code = f.code
+    WHERE f.seller_code = '${rutaUpper}'
+      AND f.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+      AND f.fecha_entrega >= '${fInicio}'
+      AND f.fecha_entrega <  '${fFin}'
+
+    UNION
+
+    SELECT o.customer_code
+    FROM ordenes o
+    JOIN detalle_documento d
+      ON d.documento_code = o.code
+    WHERE o.seller_code = '${rutaUpper}'
+      AND o.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+      AND o.fecha_entrega >= '${fInicio}'
+      AND o.fecha_entrega <  '${fFin}'
+) AS movimientos;
+`);
 
     const clientesConConsumoRows = await db.query(clientesConConsumoSQL, {
-      replacements: { ruta: rutaUpper, inicio: fInicio, fin: fFin },
+      replacements: {
+        ruta: rutaUpper,
+        inicio: fInicio,
+        fin: fFin
+      },
       type: db.QueryTypes.SELECT,
     });
+
+    console.log("📊 Filas devueltas:", clientesConConsumoRows.length);
+    console.log("📊 Resultado crudo:", clientesConConsumoRows);
 
     const clientesConConsumo = new Set(
       clientesConConsumoRows.map((c) => c.customer_code)
     );
 
+    console.log("👥 Total clientes únicos con consumo:", clientesConConsumo.size);
+    console.log("--------------------------------------------------");
+
     /* ========================================================
        3️⃣ CONSUMO ACTUAL VS MES ANTERIOR REAL
     ======================================================== */
     const consumoSQL = `
-      SELECT
-        f.customer_code,
-        SUM(
-          CASE 
-            WHEN f.fecha_entrega >= :inicio
-             AND f.fecha_entrega <  :fin
-            THEN d.total ELSE 0 
-          END
-        ) AS consumo_actual,
-        SUM(
-          CASE 
-            WHEN f.fecha_entrega >= :antInicio
-             AND f.fecha_entrega <  :antFin
-            THEN d.total ELSE 0 
-          END
-        ) AS consumo_anterior
-      FROM facturas f
-      JOIN detalle_documento d
-        ON d.documento_code = f.code
-      WHERE f.seller_code = :ruta
-        AND f.status IN ('2','4','5')
-        AND d.codigo_categoria = '5'
-      GROUP BY f.customer_code;
-    `;
+SELECT
+    mov.customer_code,
+    SUM(
+        CASE 
+            WHEN mov.fecha_entrega >= :inicio
+             AND mov.fecha_entrega <  :fin
+            THEN mov.total ELSE 0
+        END
+    ) AS consumo_actual,
+    SUM(
+        CASE 
+            WHEN mov.fecha_entrega >= :antInicio
+             AND mov.fecha_entrega <  :antFin
+            THEN mov.total ELSE 0
+        END
+    ) AS consumo_anterior
+FROM (
+
+    SELECT f.customer_code, f.fecha_entrega, d.total
+    FROM facturas f
+    JOIN detalle_documento d ON d.documento_code = f.code
+    WHERE f.seller_code = :ruta
+      AND f.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+
+    UNION ALL
+
+    SELECT o.customer_code, o.fecha_entrega, d.total
+    FROM ordenes o
+    JOIN detalle_documento d ON d.documento_code = o.code
+    WHERE o.seller_code = :ruta
+      AND o.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+
+) mov
+GROUP BY mov.customer_code
+`;
 
     const consumoData = await db.query(consumoSQL, {
       replacements: {
@@ -175,28 +263,44 @@ const obtenerDetalleRuta = async (req, res) => {
     const fechaFinAnio = `${anioNum + 1}-01-01 00:00:00`;
 
     const consumoMaximoAnualSQL = `
-WITH consumo_mensual AS (
-    SELECT 
-        f.customer_code,
-        DATE_TRUNC('month', f.fecha_entrega) AS mes,
-        SUM(d.total) AS consumo_mes
+WITH movimientos AS (
+
+    SELECT f.customer_code, f.fecha_entrega, d.total
     FROM facturas f
-    JOIN detalle_documento d 
-        ON d.documento_code = f.code
-    WHERE 
-        f.seller_code = :ruta
-        AND f.status IN ('2','4','5')
-        AND d.codigo_categoria = '5'
-        AND f.fecha_entrega >= :inicioAnio
-        AND f.fecha_entrega <  :finAnio
-    GROUP BY f.customer_code, DATE_TRUNC('month', f.fecha_entrega)
+    JOIN detalle_documento d ON d.documento_code = f.code
+    WHERE f.seller_code = :ruta
+      AND f.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+      AND f.fecha_entrega >= :inicioAnio
+      AND f.fecha_entrega <  :finAnio
+
+    UNION ALL
+
+    SELECT o.customer_code, o.fecha_entrega, d.total
+    FROM ordenes o
+    JOIN detalle_documento d ON d.documento_code = o.code
+    WHERE o.seller_code = :ruta
+      AND o.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+      AND o.fecha_entrega >= :inicioAnio
+      AND o.fecha_entrega <  :finAnio
+),
+
+consumo_mensual AS (
+    SELECT 
+        customer_code,
+        DATE_TRUNC('month', fecha_entrega) AS mes,
+        SUM(total) AS consumo_mes
+    FROM movimientos
+    GROUP BY customer_code, DATE_TRUNC('month', fecha_entrega)
 )
+
 SELECT DISTINCT ON (customer_code)
     customer_code,
     consumo_mes,
     mes
 FROM consumo_mensual
-ORDER BY customer_code, consumo_mes DESC;
+ORDER BY customer_code, consumo_mes DESC
 `;
 
     const consumoMaximoAnual = await db.query(consumoMaximoAnualSQL, {
@@ -235,21 +339,34 @@ ORDER BY customer_code, consumo_mes DESC;
        4️ PRODUCTOS VENDIDOS
     ======================================================== */
     const productosVendidosSQL = `
-      SELECT
-        d.descripcion AS producto,
-        SUM(d.cantidad) AS unidades_vendidas,
-        SUM(d.total)    AS monto_usd
-      FROM facturas f
-      JOIN detalle_documento d
-        ON d.documento_code = f.code
-      WHERE f.seller_code = :ruta
-        AND f.status IN ('2','4','5')
-        AND d.codigo_categoria = '5'
-        AND f.fecha_entrega >= :inicio
-        AND f.fecha_entrega <  :fin
-      GROUP BY d.descripcion
-      ORDER BY unidades_vendidas DESC;
-    `;
+SELECT
+    mov.descripcion AS producto,
+    SUM(mov.cantidad) AS unidades_vendidas,
+    SUM(mov.total)    AS monto_usd
+FROM (
+
+    SELECT d.descripcion, d.cantidad, d.total, f.fecha_entrega
+    FROM facturas f
+    JOIN detalle_documento d ON d.documento_code = f.code
+    WHERE f.seller_code = :ruta
+      AND f.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+
+    UNION ALL
+
+    SELECT d.descripcion, d.cantidad, d.total, o.fecha_entrega
+    FROM ordenes o
+    JOIN detalle_documento d ON d.documento_code = o.code
+    WHERE o.seller_code = :ruta
+      AND o.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+
+) mov
+WHERE mov.fecha_entrega >= :inicio
+  AND mov.fecha_entrega <  :fin
+GROUP BY mov.descripcion
+ORDER BY unidades_vendidas DESC
+`;
 
     const productosVendidos = await db.query(productosVendidosSQL, {
       replacements: { ruta: rutaUpper, inicio: fInicio, fin: fFin },
@@ -260,19 +377,32 @@ ORDER BY customer_code, consumo_mes DESC;
        5️⃣ CANTIDAD BOTELLONES POR CLIENTE
     ======================================================== */
     const cantidadPorClienteSQL = `
-      SELECT
-        f.customer_code,
-        SUM(d.cantidad) AS unidades_botellon
-      FROM facturas f
-      JOIN detalle_documento d
-        ON d.documento_code = f.code
-      WHERE f.seller_code = :ruta
-        AND f.status IN ('2','4','5')
-        AND d.codigo_categoria = '5'
-        AND f.fecha_entrega >= :inicio
-        AND f.fecha_entrega <  :fin
-      GROUP BY f.customer_code;
-    `;
+SELECT
+    mov.customer_code,
+    SUM(mov.cantidad) AS unidades_botellon
+FROM (
+
+    SELECT f.customer_code, d.cantidad, f.fecha_entrega
+    FROM facturas f
+    JOIN detalle_documento d ON d.documento_code = f.code
+    WHERE f.seller_code = :ruta
+      AND f.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+
+    UNION ALL
+
+    SELECT o.customer_code, d.cantidad, o.fecha_entrega
+    FROM ordenes o
+    JOIN detalle_documento d ON d.documento_code = o.code
+    WHERE o.seller_code = :ruta
+      AND o.status IN (2,4,5)
+      AND d.codigo_categoria = '5'
+
+) mov
+WHERE mov.fecha_entrega >= :inicio
+  AND mov.fecha_entrega <  :fin
+GROUP BY mov.customer_code
+`;
 
     const cantidadPorCliente = await db.query(cantidadPorClienteSQL, {
       replacements: { ruta: rutaUpper, inicio: fInicio, fin: fFin },
@@ -289,10 +419,15 @@ ORDER BY customer_code, consumo_mes DESC;
     /* ========================================================
        6️⃣ ÚLTIMA VISITA / FACTURA
     ======================================================== */
-    const ultimasVisitas = await db.query(
-      `SELECT customer_code, MAX(fecha_entrega) AS ultima_visita FROM facturas GROUP BY customer_code;`,
-      { type: db.QueryTypes.SELECT }
-    );
+    const ultimasVisitas = await db.query(`
+SELECT customer_code, MAX(fecha) AS ultima_visita
+FROM (
+    SELECT customer_code, fecha_entrega AS fecha FROM facturas
+    UNION ALL
+    SELECT customer_code, fecha_entrega AS fecha FROM ordenes
+) mov
+GROUP BY customer_code
+`, { type: db.QueryTypes.SELECT });
 
     const ultimasFacturas = await db.query(
       `SELECT customer_code, MAX(COALESCE(fecha_autorizacion, fecha_entrega, fecha_creacion)) AS ultima_factura FROM facturas GROUP BY customer_code;`,
@@ -379,6 +514,11 @@ ORDER BY customer_code, consumo_mes DESC;
       };
     });
 
+
+    const clientesConConsumoEnRuta = clientesRuta.filter(c =>
+      clientesConConsumo.has(String(c.codigo_cliente).trim())
+    );
+
     return res.json({
       ruta: rutaUpper,
       anio: anioNum,
@@ -386,8 +526,8 @@ ORDER BY customer_code, consumo_mes DESC;
       rangoFechas: { inicio: fInicio, fin: fFin },
       resumenClientes: {
         totalClientesRuta: clientesRuta.length,
-        clientesConConsumo: clientesConConsumo.size,
-        clientesSinConsumo: clientesRuta.length - clientesConConsumo.size,
+        clientesConConsumo: clientesConConsumoEnRuta.length,
+        clientesSinConsumo: clientesRuta.length - clientesConConsumoEnRuta.length,
       },
       productosVendidos,
       clientesRuta: clientesRutaFinal,

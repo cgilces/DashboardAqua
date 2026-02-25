@@ -199,79 +199,6 @@ const obtenerMetasHistoricasPreventas = async () => {
 };
 
 
-// const obtenerMetasHistoricasPreventas = async () => {
-//   const sql = `
-//     SELECT sub.seller_code,
-//        MAX(sub.total_mes) AS meta_historica,
-//        mes_max_consumo.mes AS mes_mayor_consumo
-//       FROM (
-//           SELECT
-//               o.seller_code,
-//               DATE_TRUNC('month', o.fecha_entrega) AS mes,
-//               SUM(dd.total) AS total_mes
-//           FROM ordenes o
-//           JOIN detalle_documento dd
-//               ON dd.documento_code = o.code
-//           WHERE dd.codigo_categoria = '7'
-//               AND o.status IN (2,4,5)
-//               AND (
-//                 o.seller_code ILIKE 'PV%' OR
-//                 o.seller_code ILIKE 'PREVENTA%' OR
-//                 o.seller_code ILIKE 'TELEVENTA%' OR
-//                 o.seller_code ILIKE 'R%'
-//               )
-//           GROUP BY o.seller_code, DATE_TRUNC('month', o.fecha_entrega)
-//       ) AS sub
-//       LEFT JOIN (
-//           SELECT sub2.seller_code,
-//                 sub2.mes,
-//                 sub2.total_mes,
-//                 RANK() OVER (PARTITION BY sub2.seller_code ORDER BY sub2.total_mes DESC) AS rank
-//           FROM (
-//               SELECT
-//                   o.seller_code,
-//                   DATE_TRUNC('month', o.fecha_entrega) AS mes,
-//                   SUM(dd.total) AS total_mes
-//               FROM ordenes o
-//               JOIN detalle_documento dd
-//                   ON dd.documento_code = o.code
-//               WHERE dd.codigo_categoria = '7'
-//                   AND o.status IN (2,4,5)
-//                   AND (
-//                     o.seller_code ILIKE 'PV%' OR
-//                     o.seller_code ILIKE 'PREVENTA%' OR
-//                     o.seller_code ILIKE 'TELEVENTA%' OR
-//                     o.seller_code ILIKE 'R%'
-//                   )
-//               GROUP BY o.seller_code, DATE_TRUNC('month', o.fecha_entrega)
-//           ) AS sub2
-//       ) AS mes_max_consumo
-//       ON sub.seller_code = mes_max_consumo.seller_code
-//       AND mes_max_consumo.rank = 1
-//       GROUP BY sub.seller_code, mes_max_consumo.mes;
-//   `;
-
-//   const filas = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
-
-// //   Crear un mapa con seller_code como clave y un objeto con meta_historica y mes_mayor_consumo como valores
-//   const mapa = {};
-//   filas.forEach(f => {
-//     mapa[f.seller_code] = {
-//       meta_historica: Number(f.meta_historica),
-//       mes_mayor_consumo: f.mes_mayor_consumo
-//     };
-//   });
-
-//   return mapa;
-// };
-
-
-
-
-
-
-
-
 // ========================================
 // 🔧 META HISTÓRICA GLOBAL (USD – DESCART)
 // ========================================
@@ -304,10 +231,8 @@ const obtenerMetaHistoricaGlobal = async () => {
 
 
 // ======================================================
-// 🔥 TOP 20 CLIENTES CON MAYOR CONSUMO (FACTURAS PREVENTA)
+//  TOP 20 CLIENTES CON MAYOR CONSUMO (FACTURAS PREVENTA)
 // ======================================================
-
-
 
 const obtenerTop20Clientes = async (anioNum, mesNum) => {
   const fechaInicioStr = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
@@ -442,45 +367,106 @@ const obtenerRankingRutasDescartable = async (
   const finPrev = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
 
   // ===============================
-  // 📊 MES ACTUAL
+  // 📊 MES ACTUAL (ORDENES + FACTURAS)
   // ===============================
   const sqlActual = `
+  SELECT
+    x.usuario,
+    SUM(x.unidades) AS unidades,
+    SUM(x.dolares)  AS dolares,
+    SUM(x.cant_ordenes)  AS cant_ordenes,
+    SUM(x.cant_facturas) AS cant_facturas
+  FROM (
+    -- ORDENES
     SELECT
       o.seller_code AS usuario,
       SUM(dd.cantidad) AS unidades,
-      SUM(dd.total) AS dolares
+      SUM(dd.total) AS dolares,
+      COUNT(DISTINCT o.code) AS cant_ordenes,
+      0::int AS cant_facturas
     FROM ordenes o
-    JOIN detalle_documento dd ON dd.documento_code = o.code
+    JOIN detalle_documento dd
+      ON dd.documento_code = o.code
     WHERE
       dd.codigo_categoria = '7'
-      AND o.status IN ('2','4','5')
+      AND o.status IN (2,4,5)
       AND o.seller_code ILIKE 'R%'
       AND o.fecha_creacion >= '${inicio}'
       AND o.fecha_creacion <  '${fin}'
     GROUP BY o.seller_code
-    ORDER BY dolares DESC;
-  `;
+
+    UNION ALL
+
+    -- FACTURAS
+    SELECT
+      f.seller_code AS usuario,
+      SUM(dd.cantidad) AS unidades,
+      SUM(dd.total) AS dolares,
+      0::int AS cant_ordenes,
+      COUNT(DISTINCT f.code) AS cant_facturas
+    FROM facturas f
+    JOIN detalle_documento dd
+      ON dd.documento_code = f.code
+    WHERE
+      dd.codigo_categoria = '7'
+      AND f.status IN (2,4,5)
+      AND f.seller_code ILIKE 'R%'
+      AND f.fecha_creacion >= '${inicio}'
+      AND f.fecha_creacion <  '${fin}'
+    GROUP BY f.seller_code
+  ) x
+  GROUP BY x.usuario
+  ORDER BY dolares DESC;
+`;
+
   const actual = await sequelize.query(sqlActual, {
     type: Sequelize.QueryTypes.SELECT,
   });
 
+
   // ===============================
-  // 📊 MES ANTERIOR (REAL)
+  // 📊 MES ANTERIOR (REAL) (ORDENES + FACTURAS)
   // ===============================
   const sqlPrev = `
+  SELECT
+    x.usuario,
+    SUM(x.dolares) AS dolares
+  FROM (
+    -- ORDENES
     SELECT
       o.seller_code AS usuario,
       SUM(dd.total) AS dolares
     FROM ordenes o
-    JOIN detalle_documento dd ON dd.documento_code = o.code
+    JOIN detalle_documento dd
+      ON dd.documento_code = o.code
     WHERE
       dd.codigo_categoria = '7'
-      AND o.status IN ('2','4','5')
+      AND o.status IN (2,4,5)
       AND o.seller_code ILIKE 'R%'
       AND o.fecha_creacion >= '${inicioPrev}'
       AND o.fecha_creacion <  '${finPrev}'
-    GROUP BY o.seller_code;
-  `;
+    GROUP BY o.seller_code
+
+    UNION ALL
+
+    -- FACTURAS
+    SELECT
+      f.seller_code AS usuario,
+      SUM(dd.total) AS dolares
+    FROM facturas f
+    JOIN detalle_documento dd
+      ON dd.documento_code = f.code
+    WHERE
+      dd.codigo_categoria = '7'
+      AND f.status IN (2,4,5)
+      AND f.seller_code ILIKE 'R%'
+      AND f.fecha_creacion >= '${inicioPrev}'
+      AND f.fecha_creacion <  '${finPrev}'
+    GROUP BY f.seller_code
+  ) x
+  GROUP BY x.usuario;
+`;
+
   const anterior = await sequelize.query(sqlPrev, {
     type: Sequelize.QueryTypes.SELECT,
   });
@@ -489,6 +475,10 @@ const obtenerRankingRutasDescartable = async (
   anterior.forEach(r => {
     mapPrev[r.usuario] = Number(r.dolares) || 0;
   });
+
+
+
+
 
   // ===============================
   // 🧮 CÁLCULOS FINALES
@@ -522,8 +512,6 @@ const obtenerRankingRutasDescartable = async (
 
   return rankingFinal;
 };
-
-
 
 
 const obtenerVentaPorProducto = async (anioNum, mesNum) => {

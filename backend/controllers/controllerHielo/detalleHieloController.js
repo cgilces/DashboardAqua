@@ -135,7 +135,7 @@ const obtenerDetalleRuta = async (req, res) => {
               ON tn.codigo = cv.codigo_tipo_negocio
           LEFT JOIN public.direcciones_clientes dc 
               ON dc.codigo_cliente = cv.codigo_cliente
-          WHERE UPPER(TRIM(cuv.seller_code)) = :ruta
+          WHERE TRIM(cuv.seller_code) = :ruta
           ORDER BY cuv.codigo_cliente, dc.fecha_creacion_direccion_cliente DESC;
       `;
 
@@ -148,7 +148,7 @@ const obtenerDetalleRuta = async (req, res) => {
 
 
 
-    console.log("👥 Total clientes:", clientesRuta.length);
+    // console.log("👥 Total clientes:", clientesRuta.length);
 
 
 
@@ -157,27 +157,41 @@ const obtenerDetalleRuta = async (req, res) => {
     // 2) CONSULTAR CLIENTES CON CONSUMO EN EL MES
     // ============================================================
     // console.log("📊 [detalleHielo] Consultando clientes con consumo...");
+    // Consulta SQL para obtener los clientes con consumo en el mes
     const clientesConConsumoSQL = `
-      SELECT DISTINCT o.customer_code
-      FROM facturas o
-      JOIN detalle_documento dd 
-          ON dd.documento_code = o.code
-      WHERE 
-          o.seller_code = :ruta  -- Ruta H10
-          AND o.status IN ('2', '4', '5')  -- Estado de la factura (entregada)
-          AND o.fecha_entrega >= :inicio  -- Fecha de inicio (1 de diciembre de 2025)
-          AND o.fecha_entrega < :fin  -- Fecha de fin (31 de diciembre de 2025)
-    `;
+  SELECT DISTINCT o.customer_code
+  FROM facturas o
+  JOIN detalle_documento dd 
+      ON dd.documento_code = o.code
+  WHERE 
+      o.seller_code = :ruta  -- Ruta H10
+      AND o.status IN ('2', '4', '5')  -- Estado de la factura (entregada)
+      AND o.fecha_entrega >= :inicio  -- Fecha de inicio
+      AND o.fecha_entrega < :fin  -- Fecha de fin
+`;
 
+    // Depuración: mostrar los valores de los parámetros antes de ejecutar la consulta
+    console.log("📅 Rango de fechas calculado:");
+    console.log("Fecha de inicio:", fInicio);
+    console.log("Fecha de fin:", fFin);
+    console.log("Ruta seleccionada:", rutaUpper);
+
+    // Ejecutar la consulta con los parámetros
+    // Ejecutar la consulta con los parámetros
     const clientesConConsumoRows = await db.query(clientesConConsumoSQL, {
       replacements: { ruta: rutaUpper, inicio: fInicio, fin: fFin },
-      type: db.QueryTypes.SELECT,
     });
-    // console.log("📊 [detalleHielo] Clientes con consumo:", clientesConConsumoRows.length);
+
+    // Depuración: verificar cuántos registros fueron devueltos por la consulta
+    console.log("📊 [detalleHielo] Clientes con consumo (resultado de consulta):", clientesConConsumoRows);
+
+    // Acceder correctamente al `customer_code` de cada registro dentro del array
     const clientesConConsumo = new Set(
-      clientesConConsumoRows.map((c) => c.customer_code)
+      clientesConConsumoRows[0].map((c) => c.customer_code)  // Acceder al primer array que contiene los resultados
     );
 
+    // Depuración: verificar la cantidad de clientes únicos con consumo
+    console.log("📊 [detalleHielo] Clientes con consumo (cantidad única):", clientesConConsumo.size);
     // ============================================================
     // 3) CONSULTAR CONSUMO ACTUAL Y ANTERIOR
     // ============================================================
@@ -211,7 +225,7 @@ const obtenerDetalleRuta = async (req, res) => {
       type: db.QueryTypes.SELECT,
     });
 
-    console.log("📊 [detalleHielo] Datos de consumo obtenidos:", clientesConsumoData);
+    // console.log("📊 [detalleHielo] Datos de consumo obtenidos:", clientesConsumoData);
 
 
 

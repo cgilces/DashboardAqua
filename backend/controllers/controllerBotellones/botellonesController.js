@@ -63,8 +63,8 @@ const getRangoFechas = (anio, mes) => {
 /* ======================================================
    META HISTÓRICA BOTELLÓN (USD + MES)
 ====================================================== */
-    const metaHistoricaBotellon = async () => {
-      const [rows] = await sequelize.query(`
+const metaHistoricaBotellon = async () => {
+  const [rows] = await sequelize.query(`
       WITH ventas_base AS (
 
       /* ===================== ORDENES ===================== */
@@ -156,8 +156,8 @@ const getRangoFechas = (anio, mes) => {
 
       `);
 
-      return rows;
-    };
+  return rows;
+};
 
 /* ======================================================
    DÍAS HÁBILES (L–S)
@@ -312,6 +312,10 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
   const variacionAbs = totalActual.dolares - totalAnterior.dolares;
   const variacionPorc = totalAnterior.dolares > 0 ? (variacionAbs / totalAnterior.dolares) * 100 : 0;
 
+  const variacionAbsUnidades = totalActual.unidades - totalAnterior.unidades;
+  const variacionPorcUnidades =
+    totalAnterior.unidades > 0 ? (variacionAbsUnidades / totalAnterior.unidades) * 100 : null;
+
   return {
     total: {
       unidades: totalActual.unidades,
@@ -320,12 +324,19 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
         dolares: totalAnterior.dolares,
         variacionAbs,
         variacionPorc,
-        unidades: totalAnterior.unidades
+        unidades: totalAnterior.unidades,
+
+
+        //  NUEVO
+        variacionAbsUnidades,
+        variacionPorcUnidades,
       }
     },
     detalle: actual.map(r => {
       const ant = mapAnterior[r.codigo] || { dolares: 0, unidades: 0 };
-      const variacionAbs = r.dolares - ant.dolares;
+      // const variacionAbs = r.dolares - ant.dolares;
+      const dolaresActual = Number(r.dolares) || 0;
+      const variacionAbs = dolaresActual - ant.dolares;
       const variacionPorc = ant.dolares > 0 ? (variacionAbs / ant.dolares) * 100 : null;
 
       const proyeccionDolares = diasTrans > 0 ? (r.dolares / diasTrans) * diasMes : 0;
@@ -333,6 +344,11 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
       const proyeccionUnidades = diasTrans > 0 ? (r.unidades / diasTrans) * diasMes : 0;
 
       const meta = metas.find(m => m.codigo === r.codigo);
+
+
+      const variacionAbsUnidadesDet = Number(r.unidades) - (ant.unidades || 0);
+      const variacionPorcUnidadesDet =
+        (ant.unidades || 0) > 0 ? (variacionAbsUnidadesDet / ant.unidades) * 100 : null;
 
       return {
         codigo: r.codigo,
@@ -351,6 +367,10 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
           monto_anterior: ant.dolares,
           variacion_abs: Number(variacionAbs.toFixed(2)),
           variacion_porc: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
+
+          unidades: ant.unidades,
+          variacion_abs_unidades: variacionAbsUnidadesDet,
+          variacion_porc_unidades: variacionPorcUnidadesDet !== null ? Number(variacionPorcUnidadesDet.toFixed(2)) : null,
         },
       };
     }),

@@ -386,7 +386,7 @@ RANKING
 
 Si piden top, ranking o mayor:
 ORDER BY ... DESC
-LIMIT 10
+LIMIT 20
 
 =====================================================
 SALIDA
