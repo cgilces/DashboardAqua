@@ -1,10 +1,18 @@
 const express = require("express");
-const router = express.Router();
+const router  = express.Router();
 
-const { guardarMeta, listarMetas } = require("../../controllers/controllerPreventa/metasController");
+const {
+  guardarMeta,
+  listarMetas,
+  editarMeta,
+  eliminarMeta,
+} = require("../../controllers/controllerPreventa/metasController");
 
+// const { verificarToken } = require("../../middlewares/auth.middleware"); // descomenta si usas JWT
 
-router.post("/guardarmetas", guardarMeta);
-router.get("/listarmetas", listarMetas);
+router.post  ("/guardarmetas",      /* verificarToken, */ guardarMeta);
+router.get   ("/listarmetas",       /* verificarToken, */ listarMetas);
+router.put   ("/editarmeta",        /* verificarToken, */ editarMeta);
+router.delete("/eliminarmeta",      /* verificarToken, */ eliminarMeta);
 
 module.exports = router;

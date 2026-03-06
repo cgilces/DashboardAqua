@@ -20,7 +20,7 @@ const AppUser = sequelize.define('AppUser', {
     type: DataTypes.STRING,
     allowNull: false,
     validate: {
-      isIn: [['ADMIN', 'VENDEDOR', 'DESPACHADOR']],
+      isIn: [['ADMIN', 'VENDEDOR', 'DESPACHADOR', 'SUPERVISOR']],
     },
   },
   rutas_asignadas: {

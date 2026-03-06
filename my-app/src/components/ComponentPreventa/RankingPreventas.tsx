@@ -1,14 +1,14 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import * as XLSX from "xlsx"; // Importar la librería XLSX para generar archivos Excel
-import { useAuth } from "../../components/auth/AuthContext"; // Importa el hook useAuth
+import * as XLSX from "xlsx";
+import { useAuth } from "../../components/auth/AuthContext";
 import { BsDownload, BsGear } from "react-icons/bs";
 
+/* ───────────────── TIPOS ───────────────── */
 
-// Definir los tipos para los datos
 interface VsMesAnterior {
   monto_anterior: number;
-  variacion_abs: number; //  diferencia absoluta vs mes anterior
+  variacion_abs: number;
 }
 
 interface Preventa {
@@ -17,6 +17,10 @@ interface Preventa {
   monto: number;
   meta: number;
   proyeccion: number;
+
+  objetivo_gerencia?: number;
+  objetivo_gerencia_unidades?: number;
+
   vsMesAnterior?: VsMesAnterior;
 }
 
@@ -24,454 +28,388 @@ interface Datos {
   rankingPreventas: Preventa[];
 }
 
-// Define la interfaz Props para las propiedades que el componente recibirá
 interface Props {
   datos: Datos;
   anio: number | string;
   mes: number | string;
 }
 
+type SortKey =
+  | "N*"
+  | "preventa"
+  | "unidades"
+  | "monto"
+  | "meta"
+  | "objetivo_gerencia"
+  | "proyeccion"
+  | "vsMesAnterior";
+
+/* ───────────────── HELPERS ───────────────── */
+
+const fmt = (v: number) =>
+  v.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const fmtInt = (v: number) =>
+  v.toLocaleString("es-EC");
+
+const SortIcon = ({
+  col,
+  cfg,
+}: {
+  col: SortKey;
+  cfg: { key: SortKey; direction: "asc" | "desc" };
+}) => (
+  <span className="ml-1 opacity-60 text-[10px]">
+    {cfg.key === col ? (cfg.direction === "asc" ? "↑" : "↓") : "↕"}
+  </span>
+);
+
+/* ───────────────── COMPONENTE ───────────────── */
+
 const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  // Obtener el rol del usuario desde el contexto
-  const { user } = useAuth(); // Accede al usuario desde el contexto de autenticación
-  const isVendedor = user?.role === "VENDEDOR"; // Compara el rol con "Vendedor"
-  const isAdmin = user?.role === "ADMIN"; // Compara el rol con "Admin"
-
+  const isAdmin = user?.role === "ADMIN";
 
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
-    direction: 'asc' | 'desc';
+    direction: "asc" | "desc";
   }>({
-    key: 'N*',
-    direction: 'asc',
+    key: "N*",
+    direction: "asc",
   });
-  const [sortedData, setSortedData] = useState<Preventa[]>(datos.rankingPreventas);
 
-  if (!datos || !datos.rankingPreventas) {
+  const [sortedData, setSortedData] = useState<Preventa[]>(
+    datos?.rankingPreventas || []
+  );
+
+  if (!datos?.rankingPreventas?.length) {
     return (
       <p className="text-center text-gray-400 py-4">
-        No hay datos disponibles para mostrar.
+        No hay datos disponibles
       </p>
     );
   }
 
   const preventas = sortedData;
 
-  // Totales
-  const totalUnidades = preventas.reduce(
-    (acc: number, p: Preventa) => acc + (p.unidades || 0),
-    0
-  );
+  /* ─────────────── TOTALES ─────────────── */
 
-  const totalUSD = preventas.reduce(
-    (acc: number, p: Preventa) => acc + (p.monto || 0),
-    0
-  );
+  const totalUnidades = preventas.reduce((a, p) => a + (p.unidades || 0), 0);
 
-  // Agregar los totales de Meta, Proyección, y Vs Mes Anterior
-  const totalMeta = preventas.reduce(
-    (acc: number, p: Preventa) => acc + (p.meta || 0),
-    0
-  );
+  const totalUSD = preventas.reduce((a, p) => a + (p.monto || 0), 0);
 
-  const totalProyeccion = preventas.reduce(
-    (acc: number, p: Preventa) => acc + (p.proyeccion || 0),
-    0
-  );
+  const totalMeta = preventas.reduce((a, p) => a + (p.meta || 0), 0);
+
+  const totalProyeccion = preventas.reduce((a, p) => a + (p.proyeccion || 0), 0);
 
   const totalVsMesAnterior = preventas.reduce(
-    (acc: number, p: Preventa) => acc + (p.vsMesAnterior?.variacion_abs || 0),
+    (a, p) => a + (p.vsMesAnterior?.variacion_abs || 0),
     0
   );
 
-  // Función para exportar a Excel
-  const exportarTablaExcel = () => {
-    if (!preventas || preventas.length === 0) return;
+  const totalObjetivo = preventas.reduce(
+    (a, p) => a + (p.objetivo_gerencia || 0),
+    0
+  );
 
-    try {
-      const rutaUpper = "Ranking Preventa";
-
-      type ExcelRow = {
-        "N*": number;
-        "Ruta / Preventa": string;
-        Unidades: string;
-        Dólares: string;
-        Meta: string;
-        Proyección: string;
-        "Vs Mes Anterior": string;
-      };
-
-
-      // 1️⃣ Formato de los datos a exportar
-      const datosExportar: ExcelRow[] = preventas.map((p, index) => ({
-        "N*": index + 1,
-        "Ruta / Preventa": p.preventa,
-        Unidades: p.unidades?.toLocaleString() ?? "0",
-        Dólares: p.monto?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00",
-        Meta: p.meta?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00",
-        Proyección: p.proyeccion?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00",
-        "Vs Mes Anterior":
-          p.vsMesAnterior?.variacion_abs?.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-          }) ?? "Sin datos",
-      }));
-
-
-      // 2️⃣ Crear hoja de trabajo
-      const ws = XLSX.utils.json_to_sheet(datosExportar);
-
-      // 3️⃣ Agregar título en A1
-      const titulo = [`RANKING PREVENTA - ${rutaUpper} - ${mes}/${anio}`];
-      XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
-
-      // 4️⃣ Agregar la fila de totales
-      const filaTotales = {
-        "Ruta / Preventa": "Total",
-        "Ruta ": "",
-        "Unidades": totalUnidades.toLocaleString(),
-        "Dólares": totalUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        "Meta": totalMeta.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        "Proyección": totalProyeccion.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        "Vs Mes Anterior": totalVsMesAnterior.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      };
-
-      // Agregar fila de totales al final de la hoja
-      XLSX.utils.sheet_add_json(ws, [filaTotales], { skipHeader: true, origin: -1 });
-
-      // 5️⃣ Auto-ajustar el ancho de las columnas
-      const columnas = Object.keys(datosExportar[0]) as (keyof ExcelRow)[];
-
-      ws["!cols"] = columnas.map((col) => {
-        const maxLong = Math.max(
-          col.length,
-          ...datosExportar.map((row) => String(row[col]).length)
-
-        );
-        return { wch: maxLong + 4 };
-      });
-
-
-      // 6️⃣ Crear el libro de trabajo Excel
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "RankingPreventas");
-
-      const nombreArchivo = `ranking_preventa_${rutaUpper}_${mes}_${anio}.xlsx`;
-      XLSX.writeFile(wb, nombreArchivo, { compression: true });
-
-    } catch (error) {
-      console.error("❌ Error exportando Excel:", error);
-    }
-  };
-
-  type SortKey = "N*" | "preventa" | "unidades" | "monto" | "meta" | "proyeccion" | "vsMesAnterior";
-  // Función para ordenar los datos
+  /* ─────────────── ORDENAMIENTO ─────────────── */
 
   const requestSort = (key: SortKey) => {
     const direction =
-      sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+      sortConfig.key === key && sortConfig.direction === "asc"
+        ? "desc"
+        : "asc";
 
     setSortConfig({ key, direction });
 
     if (key === "N*") return;
 
     const sorted = [...preventas].sort((a, b) => {
-      let aValue: number | string = 0;
-      let bValue: number | string = 0;
+      let av: number | string = 0;
+      let bv: number | string = 0;
 
       switch (key) {
         case "preventa":
-          aValue = a.preventa;
-          bValue = b.preventa;
+          av = a.preventa;
+          bv = b.preventa;
           break;
 
         case "vsMesAnterior":
-          // Ordenar por 'variacion_abs' (diferencia absoluta)
-          aValue = a.vsMesAnterior?.variacion_abs ?? 0;
-          bValue = b.vsMesAnterior?.variacion_abs ?? 0;
+          av = a.vsMesAnterior?.variacion_abs ?? 0;
+          bv = b.vsMesAnterior?.variacion_abs ?? 0;
+          break;
+
+        case "objetivo_gerencia":
+          av = a.objetivo_gerencia ?? 0;
+          bv = b.objetivo_gerencia ?? 0;
           break;
 
         default:
-          aValue = a[key];
-          bValue = b[key];
+          av = (a as any)[key];
+          bv = (b as any)[key];
       }
 
-      // Si el valor es una cadena, ordenar como texto
-      if (typeof aValue === "string" && typeof bValue === "string") {
+      if (typeof av === "string" && typeof bv === "string") {
         return direction === "asc"
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
+          ? av.localeCompare(bv)
+          : bv.localeCompare(av);
       }
 
-      // Si es un número, ordenar numéricamente
       return direction === "asc"
-        ? Number(aValue) - Number(bValue)
-        : Number(bValue) - Number(aValue);
+        ? Number(av) - Number(bv)
+        : Number(bv) - Number(av);
     });
 
     setSortedData(sorted);
   };
 
+  /* ─────────────── EXPORTAR EXCEL ─────────────── */
+
+  const exportarTablaExcel = () => {
+    if (!preventas.length) return;
+
+    const rows = preventas.map((p, i) => ({
+      N: i + 1,
+      Preventa: p.preventa,
+      Unidades: fmtInt(p.unidades ?? 0),
+      Dolares: fmt(p.monto ?? 0),
+      Meta: fmt(p.meta ?? 0),
+      ObjGerencia: fmt(p.objetivo_gerencia ?? 0),
+      Proyeccion: fmt(p.proyeccion ?? 0),
+      VsMesAnterior:
+        p.vsMesAnterior?.variacion_abs != null
+          ? fmt(p.vsMesAnterior.variacion_abs)
+          : "Sin datos",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    const wb = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(wb, ws, "Ranking");
+
+    XLSX.writeFile(wb, `ranking_preventa_${mes}_${anio}.xlsx`);
+  };
+
+  /* ─────────────── HEADER TABLE ─────────────── */
+
+  const Th = ({
+    k,
+    label,
+    align = "right",
+  }: {
+    k: SortKey;
+    label: string;
+    align?: "left" | "right" | "center";
+  }) => (
+    <th
+      onClick={() => requestSort(k)}
+      className={`px-4 py-3 text-${align} cursor-pointer whitespace-nowrap`}
+    >
+      {label}
+      <SortIcon col={k} cfg={sortConfig} />
+    </th>
+  );
+
+  /* ───────────────── RENDER ───────────────── */
 
   return (
     <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
-      <div
-        className="
-    flex flex-col gap-3
-    md:flex-row md:items-center md:justify-between
-    mb-4
-  "
-      >
-        {/* TÍTULO */}
-        <h2
-          className="
-      text-lg md:text-xl
-      font-bold
-      px-4 py-2
-      text-blue-300
-      text-center md:text-left
-    "
-        >
+
+      {/* HEADER */}
+
+      <div className="flex justify-between px-4 pt-4 mb-2">
+
+        <h2 className="text-lg font-bold text-blue-300">
           RANKING PREVENTA
         </h2>
 
-        {/* BOTONES ADMIN */}
         {isAdmin && (
-          <div className="flex gap-4 mb-4"> {/* Flexbox para alinear los botones */}
-            {/* CONFIGURAR */}
+          <div className="flex gap-3">
+
             <button
               onClick={() => navigate("/configurar-metas")}
-              className="
-          flex items-center justify-center gap-2
-          px-4 py-2
-          rounded-lg
-          border border-[#0db48b]/60
-          bg-[#0db48b]/20
-          text-white font-semibold
-          shadow-md
-          hover:bg-[#0db48b]/30
-          hover:shadow-lg
-          active:scale-[0.98]
-          transition-all
-        "
+              className="px-3 py-2 border rounded"
             >
-              <BsGear size={16} />
+              <BsGear />
             </button>
 
-            {/* EXPORTAR */}
             <button
               onClick={exportarTablaExcel}
-              className="
-          flex items-center justify-center gap-2
-          px-4 py-2
-          rounded-lg
-          border border-[#0db48b]/60
-          bg-[#0db48b]/20
-          text-white font-semibold
-          shadow-md
-          hover:bg-[#0db48b]/30
-          hover:shadow-lg
-          active:scale-[0.98]
-          transition-all
-        "
+              className="px-3 py-2 border rounded"
             >
-              <BsDownload size={16} />
-              <span className="hidden sm:inline">Exportar</span>
+              <BsDownload />
             </button>
+
           </div>
         )}
       </div>
 
-
+      {/* TABLA */}
 
       <table className="min-w-full text-sm">
-        <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-          <tr>
-            <th
-              className="px-4 py-3 text-left cursor-pointer"
-              onClick={() => requestSort('N*')}
-            >
-              N* <span className="text-green-300">{sortConfig.key === 'N*' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th
-              className="px-4 py-3 text-left cursor-pointer"
-              onClick={() => requestSort('preventa')}
-            >
-              Ruta / Preventa <span className="text-green-300">{sortConfig.key === 'preventa' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('unidades')}
-            >
-              Unidades <span className="text-green-300">{sortConfig.key === 'unidades' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('monto')}
-            >
-              Dólares <span className="text-green-300">{sortConfig.key === 'monto' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('meta')}
-            >
-              Meta <span className="text-green-300">{sortConfig.key === 'meta' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('proyeccion')}>
-              Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
 
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('vsMesAnterior')}
-            >
-              Vs Mes Anterior <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
+        <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+
+          <tr>
+
+            <Th k="N*" label="N°" align="left" />
+            <Th k="preventa" label="Ruta / Preventa" align="left" />
+            <Th k="unidades" label="Unidades" />
+            <Th k="monto" label="Dólares" />
+            <Th k="meta" label="Meta" />
+            <Th k="objetivo_gerencia" label="Obj Gerencia" />
+            <Th k="proyeccion" label="Proyección" />
+            <Th k="vsMesAnterior" label="Vs Mes Anterior" />
+
           </tr>
+
         </thead>
 
         <tbody>
+
           {sortedData.map((p, idx) => {
+
             const meta = Number(p.meta) || 0;
             const proy = Number(p.proyeccion) || 0;
-
-            // ----------- PROYECCIÓN REAL ----------- 
-            const porcProy = meta > 0 ? ((proy / meta) * 100).toFixed(1) : "0.0";
-
-            // ----------- VARIACIÓN REAL ----------- 
-            // const variacionAbs = proy - (p.vsMesAnterior?.monto_anterior || 0); // Variación entre proyección y monto anterior
-            // const variacionPorc = p.vsMesAnterior?.monto_anterior > 0
-            //   ? ((variacionAbs / p.vsMesAnterior?.monto_anterior) * 100).toFixed(2)
-            //   : "0.00";
-            //  const montoAnterior = p.vsMesAnterior?.monto_anterior ?? 0;
+            const objetivo = Number(p.objetivo_gerencia) || 0;
 
             const montoAnterior = p.vsMesAnterior?.monto_anterior ?? 0;
-            const variacionAbs = proy - montoAnterior; // Variación entre proyección y monto anterior
+
+            const variacionAbs = proy - montoAnterior;
+
             const variacionPorc =
               montoAnterior > 0
                 ? ((variacionAbs / montoAnterior) * 100).toFixed(2)
                 : "0.00";
 
+            const porcentajeProy =
+              meta > 0 ? ((proy / meta - 1) * 100) : 0;
+
             return (
               <tr
                 key={idx}
-                onClick={() =>
-                  navigate(`/detalle-ruta/${p.preventa}/${anio}/${mes}`)
-                }
-                className={`cursor-pointer ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}
-              >
-                <td className="px-4 py-2 font-medium text-gray-100">{idx + 1}</td>
+                onClick={() => navigate(`/detalle-ruta/${p.preventa}/${anio}/${mes}`, { state: { objetivo_gerencia: p.objetivo_gerencia ?? 0, objetivo_gerencia_unidades: p.objetivo_gerencia_unidades ?? 0, proyeccion: p.proyeccion ?? 0, monto: p.monto ?? 0, meta: p.meta ?? 0 } })}
 
-                <td className="px-4 py-2 font-medium text-gray-100 underline decoration-dotted hover:text-green-300">
+                className={`cursor-pointer transition-colors hover:bg-[#026452] ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
+
+
+                <td className="px-4 py-2 text-gray-400 text-xs">
+                  {idx + 1}
+                </td>
+
+                <td className="px-4 py-2 underline">
                   {p.preventa}
                 </td>
 
-                <td className="px-4 py-2 text-right text-green-400 font-semibold">
-                  {p.unidades?.toLocaleString() ?? "0"}
+                <td className="px-4 py-2 text-right text-green-400">
+                  {fmtInt(p.unidades ?? 0)}
                 </td>
 
-                <td className="px-4 py-2 text-right text-blue-400 font-semibold">
-                  $ {p.monto?.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }) ?? "0.00"}
+                <td className="px-4 py-2 text-right text-blue-400">
+                  ${fmt(p.monto ?? 0)}
                 </td>
 
-                <td className="px-4 py-2 text-right text-blue-400 font-semibold">
-                  $ {meta.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+                <td className="px-4 py-2 text-right">
+                  ${fmt(meta)}
+                </td>
+
+                <td className="px-4 py-2 text-right text-amber-300">
+                  {objetivo > 0 ? `$${fmt(objetivo)}` : "sin datos"}
                 </td>
 
                 <td className="px-4 py-2 text-right font-bold">
-                  {(() => {
-                    const meta = Number(p.meta) || 0;
-                    const proy = Number(p.proyeccion) || 0;
 
-                    const porcentajeCrecimiento = meta > 0 ? ((proy / meta - 1) * 100) : 0;
+                  <span
+                    className={
+                      porcentajeProy > 0
+                        ? "text-green-400"
+                        : "text-red-400"
+                    }
+                  >
+                    ({porcentajeProy.toFixed(1)}%)
+                  </span>
 
-                    return (
-                      <>
-                        <span className={`text-${porcentajeCrecimiento > 0 ? 'green' : 'red'}-400`}>
-                          ({porcentajeCrecimiento.toFixed(1)}%)
-                        </span>
-                        {" "}
-                        <span className="text-blue-300">
-                          ${proy.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-                        </span>
-                      </>
-                    );
-                  })()}
+                  {" "}
+
+                  <span className="text-blue-300">
+                    ${fmt(proy)}
+                  </span>
+
                 </td>
+
+                {/* VS MES ANTERIOR */}
 
                 <td
                   className={`px-4 py-2 text-right font-bold ${variacionAbs < 0
                     ? "text-red-400"
                     : variacionAbs > 0
                       ? "text-green-400"
-                      : "text-gray-300"
+                      : "text-gray-400"
                     }`}
                 >
+
                   {variacionAbs !== 0 ? (
                     <>
-                      <span>
-                        ({variacionAbs > 0 ? "+" : ""}{variacionPorc}%)
-                      </span>{" "}
+                      ({variacionAbs > 0 ? "+" : ""}
+                      {variacionPorc}%)
+                      {" "}
                       ${variacionAbs.toLocaleString("es-EC", {
                         minimumFractionDigits: 2,
                       })}
                     </>
                   ) : (
-                    "Sin datos"
+                    <span className="text-gray-500 text-xs italic">
+                      Sin datos
+                    </span>
                   )}
+
                 </td>
+
               </tr>
             );
           })}
+
         </tbody>
 
-        <tfoot className="bg-[#014434] font-bold text-gray-200 border-t border-[#046C5E]">
+        <tfoot className="bg-[#014434] font-bold text-xs">
+
           <tr>
-            <td className="px-4 py-3 text-left">Total</td>
-            <td className="px-4 py-3"></td>
 
-            <td className="px-4 py-3 text-right text-green-400">
-              {totalUnidades.toLocaleString()}
+            <td className="px-4 py-3">Total</td>
+
+            <td></td>
+
+            <td className="text-right text-green-400">
+              {fmtInt(totalUnidades)}
             </td>
 
-            <td className="px-4 py-3 text-right text-blue-400">
-              ${totalUSD.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+            <td className="text-right text-blue-400">
+              ${fmt(totalUSD)}
             </td>
 
-            <td className="px-4 py-3 text-right text-blue-400">
-              ${totalMeta.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+            <td className="text-right">
+              ${fmt(totalMeta)}
             </td>
 
-            <td className="px-4 py-3 text-right text-blue-400">
-              ${totalProyeccion.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+            <td className="text-right text-amber-300">
+              {totalObjetivo > 0 ? `$${fmt(totalObjetivo)}` : "—"}
             </td>
 
-            <td className="px-4 py-3 text-right text-blue-400">
-              ${totalVsMesAnterior.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+            <td className="text-right">
+              ${fmt(totalProyeccion)}
             </td>
+
+            <td className="text-right">
+              ${fmt(totalVsMesAnterior)}
+            </td>
+
           </tr>
+
         </tfoot>
+
       </table>
     </div>
   );

@@ -1,188 +1,686 @@
+// controllers/controllerBotInteligente/chat.controller.js
 const { generarSQL } = require("../../services/chatbotservicio/openai.service");
 const { ejecutarSQL } = require("../../services/chatbotservicio/query.service");
 const { validarSQL, aplicarLimite } = require("../../utils/sqlValidator");
+const { detectarTipoReporte, generarPDF, construirConfigReporte } = require("../../services/chatbotservicio/reporte.service");
 
 const OpenAI = require("openai");
+const path   = require("path");
+const fs     = require("fs");
+const crypto = require("crypto");
 require("dotenv").config();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-function esPreguntaSQL(mensaje) {
-  const texto = mensaje.toLowerCase();
+// ═══════════════════════════════════════════════════
+// DIRECTORIO TEMPORAL DE PDFs
+// ═══════════════════════════════════════════════════
+const PDF_DIR = path.join(__dirname, "../../temp/reportes");
+if (!fs.existsSync(PDF_DIR)) fs.mkdirSync(PDF_DIR, { recursive: true });
 
-  const palabrasClave = [
+function limpiarPDFsViejos() {
+  try {
+    fs.readdirSync(PDF_DIR).forEach(archivo => {
+      const ruta = path.join(PDF_DIR, archivo);
+      if (Date.now() - fs.statSync(ruta).mtimeMs > 30 * 60 * 1000) fs.unlinkSync(ruta);
+    });
+  } catch (e) {}
+}
+limpiarPDFsViejos();
 
-    // 🔹 Ventas
-    "venta", "vendio", "vendido", "factura", "orden",
-    "consumo", "monto", "total", "ingreso", "recaudacion",
+// ═══════════════════════════════════════════════════
+// HISTORIAL DE CONVERSACIÓN POR USUARIO
+// Guarda los últimos N turnos para dar contexto a la IA
+// Se limpia si el usuario está inactivo por 30 minutos
+// ═══════════════════════════════════════════════════
+const MAX_TURNOS_HISTORIAL = 6; // últimos 6 mensajes (3 turnos usuario+bot)
+const HISTORIAL_TTL_MS = 30 * 60 * 1000; // 30 minutos de inactividad
+const historialSesiones = new Map(); // { usuario: { mensajes: [], ultimaActividad: timestamp } }
 
-    // 🔹 Clientes
-    "cliente", "clientes", "saldo", "credito",
-    "negocio", "tipo de negocio", "direccion",
+function getHistorial(usuario) {
+  const sesion = historialSesiones.get(usuario);
+  if (!sesion) return [];
+  // Limpiar si expiró
+  if (Date.now() - sesion.ultimaActividad > HISTORIAL_TTL_MS) {
+    historialSesiones.delete(usuario);
+    return [];
+  }
+  return sesion.mensajes;
+}
 
-    // 🔹 Productos
-    "producto", "productos", "cantidad",
-    "categoria", "precio", "detalle",
+function agregarAlHistorial(usuario, role, content) {
+  const sesion = historialSesiones.get(usuario) || { mensajes: [], ultimaActividad: Date.now() };
+  sesion.mensajes.push({ role, content });
+  sesion.ultimaActividad = Date.now();
+  // Mantener solo los últimos MAX_TURNOS_HISTORIAL mensajes
+  if (sesion.mensajes.length > MAX_TURNOS_HISTORIAL) {
+    sesion.mensajes = sesion.mensajes.slice(-MAX_TURNOS_HISTORIAL);
+  }
+  historialSesiones.set(usuario, sesion);
+}
 
-    // 🔹 Rutas
-    "ruta", "rutas", "preventas", "televenta",
-    "vip", "despacho", "secuencia",
+function limpiarHistorial(usuario) {
+  historialSesiones.delete(usuario);
+}
 
-    // 🔹 Usuarios
-    "usuario", "usuarios", "vendedor",
-    "despachador", "admin", "rol",
+// Limpiar sesiones expiradas cada 10 minutos
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [usuario, sesion] of historialSesiones) {
+    if (ahora - sesion.ultimaActividad > HISTORIAL_TTL_MS) {
+      historialSesiones.delete(usuario);
+    }
+  }
+}, 10 * 60 * 1000);
 
-    // 🔹 Visitas
-    "visita", "visitas", "accion",
-    "ruptura", "comentario",
+// ═══════════════════════════════════════════════════
+// CACHÉ DE ÚLTIMOS DATOS POR SESIÓN
+// Guarda los datos de la última consulta SQL exitosa
+// para reutilizarlos cuando el usuario pide el PDF
+// sin volver a consultar la BD
+// ═══════════════════════════════════════════════════
+const ultimosDatosSesion = new Map(); // { usuario: { datos, pregunta, timestamp } }
 
-    // 🔹 Tiempo
-    "hoy", "ayer", "semana", "mes",
-    "año", "fecha", "rango", "periodo",
+function guardarUltimosDatos(usuario, datos, pregunta) {
+  ultimosDatosSesion.set(usuario, {
+    datos,
+    pregunta,
+    timestamp: Date.now(),
+  });
+}
 
-    // 🔹 Sincronización
-    "sincronizacion", "sincronizacion ventas",
-    "estado sync", "registros sincronizados",
+function getUltimosDatos(usuario) {
+  const entry = ultimosDatosSesion.get(usuario);
+  if (!entry) return null;
+  // Expirar si pasaron más de 30 minutos
+  if (Date.now() - entry.timestamp > HISTORIAL_TTL_MS) {
+    ultimosDatosSesion.delete(usuario);
+    return null;
+  }
+  return entry;
+}
 
-    // 🔹 Geolocalización
-    "latitud", "longitud", "ubicacion",
+// ═══════════════════════════════════════════════════
+// CACHÉ EN MEMORIA (2 min, máx 100 entradas)
+// ═══════════════════════════════════════════════════
+const cache = new Map();
+const CACHE_TTL_MS = 2 * 60 * 1000;
+function getCacheKey(m, r, s) { return `${m.toLowerCase().trim()}::${r}::${s||""}`; }
+function getFromCache(key) {
+  const e = cache.get(key);
+  if (!e) return null;
+  if (Date.now() - e.timestamp > CACHE_TTL_MS) { cache.delete(key); return null; }
+  return e.data;
+}
+function setCache(key, data) {
+  if (cache.size >= 100) cache.delete(cache.keys().next().value);
+  cache.set(key, { data, timestamp: Date.now() });
+}
 
-    // 🔹 Estado
-    "estado", "activo", "inactivo",
-    "proceso", "proceso de venta", "proceso de sincronizacion",
+// ═══════════════════════════════════════════════════
+// RATE LIMITING (20 msg/min por usuario)
+// ═══════════════════════════════════════════════════
+const rateLimitMap = new Map();
+function checkRateLimit(usuario) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(usuario) || { count: 0, start: now };
+  if (now - entry.start > 60000) { rateLimitMap.set(usuario, { count: 1, start: now }); return true; }
+  if (entry.count >= 20) return false;
+  entry.count++;
+  rateLimitMap.set(usuario, entry);
+  return true;
+}
 
-    //otros términos relacionados con el negocio o sistema pueden ser añadidos aquí
-    "hielo",
-    "agua",
-    "botellon",
-    "botellones",
-    "galon",
-    "galones",
-    "pack",
-    "producto",
-    "categoria",
-    "unidades"
-  ];
+// ═══════════════════════════════════════════════════
+// CLASIFICADOR DE INTENCIÓN
+// ═══════════════════════════════════════════════════
+const PATRONES_CONVERSACIONAL = [
+  /qu[eé]\s+(reporte|informe|pdf|consulta|puedo|puedes|sabe[sz]|hace[sn]?)/i,
+  /c[oó]mo\s+(usar|funciona|pedir|generar|crear|hacer)/i,
+  /qu[eé]\s+tipo[s]?\s+de\s+reporte/i,
+  /qu[eé]\s+puedes?\s+(hacer|generar|mostrar|decirme)/i,
+  /ayuda|help|opciones|menu|qu[eé]\s+haces?/i,
+  /cu[aá]les?\s+(son|reportes|consultas|opciones)/i,
+  /lista\s+de\s+reporte/i,
+  /tipos?\s+de\s+reporte/i,
+  /^(hola|buenos?\s+(d[ií]as?|tardes?|noches?)|hey|hi|saludos?)[\s!.]*$/i,
+  /^(gracias|thank|perfecto|excelente|ok|okay|listo|entend[ií])[\s!.]*$/i,
+];
 
-  return palabrasClave.some(p => texto.includes(p));
+const PALABRAS_CLAVE_SQL = new Set([
+  "venta","vendio","vendido","factura","orden","consumo","monto","total","ingreso","recaudacion",
+  "cliente","clientes","saldo","credito","negocio","direccion",
+  "producto","productos","cantidad","categoria","precio","detalle",
+  "ruta","rutas","preventas","televenta","vip","despacho","secuencia",
+  "usuario","usuarios","vendedor","despachador","admin","rol",
+  "visita","visitas","accion","ruptura","comentario",
+  "hoy","ayer","semana","mes","año","fecha","rango","periodo",
+  "sincronizacion","estado sync","registros sincronizados",
+  "latitud","longitud","ubicacion","estado","activo","inactivo","proceso",
+  "hielo","agua","botellon","botellones","galon","galones","pack","unidades",
+  "reporte ventas","reporte clientes","reporte productos","reporte visitas",
+  "reporte ruta","reporte vendedor","reporte sincronizacion","generar reporte",
+  "exportar","informe de","pdf de"
+]);
+
+const INTENCION = {
+  CONVERSACIONAL: "conversacional",
+  REPORTE_PDF:    "reporte_pdf",
+  CONSULTA_SQL:   "consulta_sql",
+  DESCONOCIDO:    "desconocido",
+};
+
+// Palabras que indican corrección/continuación de contexto
+const PATRONES_CORRECCION = [
+  /^(perd[oó]n|disculpa|corrig[eo]|quise\s+decir|me\s+equivoqu[eé]|en\s+realidad|mejor\s+dicho)/i,
+  /^(no[,\s]+quiero|en\s+cambio|sino|pero\s+el|el\s+d[ií]a|la\s+fecha|del\s+mes|del\s+a[ñn]o)/i,
+  /^\d{1,2}\s+de\s+\w+/i,
+  /^(el\s+)?\d{1,2}[\/-]\d{1,2}([\/-]\d{2,4})?$/i,
+  // Fragmentos que completan una pregunta anterior
+  /^del\s+\w+/i,           // "del tia", "del cliente X"
+  /^de\s+(la|el|los|las)\s+\w+/i,
+  /^con\s+(fecha|el|la)/i,
+];
+
+// Patrones que piden PDF explícitamente (incluso sin "reporte" completo)
+const PATRONES_PEDIR_PDF = [
+  /dame\s+(el\s+)?(pdf|reporte)/i,
+  /gen[eé]ra?(me)?\s+(el\s+)?(pdf|reporte)/i,
+  /me\s+puedes?\s+gen[eé]ra?r?\s+(el\s+)?(pdf|reporte)/i,
+  /pu[eé]des?\s+gen[eé]ra?(me)?\s+(el\s+)?(pdf|reporte)/i,
+  /quiero\s+(el\s+)?(pdf|reporte)/i,
+  /exporta?(me)?\s+(el\s+)?pdf/i,
+  /descarga?(me)?\s+(el\s+)?pdf/i,
+  /necesito\s+(el\s+)?(pdf|reporte)/i,
+  /haz(me)?\s+(el\s+)?(pdf|reporte)/i,
+  /crea(me)?\s+(el\s+)?(pdf|reporte)/i,
+  /manda(me)?\s+(el\s+)?(pdf|reporte)/i,
+  /muestra(me)?\s+(el\s+)?(pdf|reporte)/i,
+  /^(el\s+)?pdf[\s!.]*$/i,
+  /^reporte[\s!.]*$/i,
+  /pdf\s*$/i,
+  /reporte\s*$/i,
+];
+
+// Detecta si el mensaje contiene criterios de datos concretos
+// (fecha, nombre de cliente, ruta, etc.) además de pedir el PDF
+function tienecriteriosDatos(texto) {
+  const t = texto.toLowerCase();
+  return (
+    /\d{1,2}\s+de\s+\w+/.test(t) ||          // "3 de febrero"
+    /\d{4}/.test(t) ||                         // año "2026"
+    /\d{1,2}\/\d{1,2}/.test(t) ||             // "03/02"
+    /hoy|ayer|semana|mes|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre/.test(t) ||
+    /cliente|tia|supermaxi|coral|aki|ruta|vendedor|producto/.test(t)
+  );
+}
+
+function clasificarIntencion(mensaje, historial = []) {
+  const texto = mensaje.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const esPedidoPDF = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
+
+  // ── 1. Pide PDF + tiene criterios propios → REPORTE_PDF directo ─────
+  //    Ej: "muestrame el reporte de ventas del 3 de febrero 2026 dame el pdf"
+  if (esPedidoPDF && tienecriteriosDatos(texto)) {
+    console.log("📄 PDF con criterios propios en el mensaje");
+    return INTENCION.REPORTE_PDF;
+  }
+
+  // ── 2. Pide PDF sin criterios → reusar datos del turno anterior ──────
+  //    Ej: "dame el pdf", "me puedes generar el pdf"
+  if (esPedidoPDF) {
+    if (historial.length > 0) {
+      console.log("📄 Solicitud PDF — reutilizando contexto del historial");
+      return INTENCION.REPORTE_PDF;
+    }
+    // Sin historial y sin criterios: pedir que especifique
+    return INTENCION.DESCONOCIDO;
+  }
+
+  // ── 3. ¿Es corrección/fragmento con historial? ──────────────────────
+  if (historial.length > 0 && PATRONES_CORRECCION.some(p => p.test(mensaje.trim()))) {
+    console.log("🔄 Corrección/fragmento detectado — usando historial");
+    return INTENCION.CONSULTA_SQL;
+  }
+
+  // ── 4. Conversacional puro ──────────────────────────────────────────
+  if (PATRONES_CONVERSACIONAL.some(p => p.test(mensaje))) return INTENCION.CONVERSACIONAL;
+
+  // ── 5. Reporte PDF por keywords sin "pdf" explícito ─────────────────
+  //    Ej: "reporte ventas hoy", "reporte por ruta"
+  if (detectarTipoReporte(mensaje)) return INTENCION.REPORTE_PDF;
+
+  // ── 6. Consulta SQL por keywords ────────────────────────────────────
+  for (const p of PALABRAS_CLAVE_SQL) {
+    if (texto.includes(p)) return INTENCION.CONSULTA_SQL;
+  }
+
+  // ── 7. Mensaje corto con historial → continuación ───────────────────
+  if (historial.length > 0 && mensaje.trim().split(" ").length <= 8) {
+    console.log("🔄 Mensaje corto con historial — continuación SQL");
+    return INTENCION.CONSULTA_SQL;
+  }
+
+  return INTENCION.DESCONOCIDO;
+}
+
+// ═══════════════════════════════════════════════════
+// RESPUESTA CONVERSACIONAL (con historial)
+// ═══════════════════════════════════════════════════
+async function respuestaConversacional(mensaje, usuario, historial) {
+  const systemPrompt = {
+    role: "system",
+    content: `Eres el asistente virtual del ERP Grupo Aqua. Eres amigable, profesional y conversacional.
+
+Puedes ayudar con:
+
+📊 CONSULTAS EN TIEMPO REAL (responde en el chat):
+- Ventas del día, semana o mes
+- Clientes con mayor consumo  
+- Productos más vendidos
+- Estado de rutas y vendedores
+- Historial de visitas
+- Sincronizaciones
+
+📄 REPORTES PDF (se generan y descargan):
+- "reporte ventas hoy" → Ventas del día
+- "reporte ventas semana" → Ventas semanal  
+- "reporte ventas mes" → Ventas mensual
+- "reporte por ruta" → Por ruta
+- "reporte por vendedor" → Por vendedor
+- "top productos" → Productos más vendidos
+- "top clientes" → Mejores clientes
+- "reporte visitas" → Historial de visitas
+- "reporte sincronizacion" → Sincronizaciones
+
+Cuando saluden, saluda cordialmente e invita a consultar.
+Cuando agradezcan, responde brevemente y ofrece más ayuda.
+Nunca menciones SQL, tablas ni términos técnicos.
+Responde siempre en español. Máximo 3 párrafos cortos.`
+  };
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.6,
+    max_tokens: 600,
+    messages: [
+      systemPrompt,
+      ...historial,                        // ← contexto previo
+      { role: "user", content: mensaje }
+    ]
+  });
+  return completion.choices[0].message.content.trim();
+}
+
+// ═══════════════════════════════════════════════════
+// CONSTRUIR PREGUNTA CON CONTEXTO PARA SQL/PDF
+// Combina el mensaje actual con el historial cuando es
+// una corrección, fragmento o solicitud de PDF contextual
+// ═══════════════════════════════════════════════════
+function construirPreguntaConContexto(mensaje, historial, intencion) {
+  if (historial.length === 0) return mensaje;
+
+  // Buscar los últimos mensajes relevantes del historial
+  const ultimoUser = [...historial].reverse().find(m => m.role === "user");
+  const ultimoBot  = [...historial].reverse().find(m => m.role === "assistant");
+
+  if (!ultimoUser) return mensaje;
+
+  const esFragmento =
+    PATRONES_CORRECCION.some(p => p.test(mensaje.trim())) ||
+    mensaje.trim().split(" ").length <= 8;
+
+  const esPedidoPDF = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
+
+  // Si pide PDF → construir pregunta de reporte completa con contexto
+  if (esPedidoPDF || intencion === INTENCION.REPORTE_PDF) {
+    // Recopilar todo el contexto útil del historial
+    const contextoCompleto = historial
+      .filter(m => m.role === "user")
+      .map(m => m.content)
+      .join(" | ");
+    const combinada = `Genera un reporte PDF con los siguientes criterios de la conversación: ${contextoCompleto}. Solicitud actual: ${mensaje}`;
+    console.log(`📄 Pregunta PDF con contexto: "${combinada}"`);
+    return combinada;
+  }
+
+  // Si es fragmento/corrección → combinar con última pregunta
+  if (esFragmento) {
+    const combinada = `${ultimoUser.content} — aclaración del usuario: "${mensaje}"`;
+    console.log(`🔄 Pregunta combinada: "${combinada}"`);
+    return combinada;
+  }
+
+  return mensaje;
+}
+
+// ═══════════════════════════════════════════════════
+// RESPUESTA SIN DATOS — mensaje contextual e inteligente
+// No dice "verifica los criterios" sino explica que no
+// hay registros para lo consultado
+// ═══════════════════════════════════════════════════
+async function generarRespuestaSinDatos(pregunta, historial) {
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.4,
+    max_tokens: 200,
+    messages: [
+      {
+        role: "system",
+        content: `Eres el asistente del ERP Grupo Aqua. El usuario hizo una consulta válida sobre el sistema pero la base de datos no devolvió ningún registro.
+
+Tu tarea: redactar UN mensaje corto (máximo 2 oraciones) explicando de forma natural que no hay datos para ese criterio específico.
+
+Reglas:
+- Menciona específicamente qué se buscó (fecha, cliente, ruta, etc.) si está claro en la pregunta.
+- NUNCA digas "verifica los criterios" ni "intenta de nuevo" ni sugieras que el usuario cometió un error.
+- El tono debe ser informativo y amigable: simplemente no hay información registrada para ese período o criterio.
+- No menciones SQL, tablas ni términos técnicos.
+- Responde en español.
+
+Ejemplos:
+  Pregunta: "ventas del 4 de marzo 2026"
+  Respuesta: "No hay ventas registradas para el 4 de marzo de 2026 en el sistema."
+
+  Pregunta: "clientes de la ruta PV1 hoy"
+  Respuesta: "No se encontraron clientes activos en la ruta PV1 para el día de hoy."
+
+  Pregunta: "facturas del cliente AKI en febrero"
+  Respuesta: "No hay facturas registradas para el cliente AKI durante el mes de febrero."`
+      },
+      ...historial.slice(-4),
+      { role: "user", content: pregunta }
+    ]
+  });
+  return completion.choices[0].message.content.trim();
 }
 
 
-async function generarRespuestaHumana(pregunta, datos) {
+async function generarRespuestaHumana(pregunta, datos, historial) {
+  const datosLimitados = datos.slice(0, 50);
+  const hayMas = datos.length > 50;
+
+  const systemPrompt = {
+    role: "system",
+    content: `Eres un asistente ejecutivo del ERP Grupo Aqua. Transforma resultados de consultas en respuestas claras y profesionales.
+- No mostrar columnas técnicas, tablas, SQL ni JSON.
+- Formato numérico hispano (1.250,50).
+- Tono cordial y profesional.
+- No inventar información.
+- Si los datos están truncados, mencionarlo al final.
+- Mantén coherencia con el hilo de la conversación anterior.`
+  };
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.4,
+    max_tokens: 800,
     messages: [
-      {
-        role: "system",
-        content: `
-Eres un asistente ejecutivo del ERP Grupo Aqua.
-
-Tu función es transformar resultados de consultas SQL
-en respuestas claras, profesionales y elegantes.
-
-Reglas:
-
-- No mostrar nombres técnicos de columnas.
-- No mencionar tablas.
-- No mostrar JSON.
-- Usar lenguaje empresarial.
-- Si el valor es 0, explicar que no hubo movimientos.
-- Si hay un solo resultado, responder en singular.
-- Si hay múltiples resultados, presentar enumeración clara.
-- Usar formato numérico hispano (1.250,50).
-- Mantener tono cordial y profesional.
-- No inventar información.
-`
-      },
+      systemPrompt,
+      ...historial,   // ← contexto de la conversación
       {
         role: "user",
-        content: `
-Pregunta del usuario:
-${pregunta}
-
-Resultados obtenidos:
-${JSON.stringify(datos)}
-`
+        content: `Pregunta: ${pregunta}\n\nResultados${hayMas ? ` (primeros 50 de ${datos.length})` : ""}:\n${JSON.stringify(datosLimitados)}`
       }
     ]
   });
-
   return completion.choices[0].message.content.trim();
 }
 
+// ═══════════════════════════════════════════════════
+// REINTENTO AUTOMÁTICO SQL
+// ═══════════════════════════════════════════════════
+async function ejecutarConReintento(mensaje, rol, seller_code, sql) {
+  try {
+    return await ejecutarSQL(sql);
+  } catch (sqlError) {
+    const mensajeError = sqlError.parent?.message || sqlError.message || "Error";
+    console.warn("⚠️  SQL falló, reintentando...", mensajeError);
+    let sqlCorregido;
+    try {
+      sqlCorregido = await generarSQL(mensaje, rol, seller_code, sql, mensajeError);
+    } catch { throw new Error("NO_REGENERAR"); }
+    if (!validarSQL(sqlCorregido)) throw new Error("SQL_INVALIDO");
+    sqlCorregido = aplicarLimite(sqlCorregido, 200);
+    try {
+      const datos = await ejecutarSQL(sqlCorregido);
+      console.log("✅ Reintento exitoso");
+      return datos;
+    } catch { throw new Error("REINTENTO_FALLIDO"); }
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// HANDLER: Descargar PDF
+// ═══════════════════════════════════════════════════
+async function descargarReporteHandler(req, res) {
+  const { filename } = req.params;
+  if (!filename || !/^reporte_[a-f0-9]+\.pdf$/.test(filename)) {
+    return res.status(400).json({ error: "Archivo inválido" });
+  }
+  const filePath = path.join(PDF_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "Reporte no encontrado o expirado (30 min)" });
+  }
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  fs.createReadStream(filePath).pipe(res);
+}
+
+// ═══════════════════════════════════════════════════
+// HANDLER PRINCIPAL
+// ═══════════════════════════════════════════════════
 async function chatHandler(req, res) {
+  const inicio = Date.now();
   console.log("----- INICIO CHAT HANDLER -----");
-  const fechaSistema = new Date();
-  const fechaSistemaISO = fechaSistema.toISOString().split("T")[0];
 
   try {
     const { mensaje } = req.body;
     const { usuario, rol, seller_code } = req.user;
 
-    console.log("Mensaje:", mensaje);
-    console.log("Usuario:", usuario);
-    console.log("Rol:", rol);
-    console.log("Seller_code:", seller_code);
+    console.log(`Usuario: ${usuario} | Rol: ${rol} | Mensaje: "${mensaje}"`);
 
-    if (!mensaje) {
-      return res.status(400).json({ respuesta: "Mensaje vacío." });
+    // ── Validaciones ───────────────────────────────
+    if (!mensaje?.trim()) return res.status(400).json({ respuesta: "El mensaje no puede estar vacío." });
+    if (mensaje.length > 500) return res.status(400).json({ respuesta: "Mensaje demasiado largo. Máximo 500 caracteres." });
+    if (!checkRateLimit(usuario)) return res.status(429).json({ respuesta: "Demasiadas consultas. Espera un momento." });
+
+    // ── Obtener historial del usuario ──────────────
+    const historial = getHistorial(usuario);
+    console.log(`💬 Historial: ${historial.length} mensajes previos`);
+
+    // ── Clasificar intención (con contexto) ────────
+    const intencion = clasificarIntencion(mensaje, historial);
+    console.log(`🎯 Intención: ${intencion}`);
+
+    // ════════════════════════════════════════════════
+    // RAMA: CONVERSACIONAL
+    // ════════════════════════════════════════════════
+    if (intencion === INTENCION.CONVERSACIONAL) {
+      const respuesta = await respuestaConversacional(mensaje, usuario, historial);
+      // Guardar en historial
+      agregarAlHistorial(usuario, "user", mensaje);
+      agregarAlHistorial(usuario, "assistant", respuesta);
+      console.log(`✅ Conversacional (${Date.now() - inicio}ms)`);
+      return res.json({ respuesta });
     }
 
-    if (!esPreguntaSQL(mensaje)) {
+    // ════════════════════════════════════════════════
+    // RAMA: DESCONOCIDO (sin historial)
+    // ════════════════════════════════════════════════
+    if (intencion === INTENCION.DESCONOCIDO) {
+      const respuesta = "No estoy seguro de entender tu consulta. Puedo ayudarte con ventas, clientes, productos, rutas y reportes. ¿Podrías ser más específico?";
+      agregarAlHistorial(usuario, "user", mensaje);
+      agregarAlHistorial(usuario, "assistant", respuesta);
+      return res.json({ respuesta });
+    }
+
+    // ── Construir pregunta con contexto (si es corrección o PDF contextual) ──
+    const preguntaFinal = construirPreguntaConContexto(mensaje, historial, intencion);
+
+    // ════════════════════════════════════════════════
+    // RAMA A: GENERAR PDF
+    // ════════════════════════════════════════════════
+    if (intencion === INTENCION.REPORTE_PDF) {
+      const esPedidoPDF   = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
+      const tieneCriterios = tienecriteriosDatos(mensaje.toLowerCase());
+      const datosPrevios  = getUltimosDatos(usuario);
+
+      let datos     = null;
+      let origenDatos = "bd";
+
+      // ── Caso 1: pide PDF sin criterios propios → reusar datos del turno anterior
+      if (esPedidoPDF && !tieneCriterios && datosPrevios) {
+        datos = datosPrevios.datos;
+        origenDatos = "cache_sesion";
+        console.log(`♻️  Reutilizando ${datos.length} registros de sesión para el PDF`);
+      }
+
+      // ── Caso 2: tiene sus propios criterios (o no hay datos previos) → consultar BD
+      if (!datos) {
+        // Limpiar la pregunta: quitar la parte "dame el pdf / muestrame el pdf"
+        // para que la IA genere SQL limpio sobre los criterios reales
+        const preguntaSQL = mensaje
+          .replace(/[,.]?\s*(y\s+)?(muestra(me)?|dame|gen[eé]ra?(me)?|pu[eé]des?\s+gen[eé]ra?(me)?)\s+(el\s+)?(pdf|reporte)/gi, "")
+          .replace(/\s+/g, " ").trim() || preguntaFinal;
+
+        console.log(`🔍 Pregunta SQL limpia para PDF: "${preguntaSQL}"`);
+
+        let sql = await generarSQL(preguntaSQL, rol, seller_code);
+        console.log("🧠 SQL para PDF:", sql);
+
+        if (sql.trim().toUpperCase().startsWith("SELECT 1 WHERE FALSE")) {
+          const respuesta = "No logré interpretar esa consulta para el reporte. ¿Podrías indicar el cliente, la ruta o el período?";
+          agregarAlHistorial(usuario, "user", mensaje);
+          agregarAlHistorial(usuario, "assistant", respuesta);
+          return res.json({ respuesta });
+        }
+
+        if (!validarSQL(sql)) return res.json({ respuesta: "Consulta no permitida." });
+        sql = aplicarLimite(sql, 1000);
+
+        try {
+          datos = await ejecutarConReintento(preguntaSQL, rol, seller_code, sql);
+        } catch (err) {
+          const respuesta =
+            err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta para el reporte." :
+            err.message === "SQL_INVALIDO"       ? "Consulta no permitida." :
+            err.message === "REINTENTO_FALLIDO"  ? "No logré obtener los datos. Intenta indicar el cliente, ruta o fecha exacta." :
+            (() => { throw err; })();
+          agregarAlHistorial(usuario, "user", mensaje);
+          agregarAlHistorial(usuario, "assistant", respuesta);
+          return res.json({ respuesta });
+        }
+      }
+
+      if (!datos || datos.length === 0) {
+        const respuesta = await generarRespuestaSinDatos(preguntaFinal, historial);
+        agregarAlHistorial(usuario, "user", mensaje);
+        agregarAlHistorial(usuario, "assistant", respuesta);
+        return res.json({ respuesta });
+      }
+
+      const tipoReporte = detectarTipoReporte(preguntaFinal) || detectarTipoReporte(mensaje) || "generico";
+      console.log(`📄 PDF tipo: ${tipoReporte} — ${datos.length} registros (origen: ${origenDatos})`);
+      const config = construirConfigReporte(tipoReporte, datos, usuario);
+      const pdfBuffer = await generarPDF(config);
+      const filename = `reporte_${crypto.randomBytes(8).toString("hex")}.pdf`;
+      const filePath = path.join(PDF_DIR, filename);
+      fs.writeFileSync(filePath, pdfBuffer);
+      setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 30 * 60 * 1000);
+
+      const respuesta = `✅ Reporte **${config.titulo}** generado con **${datos.length} registros**. Haz clic para descargarlo.`;
+      agregarAlHistorial(usuario, "user", mensaje);
+      agregarAlHistorial(usuario, "assistant", respuesta);
+
       return res.json({
-        respuesta: "Solo puedo responder consultas relacionadas con ventas y datos del sistema."
+        respuesta,
+        esPDF: true,
+        pdfUrl: `/api/bot/reporte/${filename}`,
+        pdfNombre: `${config.titulo.replace(/\s+/g, "_")}.pdf`,
+        totalRegistros: datos.length,
       });
     }
 
-    // 1️⃣ Generar SQL
-    let sql = await generarSQL(mensaje, rol, seller_code);
-    console.log("🧠 SQL generado:", sql);
+    // ── Caché (solo consultas normales sin corrección) ──
+    const cacheKey = getCacheKey(preguntaFinal, rol, seller_code);
+    if (intencion === INTENCION.CONSULTA_SQL && preguntaFinal === mensaje) {
+      const cached = getFromCache(cacheKey);
+      if (cached) {
+        console.log(`⚡ Caché (${Date.now() - inicio}ms)`);
+        agregarAlHistorial(usuario, "user", mensaje);
+        agregarAlHistorial(usuario, "assistant", cached);
+        return res.json({ respuesta: cached, fromCache: true });
+      }
+    }
 
-
+    // ── 1️⃣  Generar SQL ───────────────────────────
+    let sql = await generarSQL(preguntaFinal, rol, seller_code);
+    console.log("🧠 SQL:", sql);
     if (sql.trim().toUpperCase().startsWith("SELECT 1 WHERE FALSE")) {
-      return res.json({
-        respuesta: "No logré interpretar la consulta dentro del contexto del sistema. ¿Podrías reformularla indicando si se trata de ventas, clientes, productos o rutas?"
-      });
+      const respuesta = "No logré interpretar esa consulta. ¿Podrías darme más detalles, como el nombre del cliente, la ruta o el período?";
+      agregarAlHistorial(usuario, "user", mensaje);
+      agregarAlHistorial(usuario, "assistant", respuesta);
+      return res.json({ respuesta });
     }
 
-    // 2️⃣ Validar SQL
-    if (!validarSQL(sql)) {
-      console.log("❌ SQL inválido");
-      return res.json({ respuesta: "Consulta no permitida." });
-    }
+    // ── 2️⃣  Validar ───────────────────────────────
+    if (!validarSQL(sql)) return res.json({ respuesta: "Consulta no permitida." });
 
-    // 3️⃣ Aplicar límite
+    // ── 3️⃣  Límite ────────────────────────────────
     sql = aplicarLimite(sql, 200);
-    console.log("📏 SQL con límite aplicado:", sql);
 
-    // 4️⃣ Ejecutar
-    const datos = await ejecutarSQL(sql);
-    console.log("📊 Datos obtenidos:", datos);
-    console.log("📊 Total registros reales:", datos?.length);
+    // ── 4️⃣  Ejecutar ──────────────────────────────
+    let datos;
+    try {
+      datos = await ejecutarConReintento(preguntaFinal, rol, seller_code, sql);
+    } catch (err) {
+      const respuesta =
+        err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta. Intenta reformularla." :
+        err.message === "SQL_INVALIDO"      ? "Consulta no permitida." :
+        err.message === "REINTENTO_FALLIDO" ? "No logré ejecutar esa consulta. Intenta indicar el nombre exacto del cliente, la ruta o la fecha." :
+        (() => { throw err; })();
+      agregarAlHistorial(usuario, "user", mensaje);
+      agregarAlHistorial(usuario, "assistant", respuesta);
+      return res.json({ respuesta });
+    }
+
+    console.log("📊 Registros:", datos?.length ?? 0);
 
     if (!datos || datos.length === 0) {
-      return res.json({
-        respuesta: "No se encontró información asociada a los criterios consultados."
-      });
+      // Generar mensaje contextual según lo que el usuario preguntó
+      const respuesta = await generarRespuestaSinDatos(preguntaFinal, historial);
+      agregarAlHistorial(usuario, "user", mensaje);
+      agregarAlHistorial(usuario, "assistant", respuesta);
+      return res.json({ respuesta });
     }
 
-    // 5️⃣ Generar respuesta profesional y humana
-    const respuestaHumana = await generarRespuestaHumana(mensaje, datos);
+    // ── Guardar datos en sesión para PDF futuro ────
+    guardarUltimosDatos(usuario, datos, preguntaFinal);
 
-    console.log("✅ Respuesta profesional enviada al usuario.");
+    // ════════════════════════════════════════════════
+    // RAMA B: RESPUESTA NORMAL
+    // ════════════════════════════════════════════════
+    const respuestaHumana = await generarRespuestaHumana(preguntaFinal, datos, historial);
 
+    if (preguntaFinal === mensaje) setCache(cacheKey, respuestaHumana);
+    agregarAlHistorial(usuario, "user", mensaje);
+    agregarAlHistorial(usuario, "assistant", respuestaHumana);
+
+    console.log(`✅ Listo (${Date.now() - inicio}ms)`);
     return res.json({ respuesta: respuestaHumana });
 
   } catch (error) {
-    console.error("❌ ERROR EN CHAT:", error);
-    return res.status(500).json({
-      respuesta: "Ocurrió un error procesando la consulta."
-    });
+    console.error("❌ ERROR:", error);
+    return res.status(500).json({ respuesta: "Ocurrió un error interno. Por favor intenta de nuevo." });
   }
 }
 
-module.exports = { chatHandler };
+// Handler para limpiar historial manualmente (útil para logout)
+async function limpiarHistorialHandler(req, res) {
+  const { usuario } = req.user;
+  limpiarHistorial(usuario);
+  return res.json({ ok: true, mensaje: "Historial de conversación limpiado." });
+}
+
+module.exports = { chatHandler, descargarReporteHandler, limpiarHistorialHandler };

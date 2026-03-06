@@ -1,4 +1,3 @@
-// models/clientes.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../db");
 
@@ -13,28 +12,39 @@ const Cliente = sequelize.define(
 
     codigo_cliente: {
       type: DataTypes.STRING(255),
-      allowNull: false,
+      allowNull: true,  // Permite que sea nulo
       unique: true,
+    },
+    company_id: { // Aquí se agrega la columna company_id
+      type: DataTypes.STRING(20),
+      allowNull: true, // Puedes cambiarlo a `false` si es obligatorio
+    },
+
+    descripcion_company: {
+      type: DataTypes.STRING(100),
+      allowNull: true, // Puedes cambiarlo a `false` si es obligatorio
     },
 
     tipo_identificacion_cliente: {
       type: DataTypes.STRING(50),
+      allowNull: true,  // Permitir nulos
     },
 
     identificacion_cliente: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
+      type: DataTypes.STRING(30),
+      allowNull: true,  // Permite que sea nulo
     },
 
     nombre_cliente: {
       type: DataTypes.STRING(255),
+      allowNull: true,  // Permite que sea nulo
     },
 
     nombre_comercial_cliente: {
       type: DataTypes.STRING(255),
+      allowNull: true,  // Permite que sea nulo
     },
 
-    // 🔹 NUEVO CAMPO
     codigo_tipo_negocio: {
       type: DataTypes.STRING(50),
       allowNull: true,
@@ -42,6 +52,7 @@ const Cliente = sequelize.define(
 
     contacto_cliente: {
       type: DataTypes.STRING(255),
+      allowNull: true,  // Permite que sea nulo
     },
 
     codigo_moneda_cliente: {
@@ -51,14 +62,17 @@ const Cliente = sequelize.define(
 
     codigo_lista_precio_cliente: {
       type: DataTypes.STRING(50),
+      allowNull: true,  // Permite que sea nulo
     },
 
     metodo_pago_cliente: {
       type: DataTypes.STRING(50),
+      allowNull: true,  // Permite que sea nulo
     },
 
     codigo_grupo_cliente: {
       type: DataTypes.STRING(50),
+      allowNull: true,  // Permite que sea nulo
     },
 
     descuento_cliente: {
@@ -68,6 +82,7 @@ const Cliente = sequelize.define(
 
     objetivo_venta_cliente: {
       type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,  // Permite que sea nulo
     },
 
     saldo_cliente: {
@@ -97,10 +112,12 @@ const Cliente = sequelize.define(
 
     nacionalidad_cliente: {
       type: DataTypes.STRING(50),
+      allowNull: true,  // Permite que sea nulo
     },
 
     codigo_usuario_asignado_cliente: {
       type: DataTypes.STRING(50),
+      allowNull: true,  // Permite que sea nulo
     },
 
     fecha_creacion_cliente: {

@@ -9,6 +9,8 @@ import {
   Close,
 } from "@mui/icons-material";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
+
 
 import logo from "../../src/assets/icono-plus.png";
 import botellon from "../../src/assets/botellon.png";
@@ -28,6 +30,10 @@ export default function SidebarDashboards() {
     { name: "PLUS", icon: <img src={logo} />, path: "/dashboard/plus" },
     { name: "CAFÉ", icon: <img src={capsulamust} />, path: "/dashboard/cafe" },
     { name: "VISITAS RUTAS", icon: <LocalShippingIcon />, path: "/dashboard/rutas-visitas" },
+    { name: "CLIENTES", icon: <PeopleAltIcon />, path: "/dashboard/clientes" },
+    { name: "CREAR_USUARIOS", icon: <PeopleAltIcon />, path: "/dashboard/crearusuarios" },
+
+
   ];
 
   return (

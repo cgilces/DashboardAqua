@@ -1,7 +1,8 @@
-const sequelize = require('../db');  // Conexión a la base de datos
-const { DataTypes } = require('sequelize');
+const sequelize = require('../db');
 
-// Importar modelos
+// =============================
+// IMPORTACIÓN DE MODELOS
+// =============================
 const Factura = require('./factura');
 const DetalleDocumento = require('./detalleDocumento');
 const MetaPreventa = require('./metaPreventa');
@@ -12,17 +13,19 @@ const DireccionCliente = require('./DireccionCliente');
 const ClienteUsuarioVenta = require('./ClienteUsuarioVenta');
 const AppUser = require('./AppUser');
 const HistorialVisitas = require('./HistorialVisitas');
-const Ruta = require('./Ruta');  // Aquí importamos Ruta
+const Ruta = require('./Ruta');
 const DetalleRuta = require('./DetalleRuta');
-const TipoNegocio = require("./tipos_negocio");
+const TipoNegocio = require('./tipos_negocio');
+const TipoDocumentoLatam = require('./TipoDocumentoLatam');
+const Producto = require('./producto'); // importante que coincida el nombre del archivo
 
+// =============================
+// RELACIONES
+// =============================
 
-// Establecer relaciones
-
-// Relación entre `Factura` y `Clientes`
+// ---------- FACTURA ----------
 Factura.belongsTo(Clientes, {
   foreignKey: 'customer_code',
-  targetKey: 'codigo_cliente',
   as: 'cliente_venta',
 });
 
@@ -36,10 +39,20 @@ DetalleDocumento.belongsTo(Factura, {
   targetKey: 'code',
 });
 
-// Relación entre `Orden` y `Clientes`
+// Relación Factura con TipoDocumentoLatam
+TipoDocumentoLatam.hasMany(Factura, {
+  foreignKey: 'tipo_documento',
+  as: 'facturas',
+});
+
+Factura.belongsTo(TipoDocumentoLatam, {
+  foreignKey: 'tipo_documento',
+  as: 'tipo_documento_latam',
+});
+
+// ---------- ORDEN ----------
 Orden.belongsTo(Clientes, {
   foreignKey: 'customer_code',
-  targetKey: 'codigo_cliente',
   as: 'cliente_venta',
 });
 
@@ -53,59 +66,67 @@ DetalleDocumento.belongsTo(Orden, {
   targetKey: 'code',
 });
 
-// Relación entre `HistorialVisitas` y `Ruta`
-HistorialVisitas.belongsTo(Ruta, {  // Asociación con el modelo Ruta
-  foreignKey: 'codigo_ruta',  // Clave foránea en HistorialVisitas
-  targetKey: 'codigo',  // Clave primaria en Ruta
-  as: 'rutaDirecta',  // Alias único para la relación entre HistorialVisitas y Ruta
+// ---------- PRODUCTO ----------
+// PK en Producto = codigo_producto
+// FK en DetalleDocumento = codigo_producto
+DetalleDocumento.belongsTo(Producto, {
+  foreignKey: 'codigo_producto',
+  as: 'producto',
 });
 
-// Relación entre `Ruta` y `DetalleRuta`
+Producto.hasMany(DetalleDocumento, {
+  foreignKey: 'codigo_producto',
+  as: 'detalles',
+});
+
+// ---------- RUTAS ----------
+HistorialVisitas.belongsTo(Ruta, {
+  foreignKey: 'codigo_ruta',
+  targetKey: 'codigo',
+  as: 'rutaDirecta',
+});
+
 Ruta.hasMany(DetalleRuta, {
   foreignKey: 'route_code',
   sourceKey: 'codigo',
   as: 'detalles_rutas',
 });
 
-// Relación entre `DetalleRuta` y `Ruta`
 DetalleRuta.belongsTo(Ruta, {
   foreignKey: 'route_code',
   targetKey: 'codigo',
-  as: 'rutaDetalle',  // Alias único para la relación entre DetalleRuta y Ruta
+  as: 'rutaDetalle',
 });
 
-// Relación entre `DetalleRuta` y `Clientes`
+// ---------- CLIENTES ----------
 DetalleRuta.belongsTo(Clientes, {
   foreignKey: 'customer_code',
   targetKey: 'codigo_cliente',
   as: 'cliente',
 });
 
-// Relación entre `HistorialVisitas` y `Clientes`
-HistorialVisitas.belongsTo(Clientes, {  // Relación entre HistorialVisitas y Cliente
-  foreignKey: 'codigo_cliente',  // Clave foránea en HistorialVisitas
-  targetKey: 'codigo_cliente',  // Clave primaria en Cliente
-  as: 'cliente',  // Alias para la relación entre HistorialVisitas y Cliente
+HistorialVisitas.belongsTo(Clientes, {
+  foreignKey: 'codigo_cliente',
+  targetKey: 'codigo_cliente',
+  as: 'cliente',
 });
 
-// models/index.js
-
-// Relación entre HistorialVisitas y Orden
-HistorialVisitas.belongsTo(Orden, {  // Relación con el modelo Orden
-  foreignKey: 'codigo_cliente',  // Clave foránea en HistorialVisitas
-  targetKey: 'customer_code',    // La clave primaria de Orden
-  as: 'orden',  // Alias que usamos en las consultas `include`
-});
-
-// Relación
 Clientes.belongsTo(TipoNegocio, {
-  foreignKey: "codigo_tipo_negocio",
-  targetKey: "codigo",
-  as: "tipo_negocio",
+  foreignKey: 'codigo_tipo_negocio',
+  targetKey: 'codigo',
+  as: 'tipo_negocio',
 });
 
+// ---------- HISTORIAL VISITAS Y ORDEN ----------
+HistorialVisitas.belongsTo(Orden, {
+  foreignKey: 'codigo_cliente',
+  targetKey: 'customer_code',
+  as: 'orden',
+});
 
-// Exportar los modelos para que estén disponibles en otras partes de la aplicación
+// =============================
+// EXPORTACIÓN
+// =============================
 module.exports = {
   Factura,
   DetalleDocumento,
@@ -116,9 +137,11 @@ module.exports = {
   SincronizacionVenta,
   DireccionCliente,
   AppUser,
-  HistorialVisitas,  // Exportamos HistorialVisitas
-  Ruta,  // Exportamos Ruta
-  DetalleRuta,  // Exportamos DetalleRuta
-  TipoNegocio,  // Exportamos TipoNegocio
-  sequelize,  // Exportamos la conexión a la base de datos
+  HistorialVisitas,
+  Ruta,
+  DetalleRuta,
+  TipoNegocio,
+  TipoDocumentoLatam,
+  Producto,
+  sequelize,
 };

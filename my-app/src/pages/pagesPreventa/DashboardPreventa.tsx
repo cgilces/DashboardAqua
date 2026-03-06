@@ -58,18 +58,23 @@ export default function DashboardPreventa() {
     localStorage.setItem("anioSeleccionado", anioSeleccionado);
   }, [mesSeleccionado, anioSeleccionado]);
 
+
   const obtenerDatos = async (anio: number, mes: number) => {
     try {
       setCargando(true);
+
+      // Obtener los datos principales del dashboard
       const res = await fetch(
-        // `${API_URL}/api/ventas/dashboard?anio=${anio}&mes=${mes}`
         `http://localhost:5000/api/ventas/dashboard?anio=${anio}&mes=${mes}`
       );
       const data: any = await res.json();
-      console.log("data que llego del bakend es:", data)
+      console.log("data que llegó del backend es:", data);
+
+      // Establecer los demás datos
       setDatos(data);
       setTopClientesState(data.topClientes || []);
     } catch (error) {
+      console.error("Error obteniendo los datos", error);
     } finally {
       setCargando(false);
     }
@@ -229,62 +234,47 @@ export default function DashboardPreventa() {
           <>
             {/* ================= CARD VENTAS USD ================= */}
             {isAdmin && resumenVentasPorCanal && (
-              <div className="
-              grid grid-cols-1 md:grid-cols-5 gap-6 mb-10"
-              >
-                {Object.values(resumenVentasPorCanal).map((canal: any) => (
-                  <div
-                    key={canal.canal}
-                    className="bg-[#012E24] border border-[#046C5E] rounded-xl p-4"
-                  >
-                    <p        className="
-                  uppercase mb-1 font-bold
-                  text-base md:text-xs
-                  text-blue-300
-                  text-center md:text-left
-                ">
-                      {canal.canal}
-                    </p>
-
-                    <p className="text-2xl font-bold">
-                      <span className="text-sm text-gray-400 mr-1">Proyección:</span>
-                      $
-                      {canal.monto.toLocaleString("es-EC", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </p>
-
-                    <p className="text-xs text-gray-300">
-                      Mes anterior: $
-                      {canal.mesAnterior.toLocaleString("es-EC", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </p>
-
-                    <p
-                      className={`text-xs font-semibold ${canal.variacionAbs >= 0
-                        ? "text-green-400"
-                        : "text-red-400"
-                        }`}
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-6 mb-10">
+                {Object.values(resumenVentasPorCanal)
+                  .filter((canal: any) => canal.monto > 0 || canal.unidades > 0)
+                  .map((canal: any) => (
+                    <div
+                      key={canal.canal}
+                      className="bg-[#012E24] border border-[#046C5E] rounded-xl p-4"
                     >
-                      Variación: {canal.variacionAbs.toLocaleString("es-EC", {
-                        minimumFractionDigits: 2,
-                      })}{" "}
-                      ({(canal.variacionPorc || 0).toFixed(1)}%)
-                    </p>
+                      <p className="uppercase mb-1 font-bold text-base md:text-xs text-blue-300 text-center md:text-left">
+                        {canal.canal}
+                      </p>
 
+                      <p className="text-2xl font-bold">
+                        <span className="text-sm text-gray-400 mr-1">Proyección:</span>
+                        ${canal.monto.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                      </p>
 
-                    <p className="text-xs text-gray-300 mt-1">
-                      Unidades: {canal.unidades.toLocaleString("es-EC")}
-                    </p>
-                  </div>
-                ))}
+                      <p className="text-xs text-gray-300">
+                        Mes anterior: ${canal.mesAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                      </p>
+
+                      <p className={`text-xs font-semibold ${canal.variacionAbs >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        Variación: {canal.variacionAbs.toLocaleString("es-EC", { minimumFractionDigits: 2 })}{" "}
+                        ({(canal.variacionPorc || 0).toFixed(1)}%)
+                      </p>
+
+                      <p className="text-xs text-gray-300 mt-1">
+                        Unidades: {canal.unidades.toLocaleString("es-EC")}
+                      </p>
+                    </div>
+                  ))}
               </div>
             )}
 
 
             {(isVendedor || isAdmin) && (
-              <RankingPreventas datos={datos} anio={anioSeleccionado} mes={mesSeleccionado} />
+              <RankingPreventas
+                datos={datos}
+                anio={anioSeleccionado}
+                mes={mesSeleccionado}
+              />
             )}
 
 

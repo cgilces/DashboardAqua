@@ -9,32 +9,73 @@ const DireccionCliente = sequelize.define('DireccionCliente', {
   },
   codigo_cliente: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,  // Permite que sea nulo
     references: {
       model: 'clientes',
       key: 'codigo_cliente',
     },
   },
-  descripcion_direccion_cliente: DataTypes.STRING,
-  codigo_direccion_cliente: DataTypes.STRING,
-  calle1_direccion_cliente: DataTypes.STRING,
-  bloque_direccion_cliente: DataTypes.STRING,
-  calle2_direccion_cliente: DataTypes.STRING,
-  referencia_direccion_cliente: DataTypes.STRING,
-  codigo_postal_direccion_cliente: DataTypes.STRING,
-  telefono_direccion_cliente: DataTypes.STRING,
-  fax_direccion_cliente: DataTypes.STRING,
-  email_direccion_cliente: DataTypes.STRING,
-  latitud_direccion_cliente: DataTypes.DECIMAL(15, 8),
-  longitud_direccion_cliente: DataTypes.DECIMAL(15, 8),
-  fecha_ultima_visita_direccion_cliente: DataTypes.DATE,
+  descripcion_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  codigo_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  calle1_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  bloque_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  calle2_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  referencia_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  codigo_postal_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  telefono_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  fax_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  email_direccion_cliente: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Permite que sea nulo
+  },
+  latitud_direccion_cliente: {
+    type: DataTypes.DECIMAL(15, 8),
+    allowNull: true,  // Permite que sea nulo
+  },
+  longitud_direccion_cliente: {
+    type: DataTypes.DECIMAL(15, 8),
+    allowNull: true,  // Permite que sea nulo
+  },
+  fecha_ultima_visita_direccion_cliente: {
+    type: DataTypes.DATE,
+    allowNull: true,  // Permite que sea nulo
+  },
   estado_direccion_cliente: {
     type: DataTypes.INTEGER,
     defaultValue: 1,
+    allowNull: true,  // Permite que sea nulo
   },
   estado_ubicacion_direccion_cliente: {
     type: DataTypes.INTEGER,
     defaultValue: 3,
+    allowNull: true,  // Permite que sea nulo
   },
   fecha_creacion_direccion_cliente: {
     type: DataTypes.DATE,

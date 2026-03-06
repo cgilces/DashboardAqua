@@ -62,6 +62,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(loggedUser);
       localStorage.setItem('app_user_session', JSON.stringify(loggedUser));
+      localStorage.setItem('app_token', data.token); // ← AGREGAR ESTO
+
 
       // Redirigir al dashboard después del login
       navigate('/dashboard/preventa');

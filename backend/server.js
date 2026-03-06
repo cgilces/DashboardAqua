@@ -39,6 +39,7 @@ app.use(express.json());
 app.use("/api/login", require("./routes/login/loginRoutes"));
 app.use("/api/usuarios", require("./routes/login/usuariosRoutes"));
 
+
 // ======================================================
 // 📦 PREVENTAS
 // ======================================================
@@ -65,8 +66,21 @@ app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
 // ======================================================
 app.use("/api/visitas", require("./routes/rutasVisitas/visitasRoutes"));
 
+const dashboardClientesRoutes = require("./routes/rutasClientes/dashboardClientes.routes");
+app.use("/api/dashboard-clientes", dashboardClientesRoutes);
 
+
+
+// ======================================================
+//  bot
+// ======================================================
 app.use("/api/bot", require("./routes/rutasbotinteligente/chat.routes"));
+
+
+// ======================================================
+// 📊 ODOO
+// ======================================================
+app.use("/api/odoo", require("./routes/rutasOdoo/odooRoutes"));
 
 
 // ======================================================

@@ -27,6 +27,9 @@ import { Toaster } from "react-hot-toast";
 import ChatGlobal from "./components/elements/ChatGlobal";
 
 import "./index.css";
+import DashboardClientes from "./pages/pagesClientesGeneral/DashboardClientes";
+import CreacionUsuario from "./pages/pageCreacionUsuario/CreacionUsuario";
+
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -92,6 +95,18 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/dashboard/rutas-visitas"
               element={<DashboardRutasVisitas />}
+            />
+
+            {/* Clientes */}
+            <Route
+              path="/dashboard/clientes"
+              element={<DashboardClientes />}
+            />
+
+             {/* Clientes */}
+            <Route
+              path="/dashboard/crearusuarios"
+              element={<CreacionUsuario/>}
             />
           </Routes>
 

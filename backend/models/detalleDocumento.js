@@ -17,19 +17,98 @@ const DetalleDocumento = sequelize.define(
 
     codigo_producto: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: true
     },
 
-    descripcion: DataTypes.TEXT,
-    cantidad: DataTypes.FLOAT,
-    precio: DataTypes.FLOAT,
-    subtotal: DataTypes.FLOAT,
-    total: DataTypes.FLOAT,
-    iva: DataTypes.FLOAT,
-    unit_alias: DataTypes.STRING,
-    barcode: DataTypes.STRING,
+    descripcion: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
 
-    // 🟩 NUEVOS CAMPOS (Categoría)
+    // =========================
+    // CANTIDADES
+    // =========================
+    cantidad: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    cantidad_entregada: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    cantidad_facturada: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    cantidad_pendiente_entregar: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    cantidad_pendiente_facturar: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    // =========================
+    // PRECIOS
+    // =========================
+    precio: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    descuento_linea: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true
+    },
+
+    subtotal: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    total: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    iva: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    precio_con_impuesto: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    precio_sin_impuesto: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    impuesto_linea: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true
+    },
+
+    // =========================
+    // CLASIFICACIÓN
+    // =========================
+    unit_alias: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+
+    barcode: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+
     codigo_categoria: {
       type: DataTypes.STRING,
       allowNull: true
@@ -38,7 +117,36 @@ const DetalleDocumento = sequelize.define(
     descripcion_categoria: {
       type: DataTypes.STRING,
       allowNull: true
+    },
+
+    // =========================
+    // ESTADOS
+    // =========================
+    estado_facturacion_linea: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+
+    estado_odoo_linea: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+
+    // =========================
+    // FLAGS
+    // =========================
+    es_anticipo: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false
+    },
+
+    es_envio: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false
     }
+
   },
   {
     tableName: "detalle_documento",

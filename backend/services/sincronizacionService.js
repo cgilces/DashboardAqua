@@ -301,6 +301,8 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
             await Clientes.upsert(
               {
                 codigo_cliente: customerCode,
+                company_id: 1,
+                descripcion_company: "GRUPOAQUA S.A.",
                 tipo_identificacion_cliente: doc.customer_identity_type || null,
                 identificacion_cliente: doc.customer_identity || null,
                 nombre_cliente: doc.customer_name || null,
@@ -416,6 +418,8 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
                 subtotal: toNumber(doc.subtotal),
                 iva: toNumber(doc.iva),
                 discount: toNumber(doc.discount),
+                origen_sistema: "MOBILVENDOR",
+
               },
               { transaction: tDoc }
             );
@@ -526,86 +530,86 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
             );
           }
           await tDoc.commit();
-        console.log(` Documento ${code} confirmado`);
-      } catch (errDoc) {
-        if (tDoc) await tDoc.rollback();
-        console.log(`❌ ERROR en documento ${code}`);
-        console.log("Detalles del error:", errDoc); // Ver todo el error
-        console.log("Pila de ejecución:", errDoc.stack || "No disponible"); // Pila de ejecución del error
+          console.log(` Documento ${code} confirmado`);
+        } catch (errDoc) {
+          if (tDoc) await tDoc.rollback();
+          console.log(`❌ ERROR en documento ${code}`);
+          console.log("Detalles del error:", errDoc); // Ver todo el error
+          console.log("Pila de ejecución:", errDoc.stack || "No disponible"); // Pila de ejecución del error
 
-        erroresPorDocumento.push({
-          code,
-          error: {
-            message: errDoc.message,
-            stack: errDoc.stack,  // Esto te permitirá ver la pila de ejecución
-            details: errDoc.errors || errDoc.parent || errDoc,
-          }
-        });
-        console.log("Errores por documento:", erroresPorDocumento);
-        // Guardar solo los errores en un archivo
-        logErrorsToFile(erroresPorDocumento);
+          erroresPorDocumento.push({
+            code,
+            error: {
+              message: errDoc.message,
+              stack: errDoc.stack,  // Esto te permitirá ver la pila de ejecución
+              details: errDoc.errors || errDoc.parent || errDoc,
+            }
+          });
+          console.log("Errores por documento:", erroresPorDocumento);
+          // Guardar solo los errores en un archivo
+          logErrorsToFile(erroresPorDocumento);
 
+        }
       }
+
+      currentPage++;
     }
 
-    currentPage++;
-  }
+    await SincronizacionVenta.update(
+      {
+        estado: "SUCCESS",
+        total_registros: totalHeaders,
+        mensaje: `Facturas:${totalFacturas} Órdenes:${totalOrdenes} Detalles:${totalDetallesInsertados} Errores:${erroresPorDocumento.length}`,
+      },
+      { where: { id_sync: idSync } }
+    );
+
+    // Agregar esta línea en el bloque donde ya estás procesando las cabeceras (después del proceso de facturas y órdenes)
+    const totalClientes = await Clientes.count();  // Cuenta la cantidad total de clientes en la base de datos
+
+    console.log("\n====================================");
+    console.log(" SINCRONIZACIÓN COMPLETA");
+    console.log(`   → Cabeceras : ${totalHeaders}`);
+    console.log(`   → Detalles  : ${totalDetails}`);
+    console.log(`   → Facturas  : ${totalFacturas}`);
+    console.log(`   → Órdenes   : ${totalOrdenes}`);
+    console.log(`   → Clientes  : ${totalClientes}`);  // Muestra la cantidad de clientes
+    console.log(`   → Errores   : ${erroresPorDocumento.length}`);
+    console.log("====================================\n");
+
+    if (syncState) {
+      syncState.running = false;
+      syncState.percent = 100;
+      syncState.finishedAt = new Date();
+    }
+
+    return {
+      idSync,
+      totalHeaders,
+      totalDetails,
+      totalFacturas,
+      totalOrdenes,
+      totalDetallesInsertados,
+      erroresPorDocumento,
+    };
+  } catch (err) {
+    console.error("❌ ERROR GLOBAL:");
+    console.error("Mensaje del error:", err.message);  // El mensaje del error
+    console.error("Detalles del error:", err);  // El error completo (incluyendo el stack trace)
+
+    if (syncState) {
+      syncState.running = false;
+      syncState.error = err.message;
+      syncState.finishedAt = new Date();
+    }
 
     await SincronizacionVenta.update(
-    {
-      estado: "SUCCESS",
-      total_registros: totalHeaders,
-      mensaje: `Facturas:${totalFacturas} Órdenes:${totalOrdenes} Detalles:${totalDetallesInsertados} Errores:${erroresPorDocumento.length}`,
-    },
-    { where: { id_sync: idSync } }
-  );
+      { estado: "FAILED", mensaje: err.message },
+      { where: { id_sync: idSync } }
+    );
 
-  // Agregar esta línea en el bloque donde ya estás procesando las cabeceras (después del proceso de facturas y órdenes)
-  const totalClientes = await Clientes.count();  // Cuenta la cantidad total de clientes en la base de datos
-
-  console.log("\n====================================");
-  console.log(" SINCRONIZACIÓN COMPLETA");
-  console.log(`   → Cabeceras : ${totalHeaders}`);
-  console.log(`   → Detalles  : ${totalDetails}`);
-  console.log(`   → Facturas  : ${totalFacturas}`);
-  console.log(`   → Órdenes   : ${totalOrdenes}`);
-  console.log(`   → Clientes  : ${totalClientes}`);  // Muestra la cantidad de clientes
-  console.log(`   → Errores   : ${erroresPorDocumento.length}`);
-  console.log("====================================\n");
-
-  if (syncState) {
-    syncState.running = false;
-    syncState.percent = 100;
-    syncState.finishedAt = new Date();
+    throw err;
   }
-
-  return {
-    idSync,
-    totalHeaders,
-    totalDetails,
-    totalFacturas,
-    totalOrdenes,
-    totalDetallesInsertados,
-    erroresPorDocumento,
-  };
-} catch (err) {
-  console.error("❌ ERROR GLOBAL:");
-  console.error("Mensaje del error:", err.message);  // El mensaje del error
-  console.error("Detalles del error:", err);  // El error completo (incluyendo el stack trace)
-
-  if (syncState) {
-    syncState.running = false;
-    syncState.error = err.message;
-    syncState.finishedAt = new Date();
-  }
-
-  await SincronizacionVenta.update(
-    { estado: "FAILED", mensaje: err.message },
-    { where: { id_sync: idSync } }
-  );
-
-  throw err;
-}
 };
 
 module.exports = {
