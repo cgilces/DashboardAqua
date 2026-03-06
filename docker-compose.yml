@@ -50,7 +50,6 @@ services:
       timeout: 5s
       retries: 3
 
-
   # ---------------------- FRONTEND ----------------------
   dashboard_frontend:
     build: ./my-app
