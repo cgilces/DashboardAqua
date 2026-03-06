@@ -10,6 +10,8 @@ import {
 } from "@mui/icons-material";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
+
 
 
 import logo from "../../src/assets/icono-plus.png";
@@ -31,8 +33,7 @@ export default function SidebarDashboards() {
     { name: "CAFÉ", icon: <img src={capsulamust} />, path: "/dashboard/cafe" },
     { name: "VISITAS RUTAS", icon: <LocalShippingIcon />, path: "/dashboard/rutas-visitas" },
     { name: "CLIENTES", icon: <PeopleAltIcon />, path: "/dashboard/clientes" },
-    { name: "CREAR_USUARIOS", icon: <PeopleAltIcon />, path: "/dashboard/crearusuarios" },
-
+{ name: "CREAR_USUARIOS", icon: <GroupAddIcon />, path: "/dashboard/crearusuarios" },
 
   ];
 
