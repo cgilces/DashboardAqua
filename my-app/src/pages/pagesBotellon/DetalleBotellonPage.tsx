@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import * as XLSX from "xlsx";
-// import { API_URL } from "../../config/api";
+import { API_BASE_URL } from "../../config";
 
 
 const DetalleBotellonPage: React.FC = () => {
@@ -106,9 +106,7 @@ const DetalleBotellonPage: React.FC = () => {
     setCargando(true);
 
     fetch(
-      // `${API_URL}/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`
-
-      `http://localhost:5000/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`
+      `${API_BASE_URL}/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`
     )
       .then((res) => res.json())
       .then((data) => {

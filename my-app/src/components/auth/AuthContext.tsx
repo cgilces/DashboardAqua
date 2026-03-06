@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../../types';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../../config';
+
 
 export type { User };
 
@@ -39,7 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
 
     try {
-      const res = await fetch("http://localhost:5000/api/login/inicio", {
+      const res = await fetch(`${API_BASE_URL}/api/login/inicio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario, clave }),

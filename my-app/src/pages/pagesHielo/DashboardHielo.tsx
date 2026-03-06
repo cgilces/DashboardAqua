@@ -5,7 +5,7 @@ import ResumenVentasHielo from "../../components/ComponentHielo/ResumenVentasHie
 import KpisHielo from "../../components/ComponentHielo/KpisHielo";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import { Header } from "../../components/common/Header";
-// import { API_URL } from "../../config/api";
+import { API_BASE_URL } from '../../config';
 
 
 /* ============================
@@ -56,10 +56,7 @@ const DashboardHielo: React.FC = () => {
 
       try {
         const response = await fetch(
-          `http://localhost:5000/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
-          // `${API_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
-
-
+          `${API_BASE_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
         );
 
         if (!response.ok) {

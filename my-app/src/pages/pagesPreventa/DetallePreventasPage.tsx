@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import * as XLSX from "xlsx";
+import { API_BASE_URL } from '../../config';
 
 // ─── Tipos ────────────────────────────────────────────────────────
 type LocationState = {
@@ -80,7 +81,7 @@ const DetallePreventasPage: React.FC = () => {
   // ── Cargar datos ──────────────────────────────────────────────────
   useEffect(() => {
     setCargando(true);
-    fetch(`http://localhost:5000/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`)
+    fetch(`${API_BASE_URL}/api/ventas/detalle-ruta/${ruta}/${anio}/${mes}`)
       .then(res => res.json())
       .then(data => {
         let clientes = data.clientesRuta || [];

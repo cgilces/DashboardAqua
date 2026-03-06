@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { API_BASE_URL } from '../../config';
+
 
 const DetalleRuta = () => {
     const { usuario } = useParams(); // R1, R2, etc.
@@ -14,7 +16,7 @@ const DetalleRuta = () => {
         if (!anio || !mes) return;
 
         fetch(
-            `http://localhost:5000/api/ventas/ruta/detalle?vendedor=${usuario}&anio=${anio}&mes=${mes}`
+            `${API_BASE_URL}/api/ventas/ruta/detalle?vendedor=${usuario}&anio=${anio}&mes=${mes}`
         )
             .then(res => res.json())
             .then(json => setData(json));

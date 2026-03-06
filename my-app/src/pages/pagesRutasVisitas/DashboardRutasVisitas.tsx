@@ -6,6 +6,8 @@ import BotonRutasyDetalles from "../../components/elements/BotonRutasyDetalles";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import ModalClientesNoVisitados from "../../components/ComponentVisitas/ModalClientesNoVisitados";
 import BotonHistorialRutas from "../../components/elements/BotonHistorialRutas";
+import { API_BASE_URL } from '../../config';
+
 
 const meses: Record<string, number> = {
   Enero: 1,
@@ -96,7 +98,7 @@ export default function DashboardRutasVisitas() {
       setCargando(true);
       setMostrarTabla(false);
 
-      let url = "http://localhost:5000/api/visitas/dashboard";
+      let url = `${API_BASE_URL}/api/visitas/dashboard`;
       if (tipoPeriodo === "mes") {
         const mes = mesSeleccionado.padStart(2, "0");
 

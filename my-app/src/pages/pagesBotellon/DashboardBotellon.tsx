@@ -6,8 +6,8 @@ import { Header } from "../../components/common/Header";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import TablaVentasBase from "../../components/ComponentBotellon/TablaVentasBase";
 import ResumenVentasCanalUSD from "../../components/ComponentBotellon/ResumenVentasCanalUSD";
-// import { API_URL } from "../../config/api";
 import ChatFlotante from "../../components/elements/ChatFlotante";
+import { API_BASE_URL } from "../../config";
 
 
 
@@ -84,11 +84,8 @@ export default function DashboardBotellon() {
   const cargarDashboard = async () => {
     try {
       setCargando(true);
-
       const res = await fetch(
-        `http://localhost:5000/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
-        // `${API_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
-
+        `${API_BASE_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
       );
       const json = await res.json();
       console.log("Datos del Backend:", json); // Log para verificar datos recibidos

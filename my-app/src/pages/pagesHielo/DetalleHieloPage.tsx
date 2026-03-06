@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 
 import { useParams, Link } from "react-router-dom";
 import * as XLSX from "xlsx";
-// import { API_URL } from "../../config/api";
+import { API_BASE_URL } from "../../config";
 
 
 const DetalleHieloPage: React.FC = () => {
@@ -136,9 +136,7 @@ const DetalleHieloPage: React.FC = () => {
     setCargando(true);
 
     fetch(
-      `http://localhost:5000/api/hielo/detalle-hielo/${ruta}/${anio}/${mes}`
-      // `${API_URL}/api/hielo/detalle-hielo/${ruta}/${anio}/${mes}`
-
+      `${API_BASE_URL}/api/hielo/detalle-hielo/${ruta}/${anio}/${mes}`
     )
 
 

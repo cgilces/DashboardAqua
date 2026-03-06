@@ -10,7 +10,7 @@ import CostoPromedioProductos from "../../components/ComponentPreventa/CostoProm
 import { Header } from "../../components/common/Header";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
-// import { API_URL } from "../../config/api";
+import { API_BASE_URL } from '../../config';
 
 // Diccionario de meses
 const meses: Record<any, number> = {
@@ -65,7 +65,7 @@ export default function DashboardPreventa() {
 
       // Obtener los datos principales del dashboard
       const res = await fetch(
-        `http://localhost:5000/api/ventas/dashboard?anio=${anio}&mes=${mes}`
+        `${API_BASE_URL}/api/ventas/dashboard?anio=${anio}&mes=${mes}`
       );
       const data: any = await res.json();
       console.log("data que llegó del backend es:", data);

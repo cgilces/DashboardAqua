@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { API_BASE_URL } from '../../config';
+
 
 const DetalleRutaDescartable = () => {
     const { usuario } = useParams(); // R1, R2, etc.
@@ -15,7 +17,7 @@ const DetalleRutaDescartable = () => {
 
         // Realizamos la petición a la API
         fetch(
-            `http://localhost:5000/api/ventas/detalle-ruta-descartableporcanal/${usuario}/${anio}/${mes}`
+            `${API_BASE_URL}/api/ventas/detalle-ruta-descartableporcanal/${usuario}/${anio}/${mes}`
         )
             .then((res) => res.json())
             .then((json) => {

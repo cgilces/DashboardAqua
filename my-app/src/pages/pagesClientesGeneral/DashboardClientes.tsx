@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
+import { API_BASE_URL } from '../../config';
+
 
 type ClienteRow = {
   codigo: string; nombre: string; cedula: string; direccion: string; vendedor: string;
@@ -64,7 +66,7 @@ export default function DashboardClientesTabla() {
 
       try {
         const q   = searchQuery.trim();
-        const url = `http://localhost:5000/api/dashboard-clientes/resumen?page=${page}&limit=${LIMIT}` +
+        const url = `${API_BASE_URL}/api/dashboard-clientes/resumen?page=${page}&limit=${LIMIT}` +
                     (q ? `&buscar=${encodeURIComponent(q)}` : "");
 
         const res  = await fetch(url, { signal: ctrl.signal });
