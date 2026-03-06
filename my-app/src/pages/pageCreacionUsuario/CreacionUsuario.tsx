@@ -6,8 +6,6 @@ import {
     UserAddIcon,
     ChevronLeftIcon,
     ChevronRightIcon,
-    editIcon,
-    deleteIcon,
 } from "../../components/common/Icons";
 import Modal from "../../components/elements/Modal";
 import { Table, Column } from "../../components/elements/Table";
@@ -17,8 +15,8 @@ import DashboardLayout from "../../layout/DashboardLayout";
 import logo from "../../assets/logo.png";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import { DeleteIcon, EditIcon } from "lucide-react";
-
-const API = "http://localhost:5000/api/usuarios";
+import { useAuth } from "../../components/auth/AuthContext";
+import { API_BASE_URL } from '../../config';
 
 interface User {
     id: number;
@@ -151,6 +149,10 @@ const CenteredAlert = ({
 // ══════════════════════════════════════════════════════
 const CreacionUsuario: React.FC = () => {
 
+    const { user } = useAuth();
+    const isAdmin = (user?.role ?? "").toUpperCase() === "ADMIN";
+
+
     // ── Alert state ───────────────────────────────────
     const [alert, setAlert] = useState<AlertState>({
         visible: false, type: "success", message: "", closing: false
@@ -202,7 +204,7 @@ const CreacionUsuario: React.FC = () => {
     const cargarUsuarios = async () => {
         try {
             setLoadingList(true);
-            const res = await fetch(`${API}/listausuario`);
+            const res = await fetch(`${API_BASE_URL}/api/usuarios/listausuario`);
             const json = await res.json();
             if (!json.ok) throw new Error(json.msg);
             setUsers((json.usuarios || []).map((u: any) => ({
@@ -256,7 +258,7 @@ const CreacionUsuario: React.FC = () => {
 
         try {
             setSaving(true);
-            const url = editingUserId ? `${API}/editar/${editingUserId}` : `${API}/crear`;
+            const url = editingUserId ? `${API_BASE_URL}/api/usuarios/editar/${editingUserId}` : `${API_BASE_URL}/api/usuarios/crear`;
             const method = editingUserId ? "PUT" : "POST";
             const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
             const json = await res.json();
@@ -282,7 +284,7 @@ const CreacionUsuario: React.FC = () => {
         if (!userToDelete) return;
         const nombre = userToDelete.username;
         try {
-            const res = await fetch(`${API}/eliminar/${userToDelete.id}`, { method: "DELETE" });
+            const res = await fetch(`${API_BASE_URL}/api/usuarios/eliminar/${userToDelete.id}`, { method: "DELETE" });
             const json = await res.json();
             if (!json.ok) throw new Error(json.msg);
             showAlert(`Usuario "${nombre}" eliminado correctamente`, "success");
@@ -505,12 +507,11 @@ const CreacionUsuario: React.FC = () => {
                                     <label className="text-xs font-semibold uppercase tracking-widest text-[#5fa88a]/80 block mb-1.5">Rol</label>
                                     <select value={role} onChange={e => setRole(e.target.value)}
                                         className="w-full rounded-xl px-3.5 py-2.5 text-sm text-[#162b25] bg-white/95
-                      border border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-all duration-200">
+      border border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-all duration-200">
                                         <option value="VENDEDOR">Vendedor</option>
-                                        <option value="ADMIN">Administrador</option>
+                                        {isAdmin && <option value="ADMIN">Administrador</option>}
                                         <option value="DESPACHADOR">Despachador</option>
-                                        <option value="SUPERVISOR">SUPERVISOR</option>
-
+                                        <option value="SUPERVISOR">Supervisor</option>
                                     </select>
                                 </div>
 

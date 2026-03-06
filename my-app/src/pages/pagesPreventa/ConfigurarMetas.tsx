@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { BsSave, BsClipboardCheck, BsPencilSquare, BsTrash, BsXCircle, BsCheckCircle, BsPlus } from "react-icons/bs";
 import { API_BASE_URL } from '../../config';
 
-// const API_BASE_URL = "http://localhost:5000/API_BASE_URL/metas";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -55,7 +54,7 @@ export default function ConfigurarMetas() {
   const cargarMetas = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/metas/listarmetas`);
+      const res = await fetch(`${API_BASE_URL}/api/metas/listarmetas`);
       const data = await res.json();
       const lista: Meta[] = Array.isArray(data.metas) ? data.metas : [];
       setMetas(lista.sort((a, b) =>
@@ -74,7 +73,7 @@ export default function ConfigurarMetas() {
     }
     setGuardando(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/metas/guardarmetas`, {
+      const res = await fetch(`${API_BASE_URL}/api/metas/guardarmetas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -94,7 +93,7 @@ export default function ConfigurarMetas() {
   const confirmarEdicion = async () => {
     if (!editando) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/metas/editarmeta`, {
+      const res = await fetch(`${API_BASE_URL}/api/metas/editarmeta`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -117,7 +116,7 @@ export default function ConfigurarMetas() {
   const confirmarEliminar = async () => {
     if (!confirmDel) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/metas/eliminarmeta`, {
+      const res = await fetch(`${API_BASE_URL}/api/metas/eliminarmeta`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

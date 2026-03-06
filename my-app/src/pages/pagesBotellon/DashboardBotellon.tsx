@@ -10,11 +10,8 @@ import ChatFlotante from "../../components/elements/ChatFlotante";
 import { API_BASE_URL } from "../../config";
 
 
-
-
-
 /* ================================
-   📅 MESES
+    MESES
 ================================ */
 const meses: Record<string, number> = {
   Enero: 1,

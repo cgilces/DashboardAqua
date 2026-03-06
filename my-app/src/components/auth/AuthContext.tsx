@@ -3,7 +3,6 @@ import { User } from '../../types';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
 
-
 export type { User };
 
 interface AuthContextType {
@@ -14,37 +13,32 @@ interface AuthContextType {
   error: string | null;
 }
 
-// Asegúrate de que esta exportación esté correcta
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
+  const [user,    setUser]    = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
 
   // Recuperar sesión guardada
   useEffect(() => {
     const storedUser = localStorage.getItem('app_user_session');
     if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        localStorage.removeItem('app_user_session');
-      }
+      try { setUser(JSON.parse(storedUser)); }
+      catch (e) { localStorage.removeItem('app_user_session'); }
     }
   }, []);
 
-  // LOGIN usando backend PostgreSQL
   const login = async (usuario: string, clave: string) => {
     setLoading(true);
     setError(null);
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/login/inicio`, {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, clave }),
+        body:    JSON.stringify({ usuario, clave }),
       });
 
       const data = await res.json();
@@ -56,19 +50,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const loggedUser: User = {
-        id: data.user.id,
-        username: data.user.usuario,
-        role: data.user.rol,
+        id:              data.user.id,
+        username:        data.user.usuario,
+        role:            data.user.rol,
         assigned_routes: data.user.rutas_asignadas,
       };
 
       setUser(loggedUser);
       localStorage.setItem('app_user_session', JSON.stringify(loggedUser));
-      localStorage.setItem('app_token', data.token); // ← AGREGAR ESTO
+      localStorage.setItem('app_token', data.token);
 
+      // ── Redirección según rol ──────────────────────
+      if (loggedUser.role === "VENDEDOR") {
+        const ruta = Array.isArray(loggedUser.assigned_routes) && loggedUser.assigned_routes.length > 0
+          ? loggedUser.assigned_routes[0]
+          : null;
 
-      // Redirigir al dashboard después del login
-      navigate('/dashboard/preventa');
+        if (!ruta) {
+          setError("Tu usuario no tiene rutas asignadas. Contacta al administrador.");
+          setLoading(false);
+          return;
+        }
+
+        const now  = new Date();
+        const anio = now.getFullYear();
+        const mes  = now.getMonth() + 1;
+        navigate(`/dashboard/preventa`);
+
+      } else if (loggedUser.role === "SUPERVISOR") {
+        navigate('/dashboard/crearusuarios');
+
+      } else {
+        // ADMIN → dashboard principal
+        navigate('/dashboard/preventa');
+      }
 
     } catch (err: any) {
       console.error("Login error:", err);
@@ -79,16 +94,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    // Limpia estado
     setUser(null);
-
-    // Borra TODO el localStorage
     localStorage.clear();
-
-    // Redirige al login (ruta principal)
     navigate('/');
   };
-
 
   return (
     <AuthContext.Provider value={{ user, login, logout, loading, error }}>
@@ -97,7 +106,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-// Este es el hook que debes exportar correctamente
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth must be used within an AuthProvider');

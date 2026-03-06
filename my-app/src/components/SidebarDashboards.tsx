@@ -2,40 +2,53 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import "../css/Navbar.css";
 
-import {
-  BarChart,
-  Storefront,
-  Menu,
-  Close,
-} from "@mui/icons-material";
+import { BarChart, Menu, Close } from "@mui/icons-material";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
-import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
-import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import PeopleAltIcon     from "@mui/icons-material/PeopleAlt";
+import GroupAddIcon       from "@mui/icons-material/GroupAdd";
 
+import { useAuth } from "../components/auth/AuthContext"; // ← ajusta la ruta si difiere
 
+import logo               from "../assets/icono-plus.png";
+import botellon           from "../assets/botellon.png";
+import botelladescartable from "../assets/botelladescartable.png";
+import imagenhielo        from "../assets/imagen-hielo.png";
+import capsulamust        from "../assets/capsulamust.png";
 
-import logo from "../../src/assets/icono-plus.png";
-import botellon from "../../src/assets/botellon.png";
-import botelladescartable from "../../src/assets/botelladescartable.png";
-import imagenhielo from "../../src/assets/imagen-hielo.png";
-import capsulamust from "../../src/assets/capsulamust.png";
+// ─── Tipo con roles opcionales ────────────────────────
+type MenuItem = {
+  name:   string;
+  icon:   React.ReactNode;
+  path:   string;
+  roles?: string[]; // undefined = visible para todos
+};
+
+const ALL_MENU_ITEMS: MenuItem[] = [
+  { name: "CONSOLIDADO",   icon: <BarChart />,                                        path: "/dashboard/consolidado",   roles: ["ADMIN"] },
+  { name: "BOTELLÓN",      icon: <img src={botellon}           alt="botellon"    />,  path: "/dashboard/botellon",      roles: ["ADMIN"] },
+  { name: "DESCARTABLE",   icon: <img src={botelladescartable} alt="descartable" />,  path: "/dashboard/preventa",      roles: ["ADMIN", "SUPERVISOR"] },
+  { name: "HIELO",         icon: <img src={imagenhielo}        alt="hielo"       />,  path: "/dashboard/hielo",         roles: ["ADMIN"] },
+  { name: "PLUS",          icon: <img src={logo}               alt="plus"        />,  path: "/dashboard/plus",          roles: ["ADMIN"] },
+  { name: "CAFÉ",          icon: <img src={capsulamust}        alt="cafe"        />,  path: "/dashboard/cafe",          roles: ["ADMIN"] },
+  { name: "VISITAS RUTAS", icon: <LocalShippingIcon />,                               path: "/dashboard/rutas-visitas", roles: ["ADMIN"] },
+  { name: "CLIENTES",      icon: <PeopleAltIcon />,                                   path: "/dashboard/clientes",      roles: ["ADMIN"] },
+  {
+    name:  "USUARIOS",
+    icon:  <GroupAddIcon />,
+    path:  "/dashboard/crearusuarios",
+    roles: ["ADMIN", "SUPERVISOR"], // ADMIN y SUPERVISOR ven este ítem
+  },
+];
 
 export default function SidebarDashboards() {
   const [isOpen, setIsOpen] = useState(false);
-  const location = useLocation();
+  const location            = useLocation();
+  const { user }            = useAuth();
 
-  const menuItems = [
-    { name: "CONSOLIDADO", icon: <BarChart />, path: "/dashboard/consolidado" },
-    { name: "BOTELLÓN", icon: <img src={botellon} />, path: "/dashboard/botellon" },
-    { name: "DESCARTABLE", icon: <img src={botelladescartable} />, path: "/dashboard/preventa" },
-    { name: "HIELO", icon: <img src={imagenhielo} />, path: "/dashboard/hielo" },
-    { name: "PLUS", icon: <img src={logo} />, path: "/dashboard/plus" },
-    { name: "CAFÉ", icon: <img src={capsulamust} />, path: "/dashboard/cafe" },
-    { name: "VISITAS RUTAS", icon: <LocalShippingIcon />, path: "/dashboard/rutas-visitas" },
-    { name: "CLIENTES", icon: <PeopleAltIcon />, path: "/dashboard/clientes" },
-{ name: "CREAR_USUARIOS", icon: <GroupAddIcon />, path: "/dashboard/crearusuarios" },
-
-  ];
+  // Filtra ítems según el rol del usuario logueado
+  const menuItems = ALL_MENU_ITEMS.filter(
+    item => !item.roles || item.roles.includes(user?.role ?? "")
+  );
 
   return (
     <>
@@ -47,7 +60,6 @@ export default function SidebarDashboards() {
         <ul>
           {menuItems.map((item) => {
             const active = location.pathname.startsWith(item.path);
-
             return (
               <li key={item.name}>
                 <Link
