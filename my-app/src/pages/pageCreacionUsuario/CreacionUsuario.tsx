@@ -510,7 +510,7 @@ const CreacionUsuario: React.FC = () => {
       border border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-all duration-200">
                                         <option value="VENDEDOR">Vendedor</option>
                                         {isAdmin && <option value="ADMIN">Administrador</option>}
-                                        <option value="DESPACHADOR">Despachador</option>
+                                        {/* <option value="DESPACHADOR">Despachador</option> */}
                                         <option value="SUPERVISOR">Supervisor</option>
                                     </select>
                                 </div>

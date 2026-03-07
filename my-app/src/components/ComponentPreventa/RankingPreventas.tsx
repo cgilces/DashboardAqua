@@ -67,9 +67,25 @@ const SortIcon = ({
 /* ───────────────── COMPONENTE ───────────────── */
 
 const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
-  const navigate = useNavigate();
   const { user } = useAuth();
 
+  const isVendedor = user?.role === "VENDEDOR";
+
+  // 🔐 Calcular filas visibles ANTES de los hooks
+  const preventasFiltradas = isVendedor
+    ? (datos?.rankingPreventas || []).filter((p) => p.preventa === user?.username)
+    : datos?.rankingPreventas || [];
+
+  // ✅ Ocultar tabla si no hay datos o si el VENDEDOR no tiene filas aquí
+  if (!datos?.rankingPreventas?.length || (isVendedor && preventasFiltradas.length === 0)) {
+    return null;
+  }
+
+  return <RankingPreventa datos={datos} anio={anio} mes={mes} user={user} preventasFiltradas={preventasFiltradas} />;
+};
+
+const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Preventa[] }> = ({ datos, anio, mes, user, preventasFiltradas }) => {
+  const navigate = useNavigate();
   const isAdmin = user?.role === "ADMIN";
 
   const [sortConfig, setSortConfig] = useState<{
@@ -80,17 +96,7 @@ const RankingPreventas: React.FC<Props> = ({ datos, anio, mes }) => {
     direction: "asc",
   });
 
-  const [sortedData, setSortedData] = useState<Preventa[]>(
-    datos?.rankingPreventas || []
-  );
-
-  if (!datos?.rankingPreventas?.length) {
-    return (
-      <p className="text-center text-gray-400 py-4">
-        No hay datos disponibles
-      </p>
-    );
-  }
+  const [sortedData, setSortedData] = useState<Preventa[]>(preventasFiltradas);
 
   const preventas = sortedData;
 

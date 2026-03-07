@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import * as XLSX from "xlsx"; // Importar la librería XLSX para generar archivos Excel
-import { useAuth } from "../../components/auth/AuthContext"; // Importa el hook useAuth
+import * as XLSX from "xlsx";
+import { useAuth } from "../../components/auth/AuthContext";
 import { BsDownload } from "react-icons/bs";
 
 const RankingRutasR = ({
@@ -13,18 +13,42 @@ const RankingRutasR = ({
   anio: string;
   mes: string;
 }) => {
+  const { user } = useAuth();
+
+  const isVendedor = user?.role === "VENDEDOR";
+
+  // 🔐 Calcular filas visibles ANTES de los hooks
+  const dataFiltrada = isVendedor
+    ? (data || []).filter((r) => r.usuario === user?.username)
+    : data || [];
+
+  // ✅ Ocultar tabla si no hay datos o si el VENDEDOR no tiene filas aquí
+  if (!data || data.length === 0 || (isVendedor && dataFiltrada.length === 0)) {
+    return null;
+  }
+
+  return <RankingRutasInner data={data} anio={anio} mes={mes} user={user} dataFiltrada={dataFiltrada} />;
+};
+
+const RankingRutasInner = ({
+  data,
+  anio,
+  mes,
+  user,
+  dataFiltrada,
+}: {
+  data: any[];
+  anio: string;
+  mes: string;
+  user: any;
+  dataFiltrada: any[];
+}) => {
   const navigate = useNavigate();
-  // Obtener el rol del usuario desde el contexto
-  const { user } = useAuth();  // Accede al usuario desde el contexto de autenticación
-  const isVendedor = user?.role === "VENDEDOR";  // Compara el rol con "Vendedor"
-  const isAdmin = user?.role === "ADMIN";  // Compara el rol con "Admin"
+  const isVendedor = user?.role === "VENDEDOR";
+  const isAdmin = user?.role === "ADMIN";
 
   const [sortConfig, setSortConfig] = useState({ key: 'N*', direction: 'asc' });
-  const [sortedData, setSortedData] = useState(data);  // Datos ordenados
-
-  if (!data || data.length === 0) {
-    return <p className="text-gray-400 text-center">No hay datos para mostrar.</p>;
-  }
+  const [sortedData, setSortedData] = useState(dataFiltrada);
 
   // ============================
   // 🔢 CALCULO DE TOTALES
@@ -35,12 +59,11 @@ const RankingRutasR = ({
   const totalProyeccion = sortedData.reduce((acc, r) => acc + Number(r.proyeccion || 0), 0);
   const totalVsMesAnterior = sortedData.reduce((acc, r) => acc + (r.vsMesAnterior?.variacion_abs || 0), 0);
 
-  // Función para exportar a Excel
   const exportarTablaExcel = () => {
     if (!sortedData || sortedData.length === 0) return;
 
     try {
-      const rutaUpper = "Ranking Rutas"; // Si deseas agregar alguna otra variable aquí, puedes hacerlo
+      const rutaUpper = "Ranking Rutas";
 
       type ExcelRow = {
         "N*": number;
@@ -52,8 +75,6 @@ const RankingRutasR = ({
         "Vs Mes Anterior": string;
       };
 
-
-      // 1️⃣ Formato de los datos a exportar
       const datosExportar: ExcelRow[] = sortedData.map((r, index) => ({
         "N*": index + 1,
         Usuario: r.usuario,
@@ -67,15 +88,10 @@ const RankingRutasR = ({
           }) ?? "Sin datos",
       }));
 
-
-      // 2️⃣ Crear hoja de trabajo
       const ws = XLSX.utils.json_to_sheet(datosExportar);
-
-      // 3️⃣ Agregar título en A1
       const titulo = [`RANKING RUTAS - ${rutaUpper} - ${mes}/${anio}`];
       XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
 
-      // 4️⃣ Agregar la fila de totales
       const filaTotales = {
         "Ranking": "Total",
         "Usuario": "",
@@ -86,10 +102,8 @@ const RankingRutasR = ({
         "Vs Mes Anterior": totalVsMesAnterior.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       };
 
-      // Agregar fila de totales al final de la hoja
       XLSX.utils.sheet_add_json(ws, [filaTotales], { skipHeader: true, origin: -1 });
 
-      // 5️⃣ Auto-ajustar el ancho de las columnas
       const columnas = Object.keys(datosExportar[0]) as (keyof ExcelRow)[];
       ws["!cols"] = columnas.map((col) => {
         const maxLong = Math.max(
@@ -99,8 +113,6 @@ const RankingRutasR = ({
         return { wch: maxLong + 4 };
       });
 
-
-      // 6️⃣ Crear el libro de trabajo Excel
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "RankingRutas");
 
@@ -112,17 +124,6 @@ const RankingRutasR = ({
     }
   };
 
-
-
-
-
-
-
-
-
-
-
-  // Función para ordenar los datos
   const requestSort = (key: any) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -131,17 +132,15 @@ const RankingRutasR = ({
 
     setSortConfig({ key, direction });
 
-    const sorted = [...data].sort((a, b) => {
-      // Obtener el valor a comparar dependiendo de la clave
+    const sorted = [...dataFiltrada].sort((a, b) => {
       const aValue = key === 'vsMesAnterior'
-        ? a[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
-        : a[key]; // En el caso de otras columnas, simplemente usamos el valor
+        ? a[key]?.monto_anterior
+        : a[key];
 
       const bValue = key === 'vsMesAnterior'
-        ? b[key]?.monto_anterior // Acceder al valor dentro del objeto vsMesAnterior
-        : b[key]; // En el caso de otras columnas, simplemente usamos el valor
+        ? b[key]?.monto_anterior
+        : b[key];
 
-      // Comparar los valores
       if (typeof aValue === 'string' && typeof bValue === 'string') {
         return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
       }
@@ -156,49 +155,18 @@ const RankingRutasR = ({
     setSortedData(sorted);
   };
 
-
   return (
     <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
-      {/* Botón para exportar tabla a Excel */}
-      <div
-        className="
-    flex flex-col gap-4
-    md:flex-row md:items-center md:justify-between
-    mb-4
-  "
-      >
-        {/* TÍTULO */}
-        <h2
-          className="
-      text-lg md:text-xl
-      font-bold
-      px-4 py-2
-      text-blue-300
-      text-center md:text-left
-    "
-        >
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
+        <h2 className="text-lg md:text-xl font-bold px-4 py-2 text-blue-300 text-center md:text-left">
           RANKING R - DESCARTABLE
         </h2>
 
-        {/* BOTÓN EXPORTAR (solo admin) */}
         {isAdmin && (
-          <div className="flex gap-4 mb-4"> {/* Flexbox para alinear los botones */}
+          <div className="flex gap-4 mb-4">
             <button
               onClick={exportarTablaExcel}
-              className="
-          flex items-center justify-center gap-2
-          w-full md:w-auto
-          px-4 py-2
-          rounded-lg
-          border border-[#0db48b]/60
-          bg-[#0db48b]/20
-          text-white font-semibold
-          shadow-md
-          hover:bg-[#0db48b]/30
-          hover:shadow-lg
-          active:scale-[0.98]
-          transition-all
-        "
+              className="flex items-center justify-center gap-2 w-full md:w-auto px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold shadow-md hover:bg-[#0db48b]/30 hover:shadow-lg active:scale-[0.98] transition-all"
             >
               <BsDownload size={16} className="text-white shrink-0" />
               <span>Exportar</span>
@@ -207,51 +175,28 @@ const RankingRutasR = ({
         )}
       </div>
 
-
-
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
-            <th
-              className="px-4 py-3 text-left cursor-pointer"
-              onClick={() => requestSort('N*')}
-            >
+            <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort('N*')}>
               N* <span className="text-green-300">{sortConfig.key === 'N*' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th
-              className="px-4 py-3 text-left cursor-pointer"
-              onClick={() => requestSort('usuario')}
-            >
+            <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort('usuario')}>
               Usuario <span className="text-green-300">{sortConfig.key === 'usuario' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('unidades')}
-            >
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('unidades')}>
               Unidades <span className="text-green-300">{sortConfig.key === 'unidades' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('dolares')}
-            >
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('dolares')}>
               Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('meta')}
-            >
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('meta')}>
               Metas <span className="text-green-300">{sortConfig.key === 'meta' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('proyeccion')}
-            >
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('proyeccion')}>
               Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th
-              className="px-4 py-3 text-right cursor-pointer"
-              onClick={() => requestSort('vsMesAnterior')}
-            >
+            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('vsMesAnterior')}>
               Vs Mes Anterior <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
           </tr>
@@ -261,43 +206,29 @@ const RankingRutasR = ({
           {sortedData.map((r, index) => (
             <tr
               key={index}
-              onClick={() =>
-                navigate(`/ruta/${r.usuario}?anio=${anio}&mes=${mes}`)
-              }
+              onClick={() => navigate(`/ruta/${r.usuario}?anio=${anio}&mes=${mes}`)}
               className={`transition-all duration-200 cursor-pointer
                 ${index % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
                 hover:bg-[#016a57] hover:shadow-lg hover:text-white
                 border-l-4 border-transparent hover:border-green-400
               `}
             >
-              <td className="px-4 py-2 font-medium text-gray-100">
-                {index + 1}
-              </td>
-
+              <td className="px-4 py-2 font-medium text-gray-100">{index + 1}</td>
               <td className="px-4 py-2 text-blue-300 font-bold">{r.usuario}</td>
-
               <td className="px-4 py-2 text-right text-green-400 font-bold">
                 {Number(r.unidades).toLocaleString()}
               </td>
-
               <td className="px-4 py-2 text-right text-blue-300 font-bold">
-                ${Number(r.dolares).toLocaleString("es-EC", {
-                  minimumFractionDigits: 2
-                })}
+                ${Number(r.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
-
               <td className="px-4 py-2 text-right text-blue-300 font-bold">
-                ${Number(r.meta).toLocaleString("es-EC", {
-                  minimumFractionDigits: 2
-                })}
+                ${Number(r.meta).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
-
               <td className="px-4 py-2 text-right font-bold">
                 {(() => {
                   const meta = Number(r.meta) || 0;
                   const proy = Number(r.proyeccion) || 0;
                   const porcentajeCrecimiento = meta > 0 ? ((proy / meta - 1) * 100) : 0;
-
                   return (
                     <>
                       <span className={`text-${porcentajeCrecimiento > 0 ? 'green' : 'red'}-400`}>
@@ -310,11 +241,7 @@ const RankingRutasR = ({
                   );
                 })()}
               </td>
-
-              <td
-                className={`px-4 py-2 text-right font-bold ${(r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
-                  }`}
-              >
+              <td className={`px-4 py-2 text-right font-bold ${(r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
                 {!r.vsMesAnterior || r.vsMesAnterior.monto_anterior === 0 ? (
                   "Sin datos"
                 ) : (
@@ -322,27 +249,16 @@ const RankingRutasR = ({
                     const abs = Number(r.vsMesAnterior.variacion_abs) || 0;
                     const porc = r.vsMesAnterior.variacion_porc;
                     const signo = abs >= 0 ? "+" : "-";
-
                     return (
                       <>
-                        (
-                        {porc !== null
-                          ? `${porc >= 0 ? "+" : "-"}${Math.abs(porc).toFixed(2)}%`
-                          : "–"}
-                        )
+                        ({porc !== null ? `${porc >= 0 ? "+" : "-"}${Math.abs(porc).toFixed(2)}%` : "–"})
                         {" "}
-                        {signo}$
-                        {Math.abs(abs).toLocaleString("es-EC", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                        {signo}${Math.abs(abs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </>
                     );
                   })()
                 )}
               </td>
-
-
             </tr>
           ))}
         </tbody>

@@ -473,14 +473,6 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
             }
           }
 
-
-
-
-
-
-
-
-
           for (const d of detallesUnicos.values()) {
 
             // ===============================
