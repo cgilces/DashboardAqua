@@ -16,10 +16,10 @@ const {
   Orden,
   DetalleDocumento,
   SincronizacionVenta,
+  Producto
 } = require("../models");
 
 
-const Producto = require('../models/producto');
 
 // Verifica que esto esté importado correctamente en tu archivo de servicio
 const DireccionCliente = require('../models/DireccionCliente');

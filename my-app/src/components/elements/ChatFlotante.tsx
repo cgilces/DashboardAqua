@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "../../components/auth/AuthContext";
+import { API_BASE_URL } from '../../config';
 
 // ═══════════════════════════════════════════════════
 // TIPOS
@@ -154,7 +155,7 @@ const PDFCard: React.FC<{
     setDescargando(true);
     try {
       const token = localStorage.getItem("app_token") || "";
-      const res   = await fetch(`http://localhost:5000${pdfUrl}`, {
+      const res   = await fetch(`${API_BASE_URL}${pdfUrl}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("expirado");
@@ -267,7 +268,7 @@ const ChatFlotante: React.FC = () => {
     localStorage.removeItem(STORAGE_KEY);
     try {
       const token = localStorage.getItem("app_token") || "";
-      await fetch("http://localhost:5000/api/bot/limpiar", {
+      await fetch(`${API_BASE_URL}/api/bot/limpiar`, {
         method: "POST", headers: { Authorization: `Bearer ${token}` },
       });
     } catch {}
@@ -287,7 +288,7 @@ const ChatFlotante: React.FC = () => {
 
     try {
       const token = localStorage.getItem("app_token") || "";
-      const res   = await fetch("http://localhost:5000/api/bot/chat", {
+      const res   = await fetch(`${API_BASE_URL}/api/bot/chat`, {
         method:  "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body:    JSON.stringify({ mensaje: texto }),
