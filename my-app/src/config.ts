@@ -2,5 +2,5 @@
 const isProd = import.meta.env.PROD;
 
 export const API_BASE_URL = isProd
-    ? 'https://api.frecuencias.aqua.com.ec'
+    ? 'https://api.aqua.com.ec'
     : 'http://localhost:5000';
