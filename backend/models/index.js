@@ -17,7 +17,7 @@ const Ruta = require('./Ruta');
 const DetalleRuta = require('./DetalleRuta');
 const TipoNegocio = require('./tipos_negocio');
 const TipoDocumentoLatam = require('./TipoDocumentoLatam');
-const Producto = require('./producto'); // importante que coincida el nombre del archivo
+const Producto = require('./Producto'); // importante que coincida el nombre del archivo
 
 // =============================
 // RELACIONES

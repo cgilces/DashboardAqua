@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from '../../config';
 
 // URL para la sincronización
-const API_URL = "http://localhost:5000";
 
 const BotonRutasyDetalles = () => {
   /* =====================================================
@@ -18,7 +18,7 @@ const BotonRutasyDetalles = () => {
   useEffect(() => {
     console.log("📥 Cargando última fecha de sincronización...");
 
-    fetch(`${API_URL}/api/sync/last-sync`)
+    fetch(`${API_BASE_URL}/api/sync/last-sync`)
       .then(res => res.json())
       .then(data => {
         console.log("📥 Datos last-sync:", data);
@@ -42,7 +42,7 @@ const BotonRutasyDetalles = () => {
       setProgress(0);
 
       // Llamar a la URL de sincronización con las fechas
-      const url = `${API_URL}/api/visitas/sincronizarrutasydetalles`;
+      const url = `${API_BASE_URL}/api/visitas/sincronizarrutasydetalles`;
       console.log("🔗 URL sincronización:", url);
 
       // Cambiar a POST
