@@ -1,3 +1,4 @@
+// services/chatbotservicio/auditoria.js
 const sequelize = require("../../db");
 const logger = require("../../utils/logger");
 
@@ -13,12 +14,13 @@ async function registrar(usuario, rol, mensaje, sql) {
           usuario,
           rol,
           mensaje,
-          sql
-        }
+          sql,
+        },
       }
     );
   } catch (error) {
     logger.error("Error registrando auditoría:", error);
+    // No lanzar: la auditoría no debe frenar el flujo principal
   }
 }
 

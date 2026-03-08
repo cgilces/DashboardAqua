@@ -148,7 +148,7 @@ const PATRONES_CONVERSACIONAL = [
 ];
 
 const PALABRAS_CLAVE_SQL = new Set([
-  "venta","vendio","vendido","factura","orden","consumo","monto","total","ingreso","recaudacion",
+  "venta","vendio","vendido","factura","facturas","orden","consumo","monto","total","ingreso","recaudacion",
   "cliente","clientes","saldo","credito","negocio","direccion",
   "producto","productos","cantidad","categoria","precio","detalle",
   "ruta","rutas","preventas","televenta","vip","despacho","secuencia",
@@ -158,6 +158,15 @@ const PALABRAS_CLAVE_SQL = new Set([
   "sincronizacion","estado sync","registros sincronizados",
   "latitud","longitud","ubicacion","estado","activo","inactivo","proceso",
   "hielo","agua","botellon","botellones","galon","galones","pack","unidades",
+  // Palabras de temporalidad/recencia que se pierden sin keywords de dominio
+  "ultima","último","ultima factura","ultimo pedido","reciente","mas reciente","más reciente",
+  "primer","primero","primera","ultimo mes","ultima semana",
+  // Palabras de ranking/top
+  "top","ranking","mejor","mejores","mas vendido","más vendido","mas vendidos","más vendidos",
+  "mayor","mayores","menor","menores","mas alto","más alto","mas bajo","más bajo",
+  "best","most","least","highest","lowest",
+  // Palabras de resumen
+  "cuanto","cuantos","cuánto","cuántos","cuantas","cuántas","promedio","average",
   "reporte ventas","reporte clientes","reporte productos","reporte visitas",
   "reporte ruta","reporte vendedor","reporte sincronizacion","generar reporte",
   "exportar","informe de","pdf de"
@@ -449,10 +458,11 @@ Usa listas con viñetas si hay múltiples registros sin jerarquía clara.
 
 ## REGLAS PARA PREGUNTAS DE NEGOCIO FRECUENTES
 
-- "¿Cuál es el producto más vendido?" → Determina el primero en el ranking por cantidad total. Nunca asumas cuál es sin verificarlo en los datos.
-- "Top productos / Top clientes / Top vendedores" → Lista numerada, descendente por el criterio principal (cantidad o monto).
-- "¿Qué vendedor vendió más?" → Identifica el seller_code o nombre con el mayor monto/facturas en los resultados.
-- "Ventas por ruta / canal" → Agrupa y presenta por ruta/canal con sus totales.
+- "¿Cuál es el producto más vendido?" → El primer registro en los resultados ES el más vendido (la consulta ya viene ordenada DESC). Repórtalo exactamente como aparece. NUNCA reordenes ni cambies el orden.
+- "Top productos / Top clientes / Top vendedores" → Lista numerada siguiendo el ORDEN EXACTO de los registros recibidos (posición 1 = primer registro, posición 2 = segundo, etc.). No reordenes por tu cuenta.
+- "¿Qué vendedor vendió más?" → Toma el primer registro del resultado. Si tiene seller_code en lugar de nombre, preséntalo como código de vendedor.
+- "Ventas por ruta / canal" → Agrupa y presenta por ruta/canal con sus totales siguiendo el orden del resultado.
+- "¿Cuál fue la última factura?" → El primer registro del resultado ES la última (más reciente). Muestra código, cliente, fecha y monto.
 
 ## MANEJO DE DATOS INCOMPLETOS
 
@@ -485,10 +495,24 @@ Responde siempre en español.`
 // ═══════════════════════════════════════════════════
 // REINTENTO AUTOMÁTICO SQL
 // ═══════════════════════════════════════════════════
+function esErrorConexionDB(error) {
+  const msg = (error?.parent?.message || error?.message || "").toLowerCase();
+  return (
+    msg.includes("econnrefused") || msg.includes("etimedout") ||
+    msg.includes("enotfound") || msg.includes("connect") ||
+    error?.name === "SequelizeConnectionError" ||
+    error?.name === "SequelizeConnectionRefusedError" ||
+    error?.name === "SequelizeHostNotFoundError"
+  );
+}
+
 async function ejecutarConReintento(mensaje, rol, seller_code, sql) {
   try {
     return await ejecutarSQL(sql);
   } catch (sqlError) {
+    // Si es un error de conexión, no tiene sentido reintentar con SQL diferente
+    if (esErrorConexionDB(sqlError)) throw sqlError;
+
     const mensajeError = sqlError.parent?.message || sqlError.message || "Error";
     console.warn("⚠️  SQL falló, reintentando...", mensajeError);
     let sqlCorregido;
@@ -501,7 +525,10 @@ async function ejecutarConReintento(mensaje, rol, seller_code, sql) {
       const datos = await ejecutarSQL(sqlCorregido);
       console.log("✅ Reintento exitoso");
       return datos;
-    } catch { throw new Error("REINTENTO_FALLIDO"); }
+    } catch (retryErr) {
+      if (esErrorConexionDB(retryErr)) throw retryErr;
+      throw new Error("REINTENTO_FALLIDO");
+    }
   }
 }
 
@@ -727,6 +754,33 @@ async function chatHandler(req, res) {
 
   } catch (error) {
     console.error("❌ ERROR:", error);
+
+    // Detectar errores de conexión a la base de datos o a la API
+    const msg = (error.message || "").toLowerCase();
+    const isDbError =
+      msg.includes("connect") || msg.includes("connection") ||
+      msg.includes("econnrefused") || msg.includes("etimedout") ||
+      msg.includes("enotfound") || msg.includes("sequelize") ||
+      error.name === "SequelizeConnectionError" ||
+      error.name === "SequelizeConnectionRefusedError" ||
+      error.name === "SequelizeHostNotFoundError";
+
+    const isApiError =
+      msg.includes("openai") || msg.includes("api key") ||
+      msg.includes("rate limit") || msg.includes("quota") ||
+      error.status === 429 || error.status === 503;
+
+    if (isDbError) {
+      return res.status(500).json({
+        respuesta: "Hubo un problema temporal al conectar con el servidor de datos. Por favor intenta de nuevo en unos segundos.",
+      });
+    }
+    if (isApiError) {
+      return res.status(500).json({
+        respuesta: "El servicio de análisis está temporalmente saturado. Por favor intenta de nuevo en un momento.",
+      });
+    }
+
     return res.status(500).json({ respuesta: "Ocurrió un error interno. Por favor intenta de nuevo." });
   }
 }

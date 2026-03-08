@@ -1,24 +1,33 @@
+// services/chatbotservicio/generarSQL.js
+// Generador profesional de SQL seguro para PostgreSQL
+// Grupo Aqua ERP — v4 schema completo y corregido
+
 const OpenAI = require("openai");
 require("dotenv").config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-/**
- * Generador profesional de SQL seguro para PostgreSQL
- * Grupo Aqua ERP — v4 schema completo y corregido
- */
-async function generarSQL(pregunta, rol, sellerCode, sqlPrevioFallido = null, errorPrevio = null) {
+async function generarSQL(
+  pregunta,
+  rol,
+  sellerCode,
+  sqlPrevioFallido = null,
+  errorPrevio = null
+) {
   console.log("========== 🧠 GENERAR SQL ==========");
   console.log("Pregunta:", pregunta);
   console.log("Rol:", rol, "| SellerCode:", sellerCode);
   if (sqlPrevioFallido) console.log("🔁 Modo corrección activo");
 
   try {
-    const filtroVendedor = rol === "VENDEDOR" && sellerCode
-      ? `AND f.seller_code = '${sellerCode}'`
-      : "";
+    const filtroVendedor =
+      rol === "VENDEDOR" && sellerCode
+        ? `AND f.seller_code = '${sellerCode}'`
+        : "";
 
-    const contextoError = sqlPrevioFallido && errorPrevio ? `
+    const contextoError =
+      sqlPrevioFallido && errorPrevio
+        ? `
 =====================================================
 ⚠️  CORRECCIÓN REQUERIDA
 =====================================================
@@ -31,7 +40,8 @@ ${sqlPrevioFallido}
 
 Analiza el error y genera un SQL corregido y válido.
 =====================================================
-` : "";
+`
+        : "";
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -44,9 +54,9 @@ Analiza el error y genera un SQL corregido y válido.
           schema: {
             type: "object",
             properties: { sql: { type: "string" } },
-            required: ["sql"]
-          }
-        }
+            required: ["sql"],
+          },
+        },
       },
       messages: [
         {
@@ -527,6 +537,22 @@ LEFT JOIN clientes_usuarios_ventas cuv ON c.codigo_cliente = cuv.codigo_cliente
 LEFT JOIN rutas r ON cuv.ruta_code = r.codigo
 WHERE r.codigo = 'PV1' AND c.estado_cliente = 1
 
+── Última factura / factura más reciente / last invoice ──
+SELECT f.code, c.nombre_cliente, f.fecha_creacion,
+       f.total, f.estado_pago, f.seller_code
+FROM facturas f
+LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
+ORDER BY f.fecha_creacion DESC
+LIMIT 1
+
+── Últimas N facturas ──
+SELECT f.code, c.nombre_cliente, f.fecha_creacion,
+       f.total, f.estado_pago
+FROM facturas f
+LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
+ORDER BY f.fecha_creacion DESC
+LIMIT 10
+
 ── Top vendedores ──
 SELECT f.seller_code,
        COUNT(f.id_factura) AS total_facturas,
@@ -544,13 +570,67 @@ LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
 WHERE f.estado_pago IN ('not_paid', 'partial')
 ORDER BY f.fecha_vencimiento ASC
 
+── TODAS las facturas de un día (sin LIMIT) ──
+SELECT f.code, c.nombre_cliente, f.fecha_creacion,
+       f.total, f.estado_pago, f.seller_code, f.route_code
+FROM facturas f
+LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
+WHERE DATE(f.fecha_creacion) = '2026-03-06'
+ORDER BY f.fecha_creacion ASC
+-- ↑ Sin LIMIT: el sistema aplica automáticamente LIMIT 5000 de seguridad
+
 =====================================================
 RANKINGS
 =====================================================
 
-Si piden top/ranking/mayor/más vendido:
-ORDER BY ... DESC
+⚠️  REGLA DE LÍMITES — CRÍTICO
+─────────────────────────────────────────────────────
+
+✔ Si piden top / ranking / mayor / más vendido / los X mejores:
+  → Agregar: ORDER BY ... DESC  LIMIT <N solicitado, default 20>
+
+✔ Si piden LISTADO COMPLETO (todas las facturas, todos los clientes,
+  reporte de un día, reporte de un mes, etc.):
+  → NO agregar LIMIT. El sistema aplica su propio límite de seguridad (5000).
+
+✔ Si el usuario especifica un número ("dame las 50 últimas facturas"):
+  → Usar ese número exacto: LIMIT 50
+
+✔ Ejemplos de cuando NO poner LIMIT:
+  "todas las facturas del 6 de marzo"  → sin LIMIT
+  "listado de clientes activos"         → sin LIMIT
+  "reporte de ventas del mes"           → sin LIMIT
+  "todas las visitas de hoy"            → sin LIMIT
+
+=====================================================
+⚠️  RANKING DE PRODUCTOS — REGLA CRÍTICA
+=====================================================
+
+Cuando el usuario pregunte por "producto más vendido", "top productos",
+"qué producto se vende más", "best selling product", etc.:
+
+SIEMPRE agrupa por d.codigo_producto (NO por d.descripcion).
+Haz JOIN con la tabla productos para obtener el nombre legible.
+Así evitas que variantes de descripción fragmenten el mismo producto.
+
+PATRÓN OBLIGATORIO para ranking de productos:
+
+SELECT
+  p.nombre_producto,
+  p.codigo_producto,
+  COALESCE(SUM(d.cantidad), 0) AS total_vendido,
+  COALESCE(SUM(d.total), 0)    AS monto_total
+FROM detalle_documento d
+JOIN facturas f ON d.documento_code = f.code
+LEFT JOIN productos p ON d.codigo_producto = p.codigo_producto
+WHERE f.status NOT IN (3, 99)   -- excluir canceladas/anuladas
+GROUP BY p.codigo_producto, p.nombre_producto
+ORDER BY total_vendido DESC
 LIMIT 20
+
+Si el usuario acota a un período, agrega:
+  AND DATE(f.fecha_creacion) >= DATE_TRUNC('month', CURRENT_DATE)
+(o el rango que corresponda).
 
 =====================================================
 FILTRO VENDEDOR (se aplica automáticamente según rol)
@@ -564,13 +644,13 @@ SALIDA — RESPONDER SOLO EN JSON:
 =====================================================
 
 { "sql": "SELECT ..." }
-`
+`,
         },
         {
           role: "user",
-          content: pregunta
-        }
-      ]
+          content: pregunta,
+        },
+      ],
     });
 
     const response = completion.choices[0].message.content;
@@ -584,8 +664,12 @@ SALIDA — RESPONDER SOLO EN JSON:
     // Validaciones de seguridad
     const forbiddenPatterns = [
       /--/g,
-      /\bINSERT\b/i, /\bUPDATE\b/i, /\bDELETE\b/i,
-      /\bDROP\b/i,   /\bALTER\b/i,  /\bTRUNCATE\b/i
+      /\bINSERT\b/i,
+      /\bUPDATE\b/i,
+      /\bDELETE\b/i,
+      /\bDROP\b/i,
+      /\bALTER\b/i,
+      /\bTRUNCATE\b/i,
     ];
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(query)) throw new Error("SQL contiene patrón prohibido.");

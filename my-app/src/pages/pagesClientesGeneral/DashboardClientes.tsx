@@ -47,7 +47,7 @@ export default function DashboardClientesTabla() {
   const [sortKey, setSortKey] = useState<SortKey>("");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const LIMIT = 200;
+  const LIMIT = 10000;
 
   // ── Debounce 400ms → actualiza searchQuery ────────────────────────
   useEffect(() => {

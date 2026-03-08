@@ -258,7 +258,7 @@ exports.obtenerProductosCliente = async (req, res) => {
       GROUP BY p.nombre_producto
 
       ORDER BY total_producto DESC NULLS LAST
-      LIMIT 200
+      LIMIT 10000
 
     `;
 
