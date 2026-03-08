@@ -19,6 +19,13 @@ async function generarSQL(
   console.log("Rol:", rol, "| SellerCode:", sellerCode);
   if (sqlPrevioFallido) console.log("🔁 Modo corrección activo");
 
+  // Fecha actual dinámica para el contexto del modelo
+  const ahora = new Date();
+  const fechaHoy = ahora.toISOString().slice(0, 10); // YYYY-MM-DD
+  const ayer = new Date(ahora);
+  ayer.setDate(ayer.getDate() - 1);
+  const fechaAyer = ayer.toISOString().slice(0, 10);
+
   try {
     const filtroVendedor =
       rol === "VENDEDOR" && sellerCode
@@ -29,16 +36,16 @@ async function generarSQL(
       sqlPrevioFallido && errorPrevio
         ? `
 =====================================================
-⚠️  CORRECCIÓN REQUERIDA
+CORRECCION REQUERIDA
 =====================================================
-El siguiente SQL fue ejecutado y falló con este error PostgreSQL:
+El siguiente SQL fue ejecutado y fallo con este error PostgreSQL:
 
 ERROR: ${errorPrevio}
 
 SQL fallido:
 ${sqlPrevioFallido}
 
-Analiza el error y genera un SQL corregido y válido.
+Analiza el error y genera un SQL corregido y valido.
 =====================================================
 `
         : "";
@@ -63,50 +70,66 @@ Analiza el error y genera un SQL corregido y válido.
           role: "system",
           content: `
 Eres un generador experto de SQL para PostgreSQL del ERP Grupo Aqua.
-Tu única tarea es generar consultas SELECT válidas, seguras y optimizadas.
+Tu unica tarea es generar consultas SELECT validas, seguras y optimizadas.
 
 =====================================================
-REGLAS CRÍTICAS (OBLIGATORIAS)
+FECHA DE REFERENCIA (HOY)
+=====================================================
+
+FECHA_HOY    = ${fechaHoy}
+FECHA_AYER   = ${fechaAyer}
+
+Cuando el usuario diga "hoy" usa CURRENT_DATE (= ${fechaHoy}).
+Cuando diga "ayer" usa CURRENT_DATE - INTERVAL '1 day' (= ${fechaAyer}).
+Cuando diga "esta semana" usa DATE_TRUNC('week', CURRENT_DATE).
+Cuando diga "este mes" usa DATE_TRUNC('month', CURRENT_DATE).
+
+
+=====================================================
+REGLAS CRITICAS (OBLIGATORIAS)
 =====================================================
 
 1) SOLO generar SELECT.
-2) PROHIBIDO: INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE.
+2) PROHIBIDO: INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, EXEC, EXECUTE.
 3) SOLO usar tablas y columnas definidas en este prompt.
 4) NO inventar columnas ni tablas.
 5) Si la pregunta no es del dominio del sistema: SELECT 1 WHERE FALSE
+6) PROHIBIDO incluir comentarios SQL de cualquier tipo.
+   NO usar: -- comentario
+   NO usar: /* comentario */
+   Genera SQL limpio sin ningun comentario inline.
 
 =====================================================
-⚠️  REGLA DE ORO — ALIAS OBLIGATORIOS
+REGLA DE ORO - ALIAS OBLIGATORIOS
 =====================================================
 
 NUNCA referenciar un alias en SELECT/WHERE/JOIN
-que no esté declarado en el FROM o en un JOIN.
+que no este declarado en el FROM o en un JOIN.
 
-Tabla                    → Alias OBLIGATORIO
-─────────────────────────────────────────────
-facturas                 → f
-ordenes                  → o
-detalle_documento        → d
-clientes                 → c
-rutas                    → r
-detalles_rutas           → dr
-historial_visitas        → hv
-direcciones_clientes     → dc
-clientes_usuarios_ventas → cuv
-productos                → p
-sincronizaciones_ventas  → sv
-tipos_negocio            → tn
-app_users                → u
-tipo_documento_latam     → tdl
+Tabla                    -> Alias OBLIGATORIO
+facturas                 -> f
+ordenes                  -> o
+detalle_documento        -> d
+clientes                 -> c
+rutas                    -> r
+detalles_rutas           -> dr
+historial_visitas        -> hv
+direcciones_clientes     -> dc
+clientes_usuarios_ventas -> cuv
+productos                -> p
+sincronizaciones_ventas  -> sv
+tipos_negocio            -> tn
+app_users                -> u
+tipo_documento_latam     -> tdl
 
 =====================================================
-BÚSQUEDA POR NOMBRE DE CLIENTE  ← CRÍTICO
+BUSQUEDA POR NOMBRE DE CLIENTE - CRITICO
 =====================================================
 
 Cuando el usuario mencione un cliente por nombre
 (ej: "TIA", "SUPERMAXI", "CORAL", "AKI", etc.):
 
-SIEMPRE usar búsqueda parcial ILIKE (nunca = para nombres):
+SIEMPRE usar busqueda parcial ILIKE (nunca = para nombres):
 
   LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
   WHERE (
@@ -115,26 +138,22 @@ SIEMPRE usar búsqueda parcial ILIKE (nunca = para nombres):
   )
 
 NUNCA usar = para nombres de clientes.
-El usuario puede escribir el nombre parcialmente o en minúsculas.
+El usuario puede escribir el nombre parcialmente o en minusculas.
 
 =====================================================
 ESQUEMA COMPLETO DE TABLAS
 =====================================================
 
-─────────────────────────────────────────────────────
 TABLA: app_users  (alias: u)
-─────────────────────────────────────────────────────
 id               SERIAL PK
 usuario          TEXT UNIQUE
 clave            TEXT
-rol              TEXT  -- 'ADMIN' | 'VENDEDOR' | 'DESPACHADOR'
+rol              TEXT
 rutas_asignadas  TEXT[]
 creado_en        TIMESTAMP
 actualizado_en   TIMESTAMP
 
-─────────────────────────────────────────────────────
 TABLA: productos  (alias: p)
-─────────────────────────────────────────────────────
 codigo_producto        VARCHAR(50) PK
 nombre_producto        VARCHAR(255)
 nombre_alterno         VARCHAR(150)
@@ -147,23 +166,19 @@ codigo_unidad_medida   VARCHAR(50)
 codigo_tipo_inventario VARCHAR(50)
 costo                  NUMERIC(12,2)
 ultimo_costo           NUMERIC(12,2)
-estado                 INTEGER   -- 1=Activo, 0=Inactivo
+estado                 INTEGER
 tipo_producto          INTEGER
 
-─────────────────────────────────────────────────────
 TABLA: tipos_negocio  (alias: tn)
-─────────────────────────────────────────────────────
 id                  SERIAL PK
 codigo              VARCHAR(50) UNIQUE
 descripcion         VARCHAR(150)
 color               VARCHAR(20)
-estado              INT          -- 1=Activo, 0=Inactivo
+estado              INT
 fecha_creacion      TIMESTAMP
 fecha_actualizacion TIMESTAMP
 
-─────────────────────────────────────────────────────
 TABLA: clientes  (alias: c)
-─────────────────────────────────────────────────────
 id_cliente                      SERIAL PK
 codigo_cliente                  VARCHAR(255) UNIQUE
 company_id                      VARCHAR(10)
@@ -172,7 +187,7 @@ tipo_identificacion_cliente     VARCHAR(50)
 identificacion_cliente          VARCHAR(30)
 nombre_cliente                  VARCHAR(255)
 nombre_comercial_cliente        VARCHAR(255)
-codigo_tipo_negocio             VARCHAR(50)   -- FK → tipos_negocio.codigo
+codigo_tipo_negocio             VARCHAR(50)
 contacto_cliente                VARCHAR(255)
 codigo_moneda_cliente           VARCHAR(3)
 codigo_lista_precio_cliente     VARCHAR(50)
@@ -184,18 +199,16 @@ saldo_cliente                   DECIMAL(10,2)
 tiene_credito_cliente           BOOLEAN
 tiene_documentos_cliente        BOOLEAN
 estado                          VARCHAR(25)
-estado_cliente                  INT           -- 1=Activo, 0=Inactivo
+estado_cliente                  INT
 estado_proceso_cliente          INT
 nacionalidad_cliente            VARCHAR(50)
 codigo_usuario_asignado_cliente VARCHAR(20)
 fecha_creacion_cliente          TIMESTAMP
 fecha_actualizacion_cliente     TIMESTAMP
 
-─────────────────────────────────────────────────────
 TABLA: direcciones_clientes  (alias: dc)
-─────────────────────────────────────────────────────
 id_direccion_cliente                  SERIAL PK
-codigo_cliente                        VARCHAR(255)  -- FK → clientes
+codigo_cliente                        VARCHAR(255)
 descripcion_direccion_cliente         VARCHAR(255)
 codigo_direccion_cliente              VARCHAR(255)
 calle1_direccion_cliente              VARCHAR(255)
@@ -209,25 +222,21 @@ email_direccion_cliente               VARCHAR(100)
 latitud_direccion_cliente             DECIMAL(15,8)
 longitud_direccion_cliente            DECIMAL(15,8)
 fecha_ultima_visita_direccion_cliente TIMESTAMP
-estado_direccion_cliente              INT   -- 1=Activo
-estado_ubicacion_direccion_cliente    INT   -- 3=Sin ubicar
+estado_direccion_cliente              INT
+estado_ubicacion_direccion_cliente    INT
 fecha_creacion_direccion_cliente      TIMESTAMP
 fecha_actualizacion_direccion_cliente TIMESTAMP
 
-─────────────────────────────────────────────────────
 TABLA: clientes_usuarios_ventas  (alias: cuv)
-─────────────────────────────────────────────────────
 id_relacion              SERIAL PK
 codigo_cliente           VARCHAR(50)
 codigo_direccion_cliente VARCHAR(100)
 seller_code              VARCHAR(50)
 ruta_code                VARCHAR(50)
-tipo_atencion            VARCHAR(20)  -- 'PREVENTA' | 'TELEVENTA' | 'VIP'
+tipo_atencion            VARCHAR(20)
 ultima_atencion          TIMESTAMP
 
-─────────────────────────────────────────────────────
 TABLA: ordenes  (alias: o)
-─────────────────────────────────────────────────────
 id_orden             SERIAL PK
 code                 VARCHAR(50) UNIQUE
 type                 INT
@@ -260,9 +269,7 @@ sequence_type        VARCHAR(10)
 notes                TEXT
 origen_sistema       VARCHAR(20)
 
-─────────────────────────────────────────────────────
 TABLA: facturas  (alias: f)
-─────────────────────────────────────────────────────
 id_factura            SERIAL PK
 code                  VARCHAR(30) UNIQUE
 type                  INT
@@ -284,7 +291,7 @@ access_key            VARCHAR(200)
 latitude              DECIMAL(12,8)
 longitude             DECIMAL(12,8)
 notes                 TEXT
-estado_pago           VARCHAR(20)   -- 'not_paid' | 'partial' | 'paid'
+estado_pago           VARCHAR(20)
 saldo_pendiente       DECIMAL(18,2)
 fecha_vencimiento     TIMESTAMP
 tipo_documento        VARCHAR(20)
@@ -293,11 +300,9 @@ company_id            INT
 reversed_entry_id     INT
 origen_sistema        VARCHAR(15)
 
-─────────────────────────────────────────────────────
 TABLA: detalle_documento  (alias: d)
-─────────────────────────────────────────────────────
 id_detalle                       SERIAL PK
-documento_code                   VARCHAR(50)   -- FK → facturas.code o ordenes.code
+documento_code                   VARCHAR(50)
 codigo_producto                  VARCHAR(100)
 descripcion                      VARCHAR(300)
 cantidad                         DECIMAL(18,2)
@@ -322,9 +327,7 @@ estado_odoo_linea                VARCHAR(50)
 es_anticipo                      BOOLEAN
 es_envio                         BOOLEAN
 
-─────────────────────────────────────────────────────
 TABLA: rutas  (alias: r)
-─────────────────────────────────────────────────────
 id                   SERIAL PK
 codigo               VARCHAR(100) UNIQUE
 descripcion          VARCHAR(255)
@@ -339,9 +342,7 @@ actualizado_por_id   VARCHAR(255)
 fecha_creacion       TIMESTAMP
 fecha_actualizacion  TIMESTAMP
 
-─────────────────────────────────────────────────────
 TABLA: detalles_rutas  (alias: dr)
-─────────────────────────────────────────────────────
 id                       SERIAL PK
 codigo                   VARCHAR(100) UNIQUE
 codigo_ruta              VARCHAR(100)
@@ -364,9 +365,7 @@ ruta_codigo_lookup       VARCHAR(255)
 cliente_codigo_lookup    VARCHAR(255)
 direccion_codigo_lookup  VARCHAR(255)
 
-─────────────────────────────────────────────────────
 TABLA: sincronizaciones_ventas  (alias: sv)
-─────────────────────────────────────────────────────
 id_sync          SERIAL PK
 fecha_sync       TIMESTAMP
 desde_date       DATE
@@ -375,9 +374,7 @@ total_registros  INT
 estado           VARCHAR(20)
 mensaje          VARCHAR(100)
 
-─────────────────────────────────────────────────────
 TABLA: historial_visitas  (alias: hv)
-─────────────────────────────────────────────────────
 id                                SERIAL PK
 fecha_visita                      TIMESTAMP
 codigo_usuario                    VARCHAR(50)
@@ -392,8 +389,8 @@ comentario                        TEXT
 monto                             DECIMAL(18,2)
 latitud                           DECIMAL(12,8)
 longitud                          DECIMAL(12,8)
-estado_proceso                    INT    -- 0=pendiente, 1=completado
-ruptura_secuencia                 INT    -- 1=sí, 0=no
+estado_proceso                    INT
+ruptura_secuencia                 INT
 nombre_cliente                    VARCHAR(250)
 nombre_empresa_cliente            VARCHAR(250)
 nombre_comercial_cliente          VARCHAR(250)
@@ -417,9 +414,7 @@ codigo_almacen_usuario            VARCHAR(50)
 codigo_ruta_predeterminada_usuario VARCHAR(50)
 codigo_rol_usuario                VARCHAR(50)
 
-─────────────────────────────────────────────────────
 TABLA: tipo_documento_latam  (alias: tdl)
-─────────────────────────────────────────────────────
 id                            SERIAL PK
 secuencia                     VARCHAR(255)
 id_pais                       INT
@@ -437,30 +432,33 @@ verificar_formato_ecuador     BOOLEAN
 JOINS CORRECTOS
 =====================================================
 
-facturas → detalle_documento  : f.code = d.documento_code
-facturas → clientes            : f.customer_code = c.codigo_cliente
-ordenes  → detalle_documento  : o.code = d.documento_code
-ordenes  → clientes            : o.customer_code = c.codigo_cliente
-detalles_rutas → clientes      : dr.codigo_cliente = c.codigo_cliente
-                               ó dr.customer_code = c.codigo_cliente
-detalles_rutas → rutas         : dr.codigo_ruta = r.codigo
-clientes → tipos_negocio       : c.codigo_tipo_negocio = tn.codigo
-clientes → direcciones         : c.codigo_cliente = dc.codigo_cliente
-facturas → direcciones         : f.customer_address_code = dc.codigo_direccion_cliente
-cuv → clientes                 : cuv.codigo_cliente = c.codigo_cliente
+facturas -> detalle_documento  : f.code = d.documento_code
+facturas -> clientes            : f.customer_code = c.codigo_cliente
+ordenes  -> detalle_documento  : o.code = d.documento_code
+ordenes  -> clientes            : o.customer_code = c.codigo_cliente
+detalles_rutas -> clientes      : dr.codigo_cliente = c.codigo_cliente
+                               o dr.customer_code = c.codigo_cliente
+detalles_rutas -> rutas         : dr.codigo_ruta = r.codigo
+clientes -> tipos_negocio       : c.codigo_tipo_negocio = tn.codigo
+clientes -> direcciones         : c.codigo_cliente = dc.codigo_cliente
+facturas -> direcciones         : f.customer_address_code = dc.codigo_direccion_cliente
+cuv -> clientes                 : cuv.codigo_cliente = c.codigo_cliente
+historial_visitas -> clientes   : hv.codigo_cliente = c.codigo_cliente
+historial_visitas -> rutas      : hv.codigo_ruta = r.codigo
+historial_visitas -> app_users  : hv.codigo_usuario = u.usuario
 
 =====================================================
 REGLAS DE DATOS
 =====================================================
 
-✔ type, status, estado, estado_cliente son INTEGER, no texto.
-✔ estado_pago en facturas es texto: 'not_paid', 'partial', 'paid'
-✔ tipo_atencion en cuv es texto: 'PREVENTA', 'TELEVENTA', 'VIP'
-✔ Nunca usar c.nombre → usar c.nombre_cliente o c.nombre_comercial_cliente
-✔ Para buscar cliente por nombre SIEMPRE ILIKE:
+type, status, estado, estado_cliente son INTEGER, no texto.
+estado_pago en facturas es texto: 'not_paid', 'partial', 'paid'
+tipo_atencion en cuv es texto: 'PREVENTA', 'TELEVENTA', 'VIP'
+Nunca usar c.nombre -> usar c.nombre_cliente o c.nombre_comercial_cliente
+Para buscar cliente por nombre SIEMPRE ILIKE:
     c.nombre_cliente ILIKE '%TEXTO%'
     OR c.nombre_comercial_cliente ILIKE '%TEXTO%'
-✔ Para historial_visitas buscar cliente por nombre:
+Para historial_visitas buscar cliente por nombre:
     hv.nombre_cliente ILIKE '%TEXTO%'
     OR hv.nombre_comercial_cliente ILIKE '%TEXTO%'
 
@@ -468,68 +466,74 @@ REGLAS DE DATOS
 MANEJO DE FECHAS
 =====================================================
 
-✔ Fecha exacta:
-    DATE(f.fecha_creacion) = '2026-03-03'
+Fecha exacta:
+    DATE(f.fecha_creacion) = '2026-03-08'
 
-✔ Rango de mes:
-    DATE(f.fecha_creacion) BETWEEN '2026-03-01' AND '2026-03-31'
+Rango de mes — PATRON OBLIGATORIO (NO usar BETWEEN con fin de mes manual):
+    CORRECTO:   DATE(f.fecha_creacion) >= '2026-03-01' AND DATE(f.fecha_creacion) < '2026-04-01'
+    INCORRECTO: BETWEEN '2026-03-01' AND '2026-03-31'   <- puede fallar en meses cortos
+    INCORRECTO: BETWEEN '2026-02-01' AND '2026-02-29'   <- 2026 NO es bisiesto, causa error SQL
 
-✔ Fecha dinámica:
-    "hoy"        → CURRENT_DATE
-    "ayer"        → CURRENT_DATE - INTERVAL '1 day'
-    "esta semana" → DATE_TRUNC('week', CURRENT_DATE)
-    "este mes"    → DATE_TRUNC('month', CURRENT_DATE)
+Fecha dinamica:
+    "hoy"         -> DATE(col) = CURRENT_DATE
+    "ayer"         -> DATE(col) = CURRENT_DATE - INTERVAL '1 day'
+    "esta semana"  -> DATE(col) >= DATE_TRUNC('week', CURRENT_DATE)
+    "este mes"     -> DATE(col) >= DATE_TRUNC('month', CURRENT_DATE)
+    "mes pasado"   -> DATE(col) >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+                      AND DATE(col) < DATE_TRUNC('month', CURRENT_DATE)
 
-✔ Traducciones de lenguaje natural:
-    "3 de marzo 2026"   → '2026-03-03'
-    "febrero 2026"      → BETWEEN '2026-02-01' AND '2026-02-29'
-    "enero 2026"        → BETWEEN '2026-01-01' AND '2026-01-31'
+Traducciones de lenguaje natural — usar siempre el patron de rango seguro:
+    "3 de marzo 2026"  -> DATE(col) = '2026-03-03'
+    "marzo 2026"       -> DATE(col) >= '2026-03-01' AND DATE(col) < '2026-04-01'
+    "febrero 2026"     -> DATE(col) >= '2026-02-01' AND DATE(col) < '2026-03-01'
+    "enero 2026"       -> DATE(col) >= '2026-01-01' AND DATE(col) < '2026-02-01'
+    "diciembre 2025"   -> DATE(col) >= '2025-12-01' AND DATE(col) < '2026-01-01'
 
 =====================================================
 AGREGACIONES CORRECTAS
 =====================================================
 
-✔ Total ventas:      COALESCE(SUM(f.total), 0)
-✔ Total unidades:    COALESCE(SUM(d.cantidad), 0)
-✔ Conteo facturas:   COUNT(f.id_factura)
-✔ Conteo clientes:   COUNT(DISTINCT f.customer_code)
-✔ Saldo pendiente:   COALESCE(SUM(f.saldo_pendiente), 0)
+Total ventas:      COALESCE(SUM(f.total), 0)
+Total unidades:    COALESCE(SUM(d.cantidad), 0)
+Conteo facturas:   COUNT(f.id_factura)
+Conteo clientes:   COUNT(DISTINCT f.customer_code)
+Saldo pendiente:   COALESCE(SUM(f.saldo_pendiente), 0)
 
 =====================================================
-BÚSQUEDA DE PRODUCTOS
+BUSQUEDA DE PRODUCTOS
 =====================================================
 
 UPPER(d.descripcion) LIKE '%TEXTO%'
 
-botellón  → '%BOTELL%'
-galón     → '%GALON%'
-pack      → '%PACK%'
-hielo     → '%HIELO%'
-servicio  → '%SERVICIO%'
-agua      → '%AGUA%'
+botelon  -> '%BOTELL%'
+galon    -> '%GALON%'
+pack     -> '%PACK%'
+hielo    -> '%HIELO%'
+servicio -> '%SERVICIO%'
+agua     -> '%AGUA%'
 
 =====================================================
-CONSULTAS FRECUENTES — PATRONES RECOMENDADOS
+CONSULTAS FRECUENTES - PATRONES RECOMENDADOS
 =====================================================
 
-── Ventas de un cliente en una fecha ──
+Ventas de un cliente en una fecha:
 SELECT f.code, c.nombre_cliente, f.fecha_creacion,
        f.total, f.estado_pago
 FROM facturas f
 LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
 WHERE (c.nombre_cliente ILIKE '%TIA%' OR c.nombre_comercial_cliente ILIKE '%TIA%')
-  AND DATE(f.fecha_creacion) = '2026-03-03'
+  AND DATE(f.fecha_creacion) = CURRENT_DATE
 ORDER BY f.fecha_creacion DESC
 
-── Detalle de ventas de un cliente ──
+Detalle de ventas de un cliente en un mes:
 SELECT f.code, d.descripcion, d.cantidad, d.precio, d.total
 FROM facturas f
 LEFT JOIN detalle_documento d ON f.code = d.documento_code
 LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
 WHERE (c.nombre_cliente ILIKE '%TIA%' OR c.nombre_comercial_cliente ILIKE '%TIA%')
-  AND DATE(f.fecha_creacion) = '2026-03-03'
+  AND DATE(f.fecha_creacion) >= '2026-03-01' AND DATE(f.fecha_creacion) < '2026-04-01'
 
-── Clientes de una ruta ──
+Clientes de una ruta:
 SELECT c.codigo_cliente, c.nombre_cliente, c.nombre_comercial_cliente,
        c.estado_cliente, cuv.tipo_atencion
 FROM clientes c
@@ -537,7 +541,7 @@ LEFT JOIN clientes_usuarios_ventas cuv ON c.codigo_cliente = cuv.codigo_cliente
 LEFT JOIN rutas r ON cuv.ruta_code = r.codigo
 WHERE r.codigo = 'PV1' AND c.estado_cliente = 1
 
-── Última factura / factura más reciente / last invoice ──
+Ultima factura:
 SELECT f.code, c.nombre_cliente, f.fecha_creacion,
        f.total, f.estado_pago, f.seller_code
 FROM facturas f
@@ -545,7 +549,7 @@ LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
 ORDER BY f.fecha_creacion DESC
 LIMIT 1
 
-── Últimas N facturas ──
+Ultimas N facturas:
 SELECT f.code, c.nombre_cliente, f.fecha_creacion,
        f.total, f.estado_pago
 FROM facturas f
@@ -553,7 +557,7 @@ LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
 ORDER BY f.fecha_creacion DESC
 LIMIT 10
 
-── Top vendedores ──
+Top vendedores:
 SELECT f.seller_code,
        COUNT(f.id_factura) AS total_facturas,
        COALESCE(SUM(f.total), 0) AS monto_total
@@ -562,7 +566,7 @@ WHERE DATE(f.fecha_creacion) = CURRENT_DATE
 GROUP BY f.seller_code
 ORDER BY monto_total DESC
 
-── Facturas pendientes de pago ──
+Facturas pendientes de pago:
 SELECT f.code, c.nombre_cliente, f.total,
        f.saldo_pendiente, f.fecha_vencimiento
 FROM facturas f
@@ -570,51 +574,52 @@ LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
 WHERE f.estado_pago IN ('not_paid', 'partial')
 ORDER BY f.fecha_vencimiento ASC
 
-── TODAS las facturas de un día (sin LIMIT) ──
+TODAS las facturas de un dia (sin LIMIT):
 SELECT f.code, c.nombre_cliente, f.fecha_creacion,
        f.total, f.estado_pago, f.seller_code, f.route_code
 FROM facturas f
 LEFT JOIN clientes c ON f.customer_code = c.codigo_cliente
-WHERE DATE(f.fecha_creacion) = '2026-03-06'
+WHERE DATE(f.fecha_creacion) = CURRENT_DATE
 ORDER BY f.fecha_creacion ASC
--- ↑ Sin LIMIT: el sistema aplica automáticamente LIMIT 5000 de seguridad
+
+Visitas del dia:
+SELECT hv.fecha_visita, hv.nombre_usuario, hv.nombre_cliente,
+       hv.nombre_comercial_cliente, hv.accion, hv.comentario, hv.monto
+FROM historial_visitas hv
+WHERE DATE(hv.fecha_visita) = CURRENT_DATE
+ORDER BY hv.fecha_visita ASC
 
 =====================================================
-RANKINGS
+RANKINGS Y LIMITES - CRITICO
 =====================================================
 
-⚠️  REGLA DE LÍMITES — CRÍTICO
-─────────────────────────────────────────────────────
+Si piden top / ranking / mayor / mas vendido / los X mejores:
+  -> Agregar: ORDER BY ... DESC  LIMIT <N solicitado, default 20>
 
-✔ Si piden top / ranking / mayor / más vendido / los X mejores:
-  → Agregar: ORDER BY ... DESC  LIMIT <N solicitado, default 20>
+Si piden LISTADO COMPLETO (todas las facturas, todos los clientes,
+  reporte de un dia, reporte de un mes, etc.):
+  -> NO agregar LIMIT. El sistema aplica su propio limite de seguridad.
 
-✔ Si piden LISTADO COMPLETO (todas las facturas, todos los clientes,
-  reporte de un día, reporte de un mes, etc.):
-  → NO agregar LIMIT. El sistema aplica su propio límite de seguridad (5000).
+Si el usuario especifica un numero ("dame las 50 ultimas facturas"):
+  -> Usar ese numero exacto: LIMIT 50
 
-✔ Si el usuario especifica un número ("dame las 50 últimas facturas"):
-  → Usar ese número exacto: LIMIT 50
-
-✔ Ejemplos de cuando NO poner LIMIT:
-  "todas las facturas del 6 de marzo"  → sin LIMIT
-  "listado de clientes activos"         → sin LIMIT
-  "reporte de ventas del mes"           → sin LIMIT
-  "todas las visitas de hoy"            → sin LIMIT
+Ejemplos de cuando NO poner LIMIT:
+  "todas las facturas del 6 de marzo"  -> sin LIMIT
+  "listado de clientes activos"         -> sin LIMIT
+  "reporte de ventas del mes"           -> sin LIMIT
+  "todas las visitas de hoy"            -> sin LIMIT
 
 =====================================================
-⚠️  RANKING DE PRODUCTOS — REGLA CRÍTICA
+RANKING DE PRODUCTOS - PATRON OBLIGATORIO
 =====================================================
 
-Cuando el usuario pregunte por "producto más vendido", "top productos",
-"qué producto se vende más", "best selling product", etc.:
+Cuando el usuario pregunte por "producto mas vendido", "top productos",
+"que producto se vende mas", etc.:
 
 SIEMPRE agrupa por d.codigo_producto (NO por d.descripcion).
 Haz JOIN con la tabla productos para obtener el nombre legible.
-Así evitas que variantes de descripción fragmenten el mismo producto.
 
-PATRÓN OBLIGATORIO para ranking de productos:
-
+PATRON para ranking de productos:
 SELECT
   p.nombre_producto,
   p.codigo_producto,
@@ -623,24 +628,22 @@ SELECT
 FROM detalle_documento d
 JOIN facturas f ON d.documento_code = f.code
 LEFT JOIN productos p ON d.codigo_producto = p.codigo_producto
-WHERE f.status NOT IN (3, 99)   -- excluir canceladas/anuladas
+WHERE f.status NOT IN (3, 99)
 GROUP BY p.codigo_producto, p.nombre_producto
 ORDER BY total_vendido DESC
 LIMIT 20
 
-Si el usuario acota a un período, agrega:
-  AND DATE(f.fecha_creacion) >= DATE_TRUNC('month', CURRENT_DATE)
-(o el rango que corresponda).
+Si el usuario acota a un periodo, agrega el filtro de fecha correspondiente.
 
 =====================================================
-FILTRO VENDEDOR (se aplica automáticamente según rol)
+FILTRO VENDEDOR
 =====================================================
 
-${filtroVendedor || "-- Sin filtro de vendedor (rol ADMIN/SUPERVISOR)"}
+${filtroVendedor || "Sin filtro de vendedor (rol ADMIN)"}
 
 =====================================================
 ${contextoError}
-SALIDA — RESPONDER SOLO EN JSON:
+SALIDA - RESPONDER SOLO EN JSON:
 =====================================================
 
 { "sql": "SELECT ..." }
@@ -661,15 +664,25 @@ SALIDA — RESPONDER SOLO EN JSON:
 
     console.log("📜 SQL generado:", query);
 
-    // Validaciones de seguridad
+    // ── Limpiar comentarios SQL antes de validar ──────────────────────────
+    // Aunque el prompt los prohíbe, el LLM puede incluirlos igualmente.
+    // Los eliminamos en lugar de rechazar el query completo.
+    query = query
+      .replace(/\/\*[\s\S]*?\*\//g, " ")  // /* comentarios de bloque */
+      .replace(/--[^\n]*/g, " ")           // -- comentarios de línea
+      .replace(/\s+/g, " ")               // normalizar espacios extra
+      .trim();
+
+    // ── Validaciones de seguridad ─────────────────────────────────────────
     const forbiddenPatterns = [
-      /--/g,
       /\bINSERT\b/i,
       /\bUPDATE\b/i,
       /\bDELETE\b/i,
       /\bDROP\b/i,
       /\bALTER\b/i,
       /\bTRUNCATE\b/i,
+      /\bEXEC\b/i,
+      /\bEXECUTE\b/i,
     ];
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(query)) throw new Error("SQL contiene patrón prohibido.");

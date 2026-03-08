@@ -468,7 +468,10 @@ Usa listas con viñetas si hay múltiples registros sin jerarquía clara.
 
 - Si los resultados están truncados (más de 50 registros), agrégalo al final:
   "ℹ️ Se muestran los primeros 50 resultados de un total de [N]."
-- Si algún campo relevante está vacío o nulo, omítelo en la respuesta (no mostrar "null" ni "N/A").
+- Si algún campo está vacío, null o "null" como texto, omítelo completamente en la respuesta.
+- Si seller_code aparece sin nombre del vendedor, preséntalo como "Vendedor [código]".
+- Si un monto es 0 o null, no lo menciones a menos que sea relevante para la consulta.
+- NUNCA muestres corchetes, llaves, comillas, ni ningún símbolo técnico de JSON en la respuesta.
 
 ## TONO
 
@@ -591,7 +594,11 @@ async function chatHandler(req, res) {
     // RAMA: DESCONOCIDO (sin historial)
     // ════════════════════════════════════════════════
     if (intencion === INTENCION.DESCONOCIDO) {
-      const respuesta = "No estoy seguro de entender tu consulta. Puedo ayudarte con ventas, clientes, productos, rutas y reportes. ¿Podrías ser más específico?";
+      // Si pide PDF sin contexto, dar una guía útil
+      const esPedidoPDF = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
+      const respuesta = esPedidoPDF
+        ? "Para generar el reporte necesito saber qué datos incluir. Por ejemplo: \"reporte de ventas de hoy\", \"reporte del cliente TIA de marzo\" o \"reporte por ruta\"."
+        : "No estoy seguro de entender tu consulta. Puedo ayudarte con ventas, clientes, productos, rutas, visitas y reportes. ¿Podrías indicar qué información necesitas?";
       agregarAlHistorial(usuario, "user", mensaje);
       agregarAlHistorial(usuario, "assistant", respuesta);
       return res.json({ respuesta });

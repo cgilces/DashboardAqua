@@ -1,9 +1,9 @@
 // services/chatbotservicio/generarRespuesta.js
 const OpenAI = require("openai");
-const config = require("../../db");
+require("dotenv").config();
 
 const openai = new OpenAI({
-  apiKey: config.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 // Si hay más de este número de filas se envía un resumen estadístico
