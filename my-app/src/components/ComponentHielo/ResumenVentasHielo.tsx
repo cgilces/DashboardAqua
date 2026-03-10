@@ -219,22 +219,22 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
-            <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort("usuario")}>
+            <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("usuario")}>
               Usuario {iconoOrden("usuario")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("cantidadVendida")}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("cantidadVendida")}>
               Unidades {iconoOrden("cantidadVendida")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("totalConIVA")}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("totalConIVA")}>
               Dólares {iconoOrden("totalConIVA")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("meta")}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("meta")}>
               Meta {iconoOrden("meta")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("proyeccion")}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("proyeccion")}>
               Proyección {iconoOrden("proyeccion")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort("vsMesAnterior")}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("vsMesAnterior")}>
               Vs Mes Anterior {iconoOrden("vsMesAnterior")}
             </th>
           </tr>

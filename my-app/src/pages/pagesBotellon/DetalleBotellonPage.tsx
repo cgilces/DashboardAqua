@@ -379,7 +379,7 @@ const DetalleBotellonPage: React.FC = () => {
                   <th
                     key={key}
                     onClick={() => requestSort(key)}
-                    className="px-4 py-3 cursor-pointer"
+                    className="px-4 py-3 cursor-pointer hover:text-white transition-colors select-none"
                   >
                     {label}
                     <span className="text-[#6BAF8E] ml-1">

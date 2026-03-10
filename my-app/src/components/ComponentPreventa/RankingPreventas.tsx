@@ -212,7 +212,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
   }) => (
     <th
       onClick={() => requestSort(k)}
-      className={`px-4 py-3 text-${align} cursor-pointer whitespace-nowrap`}
+      className={`px-4 py-3 text-${align} cursor-pointer hover:text-white transition-colors select-none whitespace-nowrap`}
     >
       {label}
       <SortIcon col={k} cfg={sortConfig} />

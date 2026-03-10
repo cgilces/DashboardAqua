@@ -317,7 +317,7 @@ export default function DashboardRutasVisitas() {
                   ].map(([key, label], index) => (
                     <th
                       key={`${key}-${index}`}  // Aquí se usa un índice para asegurarse de que las claves sean únicas
-                      className="px-4 py-3 text-center cursor-pointer min-w-[150px]"
+                      className="px-4 py-3 text-center cursor-pointer hover:text-white transition-colors select-none min-w-[150px]"
                       onClick={() => requestSort(key)}
                     >
                       {label}

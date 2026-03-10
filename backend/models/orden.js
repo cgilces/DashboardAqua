@@ -59,10 +59,9 @@ const Orden = sequelize.define('Orden', {
     allowNull: true
   },
 
-
   descripcion_company: {
     type: DataTypes.STRING(60),
-    allowNull: true, // Puedes cambiarlo a `false` si es obligatorio
+    allowNull: true,
   },
 
   fuente_id: {
@@ -121,7 +120,6 @@ const Orden = sequelize.define('Orden', {
     allowNull: true
   },
 
-
   // =========================
   // OTROS
   // =========================
@@ -132,6 +130,103 @@ const Orden = sequelize.define('Orden', {
   concept_origin: DataTypes.STRING,
   sequence_type: DataTypes.STRING,
   notes: DataTypes.TEXT,
+
+  // =========================
+  // CLIENTE / COMERCIAL (desnormalizados)
+  // =========================
+  customer_nombre: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+
+  seller_nombre: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+
+  equipo_ventas_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+
+  equipo_ventas_nombre: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+
+  // =========================
+  // MONETARIO
+  // =========================
+  margen: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    defaultValue: 0
+  },
+
+  margen_porcentaje: {
+    type: DataTypes.DECIMAL(6, 2),
+    allowNull: true,
+    defaultValue: 0
+  },
+
+  // =========================
+  // PAGO
+  // =========================
+  payment_term_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+
+  payment_term_nombre: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+
+  // =========================
+  // LOGÍSTICA
+  // =========================
+  almacen_nombre: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+
+  transportista_nombre: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+
+  peso_total: {
+    type: DataTypes.DECIMAL(10, 3),
+    allowNull: true,
+    defaultValue: 0
+  },
+
+  // =========================
+  // TRAZABILIDAD
+  // =========================
+  source_document: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+
+  etiquetas: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+
+  customer_address_code: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+
+  // =========================
+  // VÍNCULO MOBILVENDOR
+  // Permite unificar órdenes de Odoo con su documento origen en MobilVendor
+  // =========================
+  mobilvendor_id: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
 
 }, {
   tableName: 'ordenes',

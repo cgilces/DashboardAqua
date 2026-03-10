@@ -1,104 +1,134 @@
 // controllers/sincronizacionController.js
-const sequelize = require("../../db");  // Importar la conexión sequelize
-const { sincronizarVentasRango } = require("../../services/sincronizacionService");
+const sequelize = require("../../db");
+const { sincronizarVentasRango }        = require("../../services/sincronizacionService");
+const { sincronizarOdooCompletoRango }  = require("../../services/odooServicio/sincronizacionOdooService");
 const syncState = require("./syncState");
 
-
-
-// Función para obtener la última fecha de sincronización
+// ================================================================
+// GET /api/sync/last-sync
+// ================================================================
 const getLastSync = async (req, res) => {
   try {
-    // Realizar la consulta SQL para obtener la última fecha de sincronización
-    const result = await sequelize.query('SELECT hasta_date FROM sincronizaciones_ventas ORDER BY fecha_sync DESC LIMIT 1', {
-      type: sequelize.QueryTypes.SELECT
-    });
+    const result = await sequelize.query(
+      "SELECT hasta_date FROM sincronizaciones_ventas ORDER BY fecha_sync DESC LIMIT 1",
+      { type: sequelize.QueryTypes.SELECT }
+    );
 
-    // Verificar si se obtuvieron resultados
     if (result.length === 0) {
       return res.status(404).json({ error: "No se encontró una fecha de sincronización." });
     }
 
-    // Extraer la fecha de sincronización
-    const lastSyncDate = result[0].hasta_date;
-    console.log("Fecha de sincronización obtenida:", lastSyncDate);  // Verificar el valor
+    const lastSyncDate  = result[0].hasta_date;
+    const formattedDate = lastSyncDate
+      ? new Date(lastSyncDate).toISOString().split("T")[0]
+      : null;
 
-    // Formatear la fecha a formato ISO (YYYY-MM-DDTHH:mm:ss.sssZ)
-    const formattedDate = lastSyncDate ? new Date(lastSyncDate).toISOString().split('T')[0] : null;  // Obtener solo la fecha sin la hora
-
-    // Devolver la respuesta en formato legible (solo la fecha)
-    res.json({
-      lastSync: formattedDate,
-    });
+    res.json({ lastSync: formattedDate });
   } catch (error) {
-    console.error('Error al obtener la última fecha de sincronización:', error);
-    res.status(500).json({ error: "Error al obtener la última fecha de sincronización", detalle: error.message });
+    console.error("Error al obtener la última fecha de sincronización:", error);
+    res.status(500).json({
+      error  : "Error al obtener la última fecha de sincronización",
+      detalle: error.message,
+    });
   }
 };
 
+// ================================================================
+// GET /api/sync/sincronizar
+// Dispara MobilVendor + Odoo en paralelo en background
+// ================================================================
 const sincronizarVentas = async (req, res) => {
   try {
     if (syncState.running) {
-      return res.status(409).json({
-        error: "Ya existe una sincronización en curso"
-      });
+      return res.status(409).json({ error: "Ya existe una sincronización en curso" });
     }
 
+    // ── Parsear fechas ──────────────────────────────────────────
     let { anio, mes, desde, hasta } = req.query;
-    let startDate;
-    let endDate;
+    let startDate, endDate;
 
     if (desde && hasta) {
       startDate = desde;
-      endDate = hasta;
+      endDate   = hasta;
     } else if (anio && mes) {
       const anioNum = Number(anio);
-      const mesNum = Number(mes);
-
-      if (!anioNum || !mesNum) {
-        return res.status(400).json({
-          error: "anio y mes deben ser numéricos"
-        });
-      }
+      const mesNum  = Number(mes);
+      if (!anioNum || !mesNum)
+        return res.status(400).json({ error: "anio y mes deben ser numéricos" });
 
       const mesStr = String(mesNum).padStart(2, "0");
-      startDate = `${anioNum}-${mesStr}-01`;
+      startDate    = `${anioNum}-${mesStr}-01`;
       const lastDay = new Date(anioNum, mesNum, 0).getDate();
-      endDate = `${anioNum}-${mesStr}-${String(lastDay).padStart(2, "0")}`;
+      endDate      = `${anioNum}-${mesStr}-${String(lastDay).padStart(2, "0")}`;
     } else {
-      return res.status(400).json({
-        error: "Debe enviar anio&mes o desde&hasta"
-      });
+      return res.status(400).json({ error: "Debe enviar anio&mes o desde&hasta" });
     }
 
-    console.log(`🚀 [SYNC] Iniciando sincronización ${startDate} → ${endDate}`);
+    console.log(`\n🚀 [SYNC] Iniciando sincronización paralela ${startDate} → ${endDate}`);
 
-    // Inicializar estado
-    syncState.running = true;
-    syncState.startDate = startDate;
-    syncState.endDate = endDate;
-    syncState.page = 0;
-    syncState.total = 0;
-    syncState.error = null;
-    syncState.startedAt = new Date();
-    syncState.finishedAt = null;
+    // ── Inicializar estado de progreso ──────────────────────────
+    Object.assign(syncState, {
+      running   : true,
+      startDate,
+      endDate,
+      page      : 0,
+      total     : 0,
+      percent   : 0,
+      error     : null,
+      startedAt : new Date(),
+      finishedAt: null,
+      // Info adicional de cada fuente
+      mobilvendor: { estado: "EN_PROCESO", errores: 0 },
+      odoo       : { estado: "EN_PROCESO", errores: 0 },
+    });
 
-    // 🔥 Ejecutar en background
-    sincronizarVentasRango(startDate, endDate, syncState)
-      .then(() => {
-        syncState.running = false;
-        syncState.finishedAt = new Date();
-        console.log("✅ [SYNC] Sincronización finalizada");
-      })
-      .catch(err => {
-        syncState.running = false;
-        syncState.error = err.message;
-        console.error("❌ [SYNC] Error:", err.message);
-      });
+    // ── Ejecutar ambas en paralelo en background ────────────────
+    Promise.allSettled([
+      sincronizarVentasRango(startDate, endDate, syncState),
+      sincronizarOdooCompletoRango(startDate, endDate),
+    ]).then(([resMV, resOdoo]) => {
 
-    // RESPUESTA INMEDIATA
-    res.json({
-      mensaje: "Sincronización iniciada",
-      rango: { desde: startDate, hasta: endDate }
+      // MobilVendor
+      if (resMV.status === "fulfilled") {
+        syncState.mobilvendor.estado  = "COMPLETADO";
+        syncState.mobilvendor.errores = resMV.value?.erroresPorDocumento?.length ?? 0;
+        console.log("✅ [MobilVendor] Sincronización finalizada");
+      } else {
+        syncState.mobilvendor.estado = "ERROR";
+        syncState.mobilvendor.error  = resMV.reason?.message;
+        console.error("❌ [MobilVendor] Error:", resMV.reason?.message);
+      }
+
+      // Odoo
+      if (resOdoo.status === "fulfilled") {
+        syncState.odoo.estado = "COMPLETADO";
+        console.log("✅ [Odoo] Sincronización finalizada");
+      } else {
+        syncState.odoo.estado = "ERROR";
+        syncState.odoo.error  = resOdoo.reason?.message;
+        console.error("❌ [Odoo] Error:", resOdoo.reason?.message);
+      }
+
+      // Finalizar estado global
+      const hayErrores =
+        resMV.status === "rejected" || resOdoo.status === "rejected";
+
+      syncState.running    = false;
+      syncState.percent    = 100;
+      syncState.finishedAt = new Date();
+      syncState.error      = hayErrores
+        ? "Una o más fuentes terminaron con errores. Revisar logs."
+        : null;
+
+      console.log(`\n📊 [SYNC] Resultado final:`);
+      console.log(`   MobilVendor : ${syncState.mobilvendor.estado}`);
+      console.log(`   Odoo        : ${syncState.odoo.estado}`);
+    });
+
+    // ── Respuesta inmediata ─────────────────────────────────────
+    return res.json({
+      mensaje: "Sincronización iniciada (MobilVendor + Odoo en paralelo)",
+      rango  : { desde: startDate, hasta: endDate },
     });
 
   } catch (error) {
@@ -107,8 +137,4 @@ const sincronizarVentas = async (req, res) => {
   }
 };
 
-
-module.exports = {
-  sincronizarVentas,
-  getLastSync
-};
+module.exports = { sincronizarVentas, getLastSync };

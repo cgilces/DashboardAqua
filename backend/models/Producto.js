@@ -39,6 +39,62 @@ const Producto = sequelize.define('Producto', {
 
   tipo_producto: DataTypes.INTEGER,
 
+  origen_sistema: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  nombre_producto_completo: {   // nombre largo/técnico
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+
+  unidad_medida: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+
+  unidad_medida_compra: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+
+  activo: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true,
+    defaultValue: true
+  },
+
+  descripcion_venta: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+
+  // tipo_producto ya lo tienes pero es INTEGER,
+  // en Odoo viene como STRING (storable/consumable/service)
+  // cambia a:
+  tipo_producto: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+
+  precio: {                     // list_price — no lo tienes en el modelo
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true
+  },
+
+  peso: {
+    type: DataTypes.DECIMAL(10, 3),
+    allowNull: true,
+    defaultValue: 0
+  },
+
+  volumen: {
+    type: DataTypes.DECIMAL(10, 3),
+    allowNull: true,
+    defaultValue: 0
+  },
+
 }, {
   tableName: 'productos',
   timestamps: false,

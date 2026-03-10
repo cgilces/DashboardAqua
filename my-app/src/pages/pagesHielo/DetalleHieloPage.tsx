@@ -439,7 +439,7 @@ const DetalleHieloPage: React.FC = () => {
                       ].map(([label, key]) => (
                         <th
                           key={key}
-                          className="px-4 py-3 text-left cursor-pointer"
+                          className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none"
                           onClick={() => requestSort(key)}
                         >
                           {label}

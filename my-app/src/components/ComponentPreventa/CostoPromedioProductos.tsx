@@ -229,7 +229,7 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
                     <thead className="bg-[#014434] text-green-300 uppercase text-xs sticky top-0 z-20">
                         <tr>
                             <th
-                                className="px-4 py-3 text-left w-44 cursor-pointer"
+                                className="px-4 py-3 text-left w-44 cursor-pointer hover:text-white transition-colors select-none"
                                 onClick={() => requestSort("preventa")}
                             >
                                 Preventa
@@ -238,13 +238,13 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
                             {CATEGORIAS.map((cat) => (
                                 <React.Fragment key={`head-${cat}`}>
                                     <th
-                                        className="px-4 py-3 text-right w-24 cursor-pointer"
+                                        className="px-4 py-3 text-right w-24 cursor-pointer hover:text-white transition-colors select-none"
                                         onClick={() => requestSort(`c_${cat}`)}
                                     >
                                         {cat}
                                     </th>
                                     <th
-                                        className="px-4 py-3 text-right w-28 cursor-pointer"
+                                        className="px-4 py-3 text-right w-28 cursor-pointer hover:text-white transition-colors select-none"
                                         onClick={() => requestSort(`v_${cat}`)}
                                     >
                                         VS ANT

@@ -84,35 +84,35 @@ export default function TopClientes({
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
             <th
-              className="px-4 py-3 text-left cursor-pointer"
+              className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none"
               onClick={() => handleSort("cliente")}
             >
               Cliente
             </th>
 
             <th
-              className="px-4 py-3 text-right cursor-pointer"
+              className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
               onClick={() => handleSort("montoActual")}
             >
               Mes Actual (USD)
             </th>
 
             <th
-              className="px-4 py-3 text-right cursor-pointer"
+              className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
               onClick={() => handleSort("montoAnterior")}
             >
               Mes Anterior (USD)
             </th>
 
             <th
-              className="px-4 py-3 text-right cursor-pointer"
+              className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
               onClick={() => handleSort("variacionMontoAbs")}
             >
               Variación
             </th>
 
             <th
-              className="px-4 py-3 text-right cursor-pointer"
+              className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
               onClick={() => handleSort("variacionMontoPorc")}
             >
               %

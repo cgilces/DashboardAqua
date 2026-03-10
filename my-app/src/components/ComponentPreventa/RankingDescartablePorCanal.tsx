@@ -234,7 +234,7 @@ const RankingDescartablePorCanal = ({
             <th className="px-4 py-3 text-left">Canal</th>
             <th
               onClick={() => requestSort("seller_code")}
-              className="px-4 py-3 text-left cursor-pointer select-none"
+              className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none"
             >
               Usuario{" "}
               <span className="text-green-300">
@@ -243,11 +243,11 @@ const RankingDescartablePorCanal = ({
                   : "↕"}
               </span>
             </th>
-            <th onClick={() => requestSort("unidades")}     className="px-4 py-3 text-right cursor-pointer">Unidades ↕</th>
-            <th onClick={() => requestSort("dolares")}      className="px-4 py-3 text-right cursor-pointer">USD ↕</th>
-            <th onClick={() => requestSort("meta")}         className="px-4 py-3 text-right cursor-pointer">Meta ↕</th>
-            <th onClick={() => requestSort("proyeccion")}   className="px-4 py-3 text-right cursor-pointer">Proyección ↕</th>
-            <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer">Vs Mes Ant ↕</th>
+            <th onClick={() => requestSort("unidades")}     className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Unidades ↕</th>
+            <th onClick={() => requestSort("dolares")}      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">USD ↕</th>
+            <th onClick={() => requestSort("meta")}         className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Meta ↕</th>
+            <th onClick={() => requestSort("proyeccion")}   className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Proyección ↕</th>
+            <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Vs Mes Ant ↕</th>
           </tr>
         </thead>
 

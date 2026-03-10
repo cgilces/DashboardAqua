@@ -145,7 +145,53 @@ const DetalleDocumento = sequelize.define(
       type: DataTypes.BOOLEAN,
       allowNull: true,
       defaultValue: false
-    }
+    },
+    // =========================
+    // DESNORMALIZADOS (evitan JOINs en dashboard)
+    // =========================
+    producto_nombre: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+
+    producto_categoria: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+
+    producto_codigo_interno: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+
+    // =========================
+    // MARGEN
+    // =========================
+    margen_linea: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      defaultValue: 0
+    },
+
+    margen_porcentaje_linea: {
+      type: DataTypes.DECIMAL(6, 2),
+      allowNull: true,
+      defaultValue: 0
+    },
+
+    // =========================
+    // OTROS
+    // =========================
+    unidad_medida: {
+      type: DataTypes.STRING(50),
+      allowNull: true
+    },
+
+    secuencia: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0
+    },
 
   },
   {

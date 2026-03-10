@@ -10,6 +10,7 @@ import CostoPromedioProductos from "../../components/ComponentPreventa/CostoProm
 import { Header } from "../../components/common/Header";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
+import TablaDescartableOdoo from "../../components/ComponentPreventa/TablaDescartableOdoo";
 import { API_BASE_URL } from '../../config';
 
 const meses: Record<any, number> = {
@@ -19,17 +20,17 @@ const meses: Record<any, number> = {
 };
 
 export default function DashboardPreventa() {
-  const hoy        = new Date();
-  const mesActual  = hoy.getMonth() + 1;
+  const hoy = new Date();
+  const mesActual = hoy.getMonth() + 1;
   const anioActual = hoy.getFullYear();
 
-  const mesGuardado  = localStorage.getItem("mesSeleccionado");
+  const mesGuardado = localStorage.getItem("mesSeleccionado");
   const anioGuardado = localStorage.getItem("anioSeleccionado");
 
-  const [mesSeleccionado,  setMesSeleccionado]  = useState<any>(mesGuardado  ?? mesActual.toString());
+  const [mesSeleccionado, setMesSeleccionado] = useState<any>(mesGuardado ?? mesActual.toString());
   const [anioSeleccionado, setAnioSeleccionado] = useState<any>(anioGuardado ?? anioActual.toString());
-  const [datos,            setDatos]            = useState<any>(null);
-  const [cargando,         setCargando]         = useState(false);
+  const [datos, setDatos] = useState<any>(null);
+  const [cargando, setCargando] = useState(false);
   const [topClientesState, setTopClientesState] = useState<any[]>([]);
 
   useEffect(() => {
@@ -38,14 +39,14 @@ export default function DashboardPreventa() {
   }, [mesSeleccionado, anioSeleccionado]);
 
   useEffect(() => {
-    localStorage.setItem("mesSeleccionado",  mesSeleccionado);
+    localStorage.setItem("mesSeleccionado", mesSeleccionado);
     localStorage.setItem("anioSeleccionado", anioSeleccionado);
   }, [mesSeleccionado, anioSeleccionado]);
 
   const obtenerDatos = async (anio: number, mes: number) => {
     try {
       setCargando(true);
-      const res  = await fetch(`${API_BASE_URL}/api/ventas/dashboard?anio=${anio}&mes=${mes}`);
+      const res = await fetch(`${API_BASE_URL}/api/ventas/dashboard?anio=${anio}&mes=${mes}`);
       const data = await res.json();
       setDatos(data);
       setTopClientesState(data.topClientes || []);
@@ -56,29 +57,25 @@ export default function DashboardPreventa() {
     }
   };
 
-  const kpis                 = datos?.kpisGenerales;
+  const kpis = datos?.kpisGenerales;
   const resumenVentasPorCanal = datos?.resumenVentasPorCanal || {};
 
-  const { user }      = useAuth();
-  const rol           = (user?.role ?? "").toUpperCase();
-  const isAdmin       = rol === "ADMIN";
-  const isSupervisor  = rol === "SUPERVISOR";
-  const isVendedor    = rol === "VENDEDOR";
+  const { user } = useAuth();
+  const rol = (user?.role ?? "").toUpperCase();
+  const isAdmin = rol === "ADMIN";
+  const isSupervisor = rol === "SUPERVISOR";
+  const isVendedor = rol === "VENDEDOR";
 
-  // ── Pueden ver las tablas de ranking ──────────────────
   const puedeVerRanking = isAdmin || isSupervisor || isVendedor;
-
-  // ── Solo admin ve el resto de contenido ──────────────
   const soloAdmin = isAdmin;
 
-  // ── Helpers de agregación (sin cambios) ──────────────
   const agruparCanal = (items: any[], campoMonto: "monto" | "dolares") =>
     items.reduce((acc, item) => {
-      acc.unidades   += Number(item.unidades   || 0);
-      acc.monto      += Number(item.proyeccion || 0);
+      acc.unidades += Number(item.unidades || 0);
+      acc.monto += Number(item.proyeccion || 0);
       if (item.vsMesAnterior) {
-        acc.mesAnterior  += Number(item.vsMesAnterior.monto_anterior || 0);
-        acc.variacionAbs += Number(item.vsMesAnterior.variacion_abs  || 0);
+        acc.mesAnterior += Number(item.vsMesAnterior.monto_anterior || 0);
+        acc.variacionAbs += Number(item.vsMesAnterior.variacion_abs || 0);
       }
       return acc;
     }, { unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0 });
@@ -86,11 +83,11 @@ export default function DashboardPreventa() {
   const resumirDescartablePorCanal = (ventas: any) => {
     let monto = 0, unidades = 0, mesAnterior = 0;
     Object.values(ventas || {}).forEach((v: any) => {
-      monto       += Number(v.dolares || 0);
-      unidades    += Number(v.unidades || 0);
+      monto += Number(v.dolares || 0);
+      unidades += Number(v.unidades || 0);
       mesAnterior += Number(v.vsMesAnterior?.monto_anterior || 0);
     });
-    const variacionAbs  = monto - mesAnterior;
+    const variacionAbs = monto - mesAnterior;
     const variacionPorc = mesAnterior > 0 ? (variacionAbs / mesAnterior) * 100 : 0;
     return { monto, unidades, mesAnterior, variacionAbs, variacionPorc };
   };
@@ -102,7 +99,7 @@ export default function DashboardPreventa() {
 
         <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
           <div className="flex items-center gap-4">
-            <img src={logo} className="h-14 w-auto transition-all duration-300" alt="Logo"/>
+            <img src={logo} className="h-14 w-auto transition-all duration-300" alt="Logo" />
             <h1 className="text-3xl font-bold tracking-wide">DASHBOARD DESCARTABLE</h1>
           </div>
 
@@ -160,6 +157,13 @@ export default function DashboardPreventa() {
               </div>
             )}
 
+
+            {/* ── NUEVO: Tabla rutas Odoo descartable ── */}
+            <TablaDescartableOdoo
+              anio={anioSeleccionado}
+              mes={mesSeleccionado}
+            />
+
             {/* ── RankingPreventas — ADMIN + SUPERVISOR + VENDEDOR ── */}
             {puedeVerRanking && (
               <RankingPreventas
@@ -186,6 +190,9 @@ export default function DashboardPreventa() {
                   anio={anioSeleccionado}
                   mes={mesSeleccionado}
                 />
+
+
+
                 <CostoPromedioProductos data={datos.precioPromedioTabla} />
                 <GraficoVentaPorProducto data={datos.ventaPorProducto} />
                 <TopClientes topClientes={topClientesState} />

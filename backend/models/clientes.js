@@ -12,37 +12,38 @@ const Cliente = sequelize.define(
 
     codigo_cliente: {
       type: DataTypes.STRING(255),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
       unique: true,
     },
-    company_id: { // Aquí se agrega la columna company_id
+
+    company_id: {
       type: DataTypes.STRING(20),
-      allowNull: true, // Puedes cambiarlo a `false` si es obligatorio
+      allowNull: true,
     },
 
     descripcion_company: {
       type: DataTypes.STRING(100),
-      allowNull: true, // Puedes cambiarlo a `false` si es obligatorio
+      allowNull: true,
     },
 
     tipo_identificacion_cliente: {
       type: DataTypes.STRING(50),
-      allowNull: true,  // Permitir nulos
+      allowNull: true,
     },
 
     identificacion_cliente: {
       type: DataTypes.STRING(30),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
     nombre_cliente: {
       type: DataTypes.STRING(255),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
     nombre_comercial_cliente: {
       type: DataTypes.STRING(255),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
     codigo_tipo_negocio: {
@@ -52,7 +53,7 @@ const Cliente = sequelize.define(
 
     contacto_cliente: {
       type: DataTypes.STRING(255),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
     codigo_moneda_cliente: {
@@ -62,17 +63,22 @@ const Cliente = sequelize.define(
 
     codigo_lista_precio_cliente: {
       type: DataTypes.STRING(50),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
     metodo_pago_cliente: {
       type: DataTypes.STRING(50),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
+    },
+
+    condicion_pago_cliente: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
     },
 
     codigo_grupo_cliente: {
       type: DataTypes.STRING(50),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
     descuento_cliente: {
@@ -82,7 +88,7 @@ const Cliente = sequelize.define(
 
     objetivo_venta_cliente: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
     saldo_cliente: {
@@ -112,14 +118,62 @@ const Cliente = sequelize.define(
 
     nacionalidad_cliente: {
       type: DataTypes.STRING(50),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
     codigo_usuario_asignado_cliente: {
       type: DataTypes.STRING(50),
-      allowNull: true,  // Permite que sea nulo
+      allowNull: true,
     },
 
+    // =========================
+    // CONTACTO
+    // =========================
+    email_cliente: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+    },
+
+    telefono_cliente: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+
+    // =========================
+    // UBICACIÓN
+    // =========================
+    direccion_cliente: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+
+    ciudad_cliente: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
+    pais_cliente: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
+    industria_cliente: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
+    // =========================
+    // VÍNCULO MOBILVENDOR
+    // Permite unificar clientes de Odoo con su contraparte en MobilVendor
+    // =========================
+    mobilvendor_id_cliente: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
+    // =========================
+    // FECHAS
+    // =========================
     fecha_creacion_cliente: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,

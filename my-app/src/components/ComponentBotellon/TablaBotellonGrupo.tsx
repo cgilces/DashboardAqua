@@ -152,22 +152,22 @@ const TablaBotellonGrupo: React.FC<Props> = ({
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
-            <th onClick={() => requestSort("codigo")} className="px-4 py-3 text-left cursor-pointer">
+            <th onClick={() => requestSort("codigo")} className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none">
               RUTA {iconSort("codigo")}
             </th>
-            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer">
+            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
               UNIDADES {iconSort("unidades")}
             </th>
-            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer">
+            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
               DÓLARES {iconSort("dolares")}
             </th>
-            <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer">
+            <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
               META {iconSort("meta")}
             </th>
-            <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer">
+            <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
               PROYECCIÓN {iconSort("proyeccion")}
             </th>
-            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer">
+            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
               VS MES ANTERIOR {iconSort("vsmesanterior")}
             </th>
           </tr>

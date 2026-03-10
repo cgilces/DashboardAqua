@@ -361,7 +361,7 @@ const DetallePreventasPage: React.FC = () => {
                           ["VS MES ANT","vsMesAnterior"],["Última Visita","ultima_visita"],
                           ["Última Factura","ultima_factura"],["Tuvo Consumo","tuvo_consumo"],
                         ].map(([label, key]) => (
-                          <th key={key} className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort(key)}>
+                          <th key={key} className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort(key)}>
                             {label}
                             <span className="text-[#6BAF8E] ml-1">
                               {sortConfig.key === key ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}

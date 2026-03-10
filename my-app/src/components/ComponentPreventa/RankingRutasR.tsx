@@ -178,25 +178,25 @@ const RankingRutasInner = ({
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
-            <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort('N*')}>
+            <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('N*')}>
               N* <span className="text-green-300">{sortConfig.key === 'N*' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort('usuario')}>
+            <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('usuario')}>
               Usuario <span className="text-green-300">{sortConfig.key === 'usuario' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('unidades')}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('unidades')}>
               Unidades <span className="text-green-300">{sortConfig.key === 'unidades' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('dolares')}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('dolares')}>
               Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('meta')}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('meta')}>
               Metas <span className="text-green-300">{sortConfig.key === 'meta' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('proyeccion')}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('proyeccion')}>
               Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('vsMesAnterior')}>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('vsMesAnterior')}>
               Vs Mes Anterior <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
           </tr>
