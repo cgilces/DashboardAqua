@@ -4,7 +4,6 @@ import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from '../../config';
 
-
 type ClienteRow = {
   codigo: string; nombre: string; cedula: string; direccion: string; vendedor: string;
   unidades: number; dolares: number; facturas: number;
@@ -20,6 +19,9 @@ type ApiResponse = {
 type SortKey = keyof ClienteRow | "";
 type SortDir = "asc" | "desc";
 
+const PAGE_SIZE     = 100;   // filas visibles por página
+const FETCH_LIMIT   = 10000; // traer todo de una vez
+
 const money = (n?: number) =>
   Number(n || 0).toLocaleString("es-EC", { style: "currency", currency: "USD" });
 
@@ -33,42 +35,26 @@ const Arrow = ({ col, sk, sd }: { col: SortKey; sk: SortKey; sd: SortDir }) => (
 export default function DashboardClientesTabla() {
   const navigate = useNavigate();
 
-  const [inputQuery,  setInputQuery]  = useState("");   // refleja el input en tiempo real
-  const [searchQuery, setSearchQuery] = useState("");   // con debounce → va al backend
-
+  const [inputQuery,     setInputQuery]     = useState("");
   const [clientes,       setClientes]       = useState<ClienteRow[]>([]);
-  const [kpis,           setKpis]           = useState<any>(null);
-  const [initialLoading, setInitialLoading] = useState(true);  // ← solo la primera vez
-  const [isFetching,     setIsFetching]     = useState(false); // ← recargas: NO oculta tabla
-  const [page,           setPage]           = useState(1);
-  const [totalPages,     setTotalPages]     = useState(1);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isFetching,     setIsFetching]     = useState(false);
   const [totalRegistros, setTotalRegistros] = useState(0);
 
-  const [sortKey, setSortKey] = useState<SortKey>("");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  // página VISUAL (sobre filteredData, no sobre el fetch)
+  const [page,     setPage]     = useState(1);
+  const [sortKey,  setSortKey]  = useState<SortKey>("");
+  const [sortDir,  setSortDir]  = useState<SortDir>("asc");
 
-  const LIMIT = 10000;
-
-  // ── Debounce 400ms → actualiza searchQuery ────────────────────────
-  useEffect(() => {
-    const t = setTimeout(() => { setSearchQuery(inputQuery); setPage(1); }, 400);
-    return () => clearTimeout(t);
-  }, [inputQuery]);
-
-  // ── Fetch — NO pone loading si ya hay datos (isFetching en su lugar) ──
+  // ── Fetch único — trae todos los clientes ────────────────────────
   useEffect(() => {
     const ctrl = new AbortController();
 
     const cargar = async () => {
-      // Si ya tenemos datos → recarga silenciosa (sin destruir la tabla)
-      if (clientes.length > 0) setIsFetching(true);
-      else                      setInitialLoading(true);
+      clientes.length > 0 ? setIsFetching(true) : setInitialLoading(true);
 
       try {
-        const q   = searchQuery.trim();
-        const url = `${API_BASE_URL}/api/dashboard-clientes/resumen?page=${page}&limit=${LIMIT}` +
-                    (q ? `&buscar=${encodeURIComponent(q)}` : "");
-
+        const url = `${API_BASE_URL}/api/dashboard-clientes/resumen?page=1&limit=${FETCH_LIMIT}`;
         const res  = await fetch(url, { signal: ctrl.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -76,35 +62,28 @@ export default function DashboardClientesTabla() {
         if (!json.ok) { setClientes([]); return; }
 
         const rows: ClienteRow[] = (json.data || []).map((r: any) => ({
-          codigo:   r.codigo_cliente,
-          nombre:   r.nombre_cliente,
-          cedula:   r.identificacion_cliente,
-          direccion: r.direccion ?? "-",
-          vendedor: r.seller_code ?? "-",
-          unidades: Number(r.total_unidades || 0),
-          dolares:  Number(r.total_ventas   || 0),
-          facturas: Number(r.total_facturas || 0),
-          tipo_negocio: r.tipo_negocio ?? "SIN CLASIFICAR",
-          tipo_pago:    r.tipo_pago ?? (r.tiene_credito_cliente ? "CREDITO" : "CONTADO"),
-          tiene_credito: Boolean(r.tiene_credito_cliente),
-          ultima_compra:    r.ultima_compra,
+          codigo:          r.codigo_cliente,
+          nombre:          r.nombre_cliente,
+          cedula:          r.identificacion_cliente,
+          direccion:       r.direccion ?? "-",
+          vendedor:        r.seller_code ?? "-",
+          unidades:        Number(r.total_unidades || 0),
+          dolares:         Number(r.total_ventas   || 0),
+          facturas:        Number(r.total_facturas || 0),
+          tipo_negocio:    r.tipo_negocio ?? "SIN CLASIFICAR",
+          tipo_pago:       r.tipo_pago ?? (r.tiene_credito_cliente ? "CREDITO" : "CONTADO"),
+          tiene_credito:   Boolean(r.tiene_credito_cliente),
+          ultima_compra:   r.ultima_compra,
           dias_sin_comprar: r.dias_sin_comprar,
-          estado_cliente:   r.estado_cliente,
+          estado_cliente:  r.estado_cliente,
         }));
 
         setClientes(rows);
-        setKpis(json.kpis);
-        if (json.pagination) {
-          setTotalPages(json.pagination.totalPages || 1);
-          setTotalRegistros(json.pagination.total  || 0);
-        } else {
-          setTotalPages(1);
-          setTotalRegistros(rows.length);
-        }
+        setTotalRegistros(json.pagination?.total || rows.length);
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         console.error("Error cargando clientes", err);
-        setClientes([]); setTotalPages(1); setTotalRegistros(0);
+        setClientes([]); setTotalRegistros(0);
       } finally {
         setInitialLoading(false);
         setIsFetching(false);
@@ -113,20 +92,25 @@ export default function DashboardClientesTabla() {
 
     cargar();
     return () => ctrl.abort();
-  }, [page, searchQuery]);
+  }, []);
 
-  // ── Ordenamiento ──────────────────────────────────────────────────
+  // ── Sort ─────────────────────────────────────────────────────────
   const handleSort = useCallback((key: SortKey) => {
     setSortDir(prev => sortKey === key && prev === "asc" ? "desc" : "asc");
     setSortKey(key);
+    setPage(1); // volver a pág 1 al cambiar orden
   }, [sortKey]);
 
-  // ── Filtro local + sort (sin llamada al backend) ──────────────────
-  const filteredData = useMemo(() => {
+  // ── Buscar + ordenar sobre TODOS los datos ────────────────────────
+  const filteredSorted = useMemo(() => {
     const q = inputQuery.trim().toLowerCase();
+
     let data = q
       ? clientes.filter(r =>
-          r.nombre?.toLowerCase().includes(q) || r.cedula?.toLowerCase().includes(q))
+          r.nombre?.toLowerCase().includes(q) ||
+          r.cedula?.toLowerCase().includes(q)  ||
+          r.vendedor?.toLowerCase().includes(q)
+        )
       : [...clientes];
 
     if (sortKey) {
@@ -150,13 +134,19 @@ export default function DashboardClientesTabla() {
     return data;
   }, [clientes, inputQuery, sortKey, sortDir]);
 
-  // ── Totales ───────────────────────────────────────────────────────
-  const totalUnidades   = filteredData.reduce((a, r) => a + r.unidades, 0);
-  const totalDolares    = filteredData.reduce((a, r) => a + r.dolares,  0);
-  const totalFacturas   = filteredData.reduce((a, r) => a + r.facturas, 0);
+  // ── Reset página al buscar ────────────────────────────────────────
+  useEffect(() => { setPage(1); }, [inputQuery]);
+
+  // ── Página visual sobre filteredSorted ───────────────────────────
+  const totalPages  = Math.max(1, Math.ceil(filteredSorted.length / PAGE_SIZE));
+  const pageData    = filteredSorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // ── KPIs sobre TODO lo filtrado ───────────────────────────────────
+  const totalUnidades   = filteredSorted.reduce((a, r) => a + r.unidades, 0);
+  const totalDolares    = filteredSorted.reduce((a, r) => a + r.dolares,  0);
+  const totalFacturas   = filteredSorted.reduce((a, r) => a + r.facturas, 0);
   const ticketPromedio  = totalFacturas > 0 ? totalDolares / totalFacturas : 0;
-  const clientesCredito = filteredData.filter(c => c.tiene_credito).length;
-  const totalClientesKPI = totalRegistros || clientes.length;
+  const clientesCredito = filteredSorted.filter(c => c.tiene_credito).length;
 
   // ── Th helper ─────────────────────────────────────────────────────
   const Th = ({ label, col, align = "left" }: { label: string; col: SortKey; align?: "left"|"right"|"center" }) => (
@@ -165,6 +155,21 @@ export default function DashboardClientesTabla() {
       {label}<Arrow col={col} sk={sortKey} sd={sortDir}/>
     </th>
   );
+
+  // ── Paginación helper ─────────────────────────────────────────────
+  const pageNumbers = useMemo(() => {
+    const delta = 2;
+    const range: (number | "...")[] = [];
+    const left  = Math.max(2, page - delta);
+    const right = Math.min(totalPages - 1, page + delta);
+
+    range.push(1);
+    if (left > 2)           range.push("...");
+    for (let i = left; i <= right; i++) range.push(i);
+    if (right < totalPages - 1) range.push("...");
+    if (totalPages > 1)     range.push(totalPages);
+    return range;
+  }, [page, totalPages]);
 
   // ── Carga inicial ─────────────────────────────────────────────────
   if (initialLoading)
@@ -177,21 +182,19 @@ export default function DashboardClientesTabla() {
       </DashboardLayout>
     );
 
-  // ─────────────────────────────────────────────────────────────────
   return (
     <DashboardLayout>
       <div className="main-content min-h-screen text-white px-10 py-6">
         <Header/>
-
         <h1 className="text-3xl font-bold tracking-wide mb-6">DASHBOARD CLIENTES</h1>
 
         {/* KPIs */}
         <div className="grid grid-cols-4 gap-6 mb-8">
           {[
-            { label: "Clientes",         value: totalClientesKPI,              color: "text-white"       },
-            { label: "Ventas",           value: money(totalDolares),           color: "text-blue-400"    },
-            { label: "Ticket Promedio",  value: money(ticketPromedio),         color: "text-green-400"   },
-            { label: "Clientes Crédito", value: clientesCredito,               color: "text-yellow-400"  },
+            { label: "Clientes",         value: filteredSorted.length,  color: "text-white"      },
+            { label: "Ventas",           value: money(totalDolares),    color: "text-blue-400"   },
+            { label: "Ticket Promedio",  value: money(ticketPromedio),  color: "text-green-400"  },
+            { label: "Clientes Crédito", value: clientesCredito,        color: "text-yellow-400" },
           ].map(k => (
             <div key={k.label} className="bg-[#013d32] p-4 rounded-lg">
               <p className="text-sm text-gray-300">{k.label}</p>
@@ -201,12 +204,12 @@ export default function DashboardClientesTabla() {
         </div>
 
         {/* BUSCADOR */}
-        <div className="relative w-96 mb-6 flex items-center gap-3">
-          <div className="relative flex-1">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="relative w-96">
             <input
               value={inputQuery}
               onChange={e => setInputQuery(e.target.value)}
-              placeholder="Buscar por nombre o cédula..."
+              placeholder="Buscar por nombre, cédula o vendedor..."
               className="w-full rounded-lg bg-[#013d32] border border-[#046C5E] px-4 py-2 pr-8 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all"
             />
             {inputQuery && (
@@ -216,10 +219,18 @@ export default function DashboardClientesTabla() {
               </button>
             )}
           </div>
-          {/* spinner sutil durante recargas — la tabla NO desaparece */}
+
           {isFetching && (
             <span className="w-4 h-4 border-2 border-green-400/20 border-t-green-400 rounded-full animate-spin flex-shrink-0"/>
           )}
+
+          {/* contador de resultados */}
+          <span className="text-sm text-white/40">
+            {filteredSorted.length === clientes.length
+              ? `${clientes.length.toLocaleString("es-EC")} clientes`
+              : `${filteredSorted.length.toLocaleString("es-EC")} de ${clientes.length.toLocaleString("es-EC")} clientes`
+            }
+          </span>
         </div>
 
         {/* TABLA */}
@@ -241,56 +252,96 @@ export default function DashboardClientesTabla() {
             </thead>
 
             <tbody>
-              {filteredData.length === 0 ? (
+              {pageData.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-10 text-center text-white/30 text-sm italic">
                     No se encontraron clientes
                   </td>
                 </tr>
-              ) : filteredData.map((row, idx) => (
-                <tr key={`${row.codigo}-${idx}`}
-                  onClick={() => navigate(`/dashboard/cliente/${row.codigo}`)}
-                  className={`cursor-pointer transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57]`}>
-                  <td className="px-4 py-2 font-bold text-gray-300 text-center">{(page - 1) * LIMIT + idx + 1}</td>
-                  <td className="px-4 py-2">{row.nombre}</td>
-                  <td className="px-4 py-2 text-center text-lg">{estadoIcon(row.estado_cliente)}</td>
-                  <td className="px-4 py-2">{row.vendedor}</td>
-                  <td className="px-4 py-2 text-right text-green-400 font-bold">{row.unidades.toLocaleString("es-EC")}</td>
-                  <td className="px-4 py-2 text-right text-blue-400 font-bold">{money(row.dolares)}</td>
-                  <td className="px-4 py-2 text-right">{row.facturas}</td>
-                  <td className="px-4 py-2">{row.tipo_negocio || "-"}</td>
-                  <td className="px-4 py-2 font-semibold">{row.tipo_pago || (row.tiene_credito ? "CREDITO" : "CONTADO")}</td>
-                  <td className="px-4 py-2 text-right">
-                    {row.ultima_compra ? new Date(row.ultima_compra).toLocaleDateString("es-EC") : "-"}
-                  </td>
-                </tr>
-              ))}
+              ) : pageData.map((row, idx) => {
+                const globalIdx = (page - 1) * PAGE_SIZE + idx + 1;
+                return (
+                  <tr key={`${row.codigo}-${idx}`}
+                    onClick={() => navigate(`/dashboard/cliente/${row.codigo}`)}
+                    className={`cursor-pointer transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57]`}>
+                    <td className="px-4 py-2 font-bold text-gray-300 text-center">{globalIdx}</td>
+                    <td className="px-4 py-2">{row.nombre}</td>
+                    <td className="px-4 py-2 text-center text-lg">{estadoIcon(row.estado_cliente)}</td>
+                    <td className="px-4 py-2">{row.vendedor}</td>
+                    <td className="px-4 py-2 text-right text-green-400 font-bold">{row.unidades.toLocaleString("es-EC")}</td>
+                    <td className="px-4 py-2 text-right text-blue-400 font-bold">{money(row.dolares)}</td>
+                    <td className="px-4 py-2 text-right">{row.facturas}</td>
+                    <td className="px-4 py-2">{row.tipo_negocio || "-"}</td>
+                    <td className="px-4 py-2 font-semibold">{row.tipo_pago || (row.tiene_credito ? "CREDITO" : "CONTADO")}</td>
+                    <td className="px-4 py-2 text-right">
+                      {row.ultima_compra ? new Date(row.ultima_compra).toLocaleDateString("es-EC") : "-"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
 
             <tfoot className="bg-[#014434] font-bold border-t border-[#046C5E]">
               <tr>
-                <td colSpan={4} className="px-4 py-3">TOTAL GENERAL</td>
-                <td className="px-4 py-3 text-right">{totalUnidades.toLocaleString("es-EC")}</td>
-                <td className="px-4 py-3 text-right">{money(totalDolares)}</td>
-                <td className="px-4 py-3 text-right">{totalFacturas}</td>
+                <td colSpan={4} className="px-4 py-3 text-green-300">
+                  TOTAL — {filteredSorted.length.toLocaleString("es-EC")} clientes
+                  {inputQuery && ` (filtrado de ${clientes.length.toLocaleString("es-EC")})`}
+                </td>
+                <td className="px-4 py-3 text-right text-green-400">{totalUnidades.toLocaleString("es-EC")}</td>
+                <td className="px-4 py-3 text-right text-blue-400">{money(totalDolares)}</td>
+                <td className="px-4 py-3 text-right">{totalFacturas.toLocaleString("es-EC")}</td>
                 <td/><td/><td/>
               </tr>
             </tfoot>
           </table>
-
-          {/* PAGINACIÓN */}
-          <div className="flex justify-center items-center gap-4 mt-6 pb-4">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-              className="px-4 py-2 bg-[#014434] rounded disabled:opacity-40 hover:bg-[#025f4b] transition">
-              ← Anterior
-            </button>
-            <span className="text-sm text-white/50">Página {page} de {totalPages}</span>
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-              className="px-4 py-2 bg-[#014434] rounded disabled:opacity-40 hover:bg-[#025f4b] transition">
-              Siguiente →
-            </button>
-          </div>
         </div>
+
+        {/* PAGINACIÓN */}
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center gap-2 mt-6 pb-6 flex-wrap">
+            <button
+              onClick={() => setPage(1)} disabled={page === 1}
+              className="px-3 py-2 bg-[#014434] rounded disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">
+              «
+            </button>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+              className="px-3 py-2 bg-[#014434] rounded disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">
+              ‹ Anterior
+            </button>
+
+            {pageNumbers.map((n, i) =>
+              n === "..." ? (
+                <span key={`dots-${i}`} className="px-2 text-white/30">…</span>
+              ) : (
+                <button key={n}
+                  onClick={() => setPage(n as number)}
+                  className={`px-3 py-2 rounded text-sm transition ${
+                    page === n
+                      ? "bg-emerald-600 text-white font-bold"
+                      : "bg-[#014434] hover:bg-[#025f4b]"
+                  }`}>
+                  {n}
+                </button>
+              )
+            )}
+
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+              className="px-3 py-2 bg-[#014434] rounded disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">
+              Siguiente ›
+            </button>
+            <button
+              onClick={() => setPage(totalPages)} disabled={page === totalPages}
+              className="px-3 py-2 bg-[#014434] rounded disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">
+              »
+            </button>
+
+            <span className="text-sm text-white/40 ml-2">
+              Pág {page} / {totalPages} — mostrando {((page-1)*PAGE_SIZE)+1}–{Math.min(page*PAGE_SIZE, filteredSorted.length)} de {filteredSorted.length.toLocaleString("es-EC")}
+            </span>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

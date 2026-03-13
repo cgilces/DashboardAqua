@@ -12,6 +12,8 @@ import BotonActualizarSincronizacion from "../../components/elements/BotonActual
 import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
 import TablaDescartableOdoo from "../../components/ComponentPreventa/TablaDescartableOdoo";
 import { API_BASE_URL } from '../../config';
+import TablaCotsa from "../../components/ComponentPreventa/TablaCotsa";
+
 
 const meses: Record<any, number> = {
   Enero: 1, Febrero: 2, Marzo: 3, Abril: 4,
@@ -157,12 +159,7 @@ export default function DashboardPreventa() {
               </div>
             )}
 
-
-            {/* ── NUEVO: Tabla rutas Odoo descartable ── */}
-            <TablaDescartableOdoo
-              anio={anioSeleccionado}
-              mes={mesSeleccionado}
-            />
+           
 
             {/* ── RankingPreventas — ADMIN + SUPERVISOR + VENDEDOR ── */}
             {puedeVerRanking && (
@@ -181,6 +178,20 @@ export default function DashboardPreventa() {
                 mes={mesSeleccionado}
               />
             )}
+
+
+             {/* ── Tabla COTSA  nueva ──────────────────────────── */}
+            <TablaCotsa
+              anio={anioSeleccionado}
+              mes={mesSeleccionado}
+            />
+
+
+            {/* ── NUEVO: Tabla rutas Odoo descartable ── */}
+            <TablaDescartableOdoo
+              anio={anioSeleccionado}
+              mes={mesSeleccionado}
+            />
 
             {/* ── Resto — solo ADMIN ── */}
             {isAdmin && (

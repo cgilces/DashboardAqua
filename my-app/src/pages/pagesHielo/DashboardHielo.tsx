@@ -146,22 +146,27 @@ const DashboardHielo: React.FC = () => {
           />
         )}
 
-        {/* ============================
-            TABLA RESUMEN
-        ============================ */}
-        {!loading && !error && (
-          <ResumenVentasHielo
-            data={resumenUsuariosVentasHielo}
-            anio={anioSeleccionado}
-            mes={mesSeleccionado}
-          />
-        )}
+     
 
         {/* ============================
             TABLA HIELO ODOO — solo ADMIN
         ============================ */}
         {isAdmin && (
           <TablaHieloOdoo
+            anio={anioSeleccionado}
+            mes={mesSeleccionado}
+          />
+        )}
+
+
+
+
+           {/* ============================
+            TABLA RESUMEN
+        ============================ */}
+        {!loading && !error && (
+          <ResumenVentasHielo
+            data={resumenUsuariosVentasHielo}
             anio={anioSeleccionado}
             mes={mesSeleccionado}
           />

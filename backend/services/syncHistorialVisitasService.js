@@ -1,167 +1,156 @@
 require("dotenv").config();
 const axios = require("axios");
 const sequelize = require("../db");
-const HistorialVisitas = require("../models/HistorialVisitas"); // Asumiendo que tienes un modelo para la tabla historial_visitas
+const { QueryTypes } = require("sequelize");
 const { API_URL } = require("../config/config");
 const { obtenerSesionActual } = require("../utils/apiCliente");
 
 /* ===================== HELPERS ===================== */
-const normalizeCode = (v) => {
-  if (!v && v !== 0) return null;
-  return String(v).trim().replace(/^0+/, "");
-};
-
 const parseUnixToDate = (value) => {
   if (value === null || value === undefined) return null;
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return new Date((n * 1000) - (5 * 60 * 60 * 1000)); // Ajusta a la hora de Ecuador (UTC-5)
+  return new Date(n * 1000 - 5 * 60 * 60 * 1000);
 };
 
-/* ===================== SERVICIO ===================== */
+const toFloat = (v) => parseFloat(v) || 0;
+const toInt   = (v) => parseInt(v)   || 0;
+
+/* ===================== BULK UPSERT ===================== */
+const bulkUpsertHistorial = async (registros, transaction) => {
+  if (!registros.length) return;
+
+  // Construir placeholders: ($1,$2,...), ($N+1,...)
+  const COLS = [
+    "fecha_visita", "codigo_usuario", "codigo_ruta", "codigo_cliente",
+    "codigo_direccion_cliente", "semana", "dia", "accion",
+    "codigo_comentario", "comentario", "monto", "latitud", "longitud",
+    "estado_proceso", "ruptura_secuencia", "nombre_cliente",
+    "nombre_empresa_cliente", "nombre_comercial_cliente",
+    "tipo_identificacion_cliente", "numero_identificacion_cliente",
+    "contacto_cliente", "comentario_cliente", "estado_cliente",
+    "nombre_usuario", "email_usuario", "email_notificacion_usuario",
+    "identidad_usuario", "tipo_identificacion_usuario", "sucursal_usuario",
+    "telefono_usuario", "direccion_usuario", "marca_dispositivo_usuario",
+    "modelo_dispositivo_usuario", "numero_dispositivo_usuario",
+    "codigo_almacen_usuario", "codigo_ruta_predeterminada_usuario",
+    "codigo_rol_usuario",
+  ];
+
+  const NUM_COLS = COLS.length;
+  const values   = [];
+  const rows     = [];
+
+  registros.forEach((item, i) => {
+    const offset = i * NUM_COLS;
+    rows.push(
+      `(${COLS.map((_, j) => `$${offset + j + 1}`).join(", ")})`
+    );
+    values.push(
+      parseUnixToDate(item.date),
+      item.user_code                  || null,
+      item.route_code                 || null,
+      item.customer_code              || null,
+      item.customer_address_code      || null,
+      toInt(item.week),
+      toInt(item.day),
+      item.action                     || null,
+      item.comment_code               || null,
+      item.comment                    || null,
+      toFloat(item.amount),
+      toFloat(item.lat),
+      toFloat(item.lon),
+      toInt(item.process_status),
+      toInt(item.is_sequence_break),
+      item.customer_name              || null,
+      item.customer_company_name      || null,
+      item.customer_commercial_name   || null,
+      item.customer_identity_type     || null,
+      item.customer_identity          || null,
+      item.customer_contact           || null,
+      item.customer_comment           || null,
+      toInt(item.customer_process_status),
+      item.user_name                  || null,
+      item.user_email                 || null,
+      item.user_notify_emails         || null,
+      item.user_identity              || null,
+      item.user_identity_type         || null,
+      item.user_branch                || null,
+      item.user_phone                 || null,
+      item.user_address               || null,
+      item.user_device_mark           || null,
+      item.user_device_model          || null,
+      item.user_device_number         || null,
+      item.user_default_storage_code  || null,
+      item.user_default_route_code    || null,
+      item.user_role_code             || null,
+    );
+  });
+
+  // Columnas a actualizar en caso de conflicto (todas menos las 3 del UNIQUE)
+  const UPDATE_COLS = COLS.filter(
+    c => !["codigo_cliente", "codigo_ruta", "fecha_visita"].includes(c)
+  );
+
+  const sql = `
+    INSERT INTO historial_visitas (${COLS.join(", ")})
+    VALUES ${rows.join(", ")}
+    ON CONFLICT (codigo_cliente, codigo_ruta, fecha_visita)
+    DO UPDATE SET
+      ${UPDATE_COLS.map(c => `${c} = EXCLUDED.${c}`).join(",\n      ")}
+  `;
+
+  await sequelize.query(sql, { bind: values, transaction, type: QueryTypes.INSERT });
+};
+
+/* ===================== SERVICIO PRINCIPAL ===================== */
 const obtenerHistorialDeUsuarios = async (startDate, endDate) => {
-  console.log("🚀 INICIANDO OBTENCIÓN DE HISTORIAL DE USUARIOS");
+  console.log(`\n🚀 SINCRONIZANDO HISTORIAL ${startDate} → ${endDate}`);
 
   const session_id = await obtenerSesionActual();
   if (!session_id) throw new Error("No hay sesión activa con MobilVendor");
 
-  // Iniciar transacción
-  const transaction = await sequelize.transaction();
+  let totalGuardados = 0;
+  let currentPage    = 1;
+  let totalPages     = 1;
 
-  try {
-    let historial = [];
-    let currentPage = 1;
-    let totalPages = 1; // Se asume que al menos una página existe.
+  while (currentPage <= totalPages) {
+    console.log(`📦 PÁGINA ${currentPage} / ${totalPages}`);
 
-    // Solicitar el número total de páginas primero
-    const historialResp = await axios.post(API_URL, {
-      session_id,
-      action: "getUserHistory",
-      page: currentPage.toString(),
-      limit: 1000,  // Intentamos obtener más registros por página
-      // filter: {
-      //   day_start: startDate,
-      //   day_end: endDate,
-      // },
-
-      filter: {
-          // process_status: "0,1,2,3,4,5",
-          // type: "1,2",
-          // status: "0,1,2,5,10",
-          start_date: startDate,
-          end_date: endDate,
-          limit: 1000,
-          page: currentPage,
-        },
-    });
-
-    const totalPagesData = historialResp.data?.pages || 1;
-    totalPages = totalPagesData;
-
-    console.log(`📊 Total de páginas a recorrer: ${totalPages}`);
-
-    // Recorrer todas las páginas
-    while (currentPage <= totalPages) {
-      console.log(`📦 Solicitando página ${currentPage} de ${totalPages}`);
-
-      // Solicitar historial de usuarios para la página actual
-      const historialResp = await axios.post(API_URL, {
+    const { data } = await axios.post(
+      API_URL,
+      {
         session_id,
         action: "getUserHistory",
-        page: currentPage.toString(),
-        limit: 1000,  // Mantener el límite de 1000 por página
-        filter: {
-          start_date: startDate,
-          end_date: endDate,
-        },
-      });
+        filter: { start_date: startDate, end_date: endDate, limit: 1000, page: currentPage },
+      },
+      { headers: { "Content-Type": "application/json" }, timeout: 120_000 }
+    );
 
-      const data = historialResp.data;
-      const currentHistorial = data?.records || [];
-      totalPages = data.pages || totalPages; // Actualizar el número total de páginas si cambia
+    const registros = data?.records || [];
+    totalPages      = data?.pages   || totalPages;
 
-      console.log(`📊 Se han recuperado ${currentHistorial.length} registros de la página ${currentPage}`);
+    console.log(`   → ${registros.length} registros`);
+    if (!registros.length) break;
 
-      // Concatenar los registros obtenidos
-      historial = historial.concat(currentHistorial);
-
-      // Incrementar la página para la siguiente iteración
-      currentPage++;
-
-      // Si no hay más registros, salir del ciclo
-      if (currentHistorial.length === 0) {
-        console.log("🏁 No hay más registros.");
-        break;
-      }
+    // ── Una transacción por página ──────────────────────────────
+    const t = await sequelize.transaction();
+    try {
+      await bulkUpsertHistorial(registros, t);
+      await t.commit();
+      totalGuardados += registros.length;
+      console.log(`   ✅ Página ${currentPage} guardada`);
+    } catch (err) {
+      await t.rollback();
+      console.error(`   ❌ Error página ${currentPage}:`, err.message);
+      throw err;
     }
 
-    console.log(`📊 Total de registros obtenidos: ${historial.length}`);
-
-    // Insertar los registros en la base de datos
-    for (const item of historial) {
-      await HistorialVisitas.upsert(
-        {
-          fecha_visita: parseUnixToDate(item.date),  // Convertir a timestamp
-          codigo_usuario: item.user_code,
-          codigo_ruta: item.route_code,
-          codigo_cliente: item.customer_code,
-          codigo_direccion_cliente: item.customer_address_code,
-          semana: item.week,
-          dia: item.day,
-          accion: item.action,
-          codigo_comentario: item.comment_code,
-          comentario: item.comment || null,
-          monto: parseFloat(item.amount) || 0,
-          latitud: parseFloat(item.lat) || 0,
-          longitud: parseFloat(item.lon) || 0,
-          estado_proceso: item.process_status || 0,
-          ruptura_secuencia: item.is_sequence_break || 0,
-          nombre_cliente: item.customer_name || null,
-          nombre_empresa_cliente: item.customer_company_name || null,
-          nombre_comercial_cliente: item.customer_commercial_name || null,
-          tipo_identificacion_cliente: item.customer_identity_type || null,
-          numero_identificacion_cliente: item.customer_identity || null,
-          contacto_cliente: item.customer_contact || null,
-          comentario_cliente: item.customer_comment || null,
-          estado_cliente: item.customer_process_status || 0,
-          nombre_usuario: item.user_name || null,
-          email_usuario: item.user_email || null,
-          email_notificacion_usuario: item.user_notify_emails || null,
-          identidad_usuario: item.user_identity || null,
-          tipo_identificacion_usuario: item.user_identity_type || null,
-          sucursal_usuario: item.user_branch || null,
-          telefono_usuario: item.user_phone || null,
-          direccion_usuario: item.user_address || null,
-          marca_dispositivo_usuario: item.user_device_mark || null,
-          modelo_dispositivo_usuario: item.user_device_model || null,
-          numero_dispositivo_usuario: item.user_device_number || null,
-          codigo_almacen_usuario: item.user_default_storage_code || null,
-          codigo_ruta_predeterminada_usuario: item.user_default_route_code || null,
-          codigo_rol_usuario: item.user_role_code || null,
-        },
-        {
-          transaction,
-          conflictFields: ["codigo_cliente", "codigo_ruta", "fecha_visita"],  // Evita duplicados
-        }
-      );
-    }
-
-    // Confirmar la transacción
-    await transaction.commit();
-    console.log("✅ HISTORIAL DE USUARIOS OBTENIDO Y GUARDADO CORRECTAMENTE");
-
-    return {
-      historial: historial.length,
-    };
-
-  } catch (error) {
-    console.error("❌ Error obteniendo historial de usuarios:", error.message);
-
-    // Si ocurre un error, hacer rollback antes de devolver el error
-    if (transaction) await transaction.rollback();
-
-    throw error;
+    currentPage++;
   }
+
+  console.log(`\n✅ HISTORIAL COMPLETO — ${totalGuardados} registros guardados`);
+  return { historial: totalGuardados };
 };
 
 module.exports = { obtenerHistorialDeUsuarios };
