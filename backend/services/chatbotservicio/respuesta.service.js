@@ -125,4 +125,4 @@ function construirResumenEstadistico(datos) {
   };
 }
 
-module.exports = { generarRespuesta };
+module.exports = { generarRespuesta, construirResumenEstadistico };

@@ -226,31 +226,47 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
 
       {/* HEADER */}
 
-      <div className="flex justify-between px-4 pt-4 mb-2">
-
-        <h2 className="text-lg font-bold text-blue-300">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
+        <h2 className="text-lg md:text-xl font-bold text-blue-300">
           RANKING PREVENTA
         </h2>
-
-        {isAdmin && (
-          <div className="flex gap-3">
-
-            <button
-              onClick={() => navigate("/configurar-metas")}
-              className="px-3 py-2 border rounded"
-            >
-              <BsGear />
-            </button>
-
-            <button
-              onClick={exportarTablaExcel}
-              className="px-3 py-2 border rounded"
-            >
-              <BsDownload />
-            </button>
-
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Unidades</p>
+            <p className="text-base font-bold text-green-400">{fmtInt(totalUnidades)}</p>
           </div>
-        )}
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Dólares</p>
+            <p className="text-base font-bold text-white">${fmt(totalUSD)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Meta</p>
+            <p className="text-base font-bold text-white">${fmt(totalMeta)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Proyección</p>
+            <p className="text-base font-bold text-emerald-400">${fmt(totalProyeccion)}</p>
+          </div>
+          {isAdmin && (
+            <div className="flex gap-2 items-center">
+              <button
+                onClick={() => navigate("/configurar-metas")}
+                title="Configurar Metas"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
+              >
+                <BsGear size={16} />
+                <span>Metas</span>
+              </button>
+              <button
+                onClick={exportarTablaExcel}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
+              >
+                <BsDownload size={16} />
+                <span>Exportar</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* TABLA */}
@@ -265,10 +281,10 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
             <Th k="preventa" label="Ruta / Preventa" align="left" />
             <Th k="unidades" label="Unidades" />
             <Th k="monto" label="Dólares" />
-            <Th k="meta" label="Meta" />
-            <Th k="objetivo_gerencia" label="Obj Gerencia" />
+            <Th k="objetivo_gerencia" label="Cupo" />
             <Th k="proyeccion" label="Proyección" />
-            <Th k="vsMesAnterior" label="Vs Mes Anterior" />
+            <Th k="vsMesAnterior" label="Variación" />
+            <Th k="vsMesAnterior" label="%" />
 
           </tr>
 
@@ -318,60 +334,34 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
                   ${fmt(p.monto ?? 0)}
                 </td>
 
-                <td className="px-4 py-2 text-right">
-                  ${fmt(meta)}
-                </td>
-
                 <td className="px-4 py-2 text-right text-amber-300">
-                  {objetivo > 0 ? `$${fmt(objetivo)}` : "sin datos"}
+                  {objetivo > 0 ? `$${fmt(objetivo)}` : "—"}
                 </td>
 
                 <td className="px-4 py-2 text-right font-bold">
-
-                  <span
-                    className={
-                      porcentajeProy > 0
-                        ? "text-green-400"
-                        : "text-red-400"
-                    }
-                  >
+                  <span className={porcentajeProy > 0 ? "text-green-400" : "text-red-400"}>
                     ({porcentajeProy.toFixed(1)}%)
                   </span>
-
                   {" "}
-
-                  <span className="text-blue-300">
-                    ${fmt(proy)}
-                  </span>
-
+                  <span className="text-blue-300">${fmt(proy)}</span>
                 </td>
 
-                {/* VS MES ANTERIOR */}
-
-                <td
-                  className={`px-4 py-2 text-right font-bold ${variacionAbs < 0
-                    ? "text-red-400"
-                    : variacionAbs > 0
-                      ? "text-green-400"
-                      : "text-gray-400"
-                    }`}
-                >
-
+                {/* VARIACIÓN */}
+                <td className={`px-4 py-2 text-right font-bold ${variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
                   {variacionAbs !== 0 ? (
-                    <>
-                      ({variacionAbs > 0 ? "+" : ""}
-                      {variacionPorc}%)
-                      {" "}
-                      ${variacionAbs.toLocaleString("es-EC", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </>
+                    <>{variacionAbs > 0 ? "+" : "-"}${fmt(Math.abs(variacionAbs))}</>
                   ) : (
-                    <span className="text-gray-500 text-xs italic">
-                      Sin datos
-                    </span>
+                    <span className="text-gray-500 text-xs italic">Sin datos</span>
                   )}
+                </td>
 
+                {/* % */}
+                <td className={`px-4 py-2 text-right font-bold ${Number(variacionPorc) < 0 ? "text-red-400" : Number(variacionPorc) > 0 ? "text-green-400" : "text-gray-400"}`}>
+                  {variacionAbs !== 0 ? (
+                    <>{Number(variacionPorc) > 0 ? "+" : ""}{variacionPorc}%</>
+                  ) : (
+                    <span className="text-gray-500 text-xs italic">—</span>
+                  )}
                 </td>
 
               </tr>
@@ -380,37 +370,35 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
 
         </tbody>
 
-        <tfoot className="bg-[#014434] font-bold text-xs">
+        <tfoot className="bg-[#014434] font-bold text-xs text-gray-200 border-t border-[#046C5E]">
 
           <tr>
 
             <td className="px-4 py-3">Total</td>
 
-            <td></td>
+            <td className="px-4 py-3"></td>
 
-            <td className="text-right text-green-400">
+            <td className="px-4 py-3 text-right text-green-400">
               {fmtInt(totalUnidades)}
             </td>
 
-            <td className="text-right text-blue-400">
+            <td className="px-4 py-3 text-right text-blue-400">
               ${fmt(totalUSD)}
             </td>
 
-            <td className="text-right">
-              ${fmt(totalMeta)}
-            </td>
-
-            <td className="text-right text-amber-300">
+            <td className="px-4 py-3 text-right text-amber-300">
               {totalObjetivo > 0 ? `$${fmt(totalObjetivo)}` : "—"}
             </td>
 
-            <td className="text-right">
+            <td className="px-4 py-3 text-right">
               ${fmt(totalProyeccion)}
             </td>
 
-            <td className="text-right">
-              ${fmt(totalVsMesAnterior)}
+            <td className={`px-4 py-3 text-right ${totalVsMesAnterior >= 0 ? "text-green-400" : "text-red-400"}`}>
+              {totalVsMesAnterior >= 0 ? "+" : "-"}${fmt(Math.abs(totalVsMesAnterior))}
             </td>
+
+            <td className="px-4 py-3 text-right text-gray-400">—</td>
 
           </tr>
 

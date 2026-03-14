@@ -96,27 +96,27 @@ export default function DashboardPreventa() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-10 py-6">
+      <div className="main-content min-h-screen text-white px-4 md:px-10 py-4 md:py-6">
         <Header />
 
-        <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
+        <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6 md:mb-10 border-b border-[#046C5E] pb-4 py-4 md:py-6">
           <div className="flex items-center gap-4">
             <img src={logo} className="h-14 w-auto transition-all duration-300" alt="Logo" />
-            <h1 className="text-3xl font-bold tracking-wide">DASHBOARD DESCARTABLE</h1>
+            <h1 className="text-xl md:text-3xl font-bold tracking-wide">DASHBOARD DESCARTABLE</h1>
           </div>
 
-          <div className="flex justify-center w-full sm:w-auto mt-4 sm:mt-0">
+          <div className="flex justify-center w-full md:w-auto">
             {isAdmin && <BotonActualizarSincronizacion />}
           </div>
 
-          <div className="flex gap-3 items-center">
-            <select className="bg-[#046C5E] px-4 py-2 rounded-lg" value={mesSeleccionado}
+          <div className="flex gap-3 w-full md:w-auto flex-wrap items-center">
+            <select className="bg-[#046C5E] px-4 py-2 rounded-lg flex-1 min-w-[120px]" value={mesSeleccionado}
               onChange={e => setMesSeleccionado(e.target.value)}>
               {Object.entries(meses).map(([n, v]) => (
                 <option key={n} value={v}>{n}</option>
               ))}
             </select>
-            <select className="bg-[#046C5E] px-4 py-2 rounded-lg" value={anioSeleccionado}
+            <select className="bg-[#046C5E] px-4 py-2 rounded-lg flex-1 min-w-[120px]" value={anioSeleccionado}
               onChange={e => setAnioSeleccionado(e.target.value)}>
               {Array.from({ length: 5 }, (_, i) => {
                 const y = new Date().getFullYear() - i;

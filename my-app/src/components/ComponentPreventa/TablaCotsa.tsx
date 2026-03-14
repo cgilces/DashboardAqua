@@ -261,12 +261,13 @@ export default function TablaCotsa({ anio, mes }: Props) {
               ["subtotal",      "Subtotal",        "text-right"],
               ["dolares",       "Dólares $",       "text-right"],
               ...(esMesActual ? [["proyeccion", "Proyección", "text-right"]] : []),
-              ["vsMesAnterior", "Vs Mes Anterior", "text-right"],
+              ["vsMesAnterior", "Variación",       "text-right"],
+              ["vsMesAnterior", "%",               "text-right"],
               ["cant_facturas", "Facturas",        "text-right"],
               ["cant_clientes", "Clientes",        "text-right"],
-            ] as [SortKey, string, string][]).map(([key, label, align]) => (
+            ] as [SortKey, string, string][]).map(([key, label, align], colIdx) => (
               <th
-                key={key}
+                key={`${key}-${colIdx}`}
                 className={`px-4 py-3 ${align} cursor-pointer hover:text-white transition-colors select-none`}
                 onClick={() => requestSort(key)}
               >
@@ -304,19 +305,27 @@ export default function TablaCotsa({ anio, mes }: Props) {
                   <td className="px-4 py-2 text-right font-bold text-emerald-400">${fmt(r.proyeccion)}</td>
                 )}
 
+                {/* VARIACIÓN */}
                 <td className={`px-4 py-2 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
                   {sinDatos ? (
                     <span className="text-gray-500 font-normal">Sin datos</span>
                   ) : (
                     <>
-                      <span className="block text-gray-300 font-normal">
+                      <span className="block text-gray-300 font-normal text-xs">
                         ${fmt(r.vsMesAnterior.dolares_anterior)}
                       </span>
-                      ({r.vsMesAnterior.variacion_porc !== null
-                        ? `${r.vsMesAnterior.variacion_porc >= 0 ? "+" : ""}${r.vsMesAnterior.variacion_porc.toFixed(2)}%`
-                        : "–"})
-                      {" "}{esPositivo ? "+" : "-"}${fmt(Math.abs(r.vsMesAnterior.variacion_abs))}
+                      {esPositivo ? "+" : "-"}${fmt(Math.abs(r.vsMesAnterior.variacion_abs))}
                     </>
+                  )}
+                </td>
+                {/* % */}
+                <td className={`px-4 py-2 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
+                  {sinDatos ? (
+                    <span className="text-gray-500 font-normal">—</span>
+                  ) : (
+                    r.vsMesAnterior.variacion_porc !== null
+                      ? `${r.vsMesAnterior.variacion_porc >= 0 ? "+" : ""}${r.vsMesAnterior.variacion_porc.toFixed(2)}%`
+                      : "–"
                   )}
                 </td>
 
@@ -336,6 +345,7 @@ export default function TablaCotsa({ anio, mes }: Props) {
             {esMesActual && (
               <td className="px-4 py-3 text-right text-emerald-400">${fmt(totales.proyeccion)}</td>
             )}
+            <td className="px-4 py-3 text-right text-gray-400">—</td>
             <td className="px-4 py-3 text-right text-gray-400">—</td>
             <td className="px-4 py-3 text-right">{totales.cant_facturas}</td>
             <td className="px-4 py-3 text-right">{totales.cant_clientes}</td>

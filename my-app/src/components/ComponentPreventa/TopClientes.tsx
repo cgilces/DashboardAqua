@@ -71,14 +71,29 @@ export default function TopClientes({
     }));
   };
 
+  const totalActual   = topClientes.reduce((a, c) => a + c.montoActual,   0);
+  const totalAnterior = topClientes.reduce((a, c) => a + c.montoAnterior, 0);
+
   return (
     <div
       key={`top-clientes-${topClientes.length}`}
       className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6"
     >
-      <h2 className="text-xl font-bold px-4 py-3 text-blue-300">
-        Top Clientes con Mayor Consumo
-      </h2>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
+        <h2 className="text-lg md:text-xl font-bold text-blue-300">
+          Top Clientes con Mayor Consumo
+        </h2>
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Mes Actual</p>
+            <p className="text-base font-bold text-white">${totalActual.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Mes Anterior</p>
+            <p className="text-base font-bold text-blue-300">${totalAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</p>
+          </div>
+        </div>
+      </div>
 
       <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">

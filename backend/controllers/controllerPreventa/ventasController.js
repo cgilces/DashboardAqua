@@ -286,41 +286,45 @@ const obtenerRankingRutasDescartable = async (anioNum, mesNum, metasPorPreventa,
 
   console.log(`📅 RankingR ${anioNum}-${mesNum}: ${inicio} → ${fin}`);
 
-  const sqlActual = `
-    SELECT x.usuario, SUM(x.unidades) AS unidades, SUM(x.dolares) AS dolares,
-           SUM(x.cant_ordenes) AS cant_ordenes, SUM(x.cant_facturas) AS cant_facturas
-    FROM (
-      SELECT o.seller_code AS usuario, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
-             COUNT(DISTINCT o.code) AS cant_ordenes, 0::int AS cant_facturas
-      FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
-      WHERE dd.codigo_categoria='7' AND o.status IN(2,4,5) AND o.seller_code ILIKE 'R%'
-        AND o.fecha_creacion>='${inicio}' AND o.fecha_creacion<'${fin}'
-      GROUP BY o.seller_code
-      UNION ALL
-      SELECT f.seller_code AS usuario, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
-             0::int AS cant_ordenes, COUNT(DISTINCT f.code) AS cant_facturas
-      FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE dd.codigo_categoria='7' AND f.status IN(2,4,5) AND f.seller_code ILIKE 'R%'
-        AND f.fecha_creacion>='${inicio}' AND f.fecha_creacion<'${fin}'
-      GROUP BY f.seller_code
-    ) x GROUP BY x.usuario ORDER BY dolares DESC;
-  `;
+const sqlActual = `
+  SELECT x.usuario, SUM(x.unidades) AS unidades, SUM(x.dolares) AS dolares,
+         SUM(x.cant_ordenes) AS cant_ordenes, SUM(x.cant_facturas) AS cant_facturas
+  FROM (
+    SELECT o.seller_code AS usuario, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
+           COUNT(DISTINCT o.code) AS cant_ordenes, 0::int AS cant_facturas
+    FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE dd.codigo_categoria='7' AND o.status IN(2,4,5)
+      AND (o.seller_code ILIKE 'R%' OR o.seller_code ILIKE 'PVR%')
+      AND o.fecha_creacion>='${inicio}' AND o.fecha_creacion<'${fin}'
+    GROUP BY o.seller_code
+    UNION ALL
+    SELECT f.seller_code AS usuario, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
+           0::int AS cant_ordenes, COUNT(DISTINCT f.code) AS cant_facturas
+    FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE dd.codigo_categoria='7' AND f.status IN(2,4,5)
+      AND (f.seller_code ILIKE 'R%' OR f.seller_code ILIKE 'PVR%')
+      AND f.fecha_creacion>='${inicio}' AND f.fecha_creacion<'${fin}'
+    GROUP BY f.seller_code
+  ) x GROUP BY x.usuario ORDER BY dolares DESC;
+`;
 
-  const sqlPrev = `
-    SELECT x.usuario, SUM(x.dolares) AS dolares FROM (
-      SELECT o.seller_code AS usuario, SUM(dd.total) AS dolares
-      FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
-      WHERE dd.codigo_categoria='7' AND o.status IN(2,4,5) AND o.seller_code ILIKE 'R%'
-        AND o.fecha_creacion>='${inicioPrev}' AND o.fecha_creacion<'${finPrev}'
-      GROUP BY o.seller_code
-      UNION ALL
-      SELECT f.seller_code AS usuario, SUM(dd.total) AS dolares
-      FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE dd.codigo_categoria='7' AND f.status IN(2,4,5) AND f.seller_code ILIKE 'R%'
-        AND f.fecha_creacion>='${inicioPrev}' AND f.fecha_creacion<'${finPrev}'
-      GROUP BY f.seller_code
-    ) x GROUP BY x.usuario;
-  `;
+const sqlPrev = `
+  SELECT x.usuario, SUM(x.dolares) AS dolares FROM (
+    SELECT o.seller_code AS usuario, SUM(dd.total) AS dolares
+    FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE dd.codigo_categoria='7' AND o.status IN(2,4,5)
+      AND (o.seller_code ILIKE 'R%' OR o.seller_code ILIKE 'PVR%')
+      AND o.fecha_creacion>='${inicioPrev}' AND o.fecha_creacion<'${finPrev}'
+    GROUP BY o.seller_code
+    UNION ALL
+    SELECT f.seller_code AS usuario, SUM(dd.total) AS dolares
+    FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE dd.codigo_categoria='7' AND f.status IN(2,4,5)
+      AND (f.seller_code ILIKE 'R%' OR f.seller_code ILIKE 'PVR%')
+      AND f.fecha_creacion>='${inicioPrev}' AND f.fecha_creacion<'${finPrev}'
+    GROUP BY f.seller_code
+  ) x GROUP BY x.usuario;
+`;
 
   const actual   = await sequelize.query(sqlActual, { type: Sequelize.QueryTypes.SELECT });
   const anterior = await sequelize.query(sqlPrev,   { type: Sequelize.QueryTypes.SELECT });
@@ -604,31 +608,33 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 
   // ── Query ranking ─────────────────────────────────────────────
   const querySQL = `
-    SELECT
-        o.seller_code    AS preventa,
-        SUM(dd.cantidad) AS sum_quantity,
-        SUM(dd.total)    AS sum_total
-    FROM ordenes o
-    INNER JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE
-        o.type   = 2
-        AND o.status = 5
-        AND (
-            o.seller_code ILIKE 'PV%'
-            OR o.seller_code ILIKE 'PREVENTA%'
-            OR o.seller_code ILIKE 'TELEVENTA%'
-        )
-        AND o.fecha_entrega >= :fechaInicio
-        AND o.fecha_entrega <  :fechaFin
-    GROUP BY o.seller_code
-    ORDER BY
-        CASE
-            WHEN o.seller_code ILIKE 'PREVENTA VIP%' THEN 1
-            WHEN o.seller_code ILIKE 'PV%'           THEN 2
-            WHEN o.seller_code ILIKE 'TELEVENTA%'    THEN 3
-            ELSE 4
-        END ASC,
-        o.seller_code ASC;
+        SELECT
+            o.seller_code    AS preventa,
+            SUM(dd.cantidad) AS sum_quantity,
+            SUM(dd.total)    AS sum_total
+        FROM ordenes o
+        INNER JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE
+            o.type   = 2
+            AND o.status = 5
+            AND (
+                o.seller_code ILIKE 'PV%'
+                OR o.seller_code ILIKE 'PREVENTA%'
+                OR o.seller_code ILIKE 'TELEVENTA%'
+            )
+            AND o.seller_code NOT ILIKE 'PVR%'
+            AND o.fecha_entrega >= :fechaInicio
+            AND o.fecha_entrega <  :fechaFin
+        GROUP BY o.seller_code
+        ORDER BY
+            CASE
+                WHEN o.seller_code ILIKE 'PREVENTA VIP%' THEN 1
+                WHEN o.seller_code ILIKE 'PV%'           THEN 2
+                WHEN o.seller_code ILIKE 'TELEVENTA%'    THEN 3
+                ELSE 4
+            END ASC,
+            o.seller_code ASC;
+
   `;
 
   const resultadosSQL = await sequelize.query(querySQL, {

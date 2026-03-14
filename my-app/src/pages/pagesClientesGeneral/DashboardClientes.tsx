@@ -184,33 +184,36 @@ export default function DashboardClientesTabla() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-10 py-6">
+      <div className="main-content min-h-screen text-white px-4 md:px-10 py-4 md:py-6">
         <Header/>
-        <h1 className="text-3xl font-bold tracking-wide mb-6">DASHBOARD CLIENTES</h1>
+        <h1 className="text-xl md:text-3xl font-bold tracking-wide mb-6">DASHBOARD CLIENTES</h1>
 
         {/* KPIs */}
-        <div className="grid grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
           {[
             { label: "Clientes",         value: filteredSorted.length,  color: "text-white"      },
             { label: "Ventas",           value: money(totalDolares),    color: "text-blue-400"   },
             { label: "Ticket Promedio",  value: money(ticketPromedio),  color: "text-green-400"  },
             { label: "Clientes Crédito", value: clientesCredito,        color: "text-yellow-400" },
           ].map(k => (
-            <div key={k.label} className="bg-[#013d32] p-4 rounded-lg">
-              <p className="text-sm text-gray-300">{k.label}</p>
-              <h2 className={`text-2xl font-bold ${k.color}`}>{k.value}</h2>
+            <div key={k.label} className="bg-[#013d32] border border-[#046C5E] p-4 rounded-lg">
+              <p className="text-xs md:text-sm text-gray-400">{k.label}</p>
+              <h2 className={`text-xl md:text-2xl font-bold ${k.color}`}>{k.value}</h2>
             </div>
           ))}
         </div>
 
         {/* BUSCADOR */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="relative w-96">
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          <div className="relative w-full md:w-96">
+            <svg xmlns="http://www.w3.org/2000/svg" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 0 5 11a6 6 0 0 0 12 0z"/>
+            </svg>
             <input
               value={inputQuery}
               onChange={e => setInputQuery(e.target.value)}
               placeholder="Buscar por nombre, cédula o vendedor..."
-              className="w-full rounded-lg bg-[#013d32] border border-[#046C5E] px-4 py-2 pr-8 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all"
+              className="w-full rounded-lg bg-[#013d32] border border-[#046C5E] pl-9 pr-8 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all"
             />
             {inputQuery && (
               <button onClick={() => setInputQuery("")}

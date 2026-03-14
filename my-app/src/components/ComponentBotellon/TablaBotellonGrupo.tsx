@@ -139,16 +139,35 @@ const TablaBotellonGrupo: React.FC<Props> = ({
      RENDER
   ============================ */
   return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mb-8">
+    <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mb-8">
       {/* HEADER */}
-      <div className="px-4 py-3 border-b border-[#046C5E]">
-        <h2 className="text-xl font-bold text-green-300">{titulo}</h2>
-        <p className="text-sm text-gray-300">
-          Botellones – Órdenes + Facturas
-        </p>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
+        <div>
+          <h2 className="text-lg md:text-xl font-bold text-green-300">{titulo}</h2>
+          <p className="text-sm text-gray-300">Botellones – Órdenes + Facturas</p>
+        </div>
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Unidades</p>
+            <p className="text-base font-bold text-blue-300">{total.unidades.toLocaleString("es-EC")}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Dólares</p>
+            <p className="text-base font-bold text-white">{money(total.dolares)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Meta</p>
+            <p className="text-base font-bold text-amber-300">{money(total.meta ?? 0)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Proyección</p>
+            <p className="text-base font-bold text-emerald-400">{money(total.proyeccion ?? 0)}</p>
+          </div>
+        </div>
       </div>
 
       {/* TABLA */}
+      <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
@@ -168,7 +187,10 @@ const TablaBotellonGrupo: React.FC<Props> = ({
               PROYECCIÓN {iconSort("proyeccion")}
             </th>
             <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
-              VS MES ANTERIOR {iconSort("vsmesanterior")}
+              VARIACIÓN {iconSort("vsmesanterior")}
+            </th>
+            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+              % {iconSort("vsmesanterior")}
             </th>
           </tr>
         </thead>
@@ -197,8 +219,19 @@ const TablaBotellonGrupo: React.FC<Props> = ({
                 {money(row.proyeccion)}
               </td>
 
-              <td className="px-4 py-2 text-right">
-                {renderVsMesAnterior(row.vsmesanterior)}
+              {/* VARIACIÓN */}
+              <td className={`px-4 py-2 text-right font-bold ${!row.vsmesanterior || row.vsmesanterior.dolares === 0 ? "text-gray-400" : row.vsmesanterior.dolares > 0 ? "text-green-400" : "text-red-400"}`}>
+                {!row.vsmesanterior || (row.vsmesanterior.porcentaje === 0 && row.vsmesanterior.dolares === 0)
+                  ? "—"
+                  : `${row.vsmesanterior.dolares >= 0 ? "+" : "-"}$${Math.abs(row.vsmesanterior.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}`
+                }
+              </td>
+              {/* % */}
+              <td className={`px-4 py-2 text-right font-bold ${!row.vsmesanterior || row.vsmesanterior.dolares === 0 ? "text-gray-400" : row.vsmesanterior.porcentaje > 0 ? "text-green-400" : "text-red-400"}`}>
+                {!row.vsmesanterior || (row.vsmesanterior.porcentaje === 0 && row.vsmesanterior.dolares === 0)
+                  ? "—"
+                  : `${row.vsmesanterior.porcentaje >= 0 ? "+" : ""}${row.vsmesanterior.porcentaje.toFixed(2)}%`
+                }
               </td>
             </tr>
           ))}
@@ -227,13 +260,12 @@ const TablaBotellonGrupo: React.FC<Props> = ({
               {money(total.proyeccion ?? 0)}
             </td>
 
-            <td className="px-4 py-3 text-right text-blue-300">
-              {/* {renderVsMesAnterior(total.vsmesanterior)} */}
-              --
-            </td>
+            <td className="px-4 py-3 text-right text-gray-400">—</td>
+            <td className="px-4 py-3 text-right text-gray-400">—</td>
           </tr>
         </tfoot>
       </table>
+      </div>
     </div>
   );
 };

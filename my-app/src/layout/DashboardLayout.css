@@ -155,10 +155,8 @@
     font-size: 0.8rem;
   }
 
-  /* full width inputs */
-  header select,
-  input,
-  button {
+  /* full width header selects */
+  header select {
     width: 100%;
     max-width: 100%;
   }

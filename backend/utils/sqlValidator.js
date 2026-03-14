@@ -3,10 +3,18 @@ function validarSQL(sql) {
 
   if (!sql) return false;
 
-  const prohibidas = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE"];
+  const prohibidas = [
+    "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE",
+    "EXEC", "EXECUTE", "GRANT", "REVOKE", "CREATE", "MERGE",
+    "CALL", "LOAD", "COPY", "BEGIN", "COMMIT", "ROLLBACK",
+  ];
 
-  for (let palabra of prohibidas) {
-    if (sql.toUpperCase().includes(palabra)) {
+  const sqlUpper = sql.toUpperCase();
+
+  for (const palabra of prohibidas) {
+    // Verificar como palabra completa (no como substring de otra)
+    const regex = new RegExp(`\\b${palabra}\\b`);
+    if (regex.test(sqlUpper)) {
       console.log("❌ Contiene palabra prohibida:", palabra);
       return false;
     }

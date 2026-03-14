@@ -196,7 +196,8 @@ export default function TablaDescartableOdoo({ anio, mes }: Props) {
     ["subtotal",      "Subtotal",        "text-right"],
     ["dolares",       "Dólares $",         "text-right"],
     ...(esMesActual ? [["proyeccion", "Proyección", "text-right"] as [SortKey, string, string]] : []),
-    ["variacion",     "Vs Mes Anterior", "text-right"],
+    ["variacion",     "Variación",       "text-right"],
+    ["variacion",     "%",               "text-right"],
     ["cant_ordenes",  "Órdenes",         "text-right"],
     ["cant_clientes", "Clientes",        "text-right"],
   ];
@@ -255,9 +256,9 @@ export default function TablaDescartableOdoo({ anio, mes }: Props) {
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
             <th className="px-4 py-3 text-left">N°</th>
-            {columnas.map(([key, label, align]) => (
+            {columnas.map(([key, label, align], colIdx) => (
               <th
-                key={key}
+                key={`${key}-${colIdx}`}
                 className={`px-4 py-3 ${align} cursor-pointer hover:text-white transition-colors select-none`}
                 onClick={() => requestSort(key)}
               >
@@ -286,18 +287,25 @@ export default function TablaDescartableOdoo({ anio, mes }: Props) {
                 {esMesActual && (
                   <td className="px-4 py-2 text-right font-bold text-emerald-400">${fmt(r.proyeccion)}</td>
                 )}
+                {/* VARIACIÓN */}
                 <td className={`px-4 py-2 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
                   {r.mes_anterior.dolares === 0 ? (
                     <span className="text-gray-500 font-normal">Sin datos</span>
                   ) : (
                     <>
-                      <span className="block text-gray-300 font-normal">${fmt(r.mes_anterior.dolares)}</span>
-                      ({r.variacion.porcentaje !== null
-                        ? `${r.variacion.porcentaje >= 0 ? "+" : ""}${r.variacion.porcentaje.toFixed(2)}%`
-                        : "–"})
-                      {" "}
+                      <span className="block text-gray-300 font-normal text-xs">${fmt(r.mes_anterior.dolares)}</span>
                       {esPositivo ? "+" : "-"}${fmt(Math.abs(r.variacion.abs))}
                     </>
+                  )}
+                </td>
+                {/* % */}
+                <td className={`px-4 py-2 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
+                  {r.mes_anterior.dolares === 0 ? (
+                    <span className="text-gray-500 font-normal">—</span>
+                  ) : (
+                    r.variacion.porcentaje !== null
+                      ? `${r.variacion.porcentaje >= 0 ? "+" : ""}${r.variacion.porcentaje.toFixed(2)}%`
+                      : "–"
                   )}
                 </td>
                 <td className="px-4 py-2 text-right text-gray-300">{r.cant_ordenes}</td>
@@ -317,11 +325,13 @@ export default function TablaDescartableOdoo({ anio, mes }: Props) {
               <td className="px-4 py-3 text-right text-emerald-400">${fmt(totales.proyeccion)}</td>
             )}
             <td className={`px-4 py-3 text-right ${totales.variacion.abs >= 0 ? "text-green-400" : "text-red-400"}`}>
-              <span className="block text-gray-300 font-normal">${fmt(totales.mes_anterior.dolares)}</span>
-              {totales.variacion.porcentaje !== null
-                ? `(${totales.variacion.porcentaje >= 0 ? "+" : ""}${totales.variacion.porcentaje.toFixed(2)}%) `
-                : ""}
+              <span className="block text-gray-300 font-normal text-xs">${fmt(totales.mes_anterior.dolares)}</span>
               {totales.variacion.abs >= 0 ? "+" : "-"}${fmt(Math.abs(totales.variacion.abs))}
+            </td>
+            <td className="px-4 py-3 text-right text-gray-400">
+              {totales.variacion.porcentaje !== null
+                ? `${totales.variacion.porcentaje >= 0 ? "+" : ""}${totales.variacion.porcentaje.toFixed(2)}%`
+                : "—"}
             </td>
             <td className="px-4 py-3 text-right">{totales.cant_ordenes}</td>
             <td className="px-4 py-3 text-right">—</td>

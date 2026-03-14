@@ -11,9 +11,21 @@ const TablaDetallePreventas: React.FC<Props> = ({ ruta, datos }) => {
 
   return (
     <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
-      <h2 className="text-2xl font-bold text-center text-green-400 p-4">
-        Detalle por Producto - {ruta}
-      </h2>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
+        <h2 className="text-lg md:text-xl font-bold text-green-400">
+          Detalle por Producto - {ruta}
+        </h2>
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Unidades</p>
+            <p className="text-base font-bold text-green-400">{totalUnidades.toLocaleString()}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Dólares</p>
+            <p className="text-base font-bold text-white">${totalUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          </div>
+        </div>
+      </div>
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>

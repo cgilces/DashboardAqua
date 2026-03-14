@@ -131,21 +131,50 @@ export default function TablaResumenBotellones({
   };
 
   /* ============================
+     TOTALES
+  ============================ */
+  const totalUnidades   = filas.reduce((a, r) => a + r.unidades,   0);
+  const totalDolares    = filas.reduce((a, r) => a + r.dolares,    0);
+  const totalMeta       = filas.reduce((a, r) => a + r.meta,       0);
+  const totalProyeccion = filas.reduce((a, r) => a + r.proyeccion, 0);
+
+  /* ============================
      UI
   ============================ */
   return (
     <div className="bg-[#012E24] rounded-lg border border-[#046C5E] mb-10">
       {/* HEADER */}
-      <div className="px-4 py-3 border-b border-[#046C5E]">
-        <h2 className="text-xl font-bold text-green-300">
-          Resumen General Botellones
-        </h2>
-        <p className="text-sm text-gray-300">
-          Totales por grupo comercial (Facturas + Órdenes no facturadas)
-        </p>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
+        <div>
+          <h2 className="text-lg md:text-xl font-bold text-green-300">
+            Resumen General Botellones
+          </h2>
+          <p className="text-sm text-gray-300">
+            Totales por grupo comercial (Facturas + Órdenes no facturadas)
+          </p>
+        </div>
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Unidades</p>
+            <p className="text-base font-bold text-blue-300">{totalUnidades.toLocaleString("es-EC")}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Dólares</p>
+            <p className="text-base font-bold text-white">{money(totalDolares)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Meta</p>
+            <p className="text-base font-bold text-amber-300">{money(totalMeta)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Proyección</p>
+            <p className="text-base font-bold text-emerald-400">{money(totalProyeccion)}</p>
+          </div>
+        </div>
       </div>
 
       {/* TABLA */}
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
@@ -166,7 +195,10 @@ export default function TablaResumenBotellones({
               Proyección
             </th>
             <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
-              Vs Mes Anterior
+              Variación
+            </th>
+            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+              %
             </th>
           </tr>
         </thead>
@@ -206,17 +238,25 @@ export default function TablaResumenBotellones({
                 {row.proyeccion ? money(row.proyeccion) : "—"}
               </td>
 
-              <td
-                className={`px-4 py-2 text-right font-semibold ${colorVs(
-                  row.vsmesanterior
-                )}`}
-              >
-                {formatVsMesAnterior(row.vsmesanterior)}
+              {/* VARIACIÓN */}
+              <td className={`px-4 py-2 text-right font-semibold ${colorVs(row.vsmesanterior)}`}>
+                {!row.vsmesanterior || (row.vsmesanterior.porcentaje === 0 && row.vsmesanterior.dolares === 0)
+                  ? "—"
+                  : `${row.vsmesanterior.dolares >= 0 ? "+" : "-"}$${Math.abs(row.vsmesanterior.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}`
+                }
+              </td>
+              {/* % */}
+              <td className={`px-4 py-2 text-right font-semibold ${colorVs(row.vsmesanterior)}`}>
+                {!row.vsmesanterior || (row.vsmesanterior.porcentaje === 0 && row.vsmesanterior.dolares === 0)
+                  ? "—"
+                  : `${row.vsmesanterior.porcentaje >= 0 ? "+" : ""}${row.vsmesanterior.porcentaje.toFixed(2)}%`
+                }
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

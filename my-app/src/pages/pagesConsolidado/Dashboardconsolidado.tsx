@@ -109,7 +109,7 @@ const Dashboardconsolidado: React.FC = () => {
 
     return (
         <DashboardLayout>
-            <div className="main-content min-h-screen text-white font-sans px-10 py-6 bg-gradient-to-b from-[#162B25] to-[#162B25]">
+            <div className="main-content min-h-screen text-white font-sans px-4 md:px-10 py-4 md:py-6 bg-gradient-to-b from-[#162B25] to-[#162B25]">
                 <Header />
 
                 {/* ============================
@@ -117,11 +117,11 @@ const Dashboardconsolidado: React.FC = () => {
         ============================ */}
                 {/* Botón de actualización de sincronización - Centrado en dispositivos móviles */}
 
-                <header className="flex flex-col sm:flex-row justify-between items-center mb-10 border-b border-[#046C5E] pb-4 py-6">
+                <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6 md:mb-10 border-b border-[#046C5E] pb-4 py-4 md:py-6">
                     <div className="flex items-center gap-4">
                         <BarChart className="h-14 w-auto transition-all duration-300" />
                         <div>
-                            <h1 className="text-3xl font-bold tracking-wide">
+                            <h1 className="text-xl md:text-3xl font-bold tracking-wide">
                                 Consolidado General
                             </h1>
                             <p className="text-sm text-gray-300">
@@ -131,13 +131,13 @@ const Dashboardconsolidado: React.FC = () => {
                     </div>
 
                     {/* Botón de actualización de sincronización - Centrado en dispositivos móviles */}
-                    <div className="flex justify-center w-full sm:w-auto mt-4 sm:mt-0">
+                    <div className="flex justify-center w-full md:w-auto">
                         <BotonActualizarSincronizacion />
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
                         <select
-                            className="bg-[#046C5E] text-white px-4 py-2 rounded-lg"
+                            className="bg-[#046C5E] text-white px-4 py-2 rounded-lg flex-1 min-w-[120px]"
                             value={mesSeleccionado}
                             onChange={(e) => setMesSeleccionado(e.target.value)}
                         >
@@ -149,7 +149,7 @@ const Dashboardconsolidado: React.FC = () => {
                         </select>
 
                         <select
-                            className="bg-[#046C5E] text-white px-4 py-2 rounded-lg"
+                            className="bg-[#046C5E] text-white px-4 py-2 rounded-lg flex-1 min-w-[120px]"
                             value={anioSeleccionado}
                             onChange={(e) => setAnioSeleccionado(e.target.value)}
                         >

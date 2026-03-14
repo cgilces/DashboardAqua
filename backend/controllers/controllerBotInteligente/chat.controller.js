@@ -1,8 +1,10 @@
 // controllers/controllerBotInteligente/chat.controller.js
-const { generarSQL } = require("../../services/chatbotservicio/openai.service");
-const { ejecutarSQL } = require("../../services/chatbotservicio/query.service");
-const { validarSQL, aplicarLimite } = require("../../utils/sqlValidator");
+const { generarSQL }                           = require("../../services/chatbotservicio/openai.service");
+const { ejecutarSQL }                          = require("../../services/chatbotservicio/query.service");
+const { validarSQL, aplicarLimite }            = require("../../utils/sqlValidator");
 const { detectarTipoReporte, generarPDF, construirConfigReporte } = require("../../services/chatbotservicio/reporte.service");
+const { registrar: registrarAuditoria }        = require("../../services/chatbotservicio/auditoria.service");
+const { construirResumenEstadistico }          = require("../../services/chatbotservicio/respuesta.service");
 
 const OpenAI = require("openai");
 const path   = require("path");
@@ -63,14 +65,26 @@ function limpiarHistorial(usuario) {
   historialSesiones.delete(usuario);
 }
 
-// Limpiar sesiones expiradas cada 10 minutos
+// Limpiar sesiones expiradas, rate limit y PDFs viejos cada 10 minutos
 setInterval(() => {
   const ahora = Date.now();
+
+  // Historial de conversación
   for (const [usuario, sesion] of historialSesiones) {
     if (ahora - sesion.ultimaActividad > HISTORIAL_TTL_MS) {
       historialSesiones.delete(usuario);
     }
   }
+
+  // Rate limit map — limpiar entradas con más de 5 minutos de inactividad
+  for (const [usuario, entry] of rateLimitMap) {
+    if (ahora - entry.start > 5 * 60 * 1000) {
+      rateLimitMap.delete(usuario);
+    }
+  }
+
+  // PDFs temporales viejos
+  limpiarPDFsViejos();
 }, 10 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════
@@ -145,6 +159,12 @@ const PATRONES_CONVERSACIONAL = [
   /tipos?\s+de\s+reporte/i,
   /^(hola|buenos?\s+(d[ií]as?|tardes?|noches?)|hey|hi|saludos?)[\s!.]*$/i,
   /^(gracias|thank|perfecto|excelente|ok|okay|listo|entend[ií])[\s!.]*$/i,
+  // Reconocimientos y respuestas de cierre adicionales
+  /^(muchas?\s+gracias|de\s+nada|gracias\s+(un\s+)?(montonazo|cacharro|banda))[\s\w!.,]*$/i,
+  /^(entendido|comprend[ío]|ya\s+(veo|entend[ií])|claro(\s+que\s+s[ií])?|exacto|así?\s+es)[\s!.,]*$/i,
+  /^(genial|interesante|impresionante|fantástico|estupendo|qué?\s+bien|muy\s+bien)[\s\w!.,]*$/i,
+  /^(no\s+(importa|es\s+necesario)|olvídalo?|déjalo?|no\s+gracias)[\s!.,]*$/i,
+  /^(dale|va|bueno|correcto|confirmado|de\s+acuerdo|con\s+gusto)[\s!.,]*$/i,
 ];
 
 const PALABRAS_CLAVE_SQL = new Set([
@@ -406,8 +426,15 @@ Ejemplos:
 
 
 async function generarRespuestaHumana(pregunta, datos, historial) {
-  const datosLimitados = datos.slice(0, 50);
-  const hayMas = datos.length > 50;
+  // Para datasets grandes usamos un resumen estadístico en lugar de truncar
+  // Esto da al LLM información de todo el conjunto, no solo los primeros 50 registros
+  const esVolumenGrande = datos.length > 50;
+  const contenidoDatos  = esVolumenGrande
+    ? construirResumenEstadistico(datos)
+    : datos;
+  const notaVolumen = esVolumenGrande
+    ? `\n\nNOTA IMPORTANTE: Los datos son un RESUMEN ESTADÍSTICO de ${datos.length} registros totales (no el listado completo). Describe cifras agregadas (totales, promedios, rangos máximos/mínimos). NO digas "los primeros N registros" — describe el conjunto completo.`
+    : "";
 
   const systemPrompt = {
     role: "system",
@@ -488,7 +515,7 @@ Responde siempre en español.`
       ...historial,   // ← contexto de la conversación
       {
         role: "user",
-        content: `Pregunta: ${pregunta}\n\nResultados${hayMas ? ` (primeros 50 de ${datos.length})` : ""}:\n${JSON.stringify(datosLimitados)}`
+        content: `Pregunta: ${pregunta}${notaVolumen}\n\nResultados:\n${JSON.stringify(contenidoDatos)}`
       }
     ]
   });
@@ -650,6 +677,8 @@ async function chatHandler(req, res) {
 
         try {
           datos = await ejecutarConReintento(preguntaSQL, rol, seller_code, sql);
+          // Auditar la consulta ejecutada (no bloqueante)
+          registrarAuditoria(usuario, rol, mensaje, sql).catch(() => {});
         } catch (err) {
           const respuesta =
             err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta para el reporte." :
@@ -723,6 +752,8 @@ async function chatHandler(req, res) {
     let datos;
     try {
       datos = await ejecutarConReintento(preguntaFinal, rol, seller_code, sql);
+      // Auditar la consulta ejecutada (no bloqueante)
+      registrarAuditoria(usuario, rol, mensaje, sql).catch(() => {});
     } catch (err) {
       const respuesta =
         err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta. Intenta reformularla." :

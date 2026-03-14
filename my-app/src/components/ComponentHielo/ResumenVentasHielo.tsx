@@ -164,58 +164,48 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
     );
   };
 
+  const fmt = (n: number) =>
+    n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtInt = (n: number) => n.toLocaleString("es-EC");
+
   return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mb-8">
+    <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mb-8">
       {/* HEADER */}
-
-      <div className="
-  flex flex-col gap-4
-  md:flex-row md:items-center md:justify-between
-  mb-4
-">
-        {/* TÍTULO */}
-        <h2
-          className="
-    text-lg md:text-xl
-    font-bold
-    px-4 py-2
-    text-blue-300
-    leading-tight
-    text-center md:text-left
-  ">
-          Resumen de Ventas de Hielo
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
+        <h2 className="text-lg md:text-xl font-bold text-cyan-300">
+          RESUMEN DE VENTAS DE HIELO
         </h2>
-
-        {/* BOTÓN EXPORTAR */}
-        {isAdmin && (
-          <div className="flex md:justify-end ">
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Unidades</p>
+            <p className="text-base font-bold text-cyan-300">{fmtInt(totalUnidades)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Dólares</p>
+            <p className="text-base font-bold text-white">${fmt(totalUSD)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Meta</p>
+            <p className="text-base font-bold text-amber-300">${fmt(totalMetaHistorica)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Proyección</p>
+            <p className="text-base font-bold text-emerald-400">${fmt(totalProyeccion)}</p>
+          </div>
+          {isAdmin && (
             <button
               onClick={exportarTablaExcel}
-              className="
-          flex items-center justify-center gap-2
-          w-full md:w-auto
-          px-4 py-2
-          rounded-lg
-          border border-[#0db48b]/60
-          bg-[#0db48b]/20
-          text-white font-semibold
-          shadow-md
-          hover:bg-[#0db48b]/30
-          hover:shadow-lg
-          active:scale-[0.98]
-          transition-all
-        "
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
             >
               <BsDownload size={16} className="text-white shrink-0" />
               <span>Exportar</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-
-
       {/* TABLA */}
+      <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
@@ -235,7 +225,10 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
               Proyección {iconoOrden("proyeccion")}
             </th>
             <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("vsMesAnterior")}>
-              Vs Mes Anterior {iconoOrden("vsMesAnterior")}
+              Variación {iconoOrden("vsMesAnterior")}
+            </th>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("vsMesAnterior")}>
+              % {iconoOrden("vsMesAnterior")}
             </th>
           </tr>
         </thead>
@@ -287,6 +280,7 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
                 )}
               </td>
 
+              {/* VARIACIÓN */}
               <td
                 className={`px-4 py-2 text-right font-bold ${r.vsMesAnterior?.variacion_abs > 0
                   ? "text-green-400"
@@ -296,9 +290,22 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
                   }`}
               >
                 {r.vsMesAnterior
-                  ? `(${(r.vsMesAnterior.variacion_porc ?? 0).toFixed(2)}%) $${Math.abs(
+                  ? `${(r.vsMesAnterior.variacion_abs ?? 0) >= 0 ? "+" : "-"}$${Math.abs(
                     r.vsMesAnterior.variacion_abs ?? 0
                   ).toLocaleString("es-EC", { minimumFractionDigits: 2 })}`
+                  : "–"}
+              </td>
+              {/* % */}
+              <td
+                className={`px-4 py-2 text-right font-bold ${r.vsMesAnterior?.variacion_abs > 0
+                  ? "text-green-400"
+                  : r.vsMesAnterior?.variacion_abs < 0
+                    ? "text-red-400"
+                    : "text-gray-400"
+                  }`}
+              >
+                {r.vsMesAnterior
+                  ? `${(r.vsMesAnterior.variacion_porc ?? 0) >= 0 ? "+" : ""}${(r.vsMesAnterior.variacion_porc ?? 0).toFixed(2)}%`
                   : "–"}
               </td>
             </tr>
@@ -322,13 +329,15 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
               ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
             </td>
 
-            <td className="px-4 py-3 text-right text-blue-400">
-              ${totalVsMesAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+            <td className={`px-4 py-3 text-right ${totalVsMesAnterior >= 0 ? "text-green-400" : "text-red-400"}`}>
+              {totalVsMesAnterior >= 0 ? "+" : "-"}${Math.abs(totalVsMesAnterior).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
             </td>
+            <td className="px-4 py-3 text-right text-gray-400">—</td>
           </tr>
         </tfoot>
 
       </table>
+      </div>
     </div>
   );
 };

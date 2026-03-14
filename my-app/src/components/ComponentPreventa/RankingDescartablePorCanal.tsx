@@ -192,38 +192,49 @@ const RankingDescartablePorCanal = ({
     );
   };
 
+  const fmtNum = (n: number) => n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtInt = (n: number) => n.toLocaleString("es-EC");
+
   return (
     <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
 
       {/* HEADER */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
-        <div className="flex flex-col text-center md:text-left">
-          <h2 className="text-xl font-bold px-4 text-blue-300">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
+        <div>
+          <h2 className="text-lg md:text-xl font-bold text-blue-300">
             RANKING DESCARTABLE POR CANAL
           </h2>
-          <p className="text-sm px-4 text-green-300 mt-1 tracking-wide">
+          <p className="text-sm text-green-300 mt-1 tracking-wide">
             · Domicilio · Mayorista · VIP ·
           </p>
         </div>
-
-        {isAdmin && (
-          <div className="flex gap-4 mb-4">
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Unidades</p>
+            <p className="text-base font-bold text-green-400">{fmtInt(totalUnidades)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Dólares</p>
+            <p className="text-base font-bold text-white">${fmtNum(totalUSD)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Meta</p>
+            <p className="text-base font-bold text-white">${fmtNum(totalMeta)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Proyección</p>
+            <p className="text-base font-bold text-emerald-400">${fmtNum(totalProyeccion)}</p>
+          </div>
+          {isAdmin && (
             <button
               onClick={exportarExcel}
-              className="
-                flex items-center justify-center gap-2
-                w-full md:w-auto px-4 py-2 rounded-lg
-                border border-[#0db48b]/60 bg-[#0db48b]/20
-                text-white font-semibold shadow-md
-                hover:bg-[#0db48b]/30 hover:shadow-lg
-                active:scale-[0.98] transition-all
-              "
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
             >
-              <BsDownload size={16} className="text-white shrink-0" />
+              <BsDownload size={16} />
               <span>Exportar</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* TABLA */}
@@ -247,7 +258,8 @@ const RankingDescartablePorCanal = ({
             <th onClick={() => requestSort("dolares")}      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">USD ↕</th>
             <th onClick={() => requestSort("meta")}         className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Meta ↕</th>
             <th onClick={() => requestSort("proyeccion")}   className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Proyección ↕</th>
-            <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Vs Mes Ant ↕</th>
+            <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Variación ↕</th>
+            <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">% ↕</th>
           </tr>
         </thead>
 
@@ -281,10 +293,26 @@ const RankingDescartablePorCanal = ({
                 ${Number(r.proyeccion ?? 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
 
+              {/* VARIACIÓN */}
               <td className={`px-4 py-2 text-right font-bold ${
                 (r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
               }`}>
-                {renderVsMesAnterior(r.vsMesAnterior)}
+                {!r.vsMesAnterior ? "–" : (() => {
+                  const abs = Number(r.vsMesAnterior.variacion_abs ?? 0);
+                  const signo = abs >= 0 ? "+" : "-";
+                  return <>{signo}${Math.abs(abs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>;
+                })()}
+              </td>
+              {/* % */}
+              <td className={`px-4 py-2 text-right font-bold ${
+                (r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+              }`}>
+                {!r.vsMesAnterior ? "–" : (() => {
+                  const porc = r.vsMesAnterior.variacion_porc;
+                  return porc !== null
+                    ? `${porc >= 0 ? "+" : "-"}${Math.abs(porc).toFixed(1)}%`
+                    : "0%";
+                })()}
               </td>
             </tr>
           ))}
@@ -306,9 +334,10 @@ const RankingDescartablePorCanal = ({
             <td className="px-4 py-3 text-right">
               ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
             </td>
-            <td className="px-4 py-3 text-right">
-              ${totalVsMesAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+            <td className={`px-4 py-3 text-right ${totalVsMesAnterior >= 0 ? "text-green-400" : "text-red-400"}`}>
+              {totalVsMesAnterior >= 0 ? "+" : "-"}${Math.abs(totalVsMesAnterior).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
             </td>
+            <td className="px-4 py-3 text-right text-gray-400">—</td>
           </tr>
         </tfoot>
       </table>
