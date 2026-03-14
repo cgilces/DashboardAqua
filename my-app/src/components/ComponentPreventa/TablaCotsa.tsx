@@ -214,7 +214,7 @@ export default function TablaCotsa({ anio, mes }: Props) {
       {/* ── Encabezado ───────────────────────────────────────── */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
         <h2 className="text-lg md:text-xl font-bold text-blue-300">
-          COTSA — VENTAS POR RUTA
+          COTSA — VENTAS POR RUTA - AGUA OK
         </h2>
 
         <div className="flex gap-3 flex-wrap items-center">

@@ -147,8 +147,8 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
           ? `${r.variacion_botellones.porcentaje >= 0 ? "+" : ""}${r.variacion_botellones.porcentaje.toFixed(1)}%`
           : "Sin datos",
         "Variación $":        r.mes_anterior.dolares === 0 ? "Sin datos" : fmt(r.variacion_dolares.abs),
-        "Órdenes":            r.cant_ordenes,
-        "Clientes":           r.cant_clientes,
+        // "Órdenes":            r.cant_ordenes,
+        // "Clientes":           r.cant_clientes,
       }));
 
       const { totales } = datos;
@@ -166,8 +166,8 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
           ? `${totales.variacion.porcentaje >= 0 ? "+" : ""}${totales.variacion.porcentaje.toFixed(1)}%`
           : "Sin datos",
         "Variación $":       fmt(totales.dolares - totales.mes_anterior.dolares),
-        "Órdenes":           totales.cant_ordenes,
-        "Clientes":          "—",
+        // "Órdenes":           totales.cant_ordenes,
+        // "Clientes":          "—",
       };
 
       const ws = XLSX.utils.json_to_sheet([]);
@@ -222,8 +222,8 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
     ] : []),
     ["variacion",            "Variación",         "text-right"],
     ["variacion",            "%",                 "text-right"],
-    ["cant_ordenes",         "Órdenes",           "text-right"],
-    ["cant_clientes",        "Clientes",          "text-right"],
+    // ["cant_ordenes",         "Órdenes",           "text-right"],
+    // ["cant_clientes",        "Clientes",          "text-right"],
   ];
 
   return (
@@ -264,11 +264,6 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
               </div>
             </>
           )}
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-            <p className="text-xs text-gray-400">Órdenes</p>
-            <p className="text-base font-bold text-white">{totales.cant_ordenes}</p>
-          </div>
-
           {isAdmin && (
             <button
               onClick={exportarExcel}
@@ -342,8 +337,6 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
                       : "–"
                   )}
                 </td>
-                <td className="px-4 py-2 text-right text-gray-300">{r.cant_ordenes}</td>
-                <td className="px-4 py-2 text-right text-gray-300">{r.cant_clientes}</td>
               </tr>
             );
           })}
@@ -372,8 +365,8 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
                 ? `${totales.variacion.porcentaje >= 0 ? "+" : ""}${totales.variacion.porcentaje.toFixed(2)}%`
                 : "—"}
             </td>
-            <td className="px-4 py-3 text-right">{totales.cant_ordenes}</td>
-            <td className="px-4 py-3 text-right">—</td>
+            {/* <td className="px-4 py-3 text-right">{totales.cant_ordenes}</td>
+            <td className="px-4 py-3 text-right">—</td> */}
           </tr>
         </tfoot>
       </table>
