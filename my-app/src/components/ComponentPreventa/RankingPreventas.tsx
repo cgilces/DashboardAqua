@@ -22,6 +22,7 @@ interface Preventa {
   objetivo_gerencia_unidades?: number;
 
   vsMesAnterior?: VsMesAnterior;
+  unidadesPorPresentacion?: Record<string, number>;
 }
 
 interface Datos {
@@ -325,7 +326,19 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
                 </td>
 
                 <td className="px-4 py-2 text-right text-green-400">
-                  {fmtInt(p.unidades ?? 0)}
+                  <div>{fmtInt(p.unidades ?? 0)}</div>
+                  {p.unidadesPorPresentacion && Object.keys(p.unidadesPorPresentacion).length > 0 && (
+                    <div className="mt-0.5 space-y-0.5">
+                      {Object.entries(p.unidadesPorPresentacion)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([pres, cant]) => (
+                          <div key={pres} className="flex justify-between gap-2 text-[10px] text-gray-400 font-normal">
+                            <span className="text-white">{pres}</span>
+                            <span>{fmtInt(cant)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </td>
 
                 <td className="px-4 py-2 text-right text-blue-400">

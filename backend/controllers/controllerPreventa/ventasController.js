@@ -648,6 +648,42 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     type: Sequelize.QueryTypes.SELECT
   });
 
+  // ── Query unidades por presentación por preventa ───────────────
+  const queryPresentaciones = `
+    SELECT
+        o.seller_code  AS preventa,
+        dd.descripcion AS descripcion,
+        SUM(dd.cantidad) AS cantidad
+    FROM ordenes o
+    INNER JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE
+        o.type   = 2
+        AND o.status = 5
+        AND (
+            o.seller_code ILIKE 'PV%'
+            OR o.seller_code ILIKE 'PREVENTA%'
+            OR o.seller_code ILIKE 'TELEVENTA%'
+        )
+        AND o.seller_code NOT ILIKE 'PVR%'
+        AND o.fecha_entrega >= :fechaInicio
+        AND o.fecha_entrega <  :fechaFin
+    GROUP BY o.seller_code, dd.descripcion
+  `;
+  const resultadosPresentaciones = await sequelize.query(queryPresentaciones, {
+    replacements: { fechaInicio: fechaInicioStr, fechaFin: fechaFinRankingStr },
+    type: Sequelize.QueryTypes.SELECT
+  });
+
+  // Agrupar en mapa: { preventa -> { presentacion -> unidades } }
+  const mapaPresentaciones = {};
+  resultadosPresentaciones.forEach(row => {
+    const presentacion = clasificarPresentacion(row.descripcion);
+    if (presentacion === "OTROS") return;
+    if (!mapaPresentaciones[row.preventa]) mapaPresentaciones[row.preventa] = {};
+    mapaPresentaciones[row.preventa][presentacion] =
+      (mapaPresentaciones[row.preventa][presentacion] || 0) + Number(row.cantidad);
+  });
+
   const metasPorPreventa  = await obtenerMetasHistoricasPreventas();
   const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum, festivos);
   const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum, festivos);
@@ -660,7 +696,14 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     const proyeccion    = esMesCerrado || diasTranscurridos === 0
       ? monto
       : (monto / diasTranscurridos) * diasLaborablesMes;
-    return { preventa, unidades, monto, meta: metaHistorica, proyeccion: Number(proyeccion.toFixed(2)) };
+    return {
+      preventa,
+      unidades,
+      monto,
+      meta: metaHistorica,
+      proyeccion: Number(proyeccion.toFixed(2)),
+      unidadesPorPresentacion: mapaPresentaciones[preventa] || {},
+    };
   });
   rankingPreventasSQL.sort((a, b) => b.monto - a.monto);
 
