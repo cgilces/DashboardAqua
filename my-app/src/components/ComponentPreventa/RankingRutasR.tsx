@@ -245,22 +245,8 @@ const RankingRutasInner = ({
               <td className="px-4 py-2 text-right text-blue-300 font-bold">
                 ${Number(r.meta).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
-              <td className="px-4 py-2 text-right font-bold">
-                {(() => {
-                  const meta = Number(r.meta) || 0;
-                  const proy = Number(r.proyeccion) || 0;
-                  const porcentajeCrecimiento = meta > 0 ? ((proy / meta - 1) * 100) : 0;
-                  return (
-                    <>
-                      <span className={`text-${porcentajeCrecimiento > 0 ? 'green' : 'red'}-400`}>
-                        ({porcentajeCrecimiento.toFixed(1)}%)
-                      </span>
-                      <span className="text-blue-300">
-                        ${proy.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-                      </span>
-                    </>
-                  );
-                })()}
+              <td className="px-4 py-2 text-right font-bold text-blue-300">
+                ${(Number(r.proyeccion) || 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
               {/* VARIACIÓN */}
               <td className={`px-4 py-2 text-right font-bold ${(r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>

@@ -411,7 +411,7 @@ async function syncClienteUsuario(doc, code, customerCode, transaction) {
     },
   { 
     transaction, 
-    conflictFields: ["codigo_cliente", "seller_code", "codigo_direccion_cliente"] // 👈 3 campos
+    conflictFields: ["codigo_cliente", "seller_code", "codigo_direccion_cliente"] 
   });
 }
 

@@ -111,7 +111,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
   const totalProyeccion = preventas.reduce((a, p) => a + (p.proyeccion || 0), 0);
 
   const totalVsMesAnterior = preventas.reduce(
-    (a, p) => a + (p.vsMesAnterior?.variacion_abs || 0),
+    (a, p) => a + ((p.proyeccion || 0) - (p.objetivo_gerencia || 0)),
     0
   );
 
@@ -298,13 +298,11 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
             const proy = Number(p.proyeccion) || 0;
             const objetivo = Number(p.objetivo_gerencia) || 0;
 
-            const montoAnterior = p.vsMesAnterior?.monto_anterior ?? 0;
-
-            const variacionAbs = proy - montoAnterior;
+            const variacionAbs = proy - objetivo;
 
             const variacionPorc =
-              montoAnterior > 0
-                ? ((variacionAbs / montoAnterior) * 100).toFixed(2)
+              objetivo > 0
+                ? ((variacionAbs / objetivo) * 100).toFixed(2)
                 : "0.00";
 
             const porcentajeProy =
@@ -338,12 +336,8 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
                   {objetivo > 0 ? `$${fmt(objetivo)}` : "—"}
                 </td>
 
-                <td className="px-4 py-2 text-right font-bold">
-                  <span className={porcentajeProy > 0 ? "text-green-400" : "text-red-400"}>
-                    ({porcentajeProy.toFixed(1)}%)
-                  </span>
-                  {" "}
-                  <span className="text-blue-300">${fmt(proy)}</span>
+                <td className="px-4 py-2 text-right font-bold text-blue-300">
+                  ${fmt(proy)}
                 </td>
 
                 {/* VARIACIÓN */}
