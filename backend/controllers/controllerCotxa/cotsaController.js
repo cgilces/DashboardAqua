@@ -32,11 +32,19 @@ const obtenerFechaSincronizacion = async () => {
 const getFechaFinQuery = async (anioNum, mesNum) => {
   const hoy = new Date();
   const esMesActual = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
+
   if (esMesActual) {
     const ultimaSync = await obtenerFechaSincronizacion();
     const [yyyy, mm, dd] = String(ultimaSync).substring(0, 10).split('-').map(Number);
-    return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd + 1).padStart(2, '0')} 00:00:00`;
+
+    // ✅ Date maneja desbordamiento: día 31+1 → primer día del mes siguiente
+    const diaSiguiente = new Date(yyyy, mm - 1, dd + 1);
+    const y = diaSiguiente.getFullYear();
+    const m = String(diaSiguiente.getMonth() + 1).padStart(2, '0');
+    const d = String(diaSiguiente.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d} 00:00:00`;
   }
+
   return getFechaFinMes(anioNum, mesNum);
 };
 
@@ -53,9 +61,9 @@ const festivos = [
 ];
 
 const getDiasHabilesTranscurridos = (anio, mes) => {
-  const hoy      = new Date();
+  const hoy = new Date();
   const hoyLocal = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  const ayer     = new Date(hoyLocal);
+  const ayer = new Date(hoyLocal);
   ayer.setDate(hoyLocal.getDate() - 1);
 
   let ultimoDia = new Date(anio, mes, 0).getDate();
@@ -64,7 +72,7 @@ const getDiasHabilesTranscurridos = (anio, mes) => {
 
   let habiles = 0;
   for (let d = 1; d <= ultimoDia; d++) {
-    const fecha     = new Date(anio, mes - 1, d);
+    const fecha = new Date(anio, mes - 1, d);
     const diaSemana = fecha.getDay();
     const esFestivo = festivos.some(f =>
       f.getDate() === fecha.getDate() &&
@@ -78,9 +86,9 @@ const getDiasHabilesTranscurridos = (anio, mes) => {
 
 const getDiasLaborablesMes = (anio, mes) => {
   const diasEnMes = new Date(anio, mes, 0).getDate();
-  let laborables  = 0;
+  let laborables = 0;
   for (let d = 1; d <= diasEnMes; d++) {
-    const fecha     = new Date(anio, mes - 1, d);
+    const fecha = new Date(anio, mes - 1, d);
     const diaSemana = fecha.getDay();
     const esFestivo = festivos.some(f =>
       f.getDate() === fecha.getDate() &&
@@ -97,7 +105,7 @@ const getDiasLaborablesMes = (anio, mes) => {
 // ================================================================
 const obtenerVentasCOTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
   const inicio = getFechaInicioMes(anioNum, mesNum);
-  const fin    = fechaFin || getFechaFinMes(anioNum, mesNum);
+  const fin = fechaFin || getFechaFinMes(anioNum, mesNum);
 
   const sql = `
     SELECT
@@ -130,19 +138,19 @@ const obtenerDashboardCOTSA = async (req, res) => {
       return res.status(400).json({ error: 'Debe enviar ?anio=YYYY&mes=MM' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
 
     if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
       return res.status(400).json({ error: 'Parámetros anio/mes inválidos.' });
 
-    const hoy          = new Date();
-    const esMesActual  = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
+    const hoy = new Date();
+    const esMesActual = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
     const esMesCerrado = anioNum < hoy.getFullYear() ||
       (anioNum === hoy.getFullYear() && mesNum < hoy.getMonth() + 1);
 
-    const fechaFinDinamica  = await getFechaFinQuery(anioNum, mesNum);
+    const fechaFinDinamica = await getFechaFinQuery(anioNum, mesNum);
     const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum);
-    const diasLaborables    = getDiasLaborablesMes(anioNum, mesNum);
+    const diasLaborables = getDiasLaborablesMes(anioNum, mesNum);
 
     // Mes anterior
     let mesPrev = mesNum - 1, anioPrev = anioNum;
@@ -162,38 +170,38 @@ const obtenerDashboardCOTSA = async (req, res) => {
 
     // Ranking con proyección y comparativa
     const ranking = ventasActuales.map(r => {
-      const montoActual   = Number(r.dolares) || 0;
+      const montoActual = Number(r.dolares) || 0;
       const montoAnterior = mapAnterior[r.ruta] || 0;
-      const proyeccion    = esMesCerrado || diasTranscurridos === 0
+      const proyeccion = esMesCerrado || diasTranscurridos === 0
         ? montoActual
         : (montoActual / diasTranscurridos) * diasLaborables;
-      const variacionAbs  = proyeccion - montoAnterior;
+      const variacionAbs = proyeccion - montoAnterior;
       const variacionPorc = montoAnterior > 0
         ? (variacionAbs / montoAnterior) * 100
         : null;
 
       return {
-        ruta         : r.ruta,
-        vendedor     : r.vendedor,
-        unidades     : Number(r.unidades),
-        subtotal     : Number(r.subtotal),
-        dolares      : montoActual,
-        proyeccion   : Number(proyeccion.toFixed(2)),
+        ruta: r.ruta,
+        vendedor: r.vendedor,
+        unidades: Number(r.unidades),
+        subtotal: Number(r.subtotal),
+        dolares: montoActual,
+        proyeccion: Number(proyeccion.toFixed(2)),
         cant_facturas: Number(r.cant_facturas),
         cant_clientes: Number(r.cant_clientes),
         vsMesAnterior: {
           dolares_anterior: Number(montoAnterior.toFixed(2)),
-          variacion_abs   : Number(variacionAbs.toFixed(2)),
-          variacion_porc  : variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
+          variacion_abs: Number(variacionAbs.toFixed(2)),
+          variacion_porc: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
         },
       };
     });
 
     // Totales para las cards superiores
     const totales = {
-      unidades     : ranking.reduce((a, r) => a + r.unidades, 0),
-      dolares      : ranking.reduce((a, r) => a + r.dolares,  0),
-      proyeccion   : ranking.reduce((a, r) => a + r.proyeccion, 0),
+      unidades: ranking.reduce((a, r) => a + r.unidades, 0),
+      dolares: ranking.reduce((a, r) => a + r.dolares, 0),
+      proyeccion: ranking.reduce((a, r) => a + r.proyeccion, 0),
       cant_facturas: ranking.reduce((a, r) => a + r.cant_facturas, 0),
       cant_clientes: ranking.reduce((a, r) => a + r.cant_clientes, 0),
     };
@@ -216,9 +224,9 @@ const obtenerDetalleRutaCOTSA = async (req, res) => {
       return res.status(400).json({ error: 'Debe enviar ruta, anio y mes' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
-    const inicio  = getFechaInicioMes(anioNum, mesNum);
-    const fin     = getFechaFinMes(anioNum, mesNum);
+    const mesNum = parseInt(mes, 10);
+    const inicio = getFechaInicioMes(anioNum, mesNum);
+    const fin = getFechaFinMes(anioNum, mesNum);
 
     const sql = `
       SELECT
