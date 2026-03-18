@@ -696,11 +696,13 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
     }
   }
 
-  // ── Ordenar por campo numérico principal de mayor a menor ──
-  const CAMPOS_ORDEN = ["total", "monto", "total_ventas", "monto_total", "total_vendido"];
-  const campoOrden   = Object.keys(datos[0] || {}).find((k) =>
-    CAMPOS_ORDEN.some((c) => k.toLowerCase() === c)
-  );
+  // ── Ordenar por campo numérico solo para reportes de ranking ──
+  // Para reportes cronológicos (ventas_dia, ventas_mes, etc.) se respeta el orden SQL
+  const TIPOS_RANKING = ["top_productos", "top_clientes", "ventas_vendedor", "ventas_ruta", "generico"];
+  const CAMPOS_ORDEN  = ["total", "monto", "total_ventas", "monto_total", "total_vendido"];
+  const campoOrden    = TIPOS_RANKING.includes(tipoReporte)
+    ? Object.keys(datos[0] || {}).find((k) => CAMPOS_ORDEN.some((c) => k.toLowerCase() === c))
+    : null;
   const datosOrdenados = campoOrden
     ? [...datos].sort((a, b) => Number(b[campoOrden] || 0) - Number(a[campoOrden] || 0))
     : datos;

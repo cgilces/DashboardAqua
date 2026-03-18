@@ -2,12 +2,12 @@
 const sequelize = require("../../db");
 const logger = require("../../utils/logger");
 
-async function registrar(usuario, rol, mensaje, sql) {
+async function registrar(usuario, rol, mensaje, sql, filas = null, ms = null) {
   try {
     await sequelize.query(
       `
-      INSERT INTO auditoria_chat (usuario, rol, mensaje, sql_generado)
-      VALUES (:usuario, :rol, :mensaje, :sql)
+      INSERT INTO auditoria_chat (usuario, rol, mensaje, sql_generado, filas_resultado, tiempo_ms)
+      VALUES (:usuario, :rol, :mensaje, :sql, :filas, :ms)
       `,
       {
         replacements: {
@@ -15,6 +15,8 @@ async function registrar(usuario, rol, mensaje, sql) {
           rol,
           mensaje,
           sql,
+          filas,
+          ms,
         },
       }
     );

@@ -154,7 +154,7 @@ const PATRONES_CONVERSACIONAL = [
   /qu[eé]\s+tipo[s]?\s+de\s+reporte/i,
   /qu[eé]\s+puedes?\s+(hacer|generar|mostrar|decirme)/i,
   /ayuda|help|opciones|menu|qu[eé]\s+haces?/i,
-  /cu[aá]les?\s+(son|reportes|consultas|opciones)/i,
+  /cu[aá]les?\s+(son\s+los\s+tipos|son\s+las\s+opciones|reportes|consultas|opciones)/i,
   /lista\s+de\s+reporte/i,
   /tipos?\s+de\s+reporte/i,
   /^(hola|buenos?\s+(d[ií]as?|tardes?|noches?)|hey|hi|saludos?)[\s!.]*$/i,
@@ -272,17 +272,18 @@ function clasificarIntencion(mensaje, historial = []) {
     return INTENCION.CONSULTA_SQL;
   }
 
-  // ── 4. Conversacional puro ──────────────────────────────────────────
-  if (PATRONES_CONVERSACIONAL.some(p => p.test(mensaje))) return INTENCION.CONVERSACIONAL;
-
-  // ── 5. Reporte PDF por keywords sin "pdf" explícito ─────────────────
+  // ── 4. Reporte PDF por keywords sin "pdf" explícito ─────────────────
   //    Ej: "reporte ventas hoy", "reporte por ruta"
   if (detectarTipoReporte(mensaje)) return INTENCION.REPORTE_PDF;
 
-  // ── 6. Consulta SQL por keywords ────────────────────────────────────
+  // ── 5. Consulta SQL por keywords — antes que conversacional ─────────
+  // Así "cuáles son los clientes activos" → SQL y no conversacional
   for (const p of PALABRAS_CLAVE_SQL) {
     if (texto.includes(p)) return INTENCION.CONSULTA_SQL;
   }
+
+  // ── 6. Conversacional puro (solo si no hay keywords de negocio) ──────
+  if (PATRONES_CONVERSACIONAL.some(p => p.test(mensaje))) return INTENCION.CONVERSACIONAL;
 
   // ── 7. Mensaje corto con historial → continuación ───────────────────
   if (historial.length > 0 && mensaje.trim().split(" ").length <= 8) {
@@ -654,10 +655,10 @@ async function chatHandler(req, res) {
 
       // ── Caso 2: tiene sus propios criterios (o no hay datos previos) → consultar BD
       if (!datos) {
-        // Limpiar la pregunta: quitar la parte "dame el pdf / muestrame el pdf"
+        // Limpiar la pregunta: quitar la parte "dame el pdf / muestrame el pdf / necesito el reporte"
         // para que la IA genere SQL limpio sobre los criterios reales
         const preguntaSQL = mensaje
-          .replace(/[,.]?\s*(y\s+)?(muestra(me)?|dame|gen[eé]ra?(me)?|pu[eé]des?\s+gen[eé]ra?(me)?)\s+(el\s+)?(pdf|reporte)/gi, "")
+          .replace(/[,.]?\s*(y\s+)?(necesito|quiero|haz(me)?|crea(me)?|manda(me)?|exporta(me)?|descarga(me)?|muestra(me)?|dame|gen[eé]ra?(me)?|pu[eé]des?\s+gen[eé]ra?(me)?|me\s+puedes?\s+gen[eé]ra?r?)\s+(el\s+)?(pdf|reporte)/gi, "")
           .replace(/\s+/g, " ").trim() || preguntaFinal;
 
         console.log(`🔍 Pregunta SQL limpia para PDF: "${preguntaSQL}"`);
@@ -678,7 +679,7 @@ async function chatHandler(req, res) {
         try {
           datos = await ejecutarConReintento(preguntaSQL, rol, seller_code, sql);
           // Auditar la consulta ejecutada (no bloqueante)
-          registrarAuditoria(usuario, rol, mensaje, sql).catch(() => {});
+          registrarAuditoria(usuario, rol, mensaje, sql, datos.length, Date.now() - inicio).catch(() => {});
         } catch (err) {
           const respuesta =
             err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta para el reporte." :
@@ -746,14 +747,14 @@ async function chatHandler(req, res) {
     if (!validarSQL(sql)) return res.json({ respuesta: "Consulta no permitida." });
 
     // ── 3️⃣  Límite ────────────────────────────────
-    sql = aplicarLimite(sql, 200);
+    sql = aplicarLimite(sql, 5000);
 
     // ── 4️⃣  Ejecutar ──────────────────────────────
     let datos;
     try {
       datos = await ejecutarConReintento(preguntaFinal, rol, seller_code, sql);
       // Auditar la consulta ejecutada (no bloqueante)
-      registrarAuditoria(usuario, rol, mensaje, sql).catch(() => {});
+      registrarAuditoria(usuario, rol, mensaje, sql, datos.length, Date.now() - inicio).catch(() => {});
     } catch (err) {
       const respuesta =
         err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta. Intenta reformularla." :

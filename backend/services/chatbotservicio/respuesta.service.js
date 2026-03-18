@@ -69,7 +69,7 @@ function construirResumenEstadistico(datos) {
   claves.forEach((k) => {
     const valores = datos
       .map((d) => Number(d[k]))
-      .filter((v) => !isNaN(v) && isFinite(v) && v > 0);
+      .filter((v) => !isNaN(v) && isFinite(v));
 
     // Solo incluir si al menos el 30% de las filas tiene valor numérico válido
     if (valores.length >= totalFilas * 0.3) {
