@@ -29,6 +29,8 @@ const obtenerFechaSincronizacion = async () => {
   return result[0].hasta_date;
 };
 
+
+
 const getFechaFinQuery = async (anioNum, mesNum) => {
   const hoy = new Date();
   const esMesActual = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;

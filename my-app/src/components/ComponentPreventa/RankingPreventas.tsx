@@ -280,7 +280,6 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
 
             <Th k="N*" label="N°" align="left" />
             <Th k="preventa" label="Ruta / Preventa" align="left" />
-            <Th k="unidades" label="Unidades" />
             <Th k="monto" label="Dólares" />
             <Th k="objetivo_gerencia" label="Cupo" />
             <Th k="proyeccion" label="Proyección" />
@@ -325,7 +324,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
                   {p.preventa}
                 </td>
 
-                <td className="px-4 py-2 text-right text-green-400">
+                {/* <td className="px-4 py-2 text-right text-green-400">
                   <div>{fmtInt(p.unidades ?? 0)}</div>
                   {p.unidadesPorPresentacion && Object.keys(p.unidadesPorPresentacion).length > 0 && (
                     <div className="mt-0.5 space-y-0.5">
@@ -339,7 +338,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
                         ))}
                     </div>
                   )}
-                </td>
+                </td> */}
 
                 <td className="px-4 py-2 text-right text-blue-400">
                   ${fmt(p.monto ?? 0)}
@@ -385,9 +384,9 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
 
             <td className="px-4 py-3"></td>
 
-            <td className="px-4 py-3 text-right text-green-400">
+            {/* <td className="px-4 py-3 text-right text-green-400">
               {fmtInt(totalUnidades)}
-            </td>
+            </td> */}
 
             <td className="px-4 py-3 text-right text-blue-400">
               ${fmt(totalUSD)}

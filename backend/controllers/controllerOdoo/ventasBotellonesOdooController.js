@@ -49,6 +49,8 @@ const getFechaFinQuery = async (anioNum, mesNum) => {
   const hoy = new Date();
   const esMesActual = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
 
+  const esMesActual = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
+
   if (esMesActual) {
     const ultimaSync = await obtenerFechaSincronizacion();
     const [yyyy, mm, dd] = String(ultimaSync).substring(0, 10).split('-').map(Number);
@@ -59,7 +61,17 @@ const getFechaFinQuery = async (anioNum, mesNum) => {
     const m = String(diaSiguiente.getMonth() + 1).padStart(2, '0');
     const d = String(diaSiguiente.getDate()).padStart(2, '0');
     return `${y}-${m}-${d} 00:00:00`;
+    const [yyyy, mm, dd] = String(ultimaSync).substring(0, 10).split('-').map(Number);
+
+    // ✅ Date maneja desbordamiento: día 31+1 → primer día del mes siguiente
+    const diaSiguiente = new Date(yyyy, mm - 1, dd + 1);
+    const y = diaSiguiente.getFullYear();
+    const m = String(diaSiguiente.getMonth() + 1).padStart(2, '0');
+    const d = String(diaSiguiente.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d} 00:00:00`;
   }
+
+  return getFechaFinMes(anioNum, mesNum);
 
   return getFechaFinMes(anioNum, mesNum);
 };
