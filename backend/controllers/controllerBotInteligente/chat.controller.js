@@ -23,10 +23,16 @@ if (!fs.existsSync(PDF_DIR)) fs.mkdirSync(PDF_DIR, { recursive: true });
 function limpiarPDFsViejos() {
   try {
     fs.readdirSync(PDF_DIR).forEach(archivo => {
-      const ruta = path.join(PDF_DIR, archivo);
-      if (Date.now() - fs.statSync(ruta).mtimeMs > 30 * 60 * 1000) fs.unlinkSync(ruta);
+      try {
+        const ruta = path.join(PDF_DIR, archivo);
+        if (Date.now() - fs.statSync(ruta).mtimeMs > 30 * 60 * 1000) fs.unlinkSync(ruta);
+      } catch (e) {
+        console.warn(`⚠️  No se pudo eliminar PDF temporal: ${archivo}`, e.message);
+      }
     });
-  } catch (e) {}
+  } catch (e) {
+    console.warn("⚠️  Error al limpiar directorio de PDFs:", e.message);
+  }
 }
 limpiarPDFsViejos();
 
@@ -35,7 +41,7 @@ limpiarPDFsViejos();
 // Guarda los últimos N turnos para dar contexto a la IA
 // Se limpia si el usuario está inactivo por 30 minutos
 // ═══════════════════════════════════════════════════
-const MAX_TURNOS_HISTORIAL = 6; // últimos 6 mensajes (3 turnos usuario+bot)
+const MAX_TURNOS_HISTORIAL = 10; // últimos 10 mensajes (5 turnos usuario+bot)
 const HISTORIAL_TTL_MS = 30 * 60 * 1000; // 30 minutos de inactividad
 const historialSesiones = new Map(); // { usuario: { mensajes: [], ultimaActividad: timestamp } }
 
@@ -132,6 +138,54 @@ function setCache(key, data) {
 }
 
 // ═══════════════════════════════════════════════════
+// CORRECCIÓN PROGRAMÁTICA DE SQL INCORRECTO
+// Si el LLM genera un JOIN con detalle_documento para
+// una consulta de total monetario ("cuánto compró"),
+// reconstruimos el SQL canónico directamente.
+// ═══════════════════════════════════════════════════
+const PATRON_TOTAL_MONETARIO = /cu[aá]nt[ao]s?\s+(compró?|vendi[oó]|gast[oó]|pag[oó]|factur[oó]|sum[oó])|total\s+(en\s+d[oó]lares?|de\s+ventas?|de\s+compras?|facturado)|monto\s+total\s+de\s+(compras?|ventas?)/i;
+
+function corregirSQLTotalMonetario(pregunta, sql) {
+  if (!PATRON_TOTAL_MONETARIO.test(pregunta)) return sql;
+  if (!/detalle_documento/i.test(sql))        return sql;
+
+  // Extraer nombre del cliente del ILIKE
+  const mCliente = sql.match(/nombre_cliente\s+ILIKE\s+'%([^%']+)%'/i);
+  if (!mCliente) return sql; // sin cliente identificable, no reconstruir
+
+  const nombre = mCliente[1];
+
+  // Extraer rango de fechas (soporta DATE(f.fecha_creacion) y f.fecha_creacion)
+  const mDesde = sql.match(/fecha_creacion\)?\s*>=\s*'(\d{4}-\d{2}-\d{2})'/i);
+  const mHasta = sql.match(/fecha_creacion\)?\s*<\s*'(\d{4}-\d{2}-\d{2})'/i);
+
+  let filtroFecha = "";
+  if (mDesde && mHasta) {
+    filtroFecha = `  AND DATE(f.fecha_creacion) >= '${mDesde[1]}'\n  AND DATE(f.fecha_creacion) < '${mHasta[1]}'`;
+  } else if (mDesde) {
+    filtroFecha = `  AND DATE(f.fecha_creacion) >= '${mDesde[1]}'`;
+  }
+
+  // Extraer filtro de vendedor si existe (rol VENDEDOR)
+  const mVendedor = sql.match(/f\.seller_code\s*=\s*'([^']+)'/i);
+  const filtroVendedor = mVendedor ? `  AND f.seller_code = '${mVendedor[1]}'` : "";
+
+  const sqlCanónico =
+`SELECT COALESCE(SUM(f.total), 0) AS total_ventas
+FROM facturas f
+JOIN clientes c ON c.codigo_cliente = f.customer_code
+WHERE (c.nombre_cliente ILIKE '%${nombre}%'
+   OR c.nombre_comercial_cliente ILIKE '%${nombre}%')
+${filtroFecha}${filtroVendedor ? "\n" + filtroVendedor : ""}`.trim();
+
+  console.log("🔧 [correccion] SQL de total monetario usaba detalle_documento — reconstruyendo...");
+  console.log("   SQL original  :", sql.replace(/\s+/g, " ").slice(0, 200));
+  console.log("   SQL corregido :", sqlCanónico.replace(/\s+/g, " "));
+
+  return sqlCanónico;
+}
+
+// ═══════════════════════════════════════════════════
 // RATE LIMITING (20 msg/min por usuario)
 // ═══════════════════════════════════════════════════
 const rateLimitMap = new Map();
@@ -189,7 +243,28 @@ const PALABRAS_CLAVE_SQL = new Set([
   "cuanto","cuantos","cuánto","cuántos","cuantas","cuántas","promedio","average",
   "reporte ventas","reporte clientes","reporte productos","reporte visitas",
   "reporte ruta","reporte vendedor","reporte sincronizacion","generar reporte",
-  "exportar","informe de","pdf de"
+  "exportar","informe de","pdf de",
+  // Análisis financiero y cartera
+  "cartera","cartera vencida","deuda","deuda vencida","saldo pendiente","vencido","vencidas","cobrar",
+  "cuentas por cobrar","mora","morosidad","credito pendiente",
+  // Metas y cumplimiento
+  "meta","metas","cumplimiento","avance","porcentaje meta","objetivo","cuanto falta",
+  // Efectividad y cobertura
+  "efectividad","cobertura","cobertura ruta","clientes sin visitar",
+  "visitas con venta","conversion","eficiencia",
+  // KPIs y resúmenes ejecutivos
+  "kpi","indicadores","resumen ejecutivo","resumen del dia",
+  // Comparativos
+  "comparativo","comparar","diferencia","variacion","mes anterior","periodo anterior",
+  // Clientes especiales
+  "clientes sin comprar","clientes inactivos","clientes perdidos","clientes en riesgo",
+  "nuevos clientes","primera compra","dias sin comprar",
+  // Margen y rentabilidad
+  "margen","rentabilidad","ganancia","utilidad",
+  // Categorías
+  "categoria","por categoria",
+  // Vendedores sin ventas
+  "sin ventas","vendedor sin venta","no vendio"
 ]);
 
 const INTENCION = {
@@ -209,6 +284,29 @@ const PATRONES_CORRECCION = [
   /^del\s+\w+/i,           // "del tia", "del cliente X"
   /^de\s+(la|el|los|las)\s+\w+/i,
   /^con\s+(fecha|el|la)/i,
+];
+
+// Patrones de verificación: el usuario duda del resultado y pide confirmar,
+// o pregunta por el origen de un valor ya dado.
+// En estos casos se reutilizan los datos ya obtenidos en lugar de generar nuevo SQL.
+const PATRONES_VERIFICACION = [
+  /est[aá]s?\s+seguro/i,
+  /verifica(\s+(bien|de\s+nuevo|eso|el\s+dato))?/i,
+  /conf[íi]rm[ao](me)?(\s+(el\s+dato|eso|el\s+resultado))?/i,
+  /es\s+(correcto|exacto|cierto|eso)/i,
+  /^(seguro|correcto|exacto)\??[\s!.]*$/i,
+  /revisa(\s+(bien|de\s+nuevo))?/i,
+  /comprueba/i,
+  /por\s+qu[eé]\s+(me\s+(diste|dijiste|daba[sz]?)|ten[ií]a[sz]?)\s+otro/i,
+  // Preguntas sobre el origen/fuente de un valor ya dado
+  /de\s+d[oó]nde?\s+(sale|viene|sac[ao]|obtuv)/i,
+  /c[oó]mo\s+(calculaste|obtuviste|sacaste|llegaste)/i,
+  /por\s+qu[eé]\s+(dices?|me\s+dices?|dijiste|sale|aparece|figura)\s+.*(valor|total|monto|dato|cifra|n[uú]mero)/i,
+  /c[oó]mo\s+es\s+posible\s+que/i,
+  /eso\s+no\s+(coincide|cuadra|bate)/i,
+  /los\s+n[uú]meros?\s+no\s+(coinciden|cuadran|baten)/i,
+  /hay\s+una?\s+diferencia/i,
+  /y\s+entonces\s+de\s+d[oó]nde/i,
 ];
 
 // Patrones que piden PDF explícitamente (incluso sin "reporte" completo)
@@ -350,9 +448,15 @@ Responde siempre en español. Máximo 3 párrafos cortos.`
 function construirPreguntaConContexto(mensaje, historial, intencion) {
   if (historial.length === 0) return mensaje;
 
-  // Buscar los últimos mensajes relevantes del historial
-  const ultimoUser = [...historial].reverse().find(m => m.role === "user");
-  const ultimoBot  = [...historial].reverse().find(m => m.role === "assistant");
+  // Buscar el último mensaje del usuario que contiene keywords de negocio.
+  // Esto evita perder el contexto cuando hay mensajes intermedios sin datos de dominio
+  // (ej: "estas seguro verifica bien" entre "cuanto vendio ROSADO este mes" y "en total")
+  const mensajesUser = historial.filter(m => m.role === "user");
+  const ultimoUserConKeywords = [...mensajesUser].reverse().find(m => {
+    const t = m.content.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return [...PALABRAS_CLAVE_SQL].some(k => t.includes(k));
+  });
+  const ultimoUser = ultimoUserConKeywords || [...historial].reverse().find(m => m.role === "user");
 
   if (!ultimoUser) return mensaje;
 
@@ -364,20 +468,24 @@ function construirPreguntaConContexto(mensaje, historial, intencion) {
 
   // Si pide PDF → construir pregunta de reporte completa con contexto
   if (esPedidoPDF || intencion === INTENCION.REPORTE_PDF) {
-    // Recopilar todo el contexto útil del historial
-    const contextoCompleto = historial
-      .filter(m => m.role === "user")
+    // Usar solo mensajes con keywords para no contaminar con verificaciones o saludos
+    const contextoCompleto = mensajesUser
+      .filter(m => {
+        const t = m.content.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return [...PALABRAS_CLAVE_SQL].some(k => t.includes(k));
+      })
       .map(m => m.content)
       .join(" | ");
-    const combinada = `Genera un reporte PDF con los siguientes criterios de la conversación: ${contextoCompleto}. Solicitud actual: ${mensaje}`;
+    const base = contextoCompleto || mensajesUser.map(m => m.content).join(" | ");
+    const combinada = `Genera un reporte PDF con los siguientes criterios de la conversación: ${base}. Solicitud actual: ${mensaje}`;
     console.log(`📄 Pregunta PDF con contexto: "${combinada}"`);
     return combinada;
   }
 
-  // Si es fragmento/corrección → combinar con última pregunta
+  // Si es fragmento/corrección → combinar con el último mensaje sustantivo de negocio
   if (esFragmento) {
     const combinada = `${ultimoUser.content} — aclaración del usuario: "${mensaje}"`;
-    console.log(`🔄 Pregunta combinada: "${combinada}"`);
+    console.log(`🔄 Pregunta combinada con base "${ultimoUser.content}": "${combinada}"`);
     return combinada;
   }
 
@@ -427,14 +535,23 @@ Ejemplos:
 
 
 async function generarRespuestaHumana(pregunta, datos, historial) {
-  // Para datasets grandes usamos un resumen estadístico en lugar de truncar
-  // Esto da al LLM información de todo el conjunto, no solo los primeros 50 registros
-  const esVolumenGrande = datos.length > 50;
+  // Para datasets grandes usamos un resumen estadístico en lugar de truncar.
+  // EXCEPCIÓN: si los datos parecen ser detalle agrupado de productos (tienen campo producto/descripcion
+  // y monto_total), mostramos todos ya que el GROUP BY ya los consolidó.
+  // Solo evitar resumen estadístico cuando los datos son claramente un listado de productos
+  // agrupados (tienen alias "producto" o "nombre_producto" del GROUP BY)
+  // No incluir "descripcion" porque es un campo genérico que aparece en muchas tablas
+  const tieneCampoProducto = datos.length > 0 &&
+    Object.keys(datos[0]).some(k => ["producto", "nombre_producto"].includes(k.toLowerCase()));
+  const esVolumenGrande = datos.length > 50 && !tieneCampoProducto;
+
   const contenidoDatos  = esVolumenGrande
     ? construirResumenEstadistico(datos)
     : datos;
   const notaVolumen = esVolumenGrande
     ? `\n\nNOTA IMPORTANTE: Los datos son un RESUMEN ESTADÍSTICO de ${datos.length} registros totales (no el listado completo). Describe cifras agregadas (totales, promedios, rangos máximos/mínimos). NO digas "los primeros N registros" — describe el conjunto completo.`
+    : datos.length > 50 && tieneCampoProducto
+    ? `\n\nNOTA: Se muestran ${datos.length} productos consolidados. Presenta la lista completa ordenada por monto de mayor a menor.`
     : "";
 
   const systemPrompt = {
@@ -449,6 +566,13 @@ Tu única tarea es transformar los resultados de consultas a la base de datos en
 3. Basa TODAS las conclusiones exclusivamente en los datos recibidos.
 4. Si los resultados están vacíos o son nulos, indica claramente que no hay información disponible para ese criterio.
 5. Mantén coherencia con el hilo de la conversación anterior.
+6. CRITICO — Totales de líneas de producto vs totales de factura:
+   Cuando los datos muestran líneas de detalle de productos (descripcion, cantidad, monto_total por producto),
+   el total_unidades y monto_total son POR PRODUCTO, no el total general del cliente.
+   NUNCA digas "el total del cliente en ese periodo fue $X" usando la suma de líneas de producto,
+   ya que ese valor puede diferir del total de facturas (que incluye impuestos, envíos, etc.).
+   En este caso, presenta SOLO los productos con sus cantidades y montos individuales.
+   Si el usuario preguntó antes por el total en dólares, NO lo contradiga con un total de líneas.
 
 ## FORMATO NUMÉRICO
 
@@ -666,14 +790,19 @@ async function chatHandler(req, res) {
         let sql = await generarSQL(preguntaSQL, rol, seller_code);
         console.log("🧠 SQL para PDF:", sql);
 
-        if (sql.trim().toUpperCase().startsWith("SELECT 1 WHERE FALSE")) {
+        if (/^SELECT\s+1\s+WHERE\s+(FALSE|1\s*=\s*0|0\s*=\s*1)/i.test(sql.trim())) {
           const respuesta = "No logré interpretar esa consulta para el reporte. ¿Podrías indicar el cliente, la ruta o el período?";
           agregarAlHistorial(usuario, "user", mensaje);
           agregarAlHistorial(usuario, "assistant", respuesta);
           return res.json({ respuesta });
         }
 
-        if (!validarSQL(sql)) return res.json({ respuesta: "Consulta no permitida." });
+        if (!validarSQL(sql)) {
+          const respuesta = "Esa consulta no puede procesarse para el reporte. Intenta con una pregunta diferente.";
+          agregarAlHistorial(usuario, "user", mensaje);
+          agregarAlHistorial(usuario, "assistant", respuesta);
+          return res.json({ respuesta });
+        }
         sql = aplicarLimite(sql, 1000);
 
         try {
@@ -683,7 +812,7 @@ async function chatHandler(req, res) {
         } catch (err) {
           const respuesta =
             err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta para el reporte." :
-            err.message === "SQL_INVALIDO"       ? "Consulta no permitida." :
+            err.message === "SQL_INVALIDO"       ? "Esa consulta no puede procesarse para el reporte." :
             err.message === "REINTENTO_FALLIDO"  ? "No logré obtener los datos. Intenta indicar el cliente, ruta o fecha exacta." :
             (() => { throw err; })();
           agregarAlHistorial(usuario, "user", mensaje);
@@ -701,7 +830,24 @@ async function chatHandler(req, res) {
 
       const tipoReporte = detectarTipoReporte(preguntaFinal) || detectarTipoReporte(mensaje) || "generico";
       console.log(`📄 PDF tipo: ${tipoReporte} — ${datos.length} registros (origen: ${origenDatos})`);
-      const config = construirConfigReporte(tipoReporte, datos, usuario);
+
+      // ── Transformación especial para KPI: una fila horizontal → filas indicador/valor
+      let datosParaPDF = datos;
+      if (tipoReporte === "kpi_dia" && datos.length > 0) {
+        const LABELS_KPI = {
+          ventas_dia:          "Ventas del Día ($)",
+          facturas_dia:        "Facturas Emitidas",
+          clientes_facturados: "Clientes Facturados",
+          visitas_dia:         "Visitas Realizadas",
+          clientes_visitados:  "Clientes Visitados",
+        };
+        datosParaPDF = Object.entries(datos[0]).map(([key, val]) => ({
+          indicador: LABELS_KPI[key] || key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
+          valor:     val != null ? String(val) : "-",
+        }));
+      }
+
+      const config = construirConfigReporte(tipoReporte, datosParaPDF, usuario);
       const pdfBuffer = await generarPDF(config);
       const filename = `reporte_${crypto.randomBytes(8).toString("hex")}.pdf`;
       const filePath = path.join(PDF_DIR, filename);
@@ -721,6 +867,33 @@ async function chatHandler(req, res) {
       });
     }
 
+    // ── Verificación: el usuario duda del resultado o pregunta por el origen de un valor ──
+    // En lugar de generar un SQL diferente que puede dar otro número,
+    // se reutilizan los datos ya obtenidos y se reconfirma la respuesta.
+    const esVerificacion = PATRONES_VERIFICACION.some(p => p.test(mensaje));
+    const datosCacheados = getUltimosDatos(usuario);
+    if (esVerificacion && historial.length > 0) {
+      if (datosCacheados && datosCacheados.datos.length > 0) {
+        // Tenemos datos previos → reconfirmar con los mismos datos
+        console.log(`✅ Verificación detectada — reusando ${datosCacheados.datos.length} registros previos`);
+        const respuestaVerif = await generarRespuestaHumana(datosCacheados.pregunta, datosCacheados.datos, historial);
+        const confirmacion = `He recalculado el resultado con los mismos datos obtenidos. ${respuestaVerif}`;
+        agregarAlHistorial(usuario, "user", mensaje);
+        agregarAlHistorial(usuario, "assistant", confirmacion);
+        return res.json({ respuesta: confirmacion });
+      } else {
+        // La consulta anterior no devolvió datos — aclarar en lugar de generar SQL nuevo
+        console.log("⚠️  Verificación sin datos previos — explicando que no hubo resultados");
+        const ultimaRespBot = [...historial].reverse().find(m => m.role === "assistant");
+        const aclaracion = ultimaRespBot
+          ? `La consulta anterior no encontró registros en la base de datos, por eso no hay valores que mostrar. ¿Podrías reformular la pregunta con otros criterios?`
+          : `No tengo resultados previos que verificar. ¿Podrías repetir la consulta?`;
+        agregarAlHistorial(usuario, "user", mensaje);
+        agregarAlHistorial(usuario, "assistant", aclaracion);
+        return res.json({ respuesta: aclaracion });
+      }
+    }
+
     // ── Caché (solo consultas normales sin corrección) ──
     const cacheKey = getCacheKey(preguntaFinal, rol, seller_code);
     if (intencion === INTENCION.CONSULTA_SQL && preguntaFinal === mensaje) {
@@ -735,8 +908,9 @@ async function chatHandler(req, res) {
 
     // ── 1️⃣  Generar SQL ───────────────────────────
     let sql = await generarSQL(preguntaFinal, rol, seller_code);
+    sql = corregirSQLTotalMonetario(preguntaFinal, sql); // 🔧 corrección programática
     console.log("🧠 SQL:", sql);
-    if (sql.trim().toUpperCase().startsWith("SELECT 1 WHERE FALSE")) {
+    if (/^SELECT\s+1\s+WHERE\s+(FALSE|1\s*=\s*0|0\s*=\s*1)/i.test(sql.trim())) {
       const respuesta = "No logré interpretar esa consulta. ¿Podrías darme más detalles, como el nombre del cliente, la ruta o el período?";
       agregarAlHistorial(usuario, "user", mensaje);
       agregarAlHistorial(usuario, "assistant", respuesta);
@@ -744,7 +918,12 @@ async function chatHandler(req, res) {
     }
 
     // ── 2️⃣  Validar ───────────────────────────────
-    if (!validarSQL(sql)) return res.json({ respuesta: "Consulta no permitida." });
+    if (!validarSQL(sql)) {
+      const respuesta = "Esa consulta no puede procesarse. Intenta con una pregunta diferente.";
+      agregarAlHistorial(usuario, "user", mensaje);
+      agregarAlHistorial(usuario, "assistant", respuesta);
+      return res.json({ respuesta });
+    }
 
     // ── 3️⃣  Límite ────────────────────────────────
     sql = aplicarLimite(sql, 5000);
@@ -757,9 +936,9 @@ async function chatHandler(req, res) {
       registrarAuditoria(usuario, rol, mensaje, sql, datos.length, Date.now() - inicio).catch(() => {});
     } catch (err) {
       const respuesta =
-        err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta. Intenta reformularla." :
-        err.message === "SQL_INVALIDO"      ? "Consulta no permitida." :
-        err.message === "REINTENTO_FALLIDO" ? "No logré ejecutar esa consulta. Intenta indicar el nombre exacto del cliente, la ruta o la fecha." :
+        err.message === "NO_REGENERAR"      ? "No pude interpretar esa consulta. ¿Podrías reformularla con más detalle?" :
+        err.message === "SQL_INVALIDO"      ? "Esa consulta no puede procesarse. Intenta con una pregunta diferente." :
+        err.message === "REINTENTO_FALLIDO" ? "No logré obtener los datos. Intenta indicar el nombre exacto del cliente, la ruta o la fecha." :
         (() => { throw err; })();
       agregarAlHistorial(usuario, "user", mensaje);
       agregarAlHistorial(usuario, "assistant", respuesta);

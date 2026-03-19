@@ -48,7 +48,14 @@ const getFechaFinQuery = async (anio, mes) => {
   if (esMesActual) {
     const ultimaSync = await obtenerFechaSincronizacion();
     const [yyyy, mm, dd] = String(ultimaSync).substring(0, 10).split("-").map(Number);
-    return `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd + 1).padStart(2, "0")} 00:00:00`;
+
+    // ✅ Usar Date para manejar overflow de días correctamente
+    const fechaSig = new Date(yyyy, mm - 1, dd + 1);
+    const anioFin = fechaSig.getFullYear();
+    const mesFin = fechaSig.getMonth() + 1;
+    const diaFin = fechaSig.getDate();
+
+    return `${anioFin}-${String(mesFin).padStart(2, "0")}-${String(diaFin).padStart(2, "0")} 00:00:00`;
   }
   return getFechaFinMes(anio, mes);
 };
@@ -111,7 +118,7 @@ const queryVentasPorRuta = async (inicio, fin) => {
   const replacements = {};
   RUTAS_ODOO.forEach((r, i) => { replacements[`ruta${i}`] = r; });
   replacements.inicio = inicio;
-  replacements.fin    = fin;
+  replacements.fin = fin;
 
   const sql = `
     SELECT
@@ -151,22 +158,22 @@ const obtenerVentasHielo = async (req, res) => {
       return res.status(400).json({ error: "Debe enviar ?anio=YYYY&mes=MM" });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
       return res.status(400).json({ error: "Parámetros anio/mes inválidos." });
 
-    const hoy         = new Date();
+    const hoy = new Date();
     const esMesActual = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
 
     // ── Fechas mes actual ───────────────────────────────────────
     const inicio = getFechaInicioMes(anioNum, mesNum);
-    const fin    = await getFechaFinQuery(anioNum, mesNum);
+    const fin = await getFechaFinQuery(anioNum, mesNum);
 
     // ── Fechas mes anterior ─────────────────────────────────────
     let mesPrev = mesNum - 1, anioPrev = anioNum;
     if (mesPrev === 0) { mesPrev = 12; anioPrev--; }
     const inicioPrev = getFechaInicioMes(anioPrev, mesPrev);
-    const finPrev    = getFechaFinMes(anioPrev, mesPrev);
+    const finPrev = getFechaFinMes(anioPrev, mesPrev);
 
     // ── Días hábiles ────────────────────────────────────────────
     const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum);
@@ -182,16 +189,16 @@ const obtenerVentasHielo = async (req, res) => {
     const mapAnterior = {};
     ventasAnterior.forEach(r => {
       mapAnterior[r.ruta] = {
-        unidades : Number(r.unidades) || 0,
-        dolares  : Number(r.dolares)  || 0,
+        unidades: Number(r.unidades) || 0,
+        dolares: Number(r.dolares) || 0,
       };
     });
 
     // ── Construir respuesta por ruta ────────────────────────────
     const rutas = ventasActual.map(r => {
       const unidadesActual = Number(r.unidades) || 0;
-      const montoActual    = Number(r.dolares)  || 0;
-      const anterior       = mapAnterior[r.ruta] || { unidades: 0, dolares: 0 };
+      const montoActual = Number(r.dolares) || 0;
+      const anterior = mapAnterior[r.ruta] || { unidades: 0, dolares: 0 };
 
       // Proyección en unidades y dólares
       const proyeccionUnidades = esMesActual && diasTranscurridos > 0
@@ -202,67 +209,67 @@ const obtenerVentasHielo = async (req, res) => {
         ? (montoActual / diasTranscurridos) * diasLaborablesMes
         : montoActual;
 
-      const variacionAbs  = unidadesActual - anterior.unidades;
+      const variacionAbs = unidadesActual - anterior.unidades;
       const variacionPorc = anterior.unidades > 0
         ? (variacionAbs / anterior.unidades) * 100
         : null;
 
-      const variacionDolaresAbs  = montoActual - anterior.dolares;
+      const variacionDolaresAbs = montoActual - anterior.dolares;
       const variacionDolaresPorc = anterior.dolares > 0
         ? (variacionDolaresAbs / anterior.dolares) * 100
         : null;
 
       return {
-        ruta                : r.ruta,
-        unidades            : unidadesActual,
-        dolares             : Number(montoActual.toFixed(2)),
-        subtotal            : Number(Number(r.subtotal).toFixed(2)),
-        cant_ordenes        : Number(r.cant_ordenes),
-        cant_clientes       : Number(r.cant_clientes),
-        proyeccion_unidades : Number(proyeccionUnidades.toFixed(0)),
-        proyeccion_dolares  : Number(proyeccionDolares.toFixed(2)),
+        ruta: r.ruta,
+        unidades: unidadesActual,
+        dolares: Number(montoActual.toFixed(2)),
+        subtotal: Number(Number(r.subtotal).toFixed(2)),
+        cant_ordenes: Number(r.cant_ordenes),
+        cant_clientes: Number(r.cant_clientes),
+        proyeccion_unidades: Number(proyeccionUnidades.toFixed(0)),
+        proyeccion_dolares: Number(proyeccionDolares.toFixed(2)),
         mes_anterior: {
-          unidades : anterior.unidades,
-          dolares  : Number(anterior.dolares.toFixed(2)),
+          unidades: anterior.unidades,
+          dolares: Number(anterior.dolares.toFixed(2)),
         },
         variacion_unidades: {
-          abs        : Number(variacionAbs.toFixed(0)),
-          porcentaje : variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
+          abs: Number(variacionAbs.toFixed(0)),
+          porcentaje: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
         },
         variacion_dolares: {
-          abs        : Number(variacionDolaresAbs.toFixed(2)),
-          porcentaje : variacionDolaresPorc !== null ? Number(variacionDolaresPorc.toFixed(2)) : null,
+          abs: Number(variacionDolaresAbs.toFixed(2)),
+          porcentaje: variacionDolaresPorc !== null ? Number(variacionDolaresPorc.toFixed(2)) : null,
         },
       };
     });
 
     // ── Totales generales ───────────────────────────────────────
     const totales = {
-      unidades            : rutas.reduce((a, r) => a + r.unidades,             0),
-      dolares             : Number(rutas.reduce((a, r) => a + r.dolares,        0).toFixed(2)),
-      proyeccion_unidades : Number(rutas.reduce((a, r) => a + r.proyeccion_unidades, 0).toFixed(0)),
-      proyeccion_dolares  : Number(rutas.reduce((a, r) => a + r.proyeccion_dolares,  0).toFixed(2)),
-      cant_ordenes        : rutas.reduce((a, r) => a + r.cant_ordenes,          0),
+      unidades: rutas.reduce((a, r) => a + r.unidades, 0),
+      dolares: Number(rutas.reduce((a, r) => a + r.dolares, 0).toFixed(2)),
+      proyeccion_unidades: Number(rutas.reduce((a, r) => a + r.proyeccion_unidades, 0).toFixed(0)),
+      proyeccion_dolares: Number(rutas.reduce((a, r) => a + r.proyeccion_dolares, 0).toFixed(2)),
+      cant_ordenes: rutas.reduce((a, r) => a + r.cant_ordenes, 0),
       mes_anterior: {
-        unidades : rutas.reduce((a, r) => a + r.mes_anterior.unidades, 0),
-        dolares  : Number(rutas.reduce((a, r) => a + r.mes_anterior.dolares, 0).toFixed(2)),
+        unidades: rutas.reduce((a, r) => a + r.mes_anterior.unidades, 0),
+        dolares: Number(rutas.reduce((a, r) => a + r.mes_anterior.dolares, 0).toFixed(2)),
       },
     };
 
-    const varTotalAbs  = totales.unidades - totales.mes_anterior.unidades;
+    const varTotalAbs = totales.unidades - totales.mes_anterior.unidades;
     const varTotalPorc = totales.mes_anterior.unidades > 0
       ? (varTotalAbs / totales.mes_anterior.unidades) * 100
       : null;
 
     totales.variacion = {
-      abs        : varTotalAbs,
-      porcentaje : varTotalPorc !== null ? Number(varTotalPorc.toFixed(2)) : null,
+      abs: varTotalAbs,
+      porcentaje: varTotalPorc !== null ? Number(varTotalPorc.toFixed(2)) : null,
     };
 
     return res.status(200).json({
-      periodo : { anio: anioNum, mes: mesNum, esMesActual },
-      fechas  : { inicio, fin, inicioPrev, finPrev },
-      dias    : { transcurridos: diasTranscurridos, laborables: diasLaborablesMes },
+      periodo: { anio: anioNum, mes: mesNum, esMesActual },
+      fechas: { inicio, fin, inicioPrev, finPrev },
+      dias: { transcurridos: diasTranscurridos, laborables: diasLaborablesMes },
       totales,
       rutas,
     });

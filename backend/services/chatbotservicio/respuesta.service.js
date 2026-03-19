@@ -1,57 +1,5 @@
-// services/chatbotservicio/generarRespuesta.js
-const OpenAI = require("openai");
-require("dotenv").config();
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Si hay más de este número de filas se envía un resumen estadístico
-// en lugar del JSON completo para no truncar el contexto del LLM
-const MAX_FILAS_DETALLE = 50;
-
-async function generarRespuesta(pregunta, datos) {
-  if (!datos || datos.length === 0) {
-    return "No existe información en la base de datos.";
-  }
-
-  const esVolumenGrande = datos.length > MAX_FILAS_DETALLE;
-
-  const payload = esVolumenGrande
-    ? construirResumenEstadistico(datos)
-    : datos;
-
-  const instruccion = esVolumenGrande
-    ? `
-Eres un asistente del ERP Grupo Aqua.
-Los datos que recibes son un RESUMEN ESTADÍSTICO de ${datos.length} registros totales (no el listado completo).
-Responde con cifras agregadas: totales, promedios, rangos.
-NO digas "los primeros N registros", describe el conjunto completo.
-No inventes datos que no estén en el resumen.
-    `.trim()
-    : `
-Eres un asistente del ERP Grupo Aqua.
-Responde únicamente con la información proporcionada.
-No inventes datos.
-    `.trim();
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.2,
-    messages: [
-      {
-        role: "system",
-        content: instruccion,
-      },
-      {
-        role: "user",
-        content: `Pregunta:\n${pregunta}\n\nDatos:\n${JSON.stringify(payload)}`,
-      },
-    ],
-  });
-
-  return completion.choices[0].message.content;
-}
+// services/chatbotservicio/respuesta.service.js
+// Utilidades para preprocesar datos grandes antes de enviarlos al LLM
 
 /**
  * Para datasets grandes genera estadísticas agregadas + muestra representativa.
@@ -75,10 +23,10 @@ function construirResumenEstadistico(datos) {
     if (valores.length >= totalFilas * 0.3) {
       const suma = valores.reduce((a, b) => a + b, 0);
       resumenNumerico[k] = {
-        suma: Number(suma.toFixed(2)),
-        promedio: Number((suma / valores.length).toFixed(2)),
-        maximo: Number(Math.max(...valores).toFixed(2)),
-        minimo: Number(Math.min(...valores).toFixed(2)),
+        suma:             Number(suma.toFixed(2)),
+        promedio:         valores.length > 0 ? Number((suma / valores.length).toFixed(2)) : 0,
+        maximo:           valores.length > 0 ? Number(Math.max(...valores).toFixed(2)) : 0,
+        minimo:           valores.length > 0 ? Number(Math.min(...valores).toFixed(2)) : 0,
         conteo_con_valor: valores.length,
       };
     }
@@ -116,13 +64,13 @@ function construirResumenEstadistico(datos) {
   }
 
   return {
-    total_registros: totalFilas,
-    rango_fechas: rangoFechas,
-    resumen_numerico: resumenNumerico,
-    distribucion_categorias: distribucion,
-    muestra_primeros_5: datos.slice(0, 5),
-    muestra_ultimos_5: datos.slice(-5),
+    total_registros:          totalFilas,
+    rango_fechas:             rangoFechas,
+    resumen_numerico:         resumenNumerico,
+    distribucion_categorias:  distribucion,
+    muestra_primeros_5:       datos.slice(0, 5),
+    muestra_ultimos_5:        datos.slice(-5),
   };
 }
 
-module.exports = { generarRespuesta, construirResumenEstadistico };
+module.exports = { construirResumenEstadistico };

@@ -21,8 +21,9 @@ async function registrar(usuario, rol, mensaje, sql, filas = null, ms = null) {
       }
     );
   } catch (error) {
-    logger.error("Error registrando auditoría:", error);
     // No lanzar: la auditoría no debe frenar el flujo principal
+    // Pero sí loguear para detectar fallos persistentes
+    logger.warn(`[auditoria] Fallo al registrar (usuario=${usuario}): ${error.message}`);
   }
 }
 

@@ -20,19 +20,28 @@ const COLORS = {
 // ─── Tipos de reporte detectables ───────────────────
 const TIPOS_REPORTE = [
   // Orden importa: los más específicos primero
-  { id: "ventas_cliente",  keywords: ["reporte del cliente", "reporte de ventas del cliente", "reporte cliente", "ventas del cliente", "reporte de cliente"] },
-  { id: "ventas_vendedor", keywords: ["reporte por vendedor", "ventas por vendedor", "reporte vendedor"] },
-  { id: "ventas_ruta",     keywords: ["reporte por ruta", "ventas por ruta", "reporte ruta"] },
-  { id: "top_productos",   keywords: ["reporte productos", "top productos", "productos mas vendidos", "ranking productos"] },
-  { id: "top_clientes",    keywords: ["reporte clientes", "top clientes", "clientes mayor consumo", "mejores clientes"] },
-  { id: "sincronizacion",  keywords: ["reporte sincronizacion", "reporte sync", "sincronizaciones"] },
-  { id: "inventario",      keywords: ["reporte inventario", "stock", "existencias"] },
-  { id: "visitas",         keywords: ["reporte visitas", "historial visitas", "visitas del dia"] },
-  { id: "ventas_mes",      keywords: ["reporte ventas mes", "reporte mensual", "ventas del mes"] },
-  { id: "ventas_semana",   keywords: ["reporte ventas semana", "reporte semanal", "ventas de la semana"] },
-  // ventas_dia al final para no capturar antes que ventas_fecha
-  { id: "ventas_fecha",    keywords: ["reporte ventas fecha", "reporte de ventas de fecha"] },
-  { id: "ventas_dia",      keywords: ["reporte ventas hoy", "reporte de hoy", "ventas del dia", "reporte del dia"] },
+  { id: "ventas_cliente",       keywords: ["reporte del cliente", "reporte de ventas del cliente", "reporte cliente", "ventas del cliente", "reporte de cliente", "del cliente", "reporte de ventas del"] },
+  { id: "cartera_vencida",      keywords: ["cartera vencida", "deuda vencida", "facturas vencidas", "cuentas por cobrar", "cartera", "deudas vencidas"] },
+  { id: "clientes_sin_comprar", keywords: ["clientes sin comprar", "clientes inactivos", "clientes en riesgo", "sin compras", "clientes que no compran", "clientes perdidos"] },
+  { id: "nuevos_clientes",      keywords: ["nuevos clientes", "clientes nuevos", "primeras compras", "clientes recientes"] },
+  { id: "efectividad_visitas",  keywords: ["efectividad de visitas", "efectividad visitas", "visitas con venta", "eficiencia visitas", "conversion visitas"] },
+  { id: "cobertura_ruta",       keywords: ["cobertura de ruta", "cobertura ruta", "clientes visitados", "cobertura"] },
+  { id: "cumplimiento_metas",   keywords: ["cumplimiento de meta", "cumplimiento meta", "avance de meta", "avance meta", "% meta", "porcentaje meta", "cumplimiento"] },
+  { id: "kpi_dia",              keywords: ["kpi del dia", "kpi de hoy", "resumen del dia", "resumen ejecutivo", "indicadores del dia", "dashboard dia"] },
+  { id: "ventas_categoria",     keywords: ["ventas por categoria", "categoria de productos", "categorias", "reporte categoria"] },
+  { id: "margen_vendedor",      keywords: ["margen por vendedor", "margen vendedor", "margen de ganancia", "rentabilidad vendedor", "margen"] },
+  { id: "comparativo_rutas",    keywords: ["comparativo rutas", "comparativo por ruta", "rutas comparativo", "comparativo ruta mes"] },
+  { id: "ranking_clientes",     keywords: ["ranking clientes", "top clientes", "clientes mayor consumo", "mejores clientes", "reporte clientes"] },
+  { id: "ventas_vendedor",      keywords: ["reporte por vendedor", "ventas por vendedor", "reporte vendedor", "comparativo vendedor"] },
+  { id: "ventas_ruta",          keywords: ["reporte por ruta", "ventas por ruta", "reporte ruta"] },
+  { id: "top_productos",        keywords: ["reporte productos", "top productos", "productos mas vendidos", "ranking productos"] },
+  { id: "sincronizacion",       keywords: ["reporte sincronizacion", "reporte sync", "sincronizaciones"] },
+  { id: "inventario",           keywords: ["reporte inventario", "stock", "existencias"] },
+  { id: "visitas",              keywords: ["reporte visitas", "historial visitas", "visitas del dia"] },
+  { id: "ventas_mes",           keywords: ["reporte ventas mes", "reporte mensual", "ventas del mes"] },
+  { id: "ventas_semana",        keywords: ["reporte ventas semana", "reporte semanal", "ventas de la semana"] },
+  { id: "ventas_fecha",         keywords: ["reporte ventas fecha", "reporte de ventas de fecha"] },
+  { id: "ventas_dia",           keywords: ["reporte ventas hoy", "reporte de hoy", "ventas del dia", "reporte del dia"] },
 ];
 
 /**
@@ -73,6 +82,20 @@ function detectarTipoReporte(mensaje) {
 }
 
 /**
+ * Suma segura de un campo numérico de un array de objetos.
+ * Ignora valores nulos, undefined, NaN y strings no numéricos.
+ * @param {Array} filas
+ * @param {string} campo
+ * @returns {number}
+ */
+function sumaSegura(filas, campo) {
+  return filas.reduce((acc, d) => {
+    const v = Number(d[campo]);
+    return acc + (isNaN(v) ? 0 : v);
+  }, 0);
+}
+
+/**
  * Formatea número en estilo hispano: 1.250,50
  * @param {*} val
  * @param {number} decimals
@@ -96,10 +119,19 @@ function formatNum(val, decimals = 2) {
 function formatFecha(val) {
   if (!val) return "-";
   try {
-    return new Date(val).toLocaleDateString("es-EC", {
+    const str = String(val);
+    // Fecha pura YYYY-MM-DD: parsear manualmente para evitar el desfase UTC→local
+    // new Date("2026-02-19") = medianoche UTC = 2026-02-18T19:00 en Ecuador (UTC-5)
+    const soloFecha = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (soloFecha) {
+      return `${soloFecha[3]}/${soloFecha[2]}/${soloFecha[1]}`;
+    }
+    // Timestamps completos: usar toLocaleDateString con zona Ecuador
+    return new Date(str).toLocaleDateString("es-EC", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      timeZone: "America/Guayaquil",
     });
   } catch {
     return String(val);
@@ -430,8 +462,9 @@ async function generarPDF(config) {
  */
 function construirConfigReporte(tipoReporte, datos, usuario) {
   const ahora    = new Date();
+  const optsEC   = { timeZone: "America/Guayaquil" };
   const fechaHoy = ahora.toLocaleDateString("es-EC", {
-    day: "2-digit", month: "long", year: "numeric",
+    day: "2-digit", month: "long", year: "numeric", ...optsEC,
   });
 
   // ── Definición de configs por tipo ──────────────────
@@ -449,9 +482,7 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       ],
       totalesCalc: (filas) => ({
         "Total Facturas": filas.length,
-        "Monto Total ($)": formatNum(
-          filas.reduce((a, d) => a + Number(d.total || 0), 0)
-        ),
+        "Monto Total ($)": formatNum(sumaSegura(filas, "total")),
       }),
     },
 
@@ -467,15 +498,13 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       ],
       totalesCalc: (filas) => ({
         "Total Registros": filas.length,
-        "Monto Total ($)": formatNum(
-          filas.reduce((a, d) => a + Number(d.total || 0), 0)
-        ),
+        "Monto Total ($)": formatNum(sumaSegura(filas, "total")),
       }),
     },
 
     ventas_mes: {
       titulo:    "Reporte de Ventas Mensual",
-      subtitulo: `Mes: ${ahora.toLocaleDateString("es-EC", { month: "long", year: "numeric" })}`,
+      subtitulo: `Mes: ${ahora.toLocaleDateString("es-EC", { month: "long", year: "numeric", ...optsEC })}`,
       columnas:  ["Fecha", "Cliente", "Vendedor", "Total ($)"],
       extractor: (d) => [
         formatFecha(d.fecha_creacion),
@@ -485,9 +514,7 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       ],
       totalesCalc: (filas) => ({
         "Total Ventas": filas.length,
-        "Monto Total ($)": formatNum(
-          filas.reduce((a, d) => a + Number(d.total || 0), 0)
-        ),
+        "Monto Total ($)": formatNum(sumaSegura(filas, "total")),
       }),
     },
 
@@ -498,13 +525,11 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       extractor: (d) => [
         d.route_code     || d.ruta   || "-",
         d.total_ventas   || d.count  || "-",
-        formatNum(d.total || d.monto),
+        formatNum(d.total ?? d.monto),
       ],
       totalesCalc: (filas) => ({
         "Rutas":     filas.length,
-        "Total ($)": formatNum(
-          filas.reduce((a, d) => a + Number(d.total || d.monto || 0), 0)
-        ),
+        "Total ($)": formatNum(sumaSegura(filas, "total") || sumaSegura(filas, "monto")),
       }),
     },
 
@@ -515,13 +540,11 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       extractor: (d) => [
         d.seller_code  || d.vendedor || "-",
         d.total_ventas || d.count    || "-",
-        formatNum(d.total || d.monto),
+        formatNum(d.total ?? d.monto),
       ],
       totalesCalc: (filas) => ({
         "Vendedores": filas.length,
-        "Total ($)":  formatNum(
-          filas.reduce((a, d) => a + Number(d.total || d.monto || 0), 0)
-        ),
+        "Total ($)":  formatNum(sumaSegura(filas, "total") || sumaSegura(filas, "monto")),
       }),
     },
 
@@ -530,18 +553,20 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       subtitulo: fechaHoy,
       columnas:  ["Producto", "Categoría", "Unidades", "Total ($)"],
       extractor: (d) => [
-        d.nombre_producto     || d.descripcion          || "-",
-        d.descripcion_categoria || d.categoria           || "-",
-        formatNum(d.cantidad  || d.total_vendido || 0, 0),
-        formatNum(d.total     || d.monto_total   || 0),
+        d.nombre_producto       || d.descripcion  || d.producto || "-",
+        d.descripcion_categoria || d.categoria    || "-",
+        formatNum(d.total_unidades || d.cantidad  || d.total_vendido || 0, 0),
+        formatNum(d.monto_total    || d.total     || 0),
       ],
       totalesCalc: (filas) => ({
         "Productos": filas.length,
         "Unidades":  formatNum(
-          filas.reduce((a, d) => a + Number(d.cantidad || d.total_vendido || 0), 0), 0
+          sumaSegura(filas, "total_unidades") ||
+          sumaSegura(filas, "cantidad")       ||
+          sumaSegura(filas, "total_vendido"), 0
         ),
         "Total ($)": formatNum(
-          filas.reduce((a, d) => a + Number(d.total || d.monto_total || 0), 0)
+          sumaSegura(filas, "monto_total") || sumaSegura(filas, "total")
         ),
       }),
     },
@@ -554,12 +579,12 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
         d.nombre_cliente || d.nombre_comercial_cliente || "-",
         d.tipo_negocio   || d.codigo_tipo_negocio      || "-",
         d.total_compras  || d.count                    || "-",
-        formatNum(d.total || d.monto),
+        formatNum(d.total_ventas || d.total || d.monto),
       ],
       totalesCalc: (filas) => ({
         "Clientes":  filas.length,
         "Total ($)": formatNum(
-          filas.reduce((a, d) => a + Number(d.total || d.monto || 0), 0)
+          sumaSegura(filas, "total_ventas") || sumaSegura(filas, "total") || sumaSegura(filas, "monto")
         ),
       }),
     },
@@ -577,9 +602,7 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       ],
       totalesCalc: (filas) => ({
         "Total Visitas": filas.length,
-        "Total ($)":     formatNum(
-          filas.reduce((a, d) => a + Number(d.monto || 0), 0)
-        ),
+        "Total ($)":     formatNum(sumaSegura(filas, "monto")),
       }),
     },
 
@@ -596,26 +619,36 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       ],
       totalesCalc: (filas) => ({
         "Total Syncs": filas.length,
-        "Registros":   filas.reduce((a, d) => a + Number(d.total_registros || 0), 0),
+        "Registros":   sumaSegura(filas, "total_registros"),
       }),
     },
 
     ventas_cliente: {
       titulo:    "Reporte de Ventas por Cliente",
       subtitulo: fechaHoy,
-      columnas:  ["Fecha", "Factura", "Vendedor", "Producto", "Cantidad", "Total ($)"],
-      extractor: (d) => [
-        formatFecha(d.fecha_creacion),
-        d.code            || d.factura        || "-",
-        d.seller_code     || "-",
-        d.descripcion     || d.nombre_producto || "-",
-        formatNum(d.cantidad || 0, 0),
-        formatNum(d.total),
-      ],
+      columnas:  ["Factura", "Fecha", "Producto", "Cant.", "Total Línea ($)", "Vendedor", "Ruta", "Total Factura ($)"],
+      extractor: (d) => {
+        // Usar ?? (nullish) en lugar de || para que el valor 0 se muestre correctamente
+        const totalLinea   = d.total_linea   ?? d.monto_total ?? null;
+        // total_factura puede no venir en el SQL — intentar todos los alias posibles
+        const totalFactura = d.total_factura ?? d.total       ?? totalLinea ?? null;
+        return [
+          d.factura         ?? d.code            ?? "-",
+          formatFecha(d.fecha ?? d.fecha_creacion),
+          d.producto        ?? d.producto_nombre ?? d.descripcion ?? d.nombre_producto ?? "-",
+          formatNum(d.cantidad ?? d.total_unidades ?? 0, 0),
+          formatNum(totalLinea   ?? 0),
+          d.usuario         ?? d.seller_code     ?? "-",
+          d.ruta            ?? d.route_code      ?? "-",
+          formatNum(totalFactura ?? 0),
+        ];
+      },
       totalesCalc: (filas) => ({
-        "Total Facturas": filas.length,
-        "Total ($)":      formatNum(
-          filas.reduce((a, d) => a + Number(d.total || 0), 0)
+        "Total Líneas":     filas.length,
+        "Total Líneas ($)": formatNum(
+          sumaSegura(filas, "total_linea") ||
+          sumaSegura(filas, "monto_total") ||
+          sumaSegura(filas, "total")
         ),
       }),
     },
@@ -634,9 +667,204 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       ],
       totalesCalc: (filas) => ({
         "Total Facturas": filas.length,
-        "Total ($)":      formatNum(
-          filas.reduce((a, d) => a + Number(d.total || 0), 0)
-        ),
+        "Total ($)":      formatNum(sumaSegura(filas, "total")),
+      }),
+    },
+
+    ranking_clientes: {
+      titulo:    "Ranking de Clientes por Ventas",
+      subtitulo: fechaHoy,
+      columnas:  ["Cliente", "Nombre Comercial", "Facturas", "Total Ventas ($)"],
+      extractor: (d) => [
+        d.nombre_cliente             || d.customer_code || "-",
+        d.nombre_comercial_cliente   || "-",
+        String(d.total_facturas      || d.facturas || 0),
+        formatNum(d.total_ventas     || d.total    || 0),
+      ],
+      totalesCalc: (filas) => ({
+        "Clientes":  filas.length,
+        "Total ($)": formatNum(sumaSegura(filas, "total_ventas") || sumaSegura(filas, "total")),
+      }),
+    },
+
+    cartera_vencida: {
+      titulo:    "Cartera Vencida",
+      subtitulo: fechaHoy,
+      columnas:  ["Cliente", "Vendedor", "Facturas Vencidas", "Deuda Total ($)", "Vencimiento más Antiguo"],
+      extractor: (d) => [
+        d.nombre_cliente             || d.nombre_comercial_cliente || d.customer_code || "-",
+        d.seller_code                || "-",
+        String(d.facturas_vencidas   || d.total_facturas || 0),
+        formatNum(d.deuda_total      || d.saldo_pendiente || d.saldo_total || 0),
+        formatFecha(d.vencimiento_mas_antiguo || d.fecha_vencimiento),
+      ],
+      totalesCalc: (filas) => ({
+        "Clientes":       filas.length,
+        "Deuda Total ($)": formatNum(sumaSegura(filas, "deuda_total") || sumaSegura(filas, "saldo_total")),
+      }),
+    },
+
+    clientes_sin_comprar: {
+      titulo:    "Clientes Sin Comprar",
+      subtitulo: fechaHoy,
+      columnas:  ["Cliente", "Nombre Comercial", "Vendedor", "Última Compra", "Días Sin Comprar", "Total Ventas ($)"],
+      extractor: (d) => [
+        d.nombre_cliente           || d.codigo_cliente  || "-",
+        d.nombre_comercial_cliente || "-",
+        d.seller_code              || "-",
+        formatFecha(d.ultima_compra),
+        String(d.dias_sin_comprar  || "-"),
+        formatNum(d.total_ventas   || d.total || 0),
+      ],
+      totalesCalc: (filas) => ({
+        "Clientes": filas.length,
+      }),
+    },
+
+    nuevos_clientes: {
+      titulo:    "Nuevos Clientes",
+      subtitulo: fechaHoy,
+      columnas:  ["Cliente", "Nombre Comercial", "Vendedor", "Ruta", "Primera Compra", "Total Comprado ($)"],
+      extractor: (d) => [
+        d.nombre_cliente           || "-",
+        d.nombre_comercial_cliente || "-",
+        d.seller_code              || "-",
+        d.route_code               || d.ruta || "-",
+        formatFecha(d.primera_compra),
+        formatNum(d.total_comprado || d.total || 0),
+      ],
+      totalesCalc: (filas) => ({
+        "Nuevos Clientes": filas.length,
+        "Total ($)":       formatNum(sumaSegura(filas, "total_comprado") || sumaSegura(filas, "total")),
+      }),
+    },
+
+    efectividad_visitas: {
+      titulo:    "Efectividad de Visitas",
+      subtitulo: fechaHoy,
+      columnas:  ["Vendedor", "Total Visitas", "Clientes Visitados", "Con Venta", "Sin Venta", "Efectividad %", "Monto ($)"],
+      extractor: (d) => [
+        d.vendedor            || d.codigo_usuario || d.seller_code || "-",
+        String(d.total_visitas        || 0),
+        String(d.clientes_visitados   || 0),
+        String(d.visitas_con_venta    || 0),
+        String(d.visitas_sin_venta    || 0),
+        formatNum(d.pct_efectividad   || 0) + "%",
+        formatNum(d.monto_total       || d.monto || 0),
+      ],
+      totalesCalc: (filas) => ({
+        "Vendedores":   filas.length,
+        "Total Visitas": sumaSegura(filas, "total_visitas"),
+        "Monto ($)":    formatNum(sumaSegura(filas, "monto_total") || sumaSegura(filas, "monto")),
+      }),
+    },
+
+    cobertura_ruta: {
+      titulo:    "Cobertura de Rutas",
+      subtitulo: fechaHoy,
+      columnas:  ["Ruta", "Clientes en Ruta", "Clientes Visitados", "Cobertura %"],
+      extractor: (d) => [
+        d.ruta                     || d.route_code || d.codigo_ruta || "-",
+        String(d.clientes_en_ruta  || 0),
+        String(d.clientes_visitados|| 0),
+        formatNum(d.pct_cobertura  || 0) + "%",
+      ],
+      totalesCalc: (filas) => ({
+        "Rutas":            filas.length,
+        "Total Visitados":  sumaSegura(filas, "clientes_visitados"),
+      }),
+    },
+
+    cumplimiento_metas: {
+      titulo:    "Cumplimiento de Metas",
+      subtitulo: fechaHoy,
+      columnas:  ["Ruta", "Meta Unidades", "Real Unidades", "% Unidades", "Meta ($)", "Real ($)", "% Dólares"],
+      extractor: (d) => [
+        d.codigo_ruta             || d.ruta    || "-",
+        formatNum(d.meta_unidades || 0, 0),
+        formatNum(d.unidades_reales || 0, 0),
+        formatNum(d.pct_unidades  || 0) + "%",
+        formatNum(d.meta_dolares  || 0),
+        formatNum(d.dolares_reales|| 0),
+        formatNum(d.pct_dolares   || 0) + "%",
+      ],
+      totalesCalc: (filas) => ({
+        "Rutas": filas.length,
+        "Real Total ($)": formatNum(sumaSegura(filas, "dolares_reales")),
+      }),
+    },
+
+    kpi_dia: {
+      titulo:    "KPI del Día — Resumen Ejecutivo",
+      subtitulo: fechaHoy,
+      columnas:  ["Indicador", "Valor"],
+      // El SQL de KPI devuelve UNA fila con múltiples columnas.
+      // Convertimos cada columna en una fila indicador/valor.
+      extractor: (d) => {
+        // Este extractor se llama por cada fila del resultado.
+        // Para KPI el resultado viene ya preprocesado como array de {indicador, valor}.
+        return [
+          String(d.indicador || d.nombre || Object.keys(d)[0] || "-"),
+          String(d.valor     || Object.values(d)[0] || "-"),
+        ];
+      },
+      totalesCalc: () => null,
+    },
+
+    ventas_categoria: {
+      titulo:    "Ventas por Categoría de Producto",
+      subtitulo: fechaHoy,
+      columnas:  ["Categoría", "Código", "Unidades", "Documentos", "Total ($)"],
+      extractor: (d) => [
+        d.categoria            || d.descripcion_categoria || "SIN CATEGORÍA",
+        d.codigo_categoria     || "-",
+        formatNum(d.total_unidades || d.cantidad || 0, 0),
+        String(d.total_documentos  || 0),
+        formatNum(d.monto_total    || d.total    || 0),
+      ],
+      totalesCalc: (filas) => ({
+        "Categorías": filas.length,
+        "Unidades":   formatNum(sumaSegura(filas, "total_unidades") || sumaSegura(filas, "cantidad"), 0),
+        "Total ($)":  formatNum(sumaSegura(filas, "monto_total") || sumaSegura(filas, "total")),
+      }),
+    },
+
+    margen_vendedor: {
+      titulo:    "Margen por Vendedor",
+      subtitulo: fechaHoy,
+      columnas:  ["Vendedor", "Ventas ($)", "Margen ($)", "Margen Promedio %"],
+      extractor: (d) => [
+        d.vendedor             || d.seller_code    || "-",
+        formatNum(d.ventas_totales || d.total      || 0),
+        formatNum(d.margen_total   || d.margen     || 0),
+        formatNum(d.margen_promedio_pct || d.margen_porcentaje || 0) + "%",
+      ],
+      totalesCalc: (filas) => ({
+        "Vendedores":   filas.length,
+        "Ventas ($)":  formatNum(sumaSegura(filas, "ventas_totales") || sumaSegura(filas, "total")),
+        "Margen ($)":  formatNum(sumaSegura(filas, "margen_total")   || sumaSegura(filas, "margen")),
+      }),
+    },
+
+    comparativo_rutas: {
+      titulo:    "Comparativo de Rutas — Mes Actual vs Anterior",
+      subtitulo: fechaHoy,
+      columnas:  ["Ruta", "Mes Actual ($)", "Mes Anterior ($)", "Variación ($)"],
+      extractor: (d) => {
+        const actual   = Number(d.mes_actual   || 0);
+        const anterior = Number(d.mes_anterior || 0);
+        const variacion = actual - anterior;
+        return [
+          d.ruta         || d.route_code    || d.codigo_ruta || "-",
+          formatNum(actual),
+          formatNum(anterior),
+          (variacion >= 0 ? "+" : "") + formatNum(variacion),
+        ];
+      },
+      totalesCalc: (filas) => ({
+        "Rutas":            filas.length,
+        "Total Actual ($)": formatNum(sumaSegura(filas, "mes_actual")),
+        "Total Ant. ($)":   formatNum(sumaSegura(filas, "mes_anterior")),
       }),
     },
 
@@ -644,7 +872,7 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
       titulo:      "Reporte General",
       subtitulo:   fechaHoy,
       columnas:    [],   // se calcula dinámicamente abajo
-      extractor:   (d) => Object.values(d).slice(0, 7).map((v) => v != null ? String(v) : "-"),
+      extractor:   (d) => Object.values(d).map((v) => v != null ? String(v) : "-"),
       totalesCalc: (filas) => ({ "Total Registros": filas.length }),
     },
   };
@@ -659,7 +887,7 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
 
   // ── Modo generico: columnas y extractor dinámicos ──
   if (tipoReporte === "generico" && datos.length > 0) {
-    const claves = Object.keys(datos[0]).slice(0, 7);
+    const claves = Object.keys(datos[0]);
     cfg = { ...cfg }; // clonar para no mutar el objeto original
 
     cfg.columnas = claves.map((k) =>
@@ -678,7 +906,7 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
         }
         if (
           typeof v === "number" ||
-          (typeof v === "string" && /^\d+\.\d+$/.test(v))
+          (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()) && v.trim() !== "")
         ) {
           return formatNum(v);
         }
@@ -689,9 +917,7 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
     if (claveTotal) {
       cfg.totalesCalc = (filas) => ({
         "Total Registros": filas.length,
-        "Total ($)":       formatNum(
-          filas.reduce((a, d) => a + Number(d[claveTotal] || 0), 0)
-        ),
+        "Total ($)":       formatNum(sumaSegura(filas, claveTotal)),
       });
     }
   }
@@ -712,9 +938,7 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
     try {
       return cfg.extractor(d);
     } catch {
-      return Object.values(d)
-        .slice(0, cfg.columnas.length)
-        .map((v) => (v != null ? String(v) : "-"));
+      return Object.values(d).map((v) => (v != null ? String(v) : "-"));
     }
   });
 
