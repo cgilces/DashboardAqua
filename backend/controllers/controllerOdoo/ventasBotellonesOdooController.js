@@ -4,6 +4,7 @@
 
 const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
+const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
 
 // ================================================================
 // RUTAS QUE FACTURAN EN ODOO
@@ -64,53 +65,6 @@ const getFechaFinQuery = async (anioNum, mesNum) => {
   return getFechaFinMes(anioNum, mesNum);
 };
 
-// ================================================================
-// DÍAS HÁBILES
-// ================================================================
-const festivos = [
-  new Date(2025, 0, 1), new Date(2025, 4, 1), new Date(2025, 11, 25),
-  new Date(2026, 0, 1), new Date(2026, 1, 16), new Date(2026, 1, 17),
-  new Date(2026, 2, 29), new Date(2026, 2, 30), new Date(2026, 4, 1),
-  new Date(2026, 7, 10), new Date(2026, 9, 9), new Date(2026, 10, 2),
-  new Date(2026, 10, 3), new Date(2026, 11, 6), new Date(2026, 11, 8),
-  new Date(2026, 11, 25),
-];
-
-function getDiasHabilesTranscurridos(anio, mes) {
-  const hoy = new Date();
-  const hoyLocal = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  const ayer = new Date(hoyLocal);
-  ayer.setDate(hoyLocal.getDate() - 1);
-
-  let ultimoDia = new Date(anio, mes, 0).getDate();
-  if (ayer.getFullYear() === anio && ayer.getMonth() + 1 === mes)
-    ultimoDia = ayer.getDate();
-
-  let habiles = 0;
-  for (let d = 1; d <= ultimoDia; d++) {
-    const fecha = new Date(anio, mes - 1, d);
-    if (fecha.getDay() === 0) continue;
-    const esFestivo = festivos.some(
-      f => f.getDate() === d && f.getMonth() === mes - 1 && f.getFullYear() === anio
-    );
-    if (!esFestivo) habiles++;
-  }
-  return habiles;
-}
-
-function getDiasLaborablesMes(anio, mes) {
-  const diasEnMes = new Date(anio, mes, 0).getDate();
-  let laborables = 0;
-  for (let d = 1; d <= diasEnMes; d++) {
-    const fecha = new Date(anio, mes - 1, d);
-    if (fecha.getDay() === 0) continue;
-    const esFestivo = festivos.some(
-      f => f.getDate() === d && f.getMonth() === mes - 1 && f.getFullYear() === anio
-    );
-    if (!esFestivo) laborables++;
-  }
-  return laborables;
-}
 
 // ================================================================
 // QUERY VENTAS BOTELLÓN ODOO POR RUTA

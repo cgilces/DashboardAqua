@@ -8,6 +8,7 @@ const {
 const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
+const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
 
 // ==========================================
 //  SOLO RUTAS DE PREVENTA PERMITIDAS
@@ -89,57 +90,6 @@ const getFechaFinQuery = async (anioNum, mesNum) => {
   return getFechaFinMes(anioNum, mesNum);
 };
 
-// ======================================================
-//  DÍAS HÁBILES TRANSCURRIDOS (L–S)
-// ======================================================
-const getDiasHabilesTranscurridos = (anio, mes, festivos = []) => {
-  const hoy = new Date();
-  const hoyLocal = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  const ayer = new Date(hoyLocal);
-  ayer.setDate(hoyLocal.getDate() - 1);
-
-  let ultimoDia = new Date(anio, mes, 0).getDate();
-  if (ayer.getFullYear() === anio && ayer.getMonth() + 1 === mes)
-    ultimoDia = ayer.getDate();
-
-  let habiles = 0;
-  for (let d = 1; d <= ultimoDia; d++) {
-    const fecha = new Date(anio, mes - 1, d);
-    const diaSemana = fecha.getDay();
-    const esFestivo = festivos.some(f =>
-      f.getDate() === fecha.getDate() &&
-      f.getMonth() === fecha.getMonth() &&
-      f.getFullYear() === fecha.getFullYear()
-    );
-    if (diaSemana !== 0 && !esFestivo) habiles++;
-  }
-  return habiles;
-};
-
-const festivos = [
-  new Date(2025, 0, 1), new Date(2025, 4, 1), new Date(2025, 11, 25),
-  new Date(2026, 0, 1), new Date(2026, 1, 16), new Date(2026, 1, 17),
-  new Date(2026, 2, 29), new Date(2026, 2, 30), new Date(2026, 4, 1),
-  new Date(2026, 7, 10), new Date(2026, 9, 9), new Date(2026, 10, 2),
-  new Date(2026, 10, 3), new Date(2026, 11, 6), new Date(2026, 11, 8),
-  new Date(2026, 11, 25),
-];
-
-const getDiasLaborablesMes = (anio, mes, festivos = []) => {
-  const diasEnMes = new Date(anio, mes, 0).getDate();
-  let laborables = 0;
-  for (let d = 1; d <= diasEnMes; d++) {
-    const fecha = new Date(anio, mes - 1, d);
-    const diaSemana = fecha.getDay();
-    const esFestivo = festivos.some(f =>
-      f.getDate() === fecha.getDate() &&
-      f.getMonth() === fecha.getMonth() &&
-      f.getFullYear() === fecha.getFullYear()
-    );
-    if (diaSemana !== 0 && !esFestivo) laborables++;
-  }
-  return laborables;
-};
 
 // =====================================
 // 🔧 META HISTÓRICA POR PREVENTA (USD)
@@ -478,8 +428,8 @@ const calcularVentasDescartableConComparativa = async (anioNum, mesNum) => {
   const ventasActuales    = await obtenerVentasDescartablePorCanal(fechaInicioMesActual, fechaFinMesActual);
   const ventasMesAnterior = await obtenerVentasDescartablePorCanalMesAnterior(fechaInicioMesAnterior, fechaFinMesAnterior);
 
-  const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum, festivos);
-  const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum, festivos);
+  const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum);
+  const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum);
   const metasPorPreventa  = await MetasHistoricasDescartablePorCanal();
   const metasProyectadas  = {};
 
@@ -491,19 +441,26 @@ const calcularVentasDescartableConComparativa = async (anioNum, mesNum) => {
     const proyeccion    = esMesActual && diasTranscurridos > 0
       ? (montoActual / diasTranscurridos) * diasLaborablesMes
       : montoActual;
-    const ventaAnterior = ventasMesAnterior.find(v => v.seller_code === preventa);
-    const montoAnterior = ventaAnterior ? Number(ventaAnterior.dolares) || 0 : 0;
-    const variacionAbs  = montoActual - montoAnterior;
-    const variacionPorc = montoAnterior > 0 ? (variacionAbs / montoAnterior) * 100 : null;
+    const ventaAnterior      = ventasMesAnterior.find(v => v.seller_code === preventa);
+    const montoAnterior      = ventaAnterior ? Number(ventaAnterior.dolares)   || 0 : 0;
+    const unidadesAnterior   = ventaAnterior ? Number(ventaAnterior.unidades)  || 0 : 0;
+    const variacionAbs       = montoActual - montoAnterior;
+    const variacionPorc      = montoAnterior > 0 ? (variacionAbs / montoAnterior) * 100 : null;
+    const unidadesActual     = Number(venta.unidades) || 0;
+    const varAbsUnidades     = unidadesActual - unidadesAnterior;
+    const varPorcUnidades    = unidadesAnterior > 0 ? (varAbsUnidades / unidadesAnterior) * 100 : null;
 
     metasProyectadas[preventa] = {
       ...venta,
       meta: metaHistorica,
       proyeccion: Number(proyeccion.toFixed(2)),
       vsMesAnterior: {
-        monto_anterior: Number(montoAnterior.toFixed(2)),
-        variacion_abs:  Number(variacionAbs.toFixed(2)),
-        variacion_porc: variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
+        monto_anterior:          Number(montoAnterior.toFixed(2)),
+        variacion_abs:           Number(variacionAbs.toFixed(2)),
+        variacion_porc:          variacionPorc !== null ? Number(variacionPorc.toFixed(2)) : null,
+        unidades_anterior:       unidadesAnterior,
+        variacion_abs_unidades:  varAbsUnidades,
+        variacion_porc_unidades: varPorcUnidades !== null ? Number(varPorcUnidades.toFixed(2)) : null,
       },
     };
   });
@@ -685,8 +642,8 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   });
 
   const metasPorPreventa  = await obtenerMetasHistoricasPreventas();
-  const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum, festivos);
-  const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum, festivos);
+  const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum);
+  const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum);
 
   let rankingPreventasSQL = resultadosSQL.map(r => {
     const preventa      = r.preventa;
@@ -789,9 +746,9 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
 // ================================================================
 const agruparDescartablePorCanalResumen = (ventasPorPreventa = {}) => {
   const resumen = {
-    DOMICILIO: { canal: "DOMICILIO", unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0, variacionPorc: 0 },
-    MAYORISTA: { canal: "MAYORISTA", unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0, variacionPorc: 0 },
-    VIP:       { canal: "VIP",       unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0, variacionPorc: 0 },
+    DOMICILIO: { canal: "DOMICILIO", unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0, variacionPorc: 0, unidadesAnterior: 0 },
+    MAYORISTA: { canal: "MAYORISTA", unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0, variacionPorc: 0, unidadesAnterior: 0 },
+    VIP:       { canal: "VIP",       unidades: 0, monto: 0, mesAnterior: 0, variacionAbs: 0, variacionPorc: 0, unidadesAnterior: 0 },
   };
   Object.values(ventasPorPreventa).forEach(v => {
     const seller = v.seller_code || "";
@@ -800,9 +757,10 @@ const agruparDescartablePorCanalResumen = (ventasPorPreventa = {}) => {
     else if (seller.startsWith("M")) canal = "MAYORISTA";
     else if (seller.startsWith("V")) canal = "VIP";
     if (!canal) return;
-    resumen[canal].unidades    += Number(v.unidades || 0);
-    resumen[canal].monto       += Number(v.dolares  || 0);
-    resumen[canal].mesAnterior += Number(v.vsMesAnterior?.monto_anterior || 0);
+    resumen[canal].unidades         += Number(v.unidades   || 0);
+    resumen[canal].monto            += Number(v.proyeccion || v.dolares || 0);
+    resumen[canal].mesAnterior      += Number(v.vsMesAnterior?.monto_anterior    || 0);
+    resumen[canal].unidadesAnterior += Number(v.vsMesAnterior?.unidades_anterior || 0);
   });
   Object.keys(resumen).forEach(c => {
     const r = resumen[c];
@@ -896,9 +854,33 @@ const obtenerDatosDashboard = async (req, res) => {
       });
     } catch (e) { console.error("❌ Error generando vsMesAnterior:", e); }
 
+    // ── objetivo_gerencia (cupo) para Rutas R ──────────────────
+    resumenActual.rankingRutasR = (resumenActual.rankingRutasR || []).map(r => {
+      const rutaKey     = (r.usuario || "").toUpperCase();
+      const objGerencia = objetivosGerencia[rutaKey] || { meta_dolares: 0, meta_unidades: 0 };
+      return {
+        ...r,
+        objetivo_gerencia         : objGerencia.meta_dolares,
+        objetivo_gerencia_unidades: objGerencia.meta_unidades,
+      };
+    });
+
     // ── Descartable con comparativa (usa fecha fin dinámica internamente) ──
     const ventasDescartableConComparativa = await calcularVentasDescartableConComparativa(anioNum, mesNum);
-    const resumenDescartablePorCanal      = agruparDescartablePorCanalResumen(ventasDescartableConComparativa);
+
+    // ── Enriquecer descartable con objetivo_gerencia (cupo) ──
+    Object.keys(ventasDescartableConComparativa).forEach(key => {
+      const v      = ventasDescartableConComparativa[key];
+      const rutaKey = (v.seller_code || key).toUpperCase();
+      const obj    = objetivosGerencia[rutaKey] || { meta_dolares: 0, meta_unidades: 0 };
+      ventasDescartableConComparativa[key] = {
+        ...v,
+        objetivo_gerencia          : obj.meta_dolares,
+        objetivo_gerencia_unidades : obj.meta_unidades,
+      };
+    });
+
+    const resumenDescartablePorCanal = agruparDescartablePorCanalResumen(ventasDescartableConComparativa);
 
     const resumenVentasPorCanal = {
       TIENDAS: resumirRankingParaCard(resumenActual.rankingPreventas, "TIENDAS"),

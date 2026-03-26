@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../components/auth/AuthContext";
-import { BsDownload } from "react-icons/bs";
+import { BsDownload, BsGear } from "react-icons/bs";
 
 const RankingRutasR = ({
   data,
@@ -56,6 +56,7 @@ const RankingRutasInner = ({
   const totalUnidades = sortedData.reduce((acc, r) => acc + Number(r.unidades || 0), 0);
   const totalUSD = sortedData.reduce((acc, r) => acc + Number(r.dolares || 0), 0);
   const totalMeta = sortedData.reduce((acc, r) => acc + Number(r.meta || 0), 0);
+  const totalCupo = sortedData.reduce((acc, r) => acc + Number(r.objetivo_gerencia || 0), 0);
   const totalProyeccion = sortedData.reduce((acc, r) => acc + Number(r.proyeccion || 0), 0);
   const totalVsMesAnterior = sortedData.reduce((acc, r) => acc + (r.vsMesAnterior?.variacion_abs || 0), 0);
 
@@ -181,6 +182,22 @@ const RankingRutasInner = ({
             <p className="text-xs text-gray-400">Proyección</p>
             <p className="text-base font-bold text-emerald-400">${fmt(totalProyeccion)}</p>
           </div>
+          {totalCupo > 0 && (
+            <div className="bg-[#011f1a] border border-amber-500/40 rounded-lg px-3 py-2 text-center">
+              <p className="text-xs text-amber-400">Cupo</p>
+              <p className="text-base font-bold text-amber-300">${fmt(totalCupo)}</p>
+            </div>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => navigate("/configurar-metas")}
+              title="Configurar Metas"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/60 bg-blue-500/20 text-white font-semibold hover:bg-blue-500/30 active:scale-[0.98] transition-all"
+            >
+              <BsGear size={16} className="text-white shrink-0" />
+              <span>Metas</span>
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={exportarTablaExcel}
@@ -209,7 +226,10 @@ const RankingRutasInner = ({
               Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
             <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('meta')}>
-              Metas <span className="text-green-300">{sortConfig.key === 'meta' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              HIST. MÁX <span className="text-green-300">{sortConfig.key === 'meta' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+            </th>
+            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
+              CUPO <span className="text-amber-300">{sortConfig.key === 'objetivo_gerencia' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
             <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('proyeccion')}>
               Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
@@ -227,7 +247,15 @@ const RankingRutasInner = ({
           {sortedData.map((r, index) => (
             <tr
               key={index}
-              onClick={() => navigate(`/ruta/${r.usuario}?anio=${anio}&mes=${mes}`)}
+              onClick={() => navigate(`/ruta/${r.usuario}?anio=${anio}&mes=${mes}`, {
+                state: {
+                  objetivo_gerencia:          r.objetivo_gerencia,
+                  objetivo_gerencia_unidades: r.objetivo_gerencia_unidades,
+                  proyeccion:                 r.proyeccion,
+                  monto:                      r.dolares,
+                  meta:                       r.meta,
+                }
+              })}
               className={`transition-all duration-200 cursor-pointer
                 ${index % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
                 hover:bg-[#016a57] hover:shadow-lg hover:text-white
@@ -242,8 +270,13 @@ const RankingRutasInner = ({
               <td className="px-4 py-2 text-right text-blue-300 font-bold">
                 ${Number(r.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
-              <td className="px-4 py-2 text-right text-blue-300 font-bold">
+              <td className="px-4 py-2 text-right text-gray-300">
                 ${Number(r.meta).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+              </td>
+              <td className="px-4 py-2 text-right font-bold text-amber-300">
+                {r.objetivo_gerencia && r.objetivo_gerencia > 0
+                  ? `$${fmt(r.objetivo_gerencia)}`
+                  : <span className="text-gray-500">—</span>}
               </td>
               <td className="px-4 py-2 text-right font-bold text-blue-300">
                 ${(Number(r.proyeccion) || 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
@@ -283,8 +316,11 @@ const RankingRutasInner = ({
             <td className="px-4 py-3 text-right text-blue-400">
               ${totalUSD.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
-            <td className="px-4 py-3 text-right text-blue-400">
+            <td className="px-4 py-3 text-right text-gray-300">
               ${totalMeta.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
+            <td className="px-4 py-3 text-right text-amber-300">
+              {totalCupo > 0 ? `$${fmt(totalCupo)}` : "—"}
             </td>
             <td className="px-4 py-3 text-right text-blue-400">
               ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

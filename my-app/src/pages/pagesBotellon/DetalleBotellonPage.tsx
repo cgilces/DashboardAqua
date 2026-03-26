@@ -1,569 +1,417 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useSearchParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import * as XLSX from "xlsx";
+import { BsDownload } from "react-icons/bs";
+import DashboardLayout from "../../layout/DashboardLayout";
+import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
 
+const fmt = (v: number) =>
+  v.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+type CupoState = {
+  cupo_dolares?: number; cupo_unidades?: number;
+  proyeccion_dolares?: number; proyeccion_unidades?: number;
+  dolares?: number; unidades?: number;
+};
+
+const POR_PAGINA = 60;
 
 const DetalleBotellonPage: React.FC = () => {
-  // ==========================
-  // PARAMETROS CORRECTOS
-  // ==========================
-  // const { usuario } = useParams<{ usuario: string }>();
   const { usuario } = useParams<{ usuario: string }>();
-
-
+  const navigate    = useNavigate();
+  const location    = useLocation();
   const [searchParams] = useSearchParams();
 
   const anio = searchParams.get("anio");
-  const mes = searchParams.get("mes");
+  const mes  = searchParams.get("mes");
 
-  // ==========================
-  // ESTADOS
-  // ==========================
-  const [productos, setProductos] = useState<any[]>([]);
+  const cupoState          = (location.state || {}) as CupoState;
+  const cupoDolares        = Number(cupoState.cupo_dolares       || 0);
+  const cupoUnidades       = Number(cupoState.cupo_unidades      || 0);
+  const proyeccionDolares  = Number(cupoState.proyeccion_dolares || 0);
+  const proyeccionUnidades = Number(cupoState.proyeccion_unidades || 0);
+  const ventaActual        = Number(cupoState.dolares            || 0);
+  const unidadesActual     = Number(cupoState.unidades           || 0);
+  const faltaCupo   = cupoDolares > 0 ? cupoDolares - proyeccionDolares : 0;
+  const porcCupo    = cupoDolares > 0 ? (proyeccionDolares / cupoDolares) * 100 : null;
+  const cupoSuperado = faltaCupo <= 0;
+
+  const [productos,       setProductos]       = useState<any[]>([]);
   const [resumenClientes, setResumenClientes] = useState<any>(null);
-  const [clientesRuta, setClientesRuta] = useState<any[]>([]);
-  const [cargando, setCargando] = useState(false);
+  const [clientesRuta,    setClientesRuta]    = useState<any[]>([]);
+  const [cargando,        setCargando]        = useState(false);
+  const [filtroConsumo,   setFiltroConsumo]   = useState("Todos");
+  const [busqueda,        setBusqueda]        = useState("");
+  const [pagina,          setPagina]          = useState(1);
+  const [sortConfig,      setSortConfig]      = useState<{ key: string; direction: "asc" | "desc" }>({ key: "codigo_cliente", direction: "asc" });
 
-  const [filtroConsumo, setFiltroConsumo] = useState("Todos");
-  const [terminoBusqueda, setTerminoBusqueda] = useState("");
+  if (!usuario || !anio || !mes)
+    return <div className="text-white p-10">Parámetros inválidos</div>;
 
-  // PAGINACIÓN
-  const [paginaActual, setPaginaActual] = useState(1);
-  const clientesPorPagina = 60;
-
-  // ORDEN
-  const [sortConfig, setSortConfig] = useState<{
-    key: string;
-    direction: "asc" | "desc";
-  }>({
-    key: "codigo_cliente",
-    direction: "asc",
-  });
-
-  // ==========================
-  // VALIDACIÓN
-  // ==========================
-  if (!usuario || !anio || !mes) {
-    return (
-      <div className="text-white p-10">
-        <h1>Parámetros inválidos</h1>
-      </div>
-    );
-  }
-
-
-
-  // ==========================
-  // ORDENAR
-  // ==========================
   const requestSort = (key: string) => {
-    const direction =
-      sortConfig.key === key && sortConfig.direction === "asc"
-        ? "desc"
-        : "asc";
-
-    setSortConfig({ key, direction });
-
-    const sorted = [...clientesRuta].sort((a, b) => {
-      let aVal = a[key];
-      let bVal = b[key];
-
-      // Si el campo es "consumo_actual", asegúrate de que se convierte a un número
-      if (key === "consumo_actual") {
-        aVal = parseFloat(aVal) || 0; // Si no se puede convertir a número, se asigna 0
-        bVal = parseFloat(bVal) || 0; // Lo mismo para bVal
-      }
-
-
-      // Si estamos ordenando por "vsMesAnterior.variacion_abs"
-      if (key === "vsMesAnterior") {
-        aVal = a[key]?.variacion_abs || 0; // Obtener variacion_abs o 0 si no está definido
-        bVal = b[key]?.variacion_abs || 0; // Obtener variacion_abs o 0 si no está definido
-      }
-
-      // Si los valores son de tipo string
-      if (typeof aVal === "string" && typeof bVal === "string") {
-        return direction === "asc"
-          ? aVal.localeCompare(bVal)
-          : bVal.localeCompare(aVal);
-      }
-
-      if (typeof aVal === "number" && typeof bVal === "number") {
-        return direction === "asc" ? aVal - bVal : bVal - aVal;
-      }
-
-      return 0;
-    });
-
-    setClientesRuta(sorted);
+    const dir = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+    setSortConfig({ key, direction: dir });
+    setClientesRuta(prev => [...prev].sort((a, b) => {
+      const av: any = key === "vsMesAnterior" ? Number(a?.vsMesAnterior?.variacion_abs) || 0 : a[key];
+      const bv: any = key === "vsMesAnterior" ? Number(b?.vsMesAnterior?.variacion_abs) || 0 : b[key];
+      const an = Number(String(av).replace(",",".")), bn = Number(String(bv).replace(",","."));
+      if (Number.isFinite(an) && Number.isFinite(bn)) return dir === "asc" ? an - bn : bn - an;
+      return dir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    }));
   };
 
-  // ==========================
-  // FETCH DATOS
-  // ==========================
+  const sa = (k: string) => sortConfig.key === k ? (sortConfig.direction === "asc" ? " ↑" : " ↓") : " ↕";
+
   useEffect(() => {
     setCargando(true);
-
-    fetch(
-      `${API_BASE_URL}/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        // CLIENTES
+    fetch(`${API_BASE_URL}/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`)
+      .then(r => r.json())
+      .then(data => {
         let clientes = data.clientesRuta || [];
-
-        if (filtroConsumo !== "Todos") {
-          clientes = clientes.filter(
-            (c: any) => c.tuvo_consumo === filtroConsumo
-          );
-        }
-
+        if (filtroConsumo !== "Todos") clientes = clientes.filter((c: any) => c.tuvo_consumo === filtroConsumo);
         setClientesRuta(clientes);
-
-        // PRODUCTOS
-        const productosMapeados = (data.productosVendidos || []).map(
-          (p: any) => ({
-            descripcion: p.producto,
-            unidades: Number(p.unidades_vendidas),
-            monto: Number(p.monto_usd),
-          })
-        );
-
-        setProductos(productosMapeados);
-
-        // RESUMEN
+        setProductos((data.productosVendidos || []).map((p: any) => ({
+          descripcion: p.producto, unidades: Number(p.unidades_vendidas), monto: Number(p.monto_usd),
+        })));
         setResumenClientes(data.resumenClientes);
+        setPagina(1);
       })
       .finally(() => setCargando(false));
   }, [usuario, anio, mes, filtroConsumo]);
 
-  // ==========================
-  // FILTRO + PAGINACIÓN
-  // ==========================
-  const clientesFiltrados = clientesRuta.filter((c) =>
-    c.nombre_cliente
-      ?.toLowerCase()
-      .includes(terminoBusqueda.toLowerCase())
+  const filtrados = clientesRuta.filter(c =>
+    String(c?.nombre_cliente || "").toLowerCase().includes(busqueda.toLowerCase())
   );
+  const totalPags = Math.ceil(filtrados.length / POR_PAGINA);
+  const paginados = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
-  const inicio = (paginaActual - 1) * clientesPorPagina;
-  const fin = inicio + clientesPorPagina;
-
-  const clientesPagina = clientesFiltrados.slice(inicio, fin);
-  const totalPaginas = Math.ceil(clientesFiltrados.length / clientesPorPagina);
-
-  // ==========================
-  // EXPORTAR EXCEL
-  // ==========================
-  const exportarClientesRuta = () => {
-    if (clientesRuta.length === 0) return;
-
-    const rutaUpper = usuario.toUpperCase();
-
-    const datos = clientesRuta.map((c) => ({
-      Ruta: rutaUpper,
-      Código: c.codigo_cliente,
-      Cliente: c.nombre_cliente,
-      Dirección: c.direccion_entrega,
-      "Última visita": c.ultima_visita || "—",
-      "Última factura": c.ultima_factura || "—",
-      "Consumo Actual": c.consumo_actual,
-      "Consumo Máx": c.max_consumo,
-      "Cantidad": c.cantidad_botellon,
+  const exportar = () => {
+    if (!clientesRuta.length) return;
+    const datos = clientesRuta.map(c => ({
+      Código: c.codigo_cliente, Cliente: c.nombre_cliente,
+      Dirección: c.direccion_cliente, "Última visita": c.ultima_visita || "—",
+      "Última factura": c.ultima_factura || "—", "Consumo Actual": c.consumo_actual,
+      "Consumo Máx": c.max_consumo, Cantidad: c.cantidad_botellon,
       "Tuvo Consumo": c.tuvo_consumo,
     }));
-
     const ws = XLSX.utils.json_to_sheet(datos);
     const wb = XLSX.utils.book_new();
-
     XLSX.utils.book_append_sheet(wb, ws, "ClientesRuta");
-    XLSX.writeFile(
-      wb,
-      `clientes_ruta_${rutaUpper}_${mes}_${anio}.xlsx`
-    );
+    XLSX.writeFile(wb, `clientes_ruta_${usuario?.toUpperCase()}_${mes}_${anio}.xlsx`);
   };
 
-  // ==========================
-  // LOADING
-  // ==========================
-  if (cargando) {
-    return (
-      <div className="flex justify-center items-center h-screen bg-[#012E24] text-gray-300">
-        <p>Cargando datos de {usuario}...</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen text-white p-5">
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">
-          Detalle de {usuario} — {mes}/{anio}
-        </h1>
-
-        <Link
-          to="/dashboard/botellon"
-          className="px-4 py-2 bg-[#046C5E] rounded-lg hover:bg-[#058A73] transition"
-        >
-          ← Volver al Dashboard
-        </Link>
-      </div>
-
-      {/* ===================== RESUMEN CLIENTES ===================== */}
-      {resumenClientes && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
-            <h3 className="text-gray-200 text-sm mb-1">Clientes asignados</h3>
-            <p className="text-4xl font-bold text-green-400">
-              {resumenClientes.totalClientesRuta}
-            </p>
-          </div>
-
-          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
-            <h3 className="text-gray-200 text-sm mb-1">Clientes con consumo</h3>
-            <p className="text-4xl font-bold text-blue-400">
-              {resumenClientes.clientesConConsumo}
-            </p>
-          </div>
-
-          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
-            <h3 className="text-gray-200 text-sm mb-1">Clientes sin consumo</h3>
-            <p className="text-4xl font-bold text-red-400">
-              {resumenClientes.clientesSinConsumo}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ===================== PRODUCTOS VENDIDOS ===================== */}
-      <h1 className="text-center text-xl font-bold mb-4">
-        PRODUCTOS VENDIDOS
-      </h1>
-
-      {productos.length > 0 ? (
-        <table className="w-full text-sm border border-[#046C5E] rounded-lg mb-12">
-          <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-            <tr>
-              <th className="px-4 py-3 text-left">Producto</th>
-              <th className="px-4 py-3 text-right">Unidades</th>
-              <th className="px-4 py-3 text-right">Dólares</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {productos.map((p, idx) => (
-              <tr
-                key={idx}
-                className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#026452] transition`}
-              >
-                <td className="px-4 py-2">{p.descripcion}</td>
-                <td className="px-4 py-2 text-right text-green-400 font-semibold">
-                  {p.unidades.toLocaleString()}
-                </td>
-                <td className="px-4 py-2 text-right text-blue-400 font-semibold">
-                  ${p.monto.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </td>
-              </tr>
-            ))}
-
-            {/* TOTAL */}
-            <tr className="bg-[#022d24] font-bold">
-              <td className="px-4 py-3 text-right uppercase">Total</td>
-              <td className="px-4 py-3 text-right text-green-500">
-                {productos.reduce((acc, p) => acc + p.unidades, 0).toLocaleString()}
-              </td>
-              <td className="px-4 py-3 text-right text-blue-500">
-                ${productos.reduce((acc, p) => acc + p.monto, 0).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      ) : (
-        <p className="text-center text-gray-400 mt-10">
-          No se encontraron productos facturados para esta ruta.
-        </p>
-      )}
-
-      {/* ===================== CLIENTES ===================== */}
-      <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-
-        <h1 className="text-center text-xl font-bold mt-10 mb-4">
-          CLIENTES DE RUTA
-        </h1>
-
-        {/* ACCIONES */}
-        <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-4">
-          <button
-            onClick={exportarClientesRuta}
-            className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-            </svg>
-            Exportar clientes S/C
-          </button>
-
-          <div>
-            <label htmlFor="filtroConsumo" className="text-white mr-2">
-              Filtrar por consumo Mes_Actual:
-            </label>
-            <select
-              id="filtroConsumo"
-              value={filtroConsumo}
-              onChange={(e) => setFiltroConsumo(e.target.value)}
-              className="px-4 py-2 bg-[#046C5E] text-white font-semibold rounded-md"
-            >
-              <option value="Todos">Todos</option>
-              <option value="Sí">Con Consumo</option>
-              <option value="No">Sin Consumo</option>
-            </select>
-          </div>
-        </div>
-
-        {/* BUSCADOR */}
-        <div className="flex justify-center mb-4">
-          <div className="relative w-full sm:w-3/4 md:w-1/2 lg:w-1/3">
-            <input
-              type="text"
-              placeholder="Buscar por nombre de cliente"
-              value={terminoBusqueda}
-              onChange={(e) => setTerminoBusqueda(e.target.value)}
-              className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#74ab3c]"
-            />
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M18 10a8 8 0 10-8 8 8 8 0 008-8z" />
-            </svg>
-          </div>
-        </div>
-
-        {/* TABLA CLIENTES */}
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-            <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-              <tr>
-                <th className="px-4 py-3">N°</th>
-                {[
-                  ["Código", "codigo_cliente"],
-                  ["Cliente", "nombre_cliente"],
-                  ["Dirección", "direccion_cliente"],
-                  ["Tipo Negocio", "tipo_negocio"],
-
-                  ["#Teléfono", "telefono_cliente"],
-                  ["Latitud", "latitud_direccion_cliente"],
-                  ["Longitud", "longitud_direccion_cliente"],
-                  ["Cantidad Actual", "cantidad_botellon"],
-                  ["Consumo Actual($)", "consumo_actual"],
-                  ["Maximo Consumo($)", "maximo_consumo"],
-
-                  ["VS MES ANT", "vsMesAnterior"],
-                  ["Última Visita", "ultima_visita"],
-                  ["Última Factura", "ultima_factura"],
-                  ["Tuvo Consumo", "tuvo_consumo"],
-
-                ].map(([label, key]) => (
-                  <th
-                    key={key}
-                    onClick={() => requestSort(key)}
-                    className="px-4 py-3 cursor-pointer hover:text-white transition-colors select-none"
-                  >
-                    {label}
-                    <span className="text-[#6BAF8E] ml-1">
-                      {sortConfig.key === key
-                        ? sortConfig.direction === "asc"
-                          ? "↑"
-                          : "↓"
-                        : "↕"}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {clientesPagina.map((c, idx) => (
-                <tr
-                  key={idx}
-                  className={`${c.tuvo_consumo === "No"
-                    ? "bg-red-900/60"
-                    : idx % 2 === 0
-                      ? "bg-[#013d32]"
-                      : "bg-[#014f3e]"
-                    } hover:bg-[#026452] transition`}
-                >
-                  <td className="px-4 py-2">
-                    {(paginaActual - 1) * clientesPorPagina + idx + 1}
-                  </td>
-                  <td className="px-4 py-2">{c.codigo_cliente}</td>
-                  <td className="px-4 py-2">{c.nombre_cliente}</td>
-                  <td className="px-4 py-2">{c.direccion_cliente}</td>
-                  <td className="px-4 py-2 text-white">{c.tipo_negocio}</td>
-                  <td className="px-2 py-2">{c.telefono_direccion_cliente || "Sin Número"}</td>
-                  <td className="px-2 py-2">{c.latitud_direccion_cliente}</td>
-                  <td className="px-4 py-2">{c.longitud_direccion_cliente}</td>
-                  <td className="px-4 py-2">{c.cantidad_botellon}</td>
-                  <td className="px-2 py-2">{c.consumo_actual}</td>
-                  <td className="px-4 py-2">
-                    <div className="flex flex-col leading-tight">
-
-                      {/* Monto máximo */}
-                      <span className="text-white  text-sm">
-                        ${Number(c.max_consumo).toLocaleString("es-EC", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-
-                      {/* Mes */}
-                      <span className="text-xs text-[#6BAF8E] font-medium">
-                        {c.mes_max_consumo_nombre ?? ""}
-                      </span>
-
-                    </div>
-                  </td>
-                  <td className="px-6 py-2">
-                    {c.vsMesAnterior ? (
-                      <div className="flex flex-col leading-tight">
-
-                        {/* Diferencia en dólares */}
-                        <span
-                          className={`text-sm font-bold
-          ${c.vsMesAnterior.variacion_abs > 0
-                              ? "text-green-400"
-                              : c.vsMesAnterior.variacion_abs < 0
-                                ? "text-red-400"
-                                : "text-gray-300"
-                            }`}
-                        >
-                          {c.vsMesAnterior.variacion_abs > 0 && "+"}$
-                          {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString("es-EC", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-
-                        {/* Porcentaje */}
-                        <span
-                          className={`text-xs font-semibold
-          ${c.vsMesAnterior.variacion_abs > 0
-                              ? "text-green-300"
-                              : c.vsMesAnterior.variacion_abs < 0
-                                ? "text-red-300"
-                                : "text-gray-400"
-                            }`}
-                        >
-                          (
-                          {c.vsMesAnterior.variacion_abs > 0 && "+"}
-                          {c.vsMesAnterior.variacion_porc}
-                          )
-                        </span>
-
-                      </div>
-                    ) : (
-                      <span className="text-gray-500">—</span>
-                    )}
-                  </td>
-
-                  <td className="px-0 py-2" style={{ whiteSpace: 'nowrap' }}>
-                    {c.ultima_visita || "Sin Fecha"}
-                  </td>
-                  <td className="px-3 py-2" style={{ whiteSpace: 'nowrap' }}>
-                    {c.ultima_factura || "Sin Fecha"}
-                  </td>
-                  <td
-                    className={`px-2 py-2 font-bold ${c.tuvo_consumo === "Sí" ? "text-green-500" : "text-red-500"}`}
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    {c.tuvo_consumo}
-                  </td>
-
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* PAGINACIÓN */}
-        <div className="flex justify-center mt-6 gap-2">
-          <button
-            disabled={paginaActual === 1}
-            onClick={() => setPaginaActual(paginaActual - 1)}
-            className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1
-              ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-              : "bg-[#046C5E] hover:bg-[#058A73]"
-              }`}
-          >
-            <span className="sm:hidden">←</span>
-            <span className="hidden sm:inline">← Anterior</span>
-          </button>
-
-          {(() => {
-            const pages = [];
-            const maxVisible = 5;
-
-            if (totalPaginas <= maxVisible) {
-              for (let i = 1; i <= totalPaginas; i++) pages.push(i);
-            } else {
-              pages.push(1);
-              if (paginaActual > 3) pages.push("...");
-              const start = Math.max(2, paginaActual - 1);
-              const end = Math.min(totalPaginas - 1, paginaActual + 1);
-              for (let i = start; i <= end; i++) pages.push(i);
-              if (paginaActual < totalPaginas - 2) pages.push("...");
-              pages.push(totalPaginas);
-            }
-
-            return pages.map((num: any, idx) =>
-              num === "..." ? (
-                <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">
-                  ...
-                </span>
-              ) : (
-                <button
-                  key={`page-${idx}-${num}`}
-                  onClick={() => setPaginaActual(num)}
-                  className={`px-3 py-1 rounded-md ${paginaActual === num
-                    ? "bg-green-500 text-black font-bold"
-                    : "bg-[#01382D] hover:bg-[#025f4b]"
-                    }`}
-                >
-                  {num}
-                </button>
-              )
-            );
-          })()}
-
-          <button
-            disabled={paginaActual === totalPaginas}
-            onClick={() => setPaginaActual(paginaActual + 1)}
-            className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas
-              ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-              : "bg-[#046C5E] hover:bg-[#058A73]"
-              }`}
-          >
-            <span className="sm:hidden">→</span>
-            <span className="hidden sm:inline">Siguiente →</span>
-          </button>
-        </div>
+  const Paginacion = () => totalPags > 1 ? (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-[#046C5E]/30 flex-wrap gap-2">
+      <span className="text-xs text-gray-400">
+        {(pagina - 1) * POR_PAGINA + 1}–{Math.min(pagina * POR_PAGINA, filtrados.length)} de {filtrados.length}
+      </span>
+      <div className="flex gap-1 flex-wrap">
+        <button disabled={pagina === 1} onClick={() => setPagina(1)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">«</button>
+        <button disabled={pagina === 1} onClick={() => setPagina(p => p - 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">‹ Ant</button>
+        {(() => {
+          const pages: any[] = [];
+          if (totalPags <= 5) { for (let i = 1; i <= totalPags; i++) pages.push(i); }
+          else {
+            pages.push(1); if (pagina > 3) pages.push("...");
+            for (let i = Math.max(2, pagina - 1); i <= Math.min(totalPags - 1, pagina + 1); i++) pages.push(i);
+            if (pagina < totalPags - 2) pages.push("..."); pages.push(totalPags);
+          }
+          return pages.map((n, i) =>
+            n === "..." ? <span key={`d${i}`} className="px-1 text-xs text-gray-400">…</span> :
+            <button key={`p${i}`} onClick={() => setPagina(n)}
+              className={`px-3 py-1 text-xs rounded ${pagina === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#016a57]"}`}>{n}</button>
+          );
+        })()}
+        <button disabled={pagina === totalPags} onClick={() => setPagina(p => p + 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">Sig ›</button>
+        <button disabled={pagina === totalPags} onClick={() => setPagina(totalPags)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">»</button>
       </div>
     </div>
+  ) : null;
+
+  if (cargando)
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col justify-center items-center h-screen text-gray-300">
+          <div className="w-10 h-10 border-4 border-t-emerald-400 border-gray-700 rounded-full animate-spin mb-4"/>
+          <p>Cargando datos de {usuario}…</p>
+        </div>
+      </DashboardLayout>
+    );
+
+  return (
+    <DashboardLayout>
+      <div className="main-content min-h-screen text-white px-4 md:px-8 py-4 md:py-6">
+        <Header />
+
+        {/* Cabecera */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6 border-b border-[#046C5E]/50 pb-4">
+          <div>
+            <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">← Volver</button>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight">Botellón — {usuario?.toUpperCase()}</h1>
+            <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio}</p>
+          </div>
+          <button onClick={exportar}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 transition-all self-start sm:self-auto">
+            <BsDownload size={16} /> Exportar Excel
+          </button>
+        </div>
+
+        {/* Card Cupo */}
+        {cupoDolares > 0 && (
+          <div className="mb-6 p-5 rounded-2xl border border-amber-500/30 bg-gradient-to-br from-[#1a1200]/80 to-[#012a20]/80 shadow-xl">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="w-1 h-6 rounded-full bg-gradient-to-b from-amber-400 to-yellow-600"/>
+              <h2 className="text-base font-bold text-amber-300 uppercase tracking-wider">Cupo — {usuario}</h2>
+              <span className="ml-auto text-xs text-white/30 font-mono">{mes}/{anio}</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+              <div className="rounded-xl bg-white/5 border border-amber-500/20 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400/70 mb-1">Cupo USD</p>
+                <p className="text-xl font-bold text-amber-300">${fmt(cupoDolares)}</p>
+                {cupoUnidades > 0 && <p className="text-xs text-white/40 mt-0.5">{cupoUnidades.toLocaleString("es-EC")} unidades</p>}
+              </div>
+              <div className="rounded-xl bg-white/5 border border-blue-500/20 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400/70 mb-1">Proyección</p>
+                <p className="text-xl font-bold text-blue-300">${fmt(proyeccionDolares)}</p>
+                <p className="text-xs text-white/40 mt-0.5">Venta actual: ${fmt(ventaActual)}</p>
+              </div>
+              <div className={`rounded-xl bg-white/5 border p-4 ${cupoSuperado ? "border-green-500/30" : "border-red-500/30"}`}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-white/40">{cupoSuperado ? "Superado en" : "Falta alcanzar"}</p>
+                <p className={`text-xl font-bold ${cupoSuperado ? "text-green-400" : "text-red-400"}`}>{cupoSuperado ? "+" : "−"}${fmt(Math.abs(faltaCupo))}</p>
+                {!cupoSuperado && unidadesActual > 0 && <p className="text-xs text-white/40 mt-0.5">{unidadesActual.toLocaleString("es-EC")} unidades</p>}
+              </div>
+              <div className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Cumplimiento</p>
+                <div>
+                  <div className="w-full h-2.5 rounded-full bg-white/10 mb-2 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${(porcCupo ?? 0) >= 100 ? "bg-green-400" : (porcCupo ?? 0) >= 80 ? "bg-yellow-400" : "bg-red-400"}`}
+                      style={{ width: `${Math.min(porcCupo ?? 0, 100)}%` }}/>
+                  </div>
+                  <p className={`text-2xl font-extrabold ${(porcCupo ?? 0) >= 100 ? "text-green-400" : (porcCupo ?? 0) >= 80 ? "text-yellow-400" : "text-red-400"}`}>
+                    {porcCupo !== null ? `${porcCupo.toFixed(1)}%` : "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className={`rounded-xl px-4 py-3 text-sm font-semibold border ${cupoSuperado ? "bg-green-500/10 border-green-500/25 text-green-300" : (porcCupo ?? 0) >= 80 ? "bg-yellow-500/10 border-yellow-500/25 text-yellow-300" : "bg-red-500/10 border-red-500/25 text-red-300"}`}>
+              {cupoSuperado
+                ? `✓ ${usuario} ha superado el cupo. Proyección ${porcCupo!.toFixed(1)}% del cupo.`
+                : (porcCupo ?? 0) >= 80
+                ? `⚡ ${usuario} está cerca del cupo. Con $${fmt(faltaCupo)} más se alcanza.`
+                : `⚠ ${usuario} necesita $${fmt(faltaCupo)} adicionales (${(porcCupo ?? 0).toFixed(1)}% alcanzado).`}
+            </div>
+          </div>
+        )}
+
+        {/* Resumen clientes */}
+        {resumenClientes && (
+          <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6">
+            {[
+              { label: "Clientes asignados", value: resumenClientes.totalClientesRuta,  color: "text-white"      },
+              { label: "Con consumo",         value: resumenClientes.clientesConConsumo, color: "text-green-400" },
+              { label: "Sin consumo",         value: resumenClientes.clientesSinConsumo, color: "text-red-400"   },
+            ].map(k => (
+              <div key={k.label} className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-xl p-3 md:p-4 text-center">
+                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">{k.label}</p>
+                <p className={`text-2xl md:text-3xl font-extrabold ${k.color}`}>{k.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Productos vendidos */}
+        {productos.length > 0 && (
+          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-green-300 px-4 py-3 border-b border-[#046C5E]/30">Productos Vendidos</h2>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-[#014434] text-[10px] uppercase text-green-300">
+                    <th className="px-4 py-3 text-left">Producto</th>
+                    <th className="px-4 py-3 text-right">Unidades</th>
+                    <th className="px-4 py-3 text-right">Dólares</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productos.map((p, idx) => (
+                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                      <td className="px-4 py-2">{p.descripcion}</td>
+                      <td className="px-4 py-2 text-right text-green-400 font-semibold">{p.unidades.toLocaleString("es-EC")}</td>
+                      <td className="px-4 py-2 text-right text-blue-400 font-semibold">${fmt(p.monto)}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
+                    <td className="px-4 py-3 text-green-300 uppercase text-xs">Total</td>
+                    <td className="px-4 py-3 text-right text-green-400">{productos.reduce((a, p) => a + p.unidades, 0).toLocaleString("es-EC")}</td>
+                    <td className="px-4 py-3 text-right text-blue-400">${fmt(productos.reduce((a, p) => a + p.monto, 0))}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Filtros clientes */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          <div className="relative flex-1 min-w-[180px]">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 0 5 11a6 6 0 0 0 12 0z"/>
+            </svg>
+            <input type="text" placeholder="Buscar cliente…" value={busqueda}
+              onChange={e => { setBusqueda(e.target.value); setPagina(1); }}
+              className="bg-[#012E24] border border-[#046C5E] rounded-lg px-3 py-2 pl-9 text-sm text-white placeholder-gray-500 w-full focus:outline-none focus:border-emerald-500/60"/>
+          </div>
+          <select value={filtroConsumo} onChange={e => { setFiltroConsumo(e.target.value); setPagina(1); }}
+            className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium">
+            <option value="Todos">Todos</option>
+            <option value="Sí">Con consumo</option>
+            <option value="No">Sin consumo</option>
+          </select>
+        </div>
+
+        {/* Tabla / Cards clientes */}
+        <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#046C5E]/30">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-green-300">Clientes de Ruta</h2>
+            <span className="text-xs text-gray-400">{filtrados.length} clientes</span>
+          </div>
+
+          {/* MOBILE: cards */}
+          <div className="md:hidden divide-y divide-[#046C5E]/20">
+            {paginados.length === 0
+              ? <p className="text-center text-gray-400 py-12 text-sm">Sin clientes.</p>
+              : paginados.map((c, idx) => {
+                  const sinConsumo = c.tuvo_consumo === "No";
+                  const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
+                  return (
+                    <div key={idx} className={`p-4 ${sinConsumo ? "bg-red-900/30 border-l-4 border-red-500/60" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
+                          <p className="text-[11px] text-gray-400 font-mono mt-0.5">{c.codigo_cliente}</p>
+                        </div>
+                        <span className={`ml-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
+                          {sinConsumo ? "Sin consumo" : "Activo"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-2">
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Consumo Actual</p>
+                          <p className="text-white font-bold">${fmt(Number(c.consumo_actual))}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">VS Mes Ant</p>
+                          <p className={`font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Cant. Botellón</p>
+                          <p className="text-blue-300 font-semibold">{c.cantidad_botellon}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Tipo Negocio</p>
+                          <p className="text-gray-300 truncate">{c.tipo_negocio || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Última Visita</p>
+                          <p className="text-gray-300 text-[11px]">{c.ultima_visita || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Última Factura</p>
+                          <p className="text-gray-300 text-[11px]">{c.ultima_factura || "—"}</p>
+                        </div>
+                      </div>
+                      {(c.direccion_cliente || c.direccion_entrega) && (
+                        <p className="text-[11px] text-gray-500 truncate mt-1">📍 {c.direccion_cliente || c.direccion_entrega}</p>
+                      )}
+                    </div>
+                  );
+                })
+            }
+          </div>
+
+          {/* DESKTOP: tabla */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-[#014434] text-[10px] uppercase text-green-300 select-none">
+                  <th className="px-3 py-3 text-left">N°</th>
+                  {([
+                    ["Código",         "codigo_cliente"],
+                    ["Cliente",        "nombre_cliente"],
+                    ["Dirección",      "direccion_cliente"],
+                    ["Tipo Negocio",   "tipo_negocio"],
+                    ["Teléfono",       "telefono_direccion_cliente"],
+                    ["Latitud",        "latitud_direccion_cliente"],
+                    ["Longitud",       "longitud_direccion_cliente"],
+                    ["Cant. Botellón", "cantidad_botellon"],
+                    ["Consumo Actual", "consumo_actual"],
+                    ["Max Consumo",    "max_consumo"],
+                    ["VS Mes Ant",     "vsMesAnterior"],
+                    ["Últ. Visita",    "ultima_visita"],
+                    ["Últ. Factura",   "ultima_factura"],
+                    ["Estado",         "tuvo_consumo"],
+                  ] as [string,string][]).map(([label, key]) => (
+                    <th key={key} onClick={() => requestSort(key)}
+                      className="px-3 py-3 text-left cursor-pointer hover:text-white transition-colors whitespace-nowrap">
+                      {label}<span className="ml-1 text-[#046C5E]">{sa(key)}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginados.length === 0
+                  ? <tr><td colSpan={15} className="px-4 py-12 text-center text-gray-400 text-sm">Sin clientes.</td></tr>
+                  : paginados.map((c, idx) => {
+                      const sinConsumo = c.tuvo_consumo === "No";
+                      const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
+                      return (
+                        <tr key={idx} className={`${sinConsumo ? "bg-[rgba(220,38,38,0.5)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                          <td className="px-3 py-2 text-gray-400 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-gray-300">{c.codigo_cliente}</td>
+                          <td className="px-3 py-2 font-semibold text-white">{c.nombre_cliente}</td>
+                          <td className="px-3 py-2 text-gray-300 max-w-[160px]">
+                            <span title={c.direccion_cliente} className="line-clamp-2 text-xs">{c.direccion_cliente || "—"}</span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-300 text-xs">{c.tipo_negocio || "—"}</td>
+                          <td className="px-3 py-2 text-gray-300 text-xs whitespace-nowrap">{c.telefono_direccion_cliente || "—"}</td>
+                          <td className="px-3 py-2 text-gray-400 text-xs">{c.latitud_direccion_cliente || "—"}</td>
+                          <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud_direccion_cliente || "—"}</td>
+                          <td className="px-3 py-2 text-right text-blue-300 font-semibold">{c.cantidad_botellon}</td>
+                          <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</span>
+                            {c.mes_max_consumo_nombre && <span className="block text-[10px] text-gray-400">{c.mes_max_consumo_nombre}</span>}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                            {c.vsMesAnterior?.variacion_porc && <span className="block text-[10px] opacity-70">{c.vsMesAnterior.variacion_porc}</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-400 text-xs whitespace-nowrap">{c.ultima_visita || "—"}</td>
+                          <td className="px-3 py-2 text-right text-gray-400 text-xs whitespace-nowrap">{c.ultima_factura || "—"}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
+                              {sinConsumo ? "Sin consumo" : "Activo"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <Paginacion />
+        </div>
+      </div>
+    </DashboardLayout>
   );
-
-
 };
 
 export default DetalleBotellonPage;

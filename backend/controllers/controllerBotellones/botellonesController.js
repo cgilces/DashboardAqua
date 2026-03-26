@@ -6,6 +6,10 @@ const {
 
 const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
+const MetaPreventa = require("../../models/metaPreventa");
+
+// Secciones que tienen metas configurables (solo autoventas)
+const SECCIONES_CON_METAS = ["TIENDAS_VIP", "TIENDAS", "MAYORISTA", "RURAL"];
 
 /* ======================================================
    CONFIGURACIÓN DE GRUPOS BOTELLÓN
@@ -189,7 +193,7 @@ const getDiasLaborablesMes = (anio, mes) => {
   return total;
 };
 
-const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
+const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}) => {
   const { inicio, fin } = getRangoFechas(anio, mes);
 
   const { inicio: inicioAnt, fin: finAnt } = getRangoFechas(
@@ -343,8 +347,8 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
 
       const proyeccionUnidades = diasTrans > 0 ? (r.unidades / diasTrans) * diasMes : 0;
 
-      const meta = metas.find(m => m.codigo === r.codigo);
-
+      const meta       = metas.find(m => m.codigo === r.codigo);
+      const metaConfig = metasConfigMap[r.codigo.toUpperCase()];
 
       const variacionAbsUnidadesDet = Number(r.unidades) - (ant.unidades || 0);
       const variacionPorcUnidadesDet =
@@ -355,11 +359,15 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes) => {
         unidades: Number(r.unidades),
         dolares: Number(r.dolares),
         meta: {
-          meta_historica: meta
-            ? Number(meta.meta_historica_usd).toFixed(2)
-            : "0.00",
+          meta_historica:    meta ? Number(meta.meta_historica_usd).toFixed(2) : "0.00",
           mes_mayor_consumo: meta?.mes_meta_historica || null,
         },
+        cupo: metaConfig
+          ? {
+              cupo_dolares:  Number(metaConfig.meta_dolares),
+              cupo_unidades: Number(metaConfig.meta_unidades),
+            }
+          : null,
         proyeccion: {
           dolares: Number(proyeccionDolares.toFixed(2)),
           unidades: Number(proyeccionUnidades.toFixed(0))
@@ -394,14 +402,29 @@ const obtenerDashboardBotellones = async (req, res) => {
     const anioNum = Number(anio);
     const mesNum = Number(mes);
 
+    // Cargar metas configuradas para este mes/año (solo secciones TV, T, M, R)
+    const metasDB = await MetaPreventa.findAll({
+      where: { anio: anioNum, mes: mesNum, seccion: SECCIONES_CON_METAS },
+    });
+    // Agrupar por seccion → { [seccion]: { [codigo_ruta]: meta } }
+    const metasPorSeccion = {};
+    metasDB.forEach(m => {
+      if (!metasPorSeccion[m.seccion]) metasPorSeccion[m.seccion] = {};
+      metasPorSeccion[m.seccion][m.codigo_ruta.toUpperCase()] = m;
+    });
+
     const botellones = {};
 
     for (const nombre of Object.keys(GRUPOS)) {
+      const metasConfigMap = SECCIONES_CON_METAS.includes(nombre)
+        ? (metasPorSeccion[nombre] || {})
+        : {};
 
       botellones[nombre] = await obtenerGrupoBotellon(
         nombre,
         anioNum,
-        mesNum
+        mesNum,
+        metasConfigMap
       );
     }
 
@@ -416,6 +439,588 @@ const obtenerDashboardBotellones = async (req, res) => {
   }
 };
 
+/* ======================================================
+   CLIENTES VIP BOTELLÓN
+   GET /api/botellones/clientes-vip?anio=YYYY&mes=MM
+====================================================== */
+const obtenerClientesVipBotellon = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum))
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const { inicio, fin }       = getRangoFechas(anioNum, mesNum);
+    const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
+      mesNum === 1 ? anioNum - 1 : anioNum,
+      mesNum === 1 ? 12 : mesNum - 1
+    );
+
+    const iniYear = `${anioNum}-01-01 00:00:00`;
+    const finYear = `${anioNum + 1}-01-01 00:00:00`;
+
+    const clientes = await sequelize.query(`
+      SELECT
+        base.customer_code                                         AS codigo_cliente,
+        COALESCE(c.nombre_cliente, base.customer_code)             AS nombre_cliente,
+        COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente, '')        AS direccion_entrega,
+        COALESCE(tn.descripcion, '')                                          AS tipo_negocio,
+        COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '')       AS telefono,
+        COALESCE(dc.latitud_direccion_cliente::text,  c.latitud_cliente::text,  '')  AS latitud,
+        COALESCE(dc.longitud_direccion_cliente::text, c.longitud_cliente::text, '')  AS longitud,
+        COALESCE(act.cantidad_actual,  0)                          AS cantidad_actual,
+        COALESCE(act.consumo_actual,   0)                          AS consumo_actual,
+        COALESCE(ant.consumo_anterior, 0)                          AS consumo_anterior,
+        COALESCE(mx.max_consumo,       0)                          AS max_consumo,
+        ult.ultima_factura
+      FROM (
+        -- Todos los clientes VIP que compraron BOTELLÓN en el año seleccionado
+        SELECT DISTINCT f0.customer_code
+        FROM facturas f0
+        JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
+        WHERE (f0.seller_code ILIKE 'V%' OR f0.seller_code IN ('10','18','27'))
+          AND dd0.descripcion_categoria = 'BOTELLÓN'
+          AND f0.status IN (2,4,5)
+          AND f0.fecha_creacion >= :iniYear
+          AND f0.fecha_creacion <  :finYear
+      ) base
+      LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
+      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      LEFT JOIN LATERAL (
+        SELECT calle1_direccion_cliente,
+               telefono_direccion_cliente,
+               latitud_direccion_cliente,
+               longitud_direccion_cliente
+        FROM direcciones_clientes
+        WHERE codigo_cliente = base.customer_code
+        ORDER BY
+          (latitud_direccion_cliente  IS NOT NULL AND longitud_direccion_cliente IS NOT NULL) DESC,
+          (telefono_direccion_cliente IS NOT NULL) DESC
+        LIMIT 1
+      ) dc ON true
+      LEFT JOIN LATERAL (
+        SELECT SUM(dd2.cantidad) AS cantidad_actual,
+               SUM(dd2.total)   AS consumo_actual
+        FROM facturas f2
+        JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
+        WHERE f2.customer_code = base.customer_code
+          AND (f2.seller_code ILIKE 'V%' OR f2.seller_code IN ('10','18','27'))
+          AND dd2.descripcion_categoria = 'BOTELLÓN'
+          AND f2.status IN (2,4,5)
+          AND f2.fecha_creacion >= :inicio
+          AND f2.fecha_creacion <  :fin
+      ) act ON true
+      LEFT JOIN LATERAL (
+        SELECT SUM(dd3.total) AS consumo_anterior
+        FROM facturas f3
+        JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
+        WHERE f3.customer_code = base.customer_code
+          AND (f3.seller_code ILIKE 'V%' OR f3.seller_code IN ('10','18','27'))
+          AND dd3.descripcion_categoria = 'BOTELLÓN'
+          AND f3.status IN (2,4,5)
+          AND f3.fecha_creacion >= :iniAnt
+          AND f3.fecha_creacion <  :finAnt
+      ) ant ON true
+      LEFT JOIN LATERAL (
+        SELECT MAX(dd4.total) AS max_consumo
+        FROM facturas f4
+        JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
+        WHERE f4.customer_code = base.customer_code
+          AND (f4.seller_code ILIKE 'V%' OR f4.seller_code IN ('10','18','27'))
+          AND dd4.descripcion_categoria = 'BOTELLÓN'
+          AND f4.status IN (2,4,5)
+      ) mx ON true
+      LEFT JOIN LATERAL (
+        SELECT MAX(f5.fecha_creacion)::date AS ultima_factura
+        FROM facturas f5
+        JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
+        WHERE f5.customer_code = base.customer_code
+          AND (f5.seller_code ILIKE 'V%' OR f5.seller_code IN ('10','18','27'))
+          AND dd5.descripcion_categoria = 'BOTELLÓN'
+          AND f5.status IN (2,4,5)
+      ) ult ON true
+      ORDER BY consumo_actual DESC NULLS LAST
+    `, {
+      replacements: { iniYear, finYear, inicio, fin, iniAnt, finAnt },
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    const totalClientes      = clientes.length;
+    const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
+    const clientesSinConsumo = totalClientes - clientesConConsumo;
+
+    const productosVendidos = await sequelize.query(`
+      SELECT dd.descripcion AS producto,
+             SUM(dd.cantidad) AS unidades_vendidas,
+             SUM(dd.total)    AS monto_usd
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE (f.seller_code ILIKE 'V%' OR f.seller_code IN ('10','18','27'))
+        AND f.status IN (2,4,5)
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+      GROUP BY dd.descripcion
+      ORDER BY unidades_vendidas DESC
+    `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+
+    return res.json({
+      clientes,
+      resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
+      productosVendidos,
+    });
+  } catch (error) {
+    console.error('❌ ERROR CLIENTES VIP BOTELLÓN:', error);
+    return res.status(500).json({ message: 'Error al obtener clientes VIP', detail: error.message });
+  }
+};
+
+/* ======================================================
+   RUTAS ODOO EMPRESA (constante compartida)
+====================================================== */
+const RUTAS_ODOO_EMPRESAS = [
+  'Carmen Garcia', 'Estefania Flores', 'Tamara Villacres',
+  'RUTA E1', 'RUTA E2', 'RUTA E3', 'RUTA E4', 'RUTA E5',
+  'RUTA E6', 'RUTA E7', 'RUTA E8', 'RUTA E9', 'RUTA E10',
+  'RUTA EA1', 'Distribucion OK/E',
+];
+
+/* Helper: totales consolidados Empresa (facturas E% + ordenes Odoo) */
+const queryTotalesEmpresas = async (inicio, fin) => {
+  const rutasRepl = {};
+  RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
+  const rutasPH = RUTAS_ODOO_EMPRESAS.map((_, i) => `:re${i}`).join(', ');
+
+  const rows = await sequelize.query(`
+    SELECT COALESCE(SUM(sub.unidades), 0) AS unidades,
+           COALESCE(SUM(sub.dolares),  0) AS dolares
+    FROM (
+      -- MobilVendor: facturas EMPRESA
+      SELECT COALESCE(SUM(dd.cantidad), 0) AS unidades, COALESCE(SUM(dd.total), 0) AS dolares
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+      UNION ALL
+      -- Odoo: ordenes EMPRESA
+      SELECT COALESCE(SUM(dd.cantidad), 0), COALESCE(SUM(dd.total), 0)
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.seller_nombre IN (${rutasPH})
+        AND o.type = 2 AND o.status IN (2,4,5)
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+    ) sub
+  `, {
+    replacements: { inicio, fin, ...rutasRepl },
+    type: Sequelize.QueryTypes.SELECT,
+  });
+
+  return {
+    unidades: Number(rows[0]?.unidades || 0),
+    dolares:  Number(rows[0]?.dolares  || 0),
+  };
+};
+
+/* ======================================================
+   EMPRESAS CONSOLIDADO
+   GET /api/botellones/empresas-consolidado?anio=YYYY&mes=MM
+====================================================== */
+const obtenerEmpresasConsolidado = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum))
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio: inicioAnt, fin: finAnt } = getRangoFechas(
+      mesNum === 1 ? anioNum - 1 : anioNum,
+      mesNum === 1 ? 12 : mesNum - 1
+    );
+
+    const diasTrans = getDiasHabilesTranscurridos(anioNum, mesNum);
+    const diasMes   = getDiasLaborablesMes(anioNum, mesNum);
+
+    const [actual, anterior] = await Promise.all([
+      queryTotalesEmpresas(inicio, fin),
+      queryTotalesEmpresas(inicioAnt, finAnt),
+    ]);
+
+    const proyDolares  = diasTrans > 0 ? (actual.dolares  / diasTrans) * diasMes : actual.dolares;
+    const proyUnidades = diasTrans > 0 ? (actual.unidades / diasTrans) * diasMes : actual.unidades;
+
+    const variacionAbs  = actual.dolares  - anterior.dolares;
+    const variacionPorc = anterior.dolares > 0 ? (variacionAbs / anterior.dolares) * 100 : 0;
+    const varAbsUnid    = actual.unidades  - anterior.unidades;
+    const varPorcUnid   = anterior.unidades > 0 ? (varAbsUnid / anterior.unidades) * 100 : 0;
+
+    return res.json({
+      total: {
+        unidades: actual.unidades,
+        dolares:  actual.dolares,
+        mesAnterior: {
+          dolares:              anterior.dolares,
+          variacionAbs:         Number(variacionAbs.toFixed(2)),
+          variacionPorc:        Number(variacionPorc.toFixed(2)),
+          unidades:             anterior.unidades,
+          variacionAbsUnidades: varAbsUnid,
+          variacionPorcUnidades: Number(varPorcUnid.toFixed(2)),
+        },
+      },
+      detalle: [{
+        proyeccion: {
+          dolares:  Number(proyDolares.toFixed(2)),
+          unidades: Number(proyUnidades.toFixed(0)),
+        },
+      }],
+    });
+  } catch (error) {
+    console.error('❌ ERROR EMPRESAS CONSOLIDADO:', error);
+    return res.status(500).json({ message: 'Error empresas consolidado', detail: error.message });
+  }
+};
+
+/* ======================================================
+   CLIENTES DOMICILIO BOTELLÓN
+   GET /api/botellones/clientes-domicilio?anio=YYYY&mes=MM
+====================================================== */
+const obtenerClientesDomicilioBotellon = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum))
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const { inicio, fin }       = getRangoFechas(anioNum, mesNum);
+    const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
+      mesNum === 1 ? anioNum - 1 : anioNum,
+      mesNum === 1 ? 12 : mesNum - 1
+    );
+
+    const iniYear = `${anioNum}-01-01 00:00:00`;
+    const finYear = `${anioNum + 1}-01-01 00:00:00`;
+
+    const clientes = await sequelize.query(`
+      SELECT
+        base.customer_code                                                        AS codigo_cliente,
+        COALESCE(c.nombre_cliente, base.customer_code)                            AS nombre_cliente,
+        COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente, '')            AS direccion_entrega,
+        COALESCE(tn.descripcion, '')                                              AS tipo_negocio,
+        COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '')           AS telefono,
+        COALESCE(dc.latitud_direccion_cliente::text,  c.latitud_cliente::text,  '') AS latitud,
+        COALESCE(dc.longitud_direccion_cliente::text, c.longitud_cliente::text, '') AS longitud,
+        COALESCE(act.cantidad_actual,  0)                                         AS cantidad_actual,
+        COALESCE(act.consumo_actual,   0)                                         AS consumo_actual,
+        COALESCE(ant.consumo_anterior, 0)                                         AS consumo_anterior,
+        COALESCE(mx.max_consumo,       0)                                         AS max_consumo,
+        ult.ultima_factura
+      FROM (
+        -- Todos los clientes Domicilio que compraron BOTELLÓN en el año seleccionado
+        SELECT DISTINCT f0.customer_code
+        FROM facturas f0
+        JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
+        WHERE f0.seller_code ILIKE 'A%'
+          AND dd0.descripcion_categoria = 'BOTELLÓN'
+          AND f0.status IN (2,4,5)
+          AND f0.fecha_creacion >= :iniYear
+          AND f0.fecha_creacion <  :finYear
+      ) base
+      LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
+      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      LEFT JOIN LATERAL (
+        SELECT calle1_direccion_cliente,
+               telefono_direccion_cliente,
+               latitud_direccion_cliente,
+               longitud_direccion_cliente
+        FROM direcciones_clientes
+        WHERE codigo_cliente = base.customer_code
+        ORDER BY
+          (latitud_direccion_cliente  IS NOT NULL AND longitud_direccion_cliente IS NOT NULL) DESC,
+          (telefono_direccion_cliente IS NOT NULL) DESC
+        LIMIT 1
+      ) dc ON true
+      LEFT JOIN LATERAL (
+        SELECT SUM(dd2.cantidad) AS cantidad_actual,
+               SUM(dd2.total)   AS consumo_actual
+        FROM facturas f2
+        JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
+        WHERE f2.customer_code = base.customer_code
+          AND f2.seller_code ILIKE 'A%'
+          AND dd2.descripcion_categoria = 'BOTELLÓN'
+          AND f2.status IN (2,4,5)
+          AND f2.fecha_creacion >= :inicio
+          AND f2.fecha_creacion <  :fin
+      ) act ON true
+      LEFT JOIN LATERAL (
+        SELECT SUM(dd3.total) AS consumo_anterior
+        FROM facturas f3
+        JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
+        WHERE f3.customer_code = base.customer_code
+          AND f3.seller_code ILIKE 'A%'
+          AND dd3.descripcion_categoria = 'BOTELLÓN'
+          AND f3.status IN (2,4,5)
+          AND f3.fecha_creacion >= :iniAnt
+          AND f3.fecha_creacion <  :finAnt
+      ) ant ON true
+      LEFT JOIN LATERAL (
+        SELECT MAX(dd4.total) AS max_consumo
+        FROM facturas f4
+        JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
+        WHERE f4.customer_code = base.customer_code
+          AND f4.seller_code ILIKE 'A%'
+          AND dd4.descripcion_categoria = 'BOTELLÓN'
+          AND f4.status IN (2,4,5)
+      ) mx ON true
+      LEFT JOIN LATERAL (
+        SELECT MAX(f5.fecha_creacion)::date AS ultima_factura
+        FROM facturas f5
+        JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
+        WHERE f5.customer_code = base.customer_code
+          AND f5.seller_code ILIKE 'A%'
+          AND dd5.descripcion_categoria = 'BOTELLÓN'
+          AND f5.status IN (2,4,5)
+      ) ult ON true
+      ORDER BY consumo_actual DESC NULLS LAST
+    `, {
+      replacements: { iniYear, finYear, inicio, fin, iniAnt, finAnt },
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    const totalClientes      = clientes.length;
+    const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
+    const clientesSinConsumo = totalClientes - clientesConConsumo;
+
+    const productosVendidos = await sequelize.query(`
+      SELECT dd.descripcion AS producto,
+             SUM(dd.cantidad) AS unidades_vendidas,
+             SUM(dd.total)    AS monto_usd
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.seller_code ILIKE 'A%'
+        AND f.status IN (2,4,5)
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+      GROUP BY dd.descripcion
+      ORDER BY unidades_vendidas DESC
+    `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+
+    return res.json({
+      clientes,
+      resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
+      productosVendidos,
+    });
+  } catch (error) {
+    console.error('❌ ERROR CLIENTES DOMICILIO BOTELLÓN:', error);
+    return res.status(500).json({ message: 'Error al obtener clientes Domicilio', detail: error.message });
+  }
+};
+
+/* ======================================================
+   CLIENTES EMPRESAS BOTELLÓN (consolidado MobilVendor + Odoo)
+   GET /api/botellones/clientes-empresas?anio=YYYY&mes=MM
+====================================================== */
+const obtenerClientesEmpresasBotellon = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum))
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
+      mesNum === 1 ? anioNum - 1 : anioNum,
+      mesNum === 1 ? 12 : mesNum - 1
+    );
+    const iniYear = `${anioNum}-01-01 00:00:00`;
+    const finYear = `${anioNum + 1}-01-01 00:00:00`;
+
+    // Placeholders para rutas Odoo
+    const rutasRepl = {};
+    RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
+    const rutasPH = RUTAS_ODOO_EMPRESAS.map((_, i) => `:re${i}`).join(', ');
+
+    const clientes = await sequelize.query(`
+      SELECT
+        base.customer_code                                                          AS codigo_cliente,
+        COALESCE(c.nombre_cliente, base.customer_code)                              AS nombre_cliente,
+        COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente, '')              AS direccion_entrega,
+        COALESCE(tn.descripcion, '')                                                AS tipo_negocio,
+        COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '')             AS telefono,
+        COALESCE(dc.latitud_direccion_cliente::text,  c.latitud_cliente::text,  '') AS latitud,
+        COALESCE(dc.longitud_direccion_cliente::text, c.longitud_cliente::text, '') AS longitud,
+        COALESCE(act.cantidad_actual,  0)                                           AS cantidad_actual,
+        COALESCE(act.consumo_actual,   0)                                           AS consumo_actual,
+        COALESCE(ant.consumo_anterior, 0)                                           AS consumo_anterior,
+        COALESCE(mx.max_consumo,       0)                                           AS max_consumo,
+        ult.ultima_factura
+      FROM (
+        SELECT DISTINCT src.customer_code FROM (
+          -- MobilVendor facturas E%
+          SELECT f0.customer_code FROM facturas f0
+          JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
+          WHERE f0.seller_code ILIKE 'E%' AND f0.status IN (2,4,5)
+            AND dd0.descripcion_categoria = 'BOTELLÓN'
+            AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear
+          UNION
+          -- Odoo ordenes empresa
+          SELECT o0.customer_code FROM ordenes o0
+          JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
+          WHERE o0.seller_nombre IN (${rutasPH})
+            AND o0.type = 2 AND o0.status IN (2,4,5)
+            AND dd0.descripcion_categoria = 'BOTELLÓN'
+            AND o0.fecha_creacion >= :iniYear AND o0.fecha_creacion < :finYear
+        ) src
+      ) base
+      LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
+      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      LEFT JOIN LATERAL (
+        SELECT calle1_direccion_cliente, telefono_direccion_cliente,
+               latitud_direccion_cliente, longitud_direccion_cliente
+        FROM direcciones_clientes
+        WHERE codigo_cliente = base.customer_code
+        ORDER BY
+          (latitud_direccion_cliente  IS NOT NULL AND longitud_direccion_cliente IS NOT NULL) DESC,
+          (telefono_direccion_cliente IS NOT NULL) DESC
+        LIMIT 1
+      ) dc ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(sub.cantidad), 0) AS cantidad_actual,
+               COALESCE(SUM(sub.total),   0) AS consumo_actual
+        FROM (
+          SELECT dd2.cantidad, dd2.total FROM facturas f2
+          JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
+          WHERE f2.customer_code = base.customer_code AND f2.seller_code ILIKE 'E%'
+            AND dd2.descripcion_categoria = 'BOTELLÓN' AND f2.status IN (2,4,5)
+            AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
+          UNION ALL
+          SELECT dd2.cantidad, dd2.total FROM ordenes o2
+          JOIN detalle_documento dd2 ON dd2.documento_code = o2.code
+          WHERE o2.customer_code = base.customer_code
+            AND o2.seller_nombre IN (${rutasPH})
+            AND o2.type = 2 AND o2.status IN (2,4,5)
+            AND dd2.descripcion_categoria = 'BOTELLÓN'
+            AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
+        ) sub
+      ) act ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(sub.total), 0) AS consumo_anterior
+        FROM (
+          SELECT dd3.total FROM facturas f3
+          JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
+          WHERE f3.customer_code = base.customer_code AND f3.seller_code ILIKE 'E%'
+            AND dd3.descripcion_categoria = 'BOTELLÓN' AND f3.status IN (2,4,5)
+            AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
+          UNION ALL
+          SELECT dd3.total FROM ordenes o3
+          JOIN detalle_documento dd3 ON dd3.documento_code = o3.code
+          WHERE o3.customer_code = base.customer_code
+            AND o3.seller_nombre IN (${rutasPH})
+            AND o3.type = 2 AND o3.status IN (2,4,5)
+            AND dd3.descripcion_categoria = 'BOTELLÓN'
+            AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
+        ) sub
+      ) ant ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(MAX(sub.total), 0) AS max_consumo
+        FROM (
+          SELECT dd4.total FROM facturas f4
+          JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
+          WHERE f4.customer_code = base.customer_code AND f4.seller_code ILIKE 'E%'
+            AND dd4.descripcion_categoria = 'BOTELLÓN' AND f4.status IN (2,4,5)
+          UNION ALL
+          SELECT dd4.total FROM ordenes o4
+          JOIN detalle_documento dd4 ON dd4.documento_code = o4.code
+          WHERE o4.customer_code = base.customer_code
+            AND o4.seller_nombre IN (${rutasPH})
+            AND o4.type = 2 AND o4.status IN (2,4,5)
+            AND dd4.descripcion_categoria = 'BOTELLÓN'
+        ) sub
+      ) mx ON true
+      LEFT JOIN LATERAL (
+        SELECT GREATEST(
+          (SELECT MAX(f5.fecha_creacion)::date FROM facturas f5
+           JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
+           WHERE f5.customer_code = base.customer_code AND f5.seller_code ILIKE 'E%'
+             AND dd5.descripcion_categoria = 'BOTELLÓN' AND f5.status IN (2,4,5)),
+          (SELECT MAX(o5.fecha_creacion)::date FROM ordenes o5
+           JOIN detalle_documento dd5 ON dd5.documento_code = o5.code
+           WHERE o5.customer_code = base.customer_code
+             AND o5.seller_nombre IN (${rutasPH})
+             AND o5.type = 2 AND o5.status IN (2,4,5)
+             AND dd5.descripcion_categoria = 'BOTELLÓN')
+        ) AS ultima_factura
+      ) ult ON true
+      ORDER BY consumo_actual DESC NULLS LAST
+    `, {
+      replacements: { iniYear, finYear, inicio, fin, iniAnt, finAnt, ...rutasRepl },
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    const totalClientes      = clientes.length;
+    const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
+    const clientesSinConsumo = totalClientes - clientesConConsumo;
+
+    // Productos vendidos consolidados (facturas E% + ordenes Odoo)
+    const productosVendidos = await sequelize.query(`
+      SELECT
+        sub.descripcion  AS producto,
+        SUM(sub.cantidad) AS unidades_vendidas,
+        SUM(sub.total)    AS monto_usd
+      FROM (
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
+          AND dd.descripcion_categoria = 'BOTELLÓN'
+          AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+        UNION ALL
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.seller_nombre IN (${rutasPH})
+          AND o.type = 2 AND o.status IN (2,4,5)
+          AND dd.descripcion_categoria = 'BOTELLÓN'
+          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+      ) sub
+      GROUP BY sub.descripcion
+      ORDER BY unidades_vendidas DESC
+    `, {
+      replacements: { inicio, fin, ...rutasRepl },
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    return res.json({
+      clientes,
+      resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
+      productosVendidos: productosVendidos.map(p => ({
+        producto: p.producto,
+        unidades: Number(p.unidades_vendidas || 0),
+        monto:    Number(p.monto_usd || 0),
+      })),
+    });
+  } catch (error) {
+    console.error('❌ ERROR CLIENTES EMPRESAS BOTELLÓN:', error);
+    return res.status(500).json({ message: 'Error al obtener clientes Empresas', detail: error.message });
+  }
+};
+
 module.exports = {
   obtenerDashboardBotellones,
+  obtenerClientesVipBotellon,
+  obtenerClientesDomicilioBotellon,
+  obtenerEmpresasConsolidado,
+  obtenerClientesEmpresasBotellon,
 };

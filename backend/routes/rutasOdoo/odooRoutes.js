@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const {  sincronizarOdoo } = require("../../controllers/controllerOdoo/odooController");
-const { obtenerVentasDescartableOdoo } = require("../../controllers/controllerOdoo/ventasDescartableOdooController");
+const { obtenerVentasDescartableOdoo, obtenerClientesDescartableOdoo } = require("../../controllers/controllerOdoo/ventasDescartableOdooController");
 const { obtenerVentasBotellonOdoo } = require("../../controllers/controllerOdoo/ventasBotellonesOdooController");
 const { obtenerVentasHielo } = require("../../controllers/controllerOdoo/ventasHieloController");
 
@@ -12,6 +12,7 @@ router.post("/sync", sincronizarOdoo);
 
 
 router.get("/descartable-odoo", obtenerVentasDescartableOdoo);
+router.get("/clientes", obtenerClientesDescartableOdoo);
 router.get("/botellon-odoo", obtenerVentasBotellonOdoo);
 router.get("/hielo", obtenerVentasHielo);
 

@@ -53,6 +53,7 @@ app.use("/api/metas", require("./routes/rutasPreventas/metasRoutes"));
 // ======================================================
 app.use("/api/botellones", require("./routes/rutasBotellones/rutasBotellones"));
 app.use("/api/botellones", require("./routes/rutasBotellones/detalleBotellonesRoutes"));
+app.use("/api/metas-botellon", require("./routes/rutasBotellones/metasBotellonRoutes"));
 
 // ======================================================
 // ❄️ HIELO
@@ -88,6 +89,11 @@ app.use("/api/odoo", require("./routes/rutasOdoo/odooRoutes"));
 // ======================================================
 app.use("/api/cotsa", require("./routes/rutasCotsa/cotsaRoutes"));
 
+
+// ======================================================
+// 📊 CONSOLIDADO
+// ======================================================
+app.use("/api/consolidado", require("./routes/rutasConsolidado/consolidadoRoutes"));
 
 // ======================================================
 // ❤️ HEALTHCHECK

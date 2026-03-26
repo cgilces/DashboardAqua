@@ -163,6 +163,19 @@ const Cliente = sequelize.define(
     },
 
     // =========================
+    // GEOLOCALIZACIÓN
+    // =========================
+    latitud_cliente: {
+      type: DataTypes.STRING(100), // o DECIMAL (recomendado abajo)
+      allowNull: true,
+    },
+
+    longitud_cliente: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
+    // =========================
     // VÍNCULO MOBILVENDOR
     // Permite unificar clientes de Odoo con su contraparte en MobilVendor
     // =========================

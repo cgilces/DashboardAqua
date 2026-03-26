@@ -10,6 +10,7 @@ const {
 const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
+const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
 
 const calcularKPIsMes = async (anioNum, mesNum) => {
 
@@ -187,93 +188,6 @@ const metaHistoricaHielo = async () => {
     }
 };
 
-// ======================================================
-//  DÍAS HÁBILES TRANSCURRIDOS (L–S) DEL MES
-// ======================================================
-const getDiasHabilesTranscurridos = (anio, mes, festivos = []) => {
-  const hoy = new Date();
-  const ayer = new Date(hoy);
-  ayer.setDate(hoy.getDate() - 1);
-
-  let ultimoDia = new Date(anio, mes, 0).getDate();
-
-  // Si es el mes actual, contar solo hasta ayer
-  if (
-    ayer.getFullYear() === anio &&
-    ayer.getMonth() + 1 === mes
-  ) {
-    ultimoDia = ayer.getDate();
-  }
-
-  let habiles = 0;
-
-  for (let d = 1; d <= ultimoDia; d++) {
-    const fecha = new Date(anio, mes - 1, d);
-    const diaSemana = fecha.getDay(); // 0 domingo
-
-    const esFestivo = festivos.some(f =>
-      f.getDate() === fecha.getDate() &&
-      f.getMonth() === fecha.getMonth() &&
-      f.getFullYear() === fecha.getFullYear()
-    );
-
-    // ✅ lunes a sábado
-    if (diaSemana !== 0 && !esFestivo) {
-      habiles++;
-    }
-  }
-
-  return habiles;
-};
-
-// Festivos (definidos por las fechas)
-const festivos = [
-  // 2025
-  new Date(2025, 0, 1),    // 1 enero 2025 - Año Nuevo
-  new Date(2025, 4, 1),    // 1 mayo 2025 - Día del Trabajo
-  new Date(2025, 11, 25),  // 25 diciembre 2025 - Navidad
-
-  // 2026
-  new Date(2026, 0, 1),    // 1 enero 2026 - Año Nuevo
-  new Date(2026, 1, 16),   // 16 febrero 2026 - Carnaval (lunes)
-  new Date(2026, 1, 17),   // 17 febrero 2026 - Carnaval (martes)
-  new Date(2026, 3, 2),    // 2 abril 2026 - Jueves Santo
-  new Date(2026, 3, 3),    // 3 abril 2026 - Viernes Santo
-  new Date(2026, 4, 1),    // 1 mayo 2026 - Día del Trabajo
-  new Date(2026, 7, 10),   // 10 agosto 2026 - Primer Grito de Independencia
-  new Date(2026, 9, 9),    // 9 octubre 2026 - Independencia de Guayaquil
-  new Date(2026, 10, 2),   // 2 noviembre 2026 - Día de los Difuntos
-  new Date(2026, 10, 3),   // 3 noviembre 2026 - Independencia de Cuenca
-  new Date(2026, 11, 6),   // 6 diciembre 2026 - Fundación de Quito (local)
-  new Date(2026, 11, 25)   // 25 diciembre 2026 - Navidad
-];
-
-
-// ===============================
-//  DÍAS LABORABLES DEL MES (L–S)
-// ===============================
-const getDiasLaborablesMes = (anio, mes, festivos = []) => {
-  const diasEnMes = new Date(anio, mes, 0).getDate();
-  let laborables = 0;
-
-  for (let d = 1; d <= diasEnMes; d++) {
-    const fecha = new Date(anio, mes - 1, d);
-    const diaSemana = fecha.getDay(); // 0 = domingo, 6 = sábado
-
-    const esFestivo = festivos.some(f =>
-      f.getDate() === fecha.getDate() &&
-      f.getMonth() === fecha.getMonth() &&
-      f.getFullYear() === fecha.getFullYear()
-    );
-
-    // ❌ solo se excluye domingo y feriados
-    if (diaSemana !== 0 && !esFestivo) {
-      laborables++;
-    }
-  }
-
-  return laborables;
-};
 
 
 
@@ -306,8 +220,8 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
   // ============================
   // 🔢 DÍAS HÁBILES / LABORABLES
   // ============================
-  const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum, festivos);
-  const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum, festivos);
+  const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum);
+  const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum);
 
   // ============================
   // MES ACTUAL

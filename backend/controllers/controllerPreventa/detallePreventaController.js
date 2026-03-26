@@ -584,8 +584,167 @@ const obtenerProductosVendidosRuta = async (req, res) => {
   }
 };
 
+// ========================================================
+// 🏙️ CONSOLIDADO DE CLIENTES POR CANAL DESCARTABLE
+//    GET /api/ventas/clientes-canal-descartable/:canal/:anio/:mes
+//    canal: domicilio | vip | mayorista
+// ========================================================
+const obtenerClientesCanalDescartable = async (req, res) => {
+  try {
+    const { canal, anio, mes } = req.params;
+    const anioNum = parseInt(anio);
+    const mesNum  = parseInt(mes);
+
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12) {
+      return res.status(400).json({ error: "Mes o año inválido" });
+    }
+
+    const prefijos = { domicilio: "A", vip: "V", mayorista: "M" };
+    const prefijo  = prefijos[canal?.toLowerCase()];
+    if (!prefijo) return res.status(400).json({ error: "Canal inválido. Use: domicilio, vip o mayorista" });
+
+    const { fechaInicioStr, fechaFinStr } = obtenerRangoFechasPG(anioNum, mesNum);
+    const { inicio: antInicio, fin: antFin } = obtenerRangoMesAnterior(anioNum, mesNum);
+
+    // 1. Clientes asignados a rutas del canal
+    const clientesSQL = `
+      SELECT DISTINCT
+        cuv.codigo_cliente,
+        cv.nombre_cliente,
+        tn.descripcion          AS tipo_negocio,
+        dc.calle1_direccion_cliente  AS direccion_entrega,
+        dc.telefono_direccion_cliente AS telefono,
+        dc.latitud_direccion_cliente  AS latitud,
+        dc.longitud_direccion_cliente AS longitud
+      FROM clientes_usuarios_ventas cuv
+      LEFT JOIN clientes          cv  ON cv.codigo_cliente  = cuv.codigo_cliente
+      LEFT JOIN tipos_negocio     tn  ON tn.codigo          = cv.codigo_tipo_negocio
+      LEFT JOIN direcciones_clientes dc ON dc.codigo_cliente = cv.codigo_cliente
+      WHERE cuv.seller_code ILIKE :prefix
+      ORDER BY cv.nombre_cliente
+    `;
+    const clientesRuta = await db.query(clientesSQL, {
+      replacements: { prefix: `${prefijo}%` },
+      type: QueryTypes.SELECT,
+    });
+
+    // 2. Consumo actual + anterior por cliente
+    const consumoSQL = `
+      SELECT
+        o.customer_code,
+        SUM(CASE WHEN o.fecha_entrega >= :inicio    AND o.fecha_entrega < :fin
+                 THEN dd.total ELSE 0 END) AS consumo_actual,
+        SUM(CASE WHEN o.fecha_entrega >= :antInicio AND o.fecha_entrega < :antFin
+                 THEN dd.total ELSE 0 END) AS consumo_anterior
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.seller_code ILIKE :prefix
+        AND o.type = 2
+        AND o.status IN (2,4,5)
+        AND dd.codigo_categoria = '7'
+      GROUP BY o.customer_code
+    `;
+    const consumoData = await db.query(consumoSQL, {
+      replacements: { prefix: `${prefijo}%`, inicio: fechaInicioStr, fin: fechaFinStr, antInicio, antFin },
+      type: QueryTypes.SELECT,
+    });
+
+    // 3. Cantidad (unidades) por cliente en mes actual
+    const cantidadSQL = `
+      SELECT o.customer_code, SUM(dd.cantidad) AS cantidad_actual
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.seller_code ILIKE :prefix
+        AND o.type = 2
+        AND o.status IN (2,4,5)
+        AND dd.codigo_categoria = '7'
+        AND o.fecha_entrega >= :inicio AND o.fecha_entrega < :fin
+      GROUP BY o.customer_code
+    `;
+    const cantidadData = await db.query(cantidadSQL, {
+      replacements: { prefix: `${prefijo}%`, inicio: fechaInicioStr, fin: fechaFinStr },
+      type: QueryTypes.SELECT,
+    });
+
+    // 4. Última orden del canal por cliente
+    const ultimaOrdenSQL = `
+      SELECT o.customer_code, MAX(o.fecha_entrega) AS ultima_factura
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.seller_code ILIKE :prefix
+        AND o.type = 2
+        AND o.status IN (2,4,5)
+        AND dd.codigo_categoria = '7'
+      GROUP BY o.customer_code
+    `;
+    const ultimasOrdenes = await db.query(ultimaOrdenSQL, {
+      replacements: { prefix: `${prefijo}%` },
+      type: QueryTypes.SELECT,
+    });
+
+    // 5. Productos vendidos en el canal en el mes
+    const productosSQL = `
+      SELECT
+        dd.descripcion  AS producto,
+        SUM(dd.cantidad) AS unidades_vendidas,
+        SUM(dd.total)    AS monto_usd
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.seller_code ILIKE :prefix
+        AND o.type = 2
+        AND o.status IN (2,4,5)
+        AND dd.codigo_categoria = '7'
+        AND o.fecha_entrega >= :inicio AND o.fecha_entrega < :fin
+      GROUP BY dd.descripcion
+      ORDER BY unidades_vendidas DESC
+    `;
+    const productosVendidos = await db.query(productosSQL, {
+      replacements: { prefix: `${prefijo}%`, inicio: fechaInicioStr, fin: fechaFinStr },
+      type: QueryTypes.SELECT,
+    });
+
+    // Construir maps
+    const consumoMap  = new Map(consumoData.map(c  => [c.customer_code,  c]));
+    const cantidadMap = new Map(cantidadData.map(c => [c.customer_code, Number(c.cantidad_actual)]));
+    const ordenMap    = new Map(ultimasOrdenes.map(u => [u.customer_code, u.ultima_factura]));
+
+    const clientes = clientesRuta.map(c => {
+      const cons           = consumoMap.get(c.codigo_cliente) || {};
+      const consumoActual  = Number(cons.consumo_actual)  || 0;
+      const consumoAnterior = Number(cons.consumo_anterior) || 0;
+      return {
+        codigo_cliente:   c.codigo_cliente,
+        nombre_cliente:   c.nombre_cliente,
+        direccion_entrega: c.direccion_entrega || "—",
+        tipo_negocio:     c.tipo_negocio      || "—",
+        telefono:         c.telefono          || "—",
+        latitud:          c.latitud           || "—",
+        longitud:         c.longitud          || "—",
+        cantidad_actual:  cantidadMap.get(c.codigo_cliente) || 0,
+        consumo_actual:   consumoActual,
+        consumo_anterior: consumoAnterior,
+        ultima_factura:   formatFecha(ordenMap.get(c.codigo_cliente)) || null,
+      };
+    });
+
+    const conConsumo = clientes.filter(c => c.consumo_actual > 0).length;
+
+    return res.json({
+      clientes,
+      resumen: {
+        totalClientes:       clientes.length,
+        clientesConConsumo:  conConsumo,
+        clientesSinConsumo:  clientes.length - conConsumo,
+      },
+      productosVendidos,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Error al obtener clientes del canal", detalle: error.message });
+  }
+};
+
 module.exports = {
   obtenerDetalleRuta,
-  obtenerProductosVendidosRuta
-
+  obtenerProductosVendidosRuta,
+  obtenerClientesCanalDescartable,
 };

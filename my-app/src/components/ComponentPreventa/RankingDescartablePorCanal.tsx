@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../components/auth/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { BsDownload } from "react-icons/bs";
+import { BsDownload, BsGear } from "react-icons/bs";
 
 interface VentaDescartable {
   seller_code: string;
@@ -10,6 +10,8 @@ interface VentaDescartable {
   dolares: string | number;
   meta?: number | { meta_historica: number; mes_mayor_consumo: string };
   proyeccion?: number;
+  objetivo_gerencia?: number;
+  objetivo_gerencia_unidades?: number;
   vsMesAnterior?: {
     monto_anterior: number;
     variacion_abs: number;
@@ -33,9 +35,9 @@ const RankingDescartablePorCanal = ({
   anio: string;
   mes: string;
 }) => {
-  const { user }    = useAuth();
-  const isAdmin     = user?.role === "ADMIN";
-  const navigate    = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const navigate = useNavigate();
 
   const [sortedData, setSortedData] = useState<VentaDescartable[]>(
     Object.values(data)
@@ -66,10 +68,11 @@ const RankingDescartablePorCanal = ({
   // ============================
   // 🔢 TOTALES
   // ============================
-  const totalUnidades      = sortedData.reduce((a, b) => a + Number(b.unidades  ?? 0), 0);
-  const totalUSD           = sortedData.reduce((a, b) => a + Number(b.dolares   ?? 0), 0);
-  const totalMeta          = sortedData.reduce((a, b) => a + getMetaValue(b.meta),      0);
-  const totalProyeccion    = sortedData.reduce((a, b) => a + Number(b.proyeccion ?? 0), 0);
+  const totalUnidades = sortedData.reduce((a, b) => a + Number(b.unidades ?? 0), 0);
+  const totalUSD = sortedData.reduce((a, b) => a + Number(b.dolares ?? 0), 0);
+  const totalMeta = sortedData.reduce((a, b) => a + getMetaValue(b.meta), 0);
+  const totalProyeccion = sortedData.reduce((a, b) => a + Number(b.proyeccion ?? 0), 0);
+  const totalObjetivoGerencia = sortedData.reduce((a, b) => a + Number(b.objetivo_gerencia ?? 0), 0);
   const totalVsMesAnterior = sortedData.reduce(
     (a, b) => a + Number(b.vsMesAnterior?.variacion_abs ?? 0), 0
   );
@@ -111,13 +114,13 @@ const RankingDescartablePorCanal = ({
   // ============================
   const exportarExcel = () => {
     const datos = sortedData.map((r, i) => ({
-      "N°"             : i + 1,
-      Canal            : obtenerCanal(r.seller_code),
-      Usuario          : r.seller_code,
-      Unidades         : Number(r.unidades  ?? 0),
-      USD              : Number(r.dolares   ?? 0),
-      Meta             : getMetaValue(r.meta),
-      Proyección       : Number(r.proyeccion ?? 0),
+      "N°": i + 1,
+      Canal: obtenerCanal(r.seller_code),
+      Usuario: r.seller_code,
+      Unidades: Number(r.unidades ?? 0),
+      USD: Number(r.dolares ?? 0),
+      "HIST. MÁX": getMetaValue(r.meta),
+      Proyección: Number(r.proyeccion ?? 0),
       "Vs Mes Anterior": r.vsMesAnterior?.variacion_abs ?? 0,
     }));
 
@@ -130,13 +133,13 @@ const RankingDescartablePorCanal = ({
     XLSX.utils.sheet_add_json(
       ws,
       [{
-        "N°"             : "TOTAL",
-        Canal            : "",
-        Usuario          : "",
-        Unidades         : totalUnidades,
-        USD              : totalUSD,
-        Meta             : totalMeta,
-        Proyección       : totalProyeccion,
+        "N°": "TOTAL",
+        Canal: "",
+        Usuario: "",
+        Unidades: totalUnidades,
+        USD: totalUSD,
+        "HIST. MÁX": totalMeta,
+        Proyección: totalProyeccion,
         "Vs Mes Anterior": totalVsMesAnterior,
       }],
       { skipHeader: true, origin: -1 }
@@ -146,6 +149,20 @@ const RankingDescartablePorCanal = ({
     XLSX.utils.book_append_sheet(wb, ws, "DescartableCanal");
     XLSX.writeFile(wb, `ranking_descartable_canal_${mes}_${anio}.xlsx`);
   };
+
+  const groupedData = sortedData.reduce((acc, item) => {
+    const canal = obtenerCanal(item.seller_code);
+
+    if (!acc[canal]) {
+      acc[canal] = [];
+    }
+
+    acc[canal].push(item);
+
+    return acc;
+  }, {} as Record<string, VentaDescartable[]>);
+
+  const canalKeys = Object.keys(groupedData);
 
   // ============================
   // 🖼️ RENDER CELDA META
@@ -175,8 +192,8 @@ const RankingDescartablePorCanal = ({
   // ============================
   const renderVsMesAnterior = (vsMesAnterior: VentaDescartable["vsMesAnterior"]) => {
     if (!vsMesAnterior) return "–";
-    const abs   = Number(vsMesAnterior.variacion_abs ?? 0);
-    const porc  = vsMesAnterior.variacion_porc;
+    const abs = Number(vsMesAnterior.variacion_abs ?? 0);
+    const porc = vsMesAnterior.variacion_porc;
     const signo = abs >= 0 ? "+" : "-";
     return (
       <>
@@ -218,13 +235,23 @@ const RankingDescartablePorCanal = ({
             <p className="text-base font-bold text-white">${fmtNum(totalUSD)}</p>
           </div>
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-            <p className="text-xs text-gray-400">Meta</p>
+            <p className="text-xs text-gray-400">HIST.MAX</p>
             <p className="text-base font-bold text-white">${fmtNum(totalMeta)}</p>
           </div>
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Proyección</p>
             <p className="text-base font-bold text-emerald-400">${fmtNum(totalProyeccion)}</p>
           </div>
+          {isAdmin && (
+            <button
+              onClick={() => navigate("/configurar-metas")}
+              title="Configurar Metas"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/60 bg-blue-500/20 text-white font-semibold hover:bg-blue-500/30 active:scale-[0.98] transition-all"
+            >
+              <BsGear size={16} className="text-white shrink-0" />
+              <span>Metas</span>
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={exportarExcel}
@@ -254,68 +281,92 @@ const RankingDescartablePorCanal = ({
                   : "↕"}
               </span>
             </th>
-            <th onClick={() => requestSort("unidades")}     className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Unidades ↕</th>
-            <th onClick={() => requestSort("dolares")}      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">USD ↕</th>
-            <th onClick={() => requestSort("meta")}         className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Meta ↕</th>
-            <th onClick={() => requestSort("proyeccion")}   className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Proyección ↕</th>
+            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Unidades ↕</th>
+            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">USD ↕</th>
+            <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">HIST. MÁX ↕</th>
+            <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Proyección ↕</th>
             <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Variación ↕</th>
             <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">% ↕</th>
           </tr>
         </thead>
 
         <tbody>
-          {sortedData.map((r, i) => (
-            <tr
-              key={i}
-              onClick={() => navigate(`/ruta2/${r.seller_code}?anio=${anio}&mes=${mes}`)}
-              className={`${
-                i % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
-              } hover:bg-[#016a57] cursor-pointer transition-all duration-200`}
-            >
-              <td className="px-4 py-2">{i + 1}</td>
-              <td className="px-4 py-2 text-green-400 font-bold">{obtenerCanal(r.seller_code)}</td>
-              <td className="px-4 py-2 text-blue-300 font-bold">{r.seller_code}</td>
+          {canalKeys.map((canal, idx) => {
+            const canalData = groupedData[canal];
 
-              {/* ✅ ?? 0 protege contra undefined */}
-              <td className="px-4 py-2 text-right text-green-400">
-                {Number(r.unidades ?? 0).toLocaleString()}
-              </td>
-              <td className="px-4 py-2 text-right text-blue-300">
-                ${Number(r.dolares ?? 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-              </td>
+            // Cálculos de totales por canal
+            const totalCanalUnidades = canalData.reduce((a, b) => a + Number(b.unidades ?? 0), 0);
+            const totalCanalUSD = canalData.reduce((a, b) => a + Number(b.dolares ?? 0), 0);
+            const totalCanalMeta = canalData.reduce((a, b) => a + getMetaValue(b.meta), 0);
+            const totalCanalCupo = canalData.reduce((a, b) => a + Number(b.objetivo_gerencia ?? 0), 0);
+            const totalCanalProyeccion = canalData.reduce((a, b) => a + Number(b.proyeccion ?? 0), 0);
+            const totalCanalVsMesAnterior = canalData.reduce(
+              (a, b) => a + Number(b.vsMesAnterior?.variacion_abs ?? 0), 0
+            );
 
-              {/* ✅ renderMeta maneja objeto, número y null */}
-              <td className="px-4 py-2 text-right">
-                {renderMeta(r.meta)}
-              </td>
+            return (
+              <>
+                {/* Encabezado de Canal */}
+                <tr key={idx} className="bg-[#014434]">
+                  <td colSpan={9} className="px-4 py-3 font-bold text-green-300">{canal}</td>
+                </tr>
 
-              <td className="px-4 py-2 text-right">
-                ${Number(r.proyeccion ?? 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-              </td>
+                {/* Filas de cada usuario dentro del canal */}
+                {canalData.map((r, i) => (
+                  <tr
+                    key={i}
+                    onClick={() => navigate(`/descartable-canal/${obtenerCanal(r.seller_code).toLowerCase()}/clientes/${anio}/${mes}`)}
+                    className={`${i % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
+                      } hover:bg-[#016a57] cursor-pointer transition-all duration-200`}
+                  >
+                    <td className="px-4 py-2">{i + 1}</td>
+                    <td className="px-4 py-2 text-green-400 font-bold">{obtenerCanal(r.seller_code)}</td>
+                    <td className="px-4 py-2 text-blue-300 font-bold">{r.seller_code}</td>
+                    <td className="px-4 py-2 text-right text-green-400">
+                      {Number(r.unidades ?? 0).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2 text-right text-blue-300">
+                      ${Number(r.dolares ?? 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-4 py-2 text-right">{renderMeta(r.meta)}</td>
+                    <td className="px-4 py-2 text-right">
+                      ${Number(r.proyeccion ?? 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className={`px-4 py-2 text-right font-bold ${(r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+                      }`}>
+                      {!r.vsMesAnterior ? "–" : (() => {
+                        const abs = Number(r.vsMesAnterior.variacion_abs ?? 0);
+                        const signo = abs >= 0 ? "+" : "-";
+                        return <>{signo}${Math.abs(abs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>;
+                      })()}
+                    </td>
+                    <td className={`px-4 py-2 text-right font-bold ${(r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+                      }`}>
+                      {!r.vsMesAnterior ? "–" : (() => {
+                        const porc = r.vsMesAnterior.variacion_porc;
+                        return porc !== null
+                          ? `${porc >= 0 ? "+" : "-"}${Math.abs(porc).toFixed(1)}%`
+                          : "0%";
+                      })()}
+                    </td>
+                  </tr>
+                ))}
 
-              {/* VARIACIÓN */}
-              <td className={`px-4 py-2 text-right font-bold ${
-                (r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
-              }`}>
-                {!r.vsMesAnterior ? "–" : (() => {
-                  const abs = Number(r.vsMesAnterior.variacion_abs ?? 0);
-                  const signo = abs >= 0 ? "+" : "-";
-                  return <>{signo}${Math.abs(abs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>;
-                })()}
-              </td>
-              {/* % */}
-              <td className={`px-4 py-2 text-right font-bold ${
-                (r.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"
-              }`}>
-                {!r.vsMesAnterior ? "–" : (() => {
-                  const porc = r.vsMesAnterior.variacion_porc;
-                  return porc !== null
-                    ? `${porc >= 0 ? "+" : "-"}${Math.abs(porc).toFixed(1)}%`
-                    : "0%";
-                })()}
-              </td>
-            </tr>
-          ))}
+                {/* Total por Canal */}
+                <tr className="bg-[#013d32]">
+                  <td colSpan={3} className="px-4 py-3 text-right text-green-400 font-bold">TOTAL {canal}</td>
+                  <td className="px-4 py-3 text-right">{totalCanalUnidades.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right">${totalCanalUSD.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 text-right">{totalCanalMeta.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 text-right">{totalCanalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</td>
+                  <td className={`px-4 py-3 text-right ${totalCanalVsMesAnterior >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    {totalCanalVsMesAnterior >= 0 ? "+" : "-"}${Math.abs(totalCanalVsMesAnterior).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-400">—</td>
+                </tr>
+              </>
+            );
+          })}
         </tbody>
 
         <tfoot className="bg-[#014434] font-bold">

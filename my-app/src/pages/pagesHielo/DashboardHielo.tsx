@@ -36,6 +36,13 @@ const DashboardHielo: React.FC = () => {
   const [comparativaMesAnterior, setComparativaMesAnterior] = useState<any | null>(null);
   const [loading, setLoading]   = useState<boolean>(true);
   const [error,   setError]     = useState<string | null>(null);
+  const [seccionActiva, setSeccionActiva] = useState<string | null>(null);
+
+  const activarSeccion = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setSeccionActiva(id);
+    setTimeout(() => setSeccionActiva(null), 3000);
+  };
 
   /* ============================
      FETCH DATA
@@ -143,6 +150,7 @@ const DashboardHielo: React.FC = () => {
             kpis={kpisHielo}
             comparativa={comparativaMesAnterior}
             totalProyeccion={totalProyeccion}
+            onCardClick={() => activarSeccion("seccion-resumen-hielo")}
           />
         )}
 
@@ -165,11 +173,20 @@ const DashboardHielo: React.FC = () => {
             TABLA RESUMEN
         ============================ */}
         {!loading && !error && (
-          <ResumenVentasHielo
-            data={resumenUsuariosVentasHielo}
-            anio={anioSeleccionado}
-            mes={mesSeleccionado}
-          />
+          <div
+            id="seccion-resumen-hielo"
+            className={`rounded-xl transition-all duration-500 ${
+              seccionActiva === "seccion-resumen-hielo"
+                ? "ring-2 ring-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.35)]"
+                : ""
+            }`}
+          >
+            <ResumenVentasHielo
+              data={resumenUsuariosVentasHielo}
+              anio={anioSeleccionado}
+              mes={mesSeleccionado}
+            />
+          </div>
         )}
       </div>
     </DashboardLayout>

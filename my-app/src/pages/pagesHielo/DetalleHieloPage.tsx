@@ -1,639 +1,350 @@
-import React, { useEffect, useState, useMemo } from "react";
-
-import { useParams, Link } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
+import { BsDownload } from "react-icons/bs";
+import DashboardLayout from "../../layout/DashboardLayout";
+import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
 
+const fmt = (v: number) =>
+  v.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+const POR_PAGINA = 60;
 
 const DetalleHieloPage: React.FC = () => {
   const { ruta, anio, mes } = useParams();
-  const [productos, setProductos] = useState<any[]>([]);
+  const navigate = useNavigate();
+
+  const [productos,       setProductos]       = useState<any[]>([]);
   const [resumenClientes, setResumenClientes] = useState<any>(null);
-  // const [clientesSinConsumo, setClientesSinConsumo] = useState<any[]>([]);
-  const [cargando, setCargando] = useState(false);
-  const [filtroConsumo, setFiltroConsumo] = useState("Todos"); // 'Todos', 'Sí', 'No'
-  const [clientesRuta, setClientesRuta] = useState<any[]>([]);  // Clientes asignados a la ruta
-  const [terminoBusqueda, setTerminoBusqueda] = useState(""); // Estado para el término de búsqueda
+  const [clientesRuta,    setClientesRuta]    = useState<any[]>([]);
+  const [cargando,        setCargando]        = useState(false);
+  const [filtroConsumo,   setFiltroConsumo]   = useState("Todos");
+  const [busqueda,        setBusqueda]        = useState("");
+  const [pagina,          setPagina]          = useState(1);
+  const [sortConfig,      setSortConfig]      = useState<{ key: string; direction: "asc" | "desc" }>({ key: "codigo_cliente", direction: "asc" });
 
+  if (!ruta || !anio || !mes)
+    return <div className="text-white p-10">Parámetros inválidos en la ruta</div>;
 
-  // PAGINACIÓN
-  const [paginaActual, setPaginaActual] = useState(1);
-  const clientesPorPagina = 60;
-
-
-  useEffect(() => {
-    setPaginaActual(1);
-  }, [filtroConsumo, terminoBusqueda]);
-
-
-  const clientesFiltrados = clientesRuta.filter((cliente) =>
-    // cliente.nombre_cliente.toLowerCase().includes(terminoBusqueda.toLowerCase())
-    (cliente.nombre_cliente ?? "").toLowerCase().includes(terminoBusqueda.toLowerCase())
-
-  );
-
-  // Ordenación
-  const [sortConfig, setSortConfig] = useState({
-    key: "codigo_cliente",
-    direction: "asc"
-  });
-  /* =======================
-     VALIDACIÓN RUTA
-  ======================= */
-  if (!ruta || !anio || !mes) {
-    return (
-      <div className="text-white p-10">
-        <h1>Parámetros inválidos en la ruta</h1>
-      </div>
-    );
-  }
-
-  // Función para ordenar las columnas
   const requestSort = (key: string) => {
-    setPaginaActual(1);
-
-    setSortConfig((prev) => {
-      let direction: "asc" | "desc" = "asc";  // Por defecto, orden ascendente
-
-      // Si la columna ya está ordenada y la dirección es ascendente, alternamos a descendente
-      if (prev.key === key && prev.direction === "asc") {
-        direction = "desc";
-      }
-
-      return { key, direction };  // Actualizamos la clave y la dirección
-    });
+    const dir = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+    setSortConfig({ key, direction: dir });
+    setClientesRuta(prev => [...prev].sort((a, b) => {
+      const av: any = key === "vsMesAnterior" ? Number(a?.vsMesAnterior?.variacion_abs) || 0 : a[key];
+      const bv: any = key === "vsMesAnterior" ? Number(b?.vsMesAnterior?.variacion_abs) || 0 : b[key];
+      const an = Number(String(av).replace(",",".")), bn = Number(String(bv).replace(",","."));
+      if (Number.isFinite(an) && Number.isFinite(bn)) return dir === "asc" ? an - bn : bn - an;
+      return dir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    }));
   };
 
-  const clientesOrdenados = useMemo(() => {
-    const sorted = [...clientesFiltrados];  // Copiar los datos filtrados para no mutar el estado original
-
-    sorted.sort((a, b) => {
-      let aValue = a[sortConfig.key];
-      let bValue = b[sortConfig.key];
-
-
-
-
-      // Acceder a 'variacion_abs' de 'vsMesAnterior'
-      // const aVariacionAbs = a.vsMesAnterior ? parseFloat(a.vsMesAnterior.variacion_abs) : 0;
-      // const bVariacionAbs = b.vsMesAnterior ? parseFloat(b.vsMesAnterior.variacion_abs) : 0;
-      // // Comparar por la propiedad 'variacion_abs'
-      // if (sortConfig.direction === "desc") {
-      //   return aVariacionAbs - bVariacionAbs;  // Orden ascendente
-      // } else {
-      //   return bVariacionAbs - aVariacionAbs;  // Orden descendente
-      // }
-
-
-
-
-      // Si estamos ordenando por "Consumo Actual", calcular la diferencia
-      if (sortConfig.key === "consumo_actual") {
-        const aConsumoActual = a.consumo_actual || 0;
-        const bConsumoActual = b.consumo_actual || 0;
-        const aConsumoAnterior = a.consumo_mes_anterior || 0;  // Suponiendo que el campo de consumo del mes anterior se llama 'consumo_mes_anterior'
-        const bConsumoAnterior = b.consumo_mes_anterior || 0;
-
-        // Calculamos la diferencia
-        aValue = aConsumoActual - aConsumoAnterior;
-        bValue = bConsumoActual - bConsumoAnterior;
-      }
-
-      // Ordenación de valores numéricos generales
-      if (typeof aValue === "number" && typeof bValue === "number") {
-        return sortConfig.direction === "asc" ? aValue - bValue : bValue - aValue;
-      }
-
-      // Ordenación de valores alfabéticos (por si se ordenan otros campos)
-      if (typeof aValue === "string" && typeof bValue === "string") {
-        return sortConfig.direction === "asc"
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      }
-
-      const aLatitud = parseFloat(a.latitud_cliente);  // Convertir latitud a número
-      const bLatitud = parseFloat(b.latitud_cliente);  // Convertir latitud a número
-
-      // Ordenar por latitud
-      if (sortConfig.direction === "asc") {
-        return aLatitud - bLatitud;  // Orden ascendente
-      } else {
-        return bLatitud - aLatitud;  // Orden descendente
-      }
-
-      return 0;  // Si no es comparable, no ordenamos
-
-
-
-    });
-
-    return sorted;  // Retornamos el array ordenado
-  }, [clientesFiltrados, sortConfig]);  // Dependencias: se vuelve a ejecutar cuando 'clientesFiltrados' o 'sortConfig' cambian
-
-
+  const sa = (k: string) => sortConfig.key === k ? (sortConfig.direction === "asc" ? " ↑" : " ↓") : " ↕";
 
   useEffect(() => {
     setCargando(true);
-
-    fetch(
-      `${API_BASE_URL}/api/hielo/detalle-hielo/${ruta}/${anio}/${mes}`
-    )
-
-
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Datos FULL recibidos hielo:", data);
-
-        // FILTRAR CLIENTES SEGÚN EL FILTRO SELECCIONADO
-        let clientesFiltrados = data.clientesRuta || []; // clientesRuta con todos los clientes
-
-        if (filtroConsumo !== "Todos") {
-          clientesFiltrados = clientesFiltrados.filter(
-            (cliente: { tuvo_consumo: string }) => cliente.tuvo_consumo === filtroConsumo
-          ); // Filtrar por "Sí" o "No"
-        }
-
-        setClientesRuta(clientesFiltrados); // Actualizamos el estado de clientesRuta con los clientes filtrados
-
-        // PRODUCTOS
-        const productosMapeados = (data.productosVendidos || []).map((p: any) => ({
-          descripcion: p.producto,
-          unidades: Number(p.unidades_vendidas),
-          monto: Number(p.monto_usd),
-        }));
-
-        setProductos(productosMapeados);
-
-        // RESUMEN CLIENTES
+    fetch(`${API_BASE_URL}/api/hielo/detalle-hielo/${ruta}/${anio}/${mes}`)
+      .then(r => r.json())
+      .then(data => {
+        let clientes = data.clientesRuta || [];
+        if (filtroConsumo !== "Todos") clientes = clientes.filter((c: any) => c.tuvo_consumo === filtroConsumo);
+        setClientesRuta(clientes);
+        setProductos((data.productosVendidos || []).map((p: any) => ({
+          descripcion: p.producto, unidades: Number(p.unidades_vendidas), monto: Number(p.monto_usd),
+        })));
         setResumenClientes(data.resumenClientes);
+        setPagina(1);
       })
       .finally(() => setCargando(false));
-  }, [ruta, anio, mes, filtroConsumo]); // Dependencia de filtroConsumo para actualizar la lista cuando cambie el filtro
+  }, [ruta, anio, mes, filtroConsumo]);
 
-  // 📌 Cálculo de clientes paginados
-  const indiceUltimo = paginaActual * clientesPorPagina;
-  const indicePrimero = indiceUltimo - clientesPorPagina;
+  const filtrados = clientesRuta.filter(c =>
+    (c.nombre_cliente ?? "").toLowerCase().includes(busqueda.toLowerCase())
+  );
+  const totalPags = Math.ceil(filtrados.length / POR_PAGINA);
+  const paginados = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
-  // Aquí usamos clientesFiltrados para la paginación
-  const clientesPagina = clientesOrdenados.slice(indicePrimero, indiceUltimo);
-
-  const totalPaginas = Math.ceil(clientesOrdenados.length / clientesPorPagina);
-
-  if (cargando) {
-    return (
-      <div className="flex flex-col justify-center items-center h-screen bg-[#012E24] text-gray-300">
-        <div className="w-10 h-10 border-4 border-t-[#74ab3c] border-gray-700 rounded-full animate-spin mb-4"></div>
-        <p>Cargando datos de {ruta}...</p>
-      </div>
-    );
-  }
-
-
-
-
-  type ClienteExportExcel = {
-    Ruta: string;
-    Código: any;
-    Cliente: any;
-    Dirección: any;
-    "Teléfono": any;
-    tipo_negocio: any;
-
-    "Última visita": any;
-    "Última factura": any;
-    "Consumo Actual": any;
-    Cantidad: any;
-    "Tuvo Consumo": any;
-    "Latitud": any;
-    "Longitud": any;
-    "VS Mes Anterior ($)": any;
-    "VS Mes Anterior (%)": any;
+  const exportar = () => {
+    if (!clientesRuta.length) return;
+    const datos = clientesRuta.map(c => ({
+      Código: c.codigo_cliente, Cliente: c.nombre_cliente,
+      Dirección: c.direccion_entrega, "Tipo Negocio": c.tipo_negocio || "—",
+      Teléfono: c.telefono_cliente || "—", Latitud: c.latitud_cliente || "—",
+      Longitud: c.longitud_cliente || "—", "Consumo Actual ($)": c.consumo_actual,
+      Cantidad: c.cantidad_productos, "Tuvo Consumo": c.tuvo_consumo,
+      "Última visita": c.ultima_visita || "—", "Última factura": c.ultima_factura || "—",
+      "VS Mes Ant ($)": c.vsMesAnterior ? `$${Math.abs(c.vsMesAnterior.variacion_abs).toFixed(2)}` : "—",
+      "VS Mes Ant (%)": c.vsMesAnterior ? `${c.vsMesAnterior.variacion_porc}%` : "—",
+    }));
+    const ws = XLSX.utils.json_to_sheet(datos);
+    XLSX.utils.sheet_add_aoa(ws, [[`CLIENTES HIELO - ${ruta?.toUpperCase()} - ${mes}/${anio}`]], { origin: "A1" });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ClientesRuta");
+    XLSX.writeFile(wb, `clientes_hielo_${ruta?.toUpperCase()}_${mes}_${anio}.xlsx`, { compression: true });
   };
 
-
-
-  const exportarClientesRuta = () => {
-    if (!clientesRuta || clientesRuta.length === 0) return;
-
-    try {
-      const rutaUpper = (ruta || "").toUpperCase();
-
-      const datosExportar: ClienteExportExcel[] = clientesRuta.map((c) => ({
-        Ruta: rutaUpper,
-        Código: c.codigo_cliente,
-        Cliente: c.nombre_cliente,
-        Dirección: c.direccion_entrega,
-        tipo_negocio: c.tipo_negocio || "—", // Tipo de negocio (vacío si no tiene)
-        "Teléfono": c.telefono_cliente || "—", // Teléfono (vacío si no tiene)
-        "Consumo_Actual($)": c.consumo_actual,
-        Cantidad: c.cantidad_productos,
-        "Tuvo Consumo": c.tuvo_consumo,
-        "Latitud": c.latitud_cliente || "—", // Latitud (vacío si no tiene)
-        "Longitud": c.longitud_cliente || "—", // Longitud (vacío si no tiene)
-        "Última visita": c.ultima_visita || "—",
-        "Última factura": c.ultima_factura || "—",
-        "VS Mes Anterior ($)": c.vsMesAnterior ? `$${Math.abs(c.vsMesAnterior.variacion_abs).toFixed(2)}` : "—", // VS Mes Anterior (diferencia absoluta)
-        "VS Mes Anterior (%)": c.vsMesAnterior ? `${c.vsMesAnterior.variacion_porc}%` : "—", // Variación porcentual
-      }));
-
-      // Crear hoja de Excel
-      const ws = XLSX.utils.json_to_sheet(datosExportar);
-
-      // Agregar título en A1
-      const titulo = [`CLIENTES DE RUTA - ${rutaUpper} - ${mes}/${anio}`];
-      XLSX.utils.sheet_add_aoa(ws, [titulo], { origin: "A1" });
-
-      // Auto-ajustar el ancho de las columnas
-      const columnas = Object.keys(datosExportar[0]) as (keyof ClienteExportExcel)[];
-
-      ws["!cols"] = columnas.map((col) => {
-        const maxLong = Math.max(
-          col.length,
-          ...datosExportar.map((row) => String(row[col]).length)
-        );
-        return { wch: maxLong + 4 }; // +4 para margen visual
-      });
-
-      // Crear libro de trabajo
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "ClientesRuta");
-
-      const nombreArchivo = `clientes_ruta_${rutaUpper}_${mes}_${anio}.xlsx`;
-      XLSX.writeFile(wb, nombreArchivo, { compression: true });
-    } catch (error) {
-      // console.error("❌ Error exportando Excel:", error);
-    }
-  };
-
-
-
-  return (
-    <div className="min-h-screen text-white px-4 md:px-8 py-8">
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">
-          Detalle de {ruta} — {mes}/{anio}
-        </h1>
-
-        <Link to="/dashboard/hielo" className="px-4 py-2 bg-[#046C5E] rounded-lg hover:bg-[#058A73] transition">
-          ← Volver al Dashboard
-        </Link>
-      </div>
-
-      {/* RESUMEN CLIENTES */}
-      {resumenClientes && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
-            <h3 className="text-gray-200 text-sm mb-1">Clientes asignados</h3>
-            <p className="text-4xl font-bold text-green-400">{resumenClientes.totalClientesRuta}</p>
-          </div>
-
-          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
-            <h3 className="text-gray-200 text-sm mb-1">Clientes con consumo</h3>
-            <p className="text-4xl font-bold text-blue-400">{resumenClientes.clientesConConsumo}</p>
-          </div>
-
-          <div className="p-5 bg-[#01382D] rounded-lg shadow-md">
-            <h3 className="text-gray-200 text-sm mb-1">Clientes sin consumo</h3>
-            <p className="text-4xl font-bold text-red-400">{resumenClientes.clientesSinConsumo}</p>
-          </div>
-        </div>
-      )}
-
-      {/* tabla PRODUCTOS VENDIDOS */}
-      <h1 className="text-center text-xl font-bold mb-4">PRODUCTOS VENDIDOS</h1>
-
-      {productos.length > 0 ? (
-        <table className="w-full text-sm border border-[#046C5E] rounded-lg mb-12">
-          <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-            <tr>
-              <th className="px-4 py-3 text-left">Producto</th>
-              <th className="px-4 py-3 text-right">Unidades</th>
-              <th className="px-4 py-3 text-right">Dólares</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {productos.map((p, idx) => (
-              <tr
-                key={idx}
-                className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#026452] transition`}
-              >
-                <td className="px-4 py-2">{p.descripcion}</td>
-                <td className="px-4 py-2 text-right text-green-400 font-semibold">
-                  {p.unidades.toLocaleString()}
-                </td>
-                <td className="px-4 py-2 text-right text-blue-400 font-semibold">
-                  ${p.monto.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </td>
-              </tr>
-            ))}
-
-            {/* 🔹 FILA TOTAL */}
-            <tr className="bg-[#022d24] border-[#74ab3c] font-bold">
-              <td className="px-4 py-3 text-right text-white uppercase">Total</td>
-              <td className="px-4 py-3 text-right text-green-500">
-                {productos.reduce((acc, p) => acc + p.unidades, 0).toLocaleString()}
-              </td>
-              <td className="px-4 py-3 text-right text-blue-500">
-                ${productos.reduce((acc, p) => acc + p.monto, 0).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      ) : (
-        <p className="text-center text-gray-400 mt-10">No se encontraron productos facturados para esta ruta.</p>
-      )}
-
-      {/* tabla CLIENTES */}
-
-      <div className="overflow-x-auto scrollbar-hide">
-
-        <div className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-          <h1 className="text-center text-xl font-bold mt-10 mb-4">CLIENTES DE RUTA</h1>
-          {clientesRuta.length > 0 ? (
-            <>
-              <div className="mb-6">
-                {/* ACCIONES */}
-                <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-4">
-                  <button
-                    onClick={exportarClientesRuta}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#046C5E] hover:bg-[#058A73] text-white font-semibold rounded-md shadow-md transition"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-                    </svg>
-                    Exportar clientes S/C
-                  </button>
-
-                  <div>
-                    <label htmlFor="filtroConsumo" className="text-white mr-2">
-                      Filtrar por consumo Mes_Actual:
-                    </label>
-                    <select
-                      id="filtroConsumo"
-                      value={filtroConsumo}
-                      onChange={(e) => setFiltroConsumo(e.target.value)}
-                      className="px-4 py-2 bg-[#046C5E] text-white font-semibold rounded-md"
-                    >
-                      <option value="Todos">Todos</option>
-                      <option value="Sí">Con Consumo</option>
-                      <option value="No">Sin Consumo</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* BUSCADOR */}
-                <div className="flex justify-center mb-4">
-                  <div className="relative w-full sm:w-3/4 md:w-1/2 lg:w-1/3">
-                    <input
-                      type="text"
-                      placeholder="Buscar por nombre de cliente"
-                      value={terminoBusqueda}
-                      onChange={(e) => setTerminoBusqueda(e.target.value)}
-                      className="w-full px-4 py-2 pl-10 rounded-md bg-[#046C5E] text-white text-sm
-                       focus:outline-none focus:ring-2 focus:ring-[#74ab3c]"
-                    />
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M18 10a8 8 0 10-8 8 8 8 0 008-8z" />
-                    </svg>
-                  </div>
-                </div>
-
-                {/* TABLA */}
-                <table className="min-w-full text-sm border border-[#046C5E] rounded-lg">
-                  <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-3 text-left">N°</th>
-                      {[
-                        ["Código", "codigo_cliente"],
-                        ["Cliente", "nombre_cliente"],
-                        ["Dirección", "direccion_entrega"],
-                        ["Tipo Negocio", "tipo_negocio"],
-
-                        ["#Teléfono", "telefono_direccion_cliente"],
-                        ["Latitud", "latitud_direccion_cliente"],
-                        ["Longitud", "longitud_direccion_cliente"],
-
-                        ["Cantidad Actual", "cantidad_productos"],
-                        ["Consumo Actual($)", "consumo_actual"],
-                        ["Maximo Consumo($)", "maximo_consumo"],
-
-                        ["VS MES ANT", "porcentaje_cambio"],
-                        ["Última visita", "ultima_visita"],
-                        ["Última factura", "ultima_factura"],
-                        ["Tuvo consumo", "tuvo_consumo"],
-                      ].map(([label, key]) => (
-                        <th
-                          key={key}
-                          className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none"
-                          onClick={() => requestSort(key)}
-                        >
-                          {label}
-                          <span className="text-[#6BAF8E] ml-1">
-                            {sortConfig.key === key
-                              ? sortConfig.direction === "asc"
-                                ? "↑"
-                                : "↓"
-                              : "↕"}
-                          </span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {clientesPagina.map((c, idx) => (
-                      <tr
-                        key={idx}
-                        className={`${c.tuvo_consumo === "No"
-                          ? "bg-[rgba(220,38,38,0.6)]"
-                          : idx % 2 === 0
-                            ? "bg-[#013d32]"
-                            : "bg-[#014f3e]"
-                          } hover:bg-[#026452] transition`}
-                      >
-                        {/* N° */}
-                        <td className="px-4 py-2 text-white font-semibold">
-                          {(paginaActual - 1) * clientesPorPagina + idx + 1}
-                        </td>
-
-                        <td className="px-4 py-2 text-white">{c.codigo_cliente}</td>
-                        <td className="px-4 py-2 text-white">{c.nombre_cliente}</td>
-                        <td className="px-4 py-2 text-white">{c.direccion_entrega}</td>
-                        <td className="px-4 py-2 text-white">{c.tipo_negocio}</td>
-
-
-                        <td className="px-4 py-2 text-white">{c.telefono_cliente || "Sin Número"}</td>
-
-                        <td className="px-4 py-2 text-white">{c.latitud_cliente}</td>
-                        <td className="px-4 py-2 text-white">{c.longitud_cliente}</td>
-                        <td className="px-4 py-2 text-white">{c.cantidad_productos}</td>
-                        <td className="px-4 py-2 text-white">${c.consumo_actual}</td>
-
-                        <td className="px-4 py-2">
-                          <div className="flex flex-col leading-tight">
-
-                            {/* Monto máximo */}
-                            <span className="text-white  text-sm">
-                              ${Number(c.max_consumo).toLocaleString("es-EC", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </span>
-
-                            {/* Mes */}
-                            <span className="text-xs text-[#6BAF8E] font-medium">
-                              {c.mes_max_consumo_nombre ?? ""}
-                            </span>
-
-                          </div>
-                        </td>
-
-
-
-                        <td className="px-6 py-4">
-                          {c.vsMesAnterior ? (
-                            <div className="flex flex-col leading-tight">
-
-                              {/* Diferencia en dólares */}
-                              <span
-                                className={`text-sm font-bold
-          ${c.vsMesAnterior.variacion_abs > 0
-                                    ? "text-green-400"
-                                    : c.vsMesAnterior.variacion_abs < 0
-                                      ? "text-red-400"
-                                      : "text-gray-300"
-                                  }`}
-                              >
-                                {c.vsMesAnterior.variacion_abs > 0 && "+"}$
-                                {Math.abs(c.vsMesAnterior.variacion_abs).toLocaleString("es-EC", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </span>
-
-                              {/* Porcentaje */}
-                              <span
-                                className={`text-xs font-semibold
-          ${c.vsMesAnterior.variacion_abs > 0
-                                    ? "text-green-300"
-                                    : c.vsMesAnterior.variacion_abs < 0
-                                      ? "text-red-300"
-                                      : "text-gray-400"
-                                  }`}
-                              >
-                                (
-                                {c.vsMesAnterior.variacion_abs > 0 && "+"}
-                                {c.vsMesAnterior.variacion_porc}
-                                )
-                              </span>
-
-                            </div>
-                          ) : (
-                            <span className="text-gray-500">—</span>
-                          )}
-                        </td>
-
-
-                        <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
-                          {c.ultima_visita ?? "—"}
-                        </td>
-                        <td className="px-4 py-2 text-[#6BAF8E] font-semibold whitespace-nowrap">
-                          {c.ultima_factura ?? "—"}
-                        </td>
-
-                        <td
-                          className={`px-4 py-2 font-bold ${c.tuvo_consumo === "Sí" ? "text-green-500" : "text-red-500"}`}
-                        >
-                          {c.tuvo_consumo}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {/* PAGINACIÓN (se mantiene igual) */}
-              <div className="flex justify-center mt-6 gap-2">
-                <button
-                  disabled={paginaActual === 1}
-                  onClick={() => setPaginaActual(paginaActual - 1)}
-                  className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === 1
-                    ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                    : "bg-[#046C5E] hover:bg-[#058A73]"} `}
-                >
-                  <span className="sm:hidden">←</span>
-                  <span className="hidden sm:inline">← Anterior</span>
-                </button>
-
-                {(() => {
-                  const pages = [];
-                  const maxVisible = 5;
-
-                  if (totalPaginas <= maxVisible) {
-                    for (let i = 1; i <= totalPaginas; i++) pages.push(i);
-                  } else {
-                    pages.push(1);
-                    if (paginaActual > 3) pages.push("...");
-                    const start = Math.max(2, paginaActual - 1);
-                    const end = Math.min(totalPaginas - 1, paginaActual + 1);
-                    for (let i = start; i <= end; i++) pages.push(i);
-                    if (paginaActual < totalPaginas - 2) pages.push("...");
-                    pages.push(totalPaginas);
-                  }
-
-                  return pages.map((num: any, idx) =>
-                    num === "..." ? (
-                      <span key={`dots-${idx}`} className="px-2 py-1 text-gray-400 select-none">...</span>
-                    ) : (
-                      <button
-                        key={`page-${idx}-${num}`}
-                        onClick={() => setPaginaActual(num)}
-                        className={`px-3 py-1 rounded-md ${paginaActual === num
-                          ? "bg-green-500 text-black font-bold"
-                          : "bg-[#01382D] hover:bg-[#025f4b]"} `}
-                      >
-                        {num}
-                      </button>
-                    )
-                  );
-                })()}
-
-                <button
-                  disabled={paginaActual === totalPaginas}
-                  onClick={() => setPaginaActual(paginaActual + 1)}
-                  className={`px-3 py-1 rounded-md flex items-center justify-center ${paginaActual === totalPaginas
-                    ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                    : "bg-[#046C5E] hover:bg-[#058A73]"} `}
-                >
-                  <span className="sm:hidden">→</span>
-                  <span className="hidden sm:inline">Siguiente →</span>
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="text-center text-gray-400 mt-10">Sin consumo</p>
-          )}
-        </div>
+  const Paginacion = () => totalPags > 1 ? (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-[#046C5E]/30 flex-wrap gap-2">
+      <span className="text-xs text-gray-400">
+        {(pagina - 1) * POR_PAGINA + 1}–{Math.min(pagina * POR_PAGINA, filtrados.length)} de {filtrados.length}
+      </span>
+      <div className="flex gap-1 flex-wrap">
+        <button disabled={pagina === 1} onClick={() => setPagina(1)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">«</button>
+        <button disabled={pagina === 1} onClick={() => setPagina(p => p - 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">‹ Ant</button>
+        {(() => {
+          const pages: any[] = [];
+          if (totalPags <= 5) { for (let i = 1; i <= totalPags; i++) pages.push(i); }
+          else {
+            pages.push(1); if (pagina > 3) pages.push("...");
+            for (let i = Math.max(2, pagina - 1); i <= Math.min(totalPags - 1, pagina + 1); i++) pages.push(i);
+            if (pagina < totalPags - 2) pages.push("..."); pages.push(totalPags);
+          }
+          return pages.map((n, i) =>
+            n === "..." ? <span key={`d${i}`} className="px-1 text-xs text-gray-400">…</span> :
+            <button key={`p${i}`} onClick={() => setPagina(n)}
+              className={`px-3 py-1 text-xs rounded ${pagina === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#016a57]"}`}>{n}</button>
+          );
+        })()}
+        <button disabled={pagina === totalPags} onClick={() => setPagina(p => p + 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">Sig ›</button>
+        <button disabled={pagina === totalPags} onClick={() => setPagina(totalPags)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">»</button>
       </div>
     </div>
+  ) : null;
+
+  if (cargando)
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col justify-center items-center h-screen text-gray-300">
+          <div className="w-10 h-10 border-4 border-t-emerald-400 border-gray-700 rounded-full animate-spin mb-4"/>
+          <p>Cargando datos de {ruta}…</p>
+        </div>
+      </DashboardLayout>
+    );
+
+  return (
+    <DashboardLayout>
+      <div className="main-content min-h-screen text-white px-4 md:px-8 py-4 md:py-6">
+        <Header />
+
+        {/* Cabecera */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6 border-b border-[#046C5E]/50 pb-4">
+          <div>
+            <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">← Volver</button>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight">Hielo — Ruta {ruta?.toUpperCase()}</h1>
+            <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio}</p>
+          </div>
+          <button onClick={exportar}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 transition-all self-start sm:self-auto">
+            <BsDownload size={16} /> Exportar Excel
+          </button>
+        </div>
+
+        {/* Resumen clientes */}
+        {resumenClientes && (
+          <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6">
+            {[
+              { label: "Clientes asignados", value: resumenClientes.totalClientesRuta,  color: "text-white"      },
+              { label: "Con consumo",         value: resumenClientes.clientesConConsumo, color: "text-green-400" },
+              { label: "Sin consumo",         value: resumenClientes.clientesSinConsumo, color: "text-red-400"   },
+            ].map(k => (
+              <div key={k.label} className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-xl p-3 md:p-4 text-center">
+                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">{k.label}</p>
+                <p className={`text-2xl md:text-3xl font-extrabold ${k.color}`}>{k.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Productos vendidos */}
+        {productos.length > 0 && (
+          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-green-300 px-4 py-3 border-b border-[#046C5E]/30">Productos Vendidos</h2>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-[#014434] text-[10px] uppercase text-green-300">
+                    <th className="px-4 py-3 text-left">Producto</th>
+                    <th className="px-4 py-3 text-right">Unidades</th>
+                    <th className="px-4 py-3 text-right">Dólares</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productos.map((p, idx) => (
+                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                      <td className="px-4 py-2">{p.descripcion}</td>
+                      <td className="px-4 py-2 text-right text-green-400 font-semibold">{p.unidades.toLocaleString("es-EC")}</td>
+                      <td className="px-4 py-2 text-right text-blue-400 font-semibold">${fmt(p.monto)}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
+                    <td className="px-4 py-3 text-green-300 uppercase text-xs">Total</td>
+                    <td className="px-4 py-3 text-right text-green-400">{productos.reduce((a, p) => a + p.unidades, 0).toLocaleString("es-EC")}</td>
+                    <td className="px-4 py-3 text-right text-blue-400">${fmt(productos.reduce((a, p) => a + p.monto, 0))}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Filtros */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          <div className="relative flex-1 min-w-[180px]">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 0 5 11a6 6 0 0 0 12 0z"/>
+            </svg>
+            <input type="text" placeholder="Buscar cliente…" value={busqueda}
+              onChange={e => { setBusqueda(e.target.value); setPagina(1); }}
+              className="bg-[#012E24] border border-[#046C5E] rounded-lg px-3 py-2 pl-9 text-sm text-white placeholder-gray-500 w-full focus:outline-none focus:border-emerald-500/60"/>
+          </div>
+          <select value={filtroConsumo} onChange={e => { setFiltroConsumo(e.target.value); setPagina(1); }}
+            className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium">
+            <option value="Todos">Todos</option>
+            <option value="Sí">Con consumo</option>
+            <option value="No">Sin consumo</option>
+          </select>
+        </div>
+
+        {/* Tabla / Cards clientes */}
+        <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#046C5E]/30">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-green-300">Clientes de Ruta</h2>
+            <span className="text-xs text-gray-400">{filtrados.length} clientes</span>
+          </div>
+
+          {/* MOBILE: cards */}
+          <div className="md:hidden divide-y divide-[#046C5E]/20">
+            {paginados.length === 0
+              ? <p className="text-center text-gray-400 py-12 text-sm">Sin clientes.</p>
+              : paginados.map((c, idx) => {
+                  const sinConsumo = c.tuvo_consumo === "No";
+                  const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
+                  return (
+                    <div key={idx} className={`p-4 ${sinConsumo ? "bg-red-900/30 border-l-4 border-red-500/60" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
+                          <p className="text-[11px] text-gray-400 font-mono mt-0.5">{c.codigo_cliente}</p>
+                        </div>
+                        <span className={`ml-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
+                          {sinConsumo ? "Sin consumo" : "Activo"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-2">
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Consumo Actual</p>
+                          <p className="text-white font-bold">${fmt(Number(c.consumo_actual))}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">VS Mes Ant</p>
+                          <p className={`font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Cant. Productos</p>
+                          <p className="text-blue-300 font-semibold">{c.cantidad_productos}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Tipo Negocio</p>
+                          <p className="text-gray-300 truncate">{c.tipo_negocio || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Última Visita</p>
+                          <p className="text-gray-300 text-[11px]">{c.ultima_visita || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Última Factura</p>
+                          <p className="text-gray-300 text-[11px]">{c.ultima_factura || "—"}</p>
+                        </div>
+                      </div>
+                      {c.direccion_entrega && <p className="text-[11px] text-gray-500 truncate mt-1">📍 {c.direccion_entrega}</p>}
+                    </div>
+                  );
+                })
+            }
+          </div>
+
+          {/* DESKTOP: tabla */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-[#014434] text-[10px] uppercase text-green-300 select-none">
+                  <th className="px-3 py-3 text-left">N°</th>
+                  {([
+                    ["Código",         "codigo_cliente"],
+                    ["Cliente",        "nombre_cliente"],
+                    ["Dirección",      "direccion_entrega"],
+                    ["Tipo Negocio",   "tipo_negocio"],
+                    ["Teléfono",       "telefono_cliente"],
+                    ["Latitud",        "latitud_cliente"],
+                    ["Longitud",       "longitud_cliente"],
+                    ["Cant. Actual",   "cantidad_productos"],
+                    ["Consumo Actual", "consumo_actual"],
+                    ["Max Consumo",    "max_consumo"],
+                    ["VS Mes Ant",     "vsMesAnterior"],
+                    ["Últ. Visita",    "ultima_visita"],
+                    ["Últ. Factura",   "ultima_factura"],
+                    ["Estado",         "tuvo_consumo"],
+                  ] as [string,string][]).map(([label, key]) => (
+                    <th key={key} onClick={() => requestSort(key)}
+                      className="px-3 py-3 text-left cursor-pointer hover:text-white transition-colors whitespace-nowrap">
+                      {label}<span className="ml-1 text-[#046C5E]">{sa(key)}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginados.length === 0
+                  ? <tr><td colSpan={15} className="px-4 py-12 text-center text-gray-400 text-sm">Sin clientes.</td></tr>
+                  : paginados.map((c, idx) => {
+                      const sinConsumo = c.tuvo_consumo === "No";
+                      const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
+                      return (
+                        <tr key={idx} className={`${sinConsumo ? "bg-[rgba(220,38,38,0.5)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                          <td className="px-3 py-2 text-gray-400 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-gray-300">{c.codigo_cliente}</td>
+                          <td className="px-3 py-2 font-semibold text-white">{c.nombre_cliente}</td>
+                          <td className="px-3 py-2 text-gray-300 max-w-[160px]">
+                            <span title={c.direccion_entrega} className="line-clamp-2 text-xs">{c.direccion_entrega || "—"}</span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-300 text-xs">{c.tipo_negocio || "—"}</td>
+                          <td className="px-3 py-2 text-gray-300 text-xs whitespace-nowrap">{c.telefono_cliente || "—"}</td>
+                          <td className="px-3 py-2 text-gray-400 text-xs">{c.latitud_cliente || "—"}</td>
+                          <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud_cliente || "—"}</td>
+                          <td className="px-3 py-2 text-right text-blue-300 font-semibold">{c.cantidad_productos}</td>
+                          <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</span>
+                            {c.mes_max_consumo_nombre && <span className="block text-[10px] text-gray-400">{c.mes_max_consumo_nombre}</span>}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                            {c.vsMesAnterior?.variacion_porc && <span className="block text-[10px] opacity-70">{c.vsMesAnterior.variacion_porc}</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-400 text-xs whitespace-nowrap">{c.ultima_visita || "—"}</td>
+                          <td className="px-3 py-2 text-right text-gray-400 text-xs whitespace-nowrap">{c.ultima_factura || "—"}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
+                              {sinConsumo ? "Sin consumo" : "Activo"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <Paginacion />
+        </div>
+      </div>
+    </DashboardLayout>
   );
-
-
-
 };
 
 export default DetalleHieloPage;

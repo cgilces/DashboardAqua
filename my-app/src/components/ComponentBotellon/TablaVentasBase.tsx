@@ -1,7 +1,8 @@
 import { useState } from "react";
 import * as XLSX from "xlsx";
-import { BsDownload } from "react-icons/bs";
+import { BsDownload, BsGear } from "react-icons/bs";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../components/auth/AuthContext";
 
 
 /* ============================
@@ -18,11 +19,17 @@ export interface VsMesAnterior {
     variacion_porc: number | null;
 }
 
+export interface CupoGerencia {
+    cupo_dolares: number;
+    cupo_unidades: number;
+}
+
 export interface ItemDetalleVentas {
     codigo: string;
     unidades: number;
     dolares: number;
     meta: MetaHistorica;
+    cupo?: CupoGerencia | null;
     proyeccion: {
         dolares: number
         unidades: number
@@ -38,6 +45,7 @@ interface Props {
     nombreArchivoExcel?: string;
     anio: number | string;
     mes: number | string;
+    seccionMetas?: string; // ej: "TIENDAS" — si se pasa, muestra botón Metas (solo admin)
 }
 
 /* ============================
@@ -59,7 +67,10 @@ const TablaVentasBase: React.FC<Props> = ({
     nombreArchivoExcel = "ventas",
     anio,
     mes,
+    seccionMetas,
 }) => {
+    const { user } = useAuth();
+    const isAdmin = user?.role === "ADMIN";
     //  FILTRAR filas con unidades en 0
     const dataFiltrada = data.filter(
         (r) =>
@@ -91,6 +102,7 @@ const TablaVentasBase: React.FC<Props> = ({
         | "unidades"
         | "dolares"
         | "meta"
+        | "cupo_dolares"
         | "proyeccion_dolares"
         | "proyeccion_unidades"
         | "vsMesAnterior";
@@ -116,6 +128,9 @@ const TablaVentasBase: React.FC<Props> = ({
             switch (sortConfig.key) {
                 case "meta":
                     return Number(item.meta?.meta_historica || 0);
+
+                case "cupo_dolares":
+                    return Number(item.cupo?.cupo_dolares || 0);
 
                 case "vsMesAnterior":
                     return Number(item.vsMesAnterior?.variacion_abs || 0);
@@ -153,15 +168,19 @@ const TablaVentasBase: React.FC<Props> = ({
         (a, r) => a + Number(r.meta?.meta_historica || 0),
         0
     );
+    const totalCupoDolares = sortedData.reduce(
+        (a, r) => a + (r.cupo?.cupo_dolares || 0),
+        0
+    );
     const totalProyeccionDolares = sortedData.reduce(
         (a, r) => a + (r.proyeccion?.dolares || 0),
         0
     );
-
     const totalProyeccionUnidades = sortedData.reduce(
         (a, r) => a + (r.proyeccion?.unidades || 0),
         0
-    ); const totalvsmesanterior = sortedData.reduce((a, r) => a + (r.vsMesAnterior?.variacion_abs || 0), 0);
+    );
+    const totalvsmesanterior = sortedData.reduce((a, r) => a + (r.vsMesAnterior?.variacion_abs || 0), 0);
 
 
     /* ============================
@@ -172,7 +191,8 @@ const TablaVentasBase: React.FC<Props> = ({
             Ruta: r.codigo,
             Unidades: r.unidades,
             Dólares: r.dolares,
-            Meta: Number(r.meta?.meta_historica || 0),
+            "Hist. Máx": Number(r.meta?.meta_historica || 0),
+            "Cupo Gerencia": r.cupo?.cupo_dolares ?? "",
             "Proyección USD": r.proyeccion?.dolares ?? 0,
             "Proyección Unidades": r.proyeccion?.unidades ?? 0,
             "Vs Mes Anterior (%)": r.vsMesAnterior?.variacion_abs ?? "",
@@ -187,8 +207,8 @@ const TablaVentasBase: React.FC<Props> = ({
                     Ruta: "TOTAL",
                     Unidades: totalUnidades,
                     Dólares: totalDolares,
-                    Meta: totalMeta,
-                    // Proyección: totalProyeccion,
+                    "Hist. Máx": totalMeta,
+                    "Cupo Gerencia": totalCupoDolares,
                     "Vs Mes Anterior (%)": totalvsmesanterior,
                 },
             ],
@@ -227,13 +247,28 @@ const TablaVentasBase: React.FC<Props> = ({
                         <p className="text-base font-bold text-white">{money(totalDolares)}</p>
                     </div>
                     <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-                        <p className="text-xs text-gray-400">Meta</p>
+                        <p className="text-xs text-gray-400">Hist. Máx</p>
                         <p className="text-base font-bold text-amber-300">{money(totalMeta)}</p>
                     </div>
+                    {totalCupoDolares > 0 && (
+                        <div className="bg-[#011f1a] border border-amber-500/40 rounded-lg px-3 py-2 text-center">
+                            <p className="text-xs text-amber-400">Cupo</p>
+                            <p className="text-base font-bold text-amber-300">{money(totalCupoDolares)}</p>
+                        </div>
+                    )}
                     <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
                         <p className="text-xs text-gray-400">Proyección</p>
                         <p className="text-base font-bold text-emerald-400">{money(totalProyeccionDolares)}</p>
                     </div>
+                    {isAdmin && seccionMetas && (
+                        <button
+                            onClick={() => navigate(`/configurar-metas-botellon/${seccionMetas.toLowerCase()}`)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/60 bg-blue-500/20 text-white font-semibold hover:bg-blue-500/30 active:scale-[0.98] transition-all"
+                        >
+                            <BsGear size={16} className="text-white shrink-0" />
+                            <span>Metas</span>
+                        </button>
+                    )}
                     <button
                         onClick={exportarExcel}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
@@ -260,8 +295,13 @@ const TablaVentasBase: React.FC<Props> = ({
                             DÓLARES {iconSort("dolares")}
                         </th>
                         <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
-                            META {iconSort("meta")}
+                            HIST. MÁX {iconSort("meta")}
                         </th>
+                        {seccionMetas && (
+                        <th onClick={() => requestSort("cupo_dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300">
+                            CUPO {iconSort("cupo_dolares")}
+                        </th>
+                        )}
                         <th
                             onClick={() => requestSort("proyeccion_unidades")}
                             className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
@@ -292,7 +332,16 @@ const TablaVentasBase: React.FC<Props> = ({
                         <tr
                             key={row.codigo}
                             onClick={() =>
-                                navigate(`/dashboard/botellon/${row.codigo}?anio=${anio}&mes=${mes}`)
+                                navigate(`/dashboard/botellon/${row.codigo}?anio=${anio}&mes=${mes}`, {
+                                    state: {
+                                        cupo_dolares: row.cupo?.cupo_dolares || 0,
+                                        cupo_unidades: row.cupo?.cupo_unidades || 0,
+                                        proyeccion_dolares: row.proyeccion?.dolares || 0,
+                                        proyeccion_unidades: row.proyeccion?.unidades || 0,
+                                        dolares: row.dolares,
+                                        unidades: row.unidades,
+                                    },
+                                })
                             }
                             className={`transition-all duration-200 cursor-pointer
                                         ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
@@ -312,22 +361,31 @@ const TablaVentasBase: React.FC<Props> = ({
                                 {money(row.dolares)}
                             </td>
 
-                            <td className="px-4 py-2 text-right">
+                            {/* HIST. MÁX */}
+                            <td className="px-4 py-2 text-right text-gray-300">
                                 {row.meta
                                     ? `${Number(row.meta.meta_historica).toLocaleString("es-EC", {
                                         minimumFractionDigits: 2,
-                                    })} (${new Date(row.meta.mes_mayor_consumo!).toLocaleDateString(
+                                    })} (${row.meta.mes_mayor_consumo ? new Date(row.meta.mes_mayor_consumo).toLocaleDateString(
                                         "es-EC",
                                         { month: "long" }
-                                    )})`
+                                    ) : "—"})`
                                     : "—"}
                             </td>
 
+                            {/* CUPO (configurado por gerencia) */}
+                            {seccionMetas && (
+                            <td className="px-4 py-2 text-right font-bold text-amber-300">
+                                {row.cupo
+                                    ? money(row.cupo.cupo_dolares)
+                                    : <span className="text-gray-500">—</span>}
+                            </td>
+                            )}
 
                             <td className="px-4 py-2 text-right text-green-400 font-bold">
 
                                 <span className="text-xs text-gray-300">
-                                    {row.proyeccion?.unidades?.toLocaleString("es-EC")} 
+                                    {row.proyeccion?.unidades?.toLocaleString("es-EC")}
                                 </span>
 
 
@@ -374,9 +432,15 @@ const TablaVentasBase: React.FC<Props> = ({
                             {money(totalDolares)}
                         </td>
 
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-right text-gray-300">
                             {money(totalMeta)}
                         </td>
+
+                        {seccionMetas && (
+                        <td className="px-4 py-3 text-right text-amber-300">
+                            {totalCupoDolares > 0 ? money(totalCupoDolares) : "—"}
+                        </td>
+                        )}
 
                         <td className="px-4 py-3 text-right text-green-400">
                             {totalProyeccionUnidades.toLocaleString("es-EC")}

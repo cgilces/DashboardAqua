@@ -11,9 +11,16 @@ import DetallePreventasPage from "./pages/pagesPreventa/DetallePreventasPage";
 import ConfigurarMetas from "./pages/pagesPreventa/ConfigurarMetas";
 import DetalleRuta from "./pages/pagesPreventa/DetalleRuta";
 import DetalleRutaDescartable from "./pages/pagesPreventa/DetalleRutaDescartable";
+import DetalleCotsaPage from "./pages/pagesPreventa/DetalleCotsaPage";
+import DetalleDescartableOdooPage from "./pages/pagesPreventa/DetalleDescartableOdooPage";
+import DetalleClientesCanalDescartablePage from "./pages/pagesPreventa/DetalleClientesCanalDescartablePage";
 
 import DashboardBotellon from "./pages/pagesBotellon/DashboardBotellon";
 import DetalleBotellonPage from "./pages/pagesBotellon/DetalleBotellonPage";
+import DetalleVipBotellonPage from "./pages/pagesBotellon/DetalleVipBotellonPage";
+import DetalleClientesDomicilioPage from "./pages/pagesBotellon/DetalleClientesDomicilioPage";
+import DetalleClientesEmpresasPage from "./pages/pagesBotellon/DetalleClientesEmpresasPage";
+import ConfigurarMetasBotellon from "./pages/pagesBotellon/ConfigurarMetasBotellon";
 
 import DashboardHielo from "./pages/pagesHielo/DashboardHielo";
 import DetalleHieloPage from "./pages/pagesHielo/DetalleHieloPage";
@@ -70,6 +77,18 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               path="/ruta2/:usuario"
               element={<DetalleRutaDescartable />}
             />
+            <Route
+              path="/cotsa/clientes/:anio/:mes"
+              element={<DetalleCotsaPage />}
+            />
+            <Route
+              path="/descartable-odoo/clientes/:anio/:mes"
+              element={<DetalleDescartableOdooPage />}
+            />
+            <Route
+              path="/descartable-canal/:canal/clientes/:anio/:mes"
+              element={<DetalleClientesCanalDescartablePage />}
+            />
 
             {/* BOTELLONES */}
             <Route
@@ -79,6 +98,22 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/dashboard/botellon/:usuario"
               element={<DetalleBotellonPage />}
+            />
+            <Route
+              path="/vip-botellon/clientes/:anio/:mes"
+              element={<DetalleVipBotellonPage />}
+            />
+            <Route
+              path="/domicilio-botellon/clientes/:anio/:mes"
+              element={<DetalleClientesDomicilioPage />}
+            />
+            <Route
+              path="/empresas-botellon/clientes/:anio/:mes"
+              element={<DetalleClientesEmpresasPage />}
+            />
+            <Route
+              path="/configurar-metas-botellon/:seccion"
+              element={<ConfigurarMetasBotellon />}
             />
 
             {/* HIELO */}

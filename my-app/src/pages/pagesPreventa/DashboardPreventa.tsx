@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import logo from "../../assets/logo.png";
 import { useAuth } from "../../components/auth/AuthContext";
 import RankingPreventas from "../../components/ComponentPreventa/RankingPreventas";
@@ -8,6 +8,7 @@ import DashboardLayout from "../../layout/DashboardLayout";
 import GraficoVentaPorProducto from "../../components/ComponentPreventa/GraficoVentaPorProducto";
 import CostoPromedioProductos from "../../components/ComponentPreventa/CostoPromedioProductos";
 import { Header } from "../../components/common/Header";
+import { useNavigate } from "react-router-dom";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
 import TablaDescartableOdoo from "../../components/ComponentPreventa/TablaDescartableOdoo";
@@ -34,10 +35,15 @@ export default function DashboardPreventa() {
   const [datos, setDatos] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
   const [topClientesState, setTopClientesState] = useState<any[]>([]);
+  const [cotsaCard,  setCotsaCard]  = useState<any>(null);
+  const [odooCard,   setOdooCard]   = useState<any>(null);
 
   useEffect(() => {
-    if (mesSeleccionado && anioSeleccionado)
+    if (mesSeleccionado && anioSeleccionado) {
+      setCotsaCard(null);
+      setOdooCard(null);
       obtenerDatos(parseInt(anioSeleccionado), parseInt(mesSeleccionado));
+    }
   }, [mesSeleccionado, anioSeleccionado]);
 
   useEffect(() => {
@@ -61,6 +67,45 @@ export default function DashboardPreventa() {
 
   const kpis = datos?.kpisGenerales;
   const resumenVentasPorCanal = datos?.resumenVentasPorCanal || {};
+
+  const totalDescartable = useMemo(() => {
+    // Monto/mesAnterior: viene de resumenVentasPorCanal (incluye TIENDAS + RURAL + D/V/M)
+    const canales = Object.values(datos?.resumenVentasPorCanal || {}) as any[];
+    // Unidades anteriores: solo disponibles en ventasDescartablePorCanal (D/V/M)
+    const vendedores = Object.values(datos?.ventasDescartablePorCanal || {}) as any[];
+    if (canales.length === 0 && vendedores.length === 0) return null;
+
+    let totalUnidades = 0, totalMonto = 0, totalMesAnterior = 0;
+    canales.forEach((c: any) => {
+      totalUnidades    += Number(c.unidades   || 0);
+      totalMonto       += Number(c.monto      || 0);
+      totalMesAnterior += Number(c.mesAnterior || 0);
+    });
+
+    let totalUnidadesAnterior = 0, totalVarAbsUnidades = 0;
+    vendedores.forEach((v: any) => {
+      totalUnidadesAnterior += Number(v.vsMesAnterior?.unidades_anterior     || 0);
+      totalVarAbsUnidades   += Number(v.vsMesAnterior?.variacion_abs_unidades || 0);
+    });
+
+    const totalVariacionAbs  = totalMonto - totalMesAnterior;
+    const totalVariacionPorc = totalMesAnterior > 0 ? (totalVariacionAbs / totalMesAnterior) * 100 : 0;
+    const totalVarPorcUnidades = totalUnidadesAnterior > 0 ? (totalVarAbsUnidades / totalUnidadesAnterior) * 100 : 0;
+
+    return {
+      totalUnidades, totalMonto, totalMesAnterior, totalVariacionAbs, totalVariacionPorc,
+      totalUnidadesAnterior, totalVarAbsUnidades, totalVarPorcUnidades,
+    };
+  }, [datos]);
+
+  const navigate = useNavigate();
+  const [seccionActiva, setSeccionActiva] = useState<string | null>(null);
+
+  const activarSeccion = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setSeccionActiva(id);
+    setTimeout(() => setSeccionActiva(null), 3000);
+  };
 
   const { user } = useAuth();
   const rol = (user?.role ?? "").toUpperCase();
@@ -130,32 +175,165 @@ export default function DashboardPreventa() {
 
         {datos && !cargando && kpis && (
           <>
+            {/* ── Tarjeta Total Descartable ── */}
+            {isAdmin && totalDescartable && (
+              <div className="mb-8">
+                <h3 className="text-sm text-emerald-300 mb-4 uppercase px-2 tracking-wider">
+                  Total Descartable
+                </h3>
+                <div className="grid grid-cols-2 gap-6 max-w-2xl mx-auto w-full">
+
+                  {/* TOTAL UNIDADES */}
+                  <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center">
+                    <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-4">
+                      Total Unidades
+                    </p>
+                    <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
+                      Proyección
+                    </p>
+                    <p className="font-bold text-white text-2xl md:text-4xl leading-none mb-5 break-all">
+                      {totalDescartable.totalUnidades.toLocaleString("es-EC")}
+                    </p>
+                    <div className="border-t border-[#046C5E]/30 pt-3 space-y-2">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
+                      <p className="text-white font-semibold text-base">
+                        {totalDescartable.totalUnidadesAnterior.toLocaleString("es-EC")} Uni
+                      </p>
+                      <div className="flex justify-center">
+                        <span
+                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                            totalDescartable.totalVarAbsUnidades >= 0
+                              ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
+                              : "text-red-400 border-red-400/20 bg-red-400/10"
+                          }`}
+                        >
+                          {totalDescartable.totalVarAbsUnidades >= 0 ? "▲" : "▼"}
+                          {Math.abs(totalDescartable.totalVarAbsUnidades).toLocaleString("es-EC")}
+                          <span className="opacity-90">({totalDescartable.totalVarPorcUnidades.toFixed(1)}%)</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* TOTAL DÓLARES */}
+                  <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center">
+                    <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-4">
+                      Total Dólares
+                    </p>
+                    <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
+                      Proyección
+                    </p>
+                    <p className="font-bold text-emerald-400 text-2xl md:text-4xl leading-none mb-5 break-all">
+                      ${totalDescartable.totalMonto.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                    </p>
+                    <div className="border-t border-[#046C5E]/30 pt-3 space-y-2">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
+                      <p className="text-white font-semibold text-base">
+                        ${totalDescartable.totalMesAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                      </p>
+                      <div className="flex justify-center">
+                        <span
+                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                            totalDescartable.totalVariacionAbs >= 0
+                              ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
+                              : "text-red-400 border-red-400/20 bg-red-400/10"
+                          }`}
+                        >
+                          {totalDescartable.totalVariacionAbs >= 0 ? "▲" : "▼"}
+                          ${Math.abs(totalDescartable.totalVariacionAbs).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                          <span className="opacity-90">({totalDescartable.totalVariacionPorc.toFixed(1)}%)</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
             {/* ── Cards canal — solo ADMIN ── */}
             {isAdmin && resumenVentasPorCanal && (
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-6 mb-10">
-                {Object.values(resumenVentasPorCanal)
-                  .filter((canal: any) => canal.monto > 0 || canal.unidades > 0)
-                  .map((canal: any) => (
-                    <div key={canal.canal} className="bg-[#012E24] border border-[#046C5E] rounded-xl p-4">
-                      <p className="uppercase mb-1 font-bold text-base md:text-xs text-blue-300 text-center md:text-left">
-                        {canal.canal}
-                      </p>
-                      <p className="text-2xl font-bold">
-                        <span className="text-sm text-gray-400 mr-1">Proyección:</span>
-                        ${canal.monto.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-                      </p>
-                      <p className="text-xs text-gray-300">
-                        Mes anterior: ${canal.mesAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-                      </p>
-                      <p className={`text-xs font-semibold ${canal.variacionAbs >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        Variación: {canal.variacionAbs.toLocaleString("es-EC", { minimumFractionDigits: 2 })}{" "}
-                        ({(canal.variacionPorc || 0).toFixed(1)}%)
-                      </p>
-                      <p className="text-xs text-gray-300 mt-1">
-                        Unidades: {canal.unidades.toLocaleString("es-EC")}
-                      </p>
-                    </div>
-                  ))}
+              <div className="mb-10">
+                <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-4 px-1">
+                  Resumen por canal
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    ...Object.values(resumenVentasPorCanal).filter((c: any) => c.monto > 0 || c.unidades > 0),
+                    ...(cotsaCard ? [cotsaCard] : []),
+                    ...(odooCard  ? [odooCard]  : []),
+                  ].map((canal: any) => {
+                    const positivo = canal.variacionAbs >= 0;
+                    const esCotsa = canal.canal === "COTSA - AGUA OK";
+                    const esOdoo  = canal.canal === "EMPRESA DESCARTABLE ODOO";
+                    const esClickable = true;
+
+                    const handleCardClick = () => {
+                      if (esCotsa)
+                        navigate(`/cotsa/clientes/${anioSeleccionado}/${mesSeleccionado}`);
+                      else if (esOdoo)
+                        navigate(`/descartable-odoo/clientes/${anioSeleccionado}/${mesSeleccionado}`);
+                      else
+                        activarSeccion("seccion-ranking-preventas");
+                    };
+
+                    return (
+                      <div
+                        key={canal.canal}
+                        onClick={handleCardClick}
+                        className={`bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/60 rounded-2xl p-5 flex flex-col gap-3 shadow-md hover:shadow-lg hover:border-emerald-400/60 hover:scale-[1.02] transition-all duration-200 cursor-pointer`}
+                      >
+                        {/* Nombre canal */}
+                        <div className="flex items-center justify-between">
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-300 truncate">
+                            {canal.canal}
+                          </p>
+                          <span className="text-[10px] text-gray-400 italic shrink-0 ml-1">
+                            {esCotsa || esOdoo ? "Ver clientes →" : "Ver rutas ↓"}
+                          </span>
+                        </div>
+
+                        {/* Proyección (izq) + Unidades (der) */}
+                        <div className="flex items-end justify-between">
+                          <div>
+                            <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Proyección</p>
+                            <p className="text-2xl font-extrabold text-white leading-tight break-all">
+                              ${canal.monto.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] text-gray-400 uppercase tracking-wide">Unidades</span>
+                            <span className="text-sm font-semibold text-green-300">
+                              {canal.unidades.toLocaleString("es-EC")}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-[#046C5E]/30" />
+
+                        {/* Mes anterior + variación compacto */}
+                        <div className={`flex items-center justify-between rounded-lg px-3 py-1.5 border ${
+                          positivo
+                            ? "bg-green-500/10 border-green-500/25"
+                            : "bg-red-500/10 border-red-500/25"
+                        }`}>
+                          <div className="flex flex-col leading-tight">
+                            <span className="text-[9px] text-gray-400 uppercase tracking-wide">Mes anterior</span>
+                            <span className="text-sm font-semibold text-gray-200">
+                              ${canal.mesAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div className={`flex flex-col items-end leading-tight ${positivo ? "text-green-400" : "text-red-400"}`}>
+                            <span className="text-xs font-bold">
+                              {positivo ? "▲" : "▼"} ${Math.abs(canal.variacionAbs).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[10px] opacity-80">({(canal.variacionPorc || 0).toFixed(1)}%)</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -163,11 +341,20 @@ export default function DashboardPreventa() {
 
             {/* ── RankingPreventas — ADMIN + SUPERVISOR + VENDEDOR ── */}
             {puedeVerRanking && (
-              <RankingPreventas
-                datos={datos}
-                anio={anioSeleccionado}
-                mes={mesSeleccionado}
-              />
+              <div
+                id="seccion-ranking-preventas"
+                className={`rounded-xl transition-all duration-500 ${
+                  seccionActiva === "seccion-ranking-preventas"
+                    ? "ring-2 ring-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.35)]"
+                    : ""
+                }`}
+              >
+                <RankingPreventas
+                  datos={datos}
+                  anio={anioSeleccionado}
+                  mes={mesSeleccionado}
+                />
+              </div>
             )}
 
             {/* ── RankingRutasR — ADMIN + SUPERVISOR + VENDEDOR ── */}
@@ -184,6 +371,7 @@ export default function DashboardPreventa() {
             <TablaCotsa
               anio={anioSeleccionado}
               mes={mesSeleccionado}
+              onTotalesLoaded={setCotsaCard}
             />
 
 
@@ -191,6 +379,7 @@ export default function DashboardPreventa() {
             <TablaDescartableOdoo
               anio={anioSeleccionado}
               mes={mesSeleccionado}
+              onTotalesLoaded={setOdooCard}
             />
 
             {/* ── Resto — solo ADMIN ── */}

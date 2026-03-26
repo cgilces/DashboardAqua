@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 /* ============================
    TIPOS
@@ -27,6 +28,11 @@ interface Props {
   titulo?: string;
   canales: string[];
   data: Record<string, CanalVentasUSD>;
+  anio?: string | number;
+  mes?: string | number;
+  rutasCanales?: Record<string, string>;
+  scrollTargets?: Record<string, string>;
+  onScrollClick?: (canal: string) => void;
 }
 
 /* ============================
@@ -54,7 +60,13 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
   titulo = "Ventas USD Botellón",
   canales,
   data,
+  anio,
+  mes,
+  rutasCanales = {},
+  scrollTargets = {},
+  onScrollClick,
 }) => {
+  const navigate = useNavigate();
   return (
     <div className="mb-10">
       <h3 className="text-sm text-emerald-300 mb-6 uppercase px-2">
@@ -81,10 +93,24 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
           //  OCULTAR CARD SI UNIDADES ES 0
           if (proyeccionUnidades === 0 && proyeccionUSD === 0) return null;
 
+          const ruta = rutasCanales[canal];
+          const scrollId = scrollTargets[canal];
+          const clickable = !!(ruta && anio != null && mes != null) || !!scrollId;
+
+          const handleClick = () => {
+            if (ruta && anio != null && mes != null) {
+              navigate(`${ruta}/${anio}/${mes}`);
+            } else if (scrollId) {
+              document.getElementById(scrollId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              onScrollClick?.(canal);
+            }
+          };
+
           return (
             <div
               key={canal}
-              className="
+              onClick={clickable ? handleClick : undefined}
+              className={`
                 bg-gradient-to-br from-[#012E24] to-[#014034]
                 border border-[#046C5E]/40
                 rounded-2xl p-6
@@ -92,12 +118,20 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
                 flex flex-col
                 transition-all duration-300
                 hover:shadow-xl
-              "
+                ${clickable ? "cursor-pointer hover:border-emerald-400/60 hover:scale-[1.02]" : ""}
+              `}
             >
               {/* CANAL */}
-              <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-5">
-                {CANALES_LABELS[canal] ?? canal}
-              </p>
+              <div className="flex items-center justify-between mb-5">
+                <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold">
+                  {CANALES_LABELS[canal] ?? canal}
+                </p>
+                {clickable && (
+                  <span className="text-[10px] text-gray-400 italic">
+                    {ruta ? "Ver clientes →" : "Ver tabla ↓"}
+                  </span>
+                )}
+              </div>
 
               <div className="grid grid-cols-2 md:grid-cols-2 gap-4 md:gap-8 mb-6">
 

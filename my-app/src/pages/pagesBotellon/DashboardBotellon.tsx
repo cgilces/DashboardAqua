@@ -7,7 +7,9 @@ import BotonActualizarSincronizacion from "../../components/elements/BotonActual
 import TablaVentasBase from "../../components/ComponentBotellon/TablaVentasBase";
 import ResumenVentasCanalUSD from "../../components/ComponentBotellon/ResumenVentasCanalUSD";
 import ChatFlotante from "../../components/elements/ChatFlotante";
-import TablaBotellonOdoo from "../../components/ComponentBotellon/TablaBotellonOdoo";
+import TablaVipBotellon from "../../components/ComponentBotellon/TablaVipBotellon";
+import TablaDomicilioBotellon from "../../components/ComponentBotellon/TablaDomicilioBotellon";
+import TablaEmpresasBotellon from "../../components/ComponentBotellon/TablaEmpresasBotellon";
 import { API_BASE_URL } from "../../config";
 
 
@@ -35,10 +37,7 @@ const meses: Record<string, number> = {
 const SECCIONES = [
   { key: "TIENDAS_VIP", titulo: "Tiendas VIP", excel: "tiendas_vip" },
   { key: "TIENDAS", titulo: "Tiendas", excel: "tiendas" },
-  { key: "EMPRESAS", titulo: "Empresas", excel: "empresas" },
-  { key: "VIP", titulo: "VIP", excel: "vip" },
   { key: "MAYORISTA", titulo: "Mayorista", excel: "mayorista" },
-  { key: "DOMICILIO", titulo: "Domicilio", excel: "domicilio" },
   { key: "RURAL", titulo: "Rural", excel: "rural" },
   { key: "QUITO", titulo: "Quito", excel: "quito" },
   { key: "TELEVENTA_VIP", titulo: "Televentas VIP", excel: "televentas_vip" },
@@ -57,8 +56,16 @@ export default function DashboardBotellon() {
   );
 
   const [botellones, setBotellones] = useState<any>(null);
+  const [empresasData, setEmpresasData] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
+  const [cargandoEmpresas, setCargandoEmpresas] = useState(false);
   const [mostrarTablas, setMostrarTablas] = useState(false);
+  const [seccionActiva, setSeccionActiva] = useState<string | null>(null);
+
+  const activarSeccion = (canal: string) => {
+    setSeccionActiva(canal);
+    setTimeout(() => setSeccionActiva(null), 3000);
+  };
 
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
@@ -70,15 +77,26 @@ export default function DashboardBotellon() {
   const cargarDashboard = async () => {
     try {
       setCargando(true);
-      const res = await fetch(
-        `${API_BASE_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
-      );
-      const json = await res.json();
-      setBotellones(json.botellones);
+      setCargandoEmpresas(true);
+      setBotellones(null);
+      setEmpresasData(null);
+      setMostrarTablas(false);
+
+      const [resDash, resEmp] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`),
+        fetch(`${API_BASE_URL}/api/botellones/empresas-consolidado?anio=${anioSeleccionado}&mes=${mesSeleccionado}`),
+      ]);
+
+      const jsonDash = await resDash.json();
+      const jsonEmp  = await resEmp.json();
+
+      setBotellones(jsonDash.botellones);
+      setEmpresasData(jsonEmp);
     } catch (error) {
       console.error("Error cargando dashboard botellones", error);
     } finally {
       setCargando(false);
+      setCargandoEmpresas(false);
     }
   };
 
@@ -94,43 +112,90 @@ export default function DashboardBotellon() {
     }
   }, [botellones]);
 
+  const resumenTotal = useMemo(() => {
+    if (!botellones) return null;
+    let totalUnidades = 0;
+    let totalDolares = 0;
+    let totalProyeccionUnidades = 0;
+    let totalProyeccionDolares = 0;
+    let totalUnidadesAnterior = 0;
+    let totalDolaresAnterior = 0;
+
+    SECCIONES.forEach((s) => {
+      const total = botellones[s.key]?.total;
+      const detalle = botellones[s.key]?.detalle || [];
+      const mesAnterior = total?.mesAnterior;
+
+      totalUnidades += total?.unidades ?? 0;
+      totalDolares += total?.dolares ?? 0;
+      totalUnidadesAnterior += mesAnterior?.unidades ?? 0;
+      totalDolaresAnterior += mesAnterior?.dolares ?? 0;
+      totalProyeccionUnidades += detalle.reduce(
+        (acc: number, item: any) => acc + Number(item.proyeccion?.unidades || 0), 0
+      );
+      totalProyeccionDolares += detalle.reduce(
+        (acc: number, item: any) => acc + Number(item.proyeccion?.dolares || 0), 0
+      );
+    });
+
+    const varAbsUnidades = totalProyeccionUnidades - totalUnidadesAnterior;
+    const varPorcUnidades =
+      totalUnidadesAnterior !== 0 ? (varAbsUnidades / totalUnidadesAnterior) * 100 : 0;
+    const varAbsDolares = totalProyeccionDolares - totalDolaresAnterior;
+    const varPorcDolares =
+      totalDolaresAnterior !== 0 ? (varAbsDolares / totalDolaresAnterior) * 100 : 0;
+
+    return {
+      totalProyeccionUnidades,
+      totalProyeccionDolares,
+      totalUnidadesAnterior,
+      totalDolaresAnterior,
+      varAbsUnidades,
+      varPorcUnidades,
+      varAbsDolares,
+      varPorcDolares,
+    };
+  }, [botellones]);
+
   const resumenVentasUSD = useMemo(() => {
     if (!botellones) return null;
-    return Object.fromEntries(
-      SECCIONES.map((s) => {
-        const key = s.key;
-        const lowerKey = key.toLowerCase();
-        const total = botellones[key]?.total;
-        const detalle = botellones[key]?.detalle || [];
-        const mesAnterior = total?.mesAnterior;
 
-        const proyeccionTotal = detalle.reduce(
-          (acc: number, item: any) => acc + Number(item.proyeccion?.dolares || 0), 0
-        );
-        const proyeccionTotalUnidades = detalle.reduce(
-          (acc: number, item: any) => acc + Number(item.proyeccion?.unidades || 0), 0
-        );
-
-        return [
-          lowerKey,
-          {
-            monto: total?.dolares ?? 0,
-            proyeccion: proyeccionTotal,
-            proyeccion_unidades: proyeccionTotalUnidades,
-            unidades: total?.unidades ?? 0,
-            vsMesAnterior: {
-              monto_anterior: mesAnterior?.dolares ?? 0,
-              variacion_abs: mesAnterior?.variacionAbs ?? 0,
-              variacion_porc: mesAnterior?.variacionPorc ?? 0,
-              unidades: mesAnterior?.unidades ?? 0,
-              variacionAbsUnidades: mesAnterior?.variacionAbsUnidades ?? 0,
-              variacionPorcUnidades: mesAnterior?.variacionPorcUnidades ?? 0,
-            },
+    const toEntry = (lowerKey: string, data: any) => {
+      if (!data) return null;
+      const total = data.total;
+      const detalle = data.detalle || [];
+      const mesAnterior = total?.mesAnterior;
+      return [
+        lowerKey,
+        {
+          monto: total?.dolares ?? 0,
+          proyeccion: detalle.reduce((acc: number, item: any) => acc + Number(item.proyeccion?.dolares || 0), 0),
+          proyeccion_unidades: detalle.reduce((acc: number, item: any) => acc + Number(item.proyeccion?.unidades || 0), 0),
+          unidades: total?.unidades ?? 0,
+          vsMesAnterior: {
+            monto_anterior: mesAnterior?.dolares ?? 0,
+            variacion_abs: mesAnterior?.variacionAbs ?? 0,
+            variacion_porc: mesAnterior?.variacionPorc ?? 0,
+            unidades: mesAnterior?.unidades ?? 0,
+            variacionAbsUnidades: mesAnterior?.variacionAbsUnidades ?? 0,
+            variacionPorcUnidades: mesAnterior?.variacionPorcUnidades ?? 0,
           },
-        ];
-      })
-    );
-  }, [botellones]);
+        },
+      ];
+    };
+
+    const seccionEntries = SECCIONES.map((s) =>
+      toEntry(s.key.toLowerCase(), botellones[s.key])
+    ).filter(Boolean) as [string, any][];
+
+    const extraEntries = [
+      toEntry('vip',       botellones.VIP),
+      toEntry('domicilio', botellones.DOMICILIO),
+      toEntry('empresas',  empresasData),
+    ].filter(Boolean) as [string, any][];
+
+    return Object.fromEntries([...seccionEntries, ...extraEntries]);
+  }, [botellones, empresasData]);
 
   return (
     <DashboardLayout>
@@ -165,35 +230,160 @@ export default function DashboardBotellon() {
           </div>
         </header>
 
-        {/* ── Overlay carga ── */}
-        {cargando && (
-          <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
-            <span className="animate-pulse text-white">Actualizando datos…</span>
+        {/* ── Spinner unificado ── */}
+        {(cargando || cargandoEmpresas) && (
+          <div className="flex flex-col justify-center items-center py-32 gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400" />
+            <p className="text-gray-400 text-sm">Cargando datos del dashboard…</p>
+          </div>
+        )}
+
+        {/* ── Tarjeta Total Botellones ── */}
+        {!cargando && !cargandoEmpresas && isAdmin && resumenTotal && (
+          <div className="mb-8">
+            <h3 className="text-sm text-emerald-300 mb-4 uppercase px-2 tracking-wider">
+              Total Botellones
+            </h3>
+            <div className="grid grid-cols-2 gap-6 max-w-2xl mx-auto w-full">
+
+              {/* TOTAL UNIDADES */}
+              <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center">
+                <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-4">
+                  Total Unidades
+                </p>
+                <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
+                  Proyección
+                </p>
+                <p className="font-bold text-white text-2xl md:text-4xl leading-none mb-5 break-all">
+                  {resumenTotal.totalProyeccionUnidades.toLocaleString("es-EC")}
+                </p>
+                <div className="border-t border-[#046C5E]/30 pt-4 space-y-2">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
+                  <p className="text-white font-semibold text-base">
+                    {resumenTotal.totalUnidadesAnterior.toLocaleString("es-EC")} Uni
+                  </p>
+                  <div className="flex justify-center">
+                    <span
+                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                        resumenTotal.varAbsUnidades >= 0
+                          ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
+                          : "text-red-400 border-red-400/20 bg-red-400/10"
+                      }`}
+                    >
+                      {resumenTotal.varAbsUnidades >= 0 ? "▲" : "▼"}
+                      {Math.abs(resumenTotal.varAbsUnidades).toLocaleString("es-EC")}
+                      <span className="opacity-90">({resumenTotal.varPorcUnidades.toFixed(1)}%)</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* TOTAL DÓLARES */}
+              <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center">
+                <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-4">
+                  Total Dólares
+                </p>
+                <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
+                  Proyección
+                </p>
+                <p className="font-bold text-emerald-400 text-2xl md:text-4xl leading-none mb-5 break-all">
+                  ${resumenTotal.totalProyeccionDolares.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                </p>
+                <div className="border-t border-[#046C5E]/30 pt-4 space-y-2">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
+                  <p className="text-white font-semibold text-base">
+                    ${resumenTotal.totalDolaresAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                  </p>
+                  <div className="flex justify-center">
+                    <span
+                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                        resumenTotal.varAbsDolares >= 0
+                          ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
+                          : "text-red-400 border-red-400/20 bg-red-400/10"
+                      }`}
+                    >
+                      {resumenTotal.varAbsDolares >= 0 ? "▲" : "▼"}
+                      ${Math.abs(resumenTotal.varAbsDolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                      <span className="opacity-90">({resumenTotal.varPorcDolares.toFixed(1)}%)</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 
         {/* ── Resumen USD ── */}
-        {isAdmin && resumenVentasUSD && (
+        {!cargando && !cargandoEmpresas && isAdmin && resumenVentasUSD && (
           <ResumenVentasCanalUSD
             titulo="Ventas USD Botellón"
             canales={[
-              "tiendas_vip", "tiendas", "empresas", "vip",
-              "mayorista", "domicilio", "rural", "quito", "televenta_vip",
+              "vip", "domicilio", "empresas",
+              "tiendas_vip", "tiendas", "mayorista", "rural", "quito", "televenta_vip",
             ]}
             data={resumenVentasUSD}
-          />
-        )}
-
-        {/* ── NUEVO: Tabla botellón rutas Odoo — solo ADMIN ── */}
-        {isAdmin && (
-          <TablaBotellonOdoo
             anio={anioSeleccionado}
             mes={mesSeleccionado}
+            rutasCanales={{
+              vip:       "/vip-botellon/clientes",
+              domicilio: "/domicilio-botellon/clientes",
+              empresas:  "/empresas-botellon/clientes",
+            }}
+            scrollTargets={{
+              tiendas_vip:   "seccion-tiendas_vip",
+              tiendas:       "seccion-tiendas",
+              mayorista:     "seccion-mayorista",
+              rural:         "seccion-rural",
+              quito:         "seccion-quito",
+              televenta_vip: "seccion-televenta_vip",
+            }}
+            onScrollClick={activarSeccion}
           />
         )}
 
-        {/* ── Tablas MobilVendor ── */}
-        {mostrarTablas &&
+        {/* ── Canales + Tablas MobilVendor (solo cuando ambas fuentes están listas) ── */}
+        {!cargando && !cargandoEmpresas && botellones && (
+          <>
+            {/* Canal VIP */}
+            {botellones.VIP && (
+              <TablaVipBotellon
+                anio={anioSeleccionado}
+                mes={mesSeleccionado}
+                datos={botellones.VIP}
+                esMesActual={
+                  Number(anioSeleccionado) === new Date().getFullYear() &&
+                  Number(mesSeleccionado) === new Date().getMonth() + 1
+                }
+              />
+            )}
+
+            {/* Canal Domicilio */}
+            {botellones.DOMICILIO && (
+              <TablaDomicilioBotellon
+                anio={anioSeleccionado}
+                mes={mesSeleccionado}
+                datos={botellones.DOMICILIO}
+                esMesActual={
+                  Number(anioSeleccionado) === new Date().getFullYear() &&
+                  Number(mesSeleccionado) === new Date().getMonth() + 1
+                }
+              />
+            )}
+
+            {/* Canal Empresas */}
+            <TablaEmpresasBotellon
+              anio={anioSeleccionado}
+              mes={mesSeleccionado}
+              datos={empresasData}
+              esMesActual={
+                Number(anioSeleccionado) === new Date().getFullYear() &&
+                Number(mesSeleccionado) === new Date().getMonth() + 1
+              }
+            />
+
+            {/* Tablas MobilVendor */}
+            {mostrarTablas &&
           SECCIONES.map((s) => {
             const detalle = botellones?.[s.key]?.detalle ?? [];
             const detalleFiltrado = detalle.filter(
@@ -204,20 +394,37 @@ export default function DashboardBotellon() {
                 (r.proyeccion?.unidades || 0) > 0
             );
             if (detalleFiltrado.length === 0) return null;
+            const SECCIONES_METAS: Record<string, string> = {
+              TIENDAS_VIP: "TIENDAS_VIP",
+              TIENDAS:     "TIENDAS",
+              MAYORISTA:   "MAYORISTA",
+              RURAL:       "RURAL",
+            };
+            const esActiva = seccionActiva === s.key.toLowerCase();
             return (
-              <TablaVentasBase
+              <div
                 key={s.key}
-                titulo={s.titulo}
-                data={detalleFiltrado}
-                nombreHojaExcel={s.titulo}
-                nombreArchivoExcel={s.excel}
-                anio={anioSeleccionado}
-                mes={mesSeleccionado}
-              />
+                id={`seccion-${s.key.toLowerCase()}`}
+                className={`rounded-xl transition-all duration-500 ${
+                  esActiva
+                    ? "ring-2 ring-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.35)]"
+                    : ""
+                }`}
+              >
+                <TablaVentasBase
+                  titulo={s.titulo}
+                  data={detalleFiltrado}
+                  nombreHojaExcel={s.titulo}
+                  nombreArchivoExcel={s.excel}
+                  anio={anioSeleccionado}
+                  mes={mesSeleccionado}
+                  seccionMetas={SECCIONES_METAS[s.key]}
+                />
+              </div>
             );
           })}
-
-
+          </>
+        )}
 
         <ChatFlotante />
       </div>

@@ -264,7 +264,9 @@ export default function TablaClientesBotellon({
                 >
                   <td className="px-4 py-2">{c.codigo_cliente}</td>
                   <td className="px-4 py-2">{c.nombre_cliente}</td>
-                  <td className="px-4 py-2">{c.direccion_entrega}</td>
+                  <td className="px-4 py-2 max-w-[180px]">
+                    <span title={c.direccion_entrega} className="line-clamp-2">{c.direccion_entrega}</span>
+                  </td>
                   <td className="px-4 py-2">{c.ruta_asignada}</td>
                   <td className="px-4 py-2">{c.max_consumo}</td>
                   <td className="px-4 py-2">{c.total_botellones}</td>

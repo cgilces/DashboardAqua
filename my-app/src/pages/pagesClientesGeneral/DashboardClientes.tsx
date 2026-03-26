@@ -236,115 +236,188 @@ export default function DashboardClientesTabla() {
           </span>
         </div>
 
-        {/* TABLA */}
-        <div className="overflow-x-auto rounded-lg shadow-lg">
-          <table className="min-w-full text-sm">
-            <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-              <tr>
-                <th className="px-4 py-3 text-center">#</th>
-                <Th label="Cliente"       col="nombre"/>
-                <Th label="Estado"        col="estado_cliente" align="center"/>
-                <Th label="Vendedor"      col="vendedor"/>
-                <Th label="Unidades"      col="unidades"       align="right"/>
-                <Th label="Ventas"        col="dolares"        align="right"/>
-                <Th label="Facturas"      col="facturas"       align="right"/>
-                <Th label="Tipo Negocio"  col="tipo_negocio"/>
-                <Th label="Pago"          col="tipo_pago"/>
-                <Th label="Última Compra" col="ultima_compra"  align="right"/>
-              </tr>
-            </thead>
+        {/* ── MOBILE CARDS ──────────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {pageData.length === 0 ? (
+            <div className="text-center text-white/30 italic py-10">No se encontraron clientes</div>
+          ) : pageData.map((row, idx) => {
+            const globalIdx = (page - 1) * PAGE_SIZE + idx + 1;
+            return (
+              <div key={`card-${row.codigo}-${idx}`}
+                onClick={() => navigate(`/dashboard/cliente/${row.codigo}`)}
+                className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-2xl p-4 cursor-pointer active:scale-[0.98] transition-all shadow-lg">
+                {/* Header: nombre + estado */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] text-white/40 font-mono"># {globalIdx} · {row.codigo}</span>
+                    <p className="text-sm font-bold text-white leading-tight truncate">{row.nombre}</p>
+                    <p className="text-xs text-white/50 mt-0.5">{row.cedula || "-"}</p>
+                  </div>
+                  <span className="text-xl flex-shrink-0 mt-0.5">{estadoIcon(row.estado_cliente)}</span>
+                </div>
 
-            <tbody>
-              {pageData.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-white/30 text-sm italic">
-                    No se encontraron clientes
-                  </td>
-                </tr>
-              ) : pageData.map((row, idx) => {
-                const globalIdx = (page - 1) * PAGE_SIZE + idx + 1;
-                return (
-                  <tr key={`${row.codigo}-${idx}`}
-                    onClick={() => navigate(`/dashboard/cliente/${row.codigo}`)}
-                    className={`cursor-pointer transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57]`}>
-                    <td className="px-4 py-2 font-bold text-gray-300 text-center">{globalIdx}</td>
-                    <td className="px-4 py-2">{row.nombre}</td>
-                    <td className="px-4 py-2 text-center text-lg">{estadoIcon(row.estado_cliente)}</td>
-                    <td className="px-4 py-2">{row.vendedor}</td>
-                    <td className="px-4 py-2 text-right text-green-400 font-bold">{row.unidades.toLocaleString("es-EC")}</td>
-                    <td className="px-4 py-2 text-right text-blue-400 font-bold">{money(row.dolares)}</td>
-                    <td className="px-4 py-2 text-right">{row.facturas}</td>
-                    <td className="px-4 py-2">{row.tipo_negocio || "-"}</td>
-                    <td className="px-4 py-2 font-semibold">{row.tipo_pago || (row.tiene_credito ? "CREDITO" : "CONTADO")}</td>
-                    <td className="px-4 py-2 text-right">
-                      {row.ultima_compra ? new Date(row.ultima_compra).toLocaleDateString("es-EC") : "-"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
+                {/* Grid de métricas */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="bg-black/20 rounded-xl p-2 text-center">
+                    <p className="text-[9px] text-white/40 uppercase tracking-wide mb-0.5">Unidades</p>
+                    <p className="text-sm font-bold text-green-400">{row.unidades.toLocaleString("es-EC")}</p>
+                  </div>
+                  <div className="bg-black/20 rounded-xl p-2 text-center">
+                    <p className="text-[9px] text-white/40 uppercase tracking-wide mb-0.5">Ventas</p>
+                    <p className="text-sm font-bold text-blue-400">{money(row.dolares)}</p>
+                  </div>
+                  <div className="bg-black/20 rounded-xl p-2 text-center">
+                    <p className="text-[9px] text-white/40 uppercase tracking-wide mb-0.5">Facturas</p>
+                    <p className="text-sm font-bold text-white">{row.facturas}</p>
+                  </div>
+                </div>
 
-            <tfoot className="bg-[#014434] font-bold border-t border-[#046C5E]">
-              <tr>
-                <td colSpan={4} className="px-4 py-3 text-green-300">
-                  TOTAL — {filteredSorted.length.toLocaleString("es-EC")} clientes
-                  {inputQuery && ` (filtrado de ${clientes.length.toLocaleString("es-EC")})`}
-                </td>
-                <td className="px-4 py-3 text-right text-green-400">{totalUnidades.toLocaleString("es-EC")}</td>
-                <td className="px-4 py-3 text-right text-blue-400">{money(totalDolares)}</td>
-                <td className="px-4 py-3 text-right">{totalFacturas.toLocaleString("es-EC")}</td>
-                <td/><td/><td/>
-              </tr>
-            </tfoot>
-          </table>
+                {/* Info secundaria */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-white/40">Vendedor: </span>
+                    <span className="text-white/80">{row.vendedor || "-"}</span>
+                  </div>
+                  <div>
+                    <span className="text-white/40">Tipo: </span>
+                    <span className="text-white/80">{row.tipo_negocio || "-"}</span>
+                  </div>
+                  <div>
+                    <span className="text-white/40">Pago: </span>
+                    <span className="font-semibold text-yellow-300/80">{row.tipo_pago || (row.tiene_credito ? "CREDITO" : "CONTADO")}</span>
+                  </div>
+                  <div>
+                    <span className="text-white/40">Última compra: </span>
+                    <span className="text-white/80">{row.ultima_compra ? new Date(row.ultima_compra).toLocaleDateString("es-EC") : "-"}</span>
+                  </div>
+                </div>
+
+                {row.direccion && row.direccion !== "-" && (
+                  <p className="text-[10px] text-white/30 mt-2 truncate">📍 {row.direccion}</p>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Paginación mobile */}
+          {totalPages > 1 && (
+            <div className="border-t border-[#046C5E]/30 pt-4 pb-2">
+              <div className="flex justify-center items-center gap-2 flex-wrap">
+                <button onClick={() => setPage(1)} disabled={page === 1}
+                  className="px-3 py-2 bg-[#014434] rounded-lg disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">«</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                  className="px-3 py-2 bg-[#014434] rounded-lg disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">‹</button>
+                {pageNumbers.map((n, i) =>
+                  n === "..." ? <span key={`dm-${i}`} className="px-1 text-white/30 text-sm">…</span> : (
+                    <button key={n} onClick={() => setPage(n as number)}
+                      className={`px-3 py-2 rounded-lg text-sm transition ${page === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#025f4b]"}`}>
+                      {n}
+                    </button>
+                  )
+                )}
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                  className="px-3 py-2 bg-[#014434] rounded-lg disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">›</button>
+                <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+                  className="px-3 py-2 bg-[#014434] rounded-lg disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">»</button>
+              </div>
+              <p className="text-center text-xs text-white/30 mt-2">
+                Pág {page}/{totalPages} — {filteredSorted.length.toLocaleString("es-EC")} clientes
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* PAGINACIÓN */}
-        {totalPages > 1 && (
-          <div className="flex justify-center items-center gap-2 mt-6 pb-6 flex-wrap">
-            <button
-              onClick={() => setPage(1)} disabled={page === 1}
-              className="px-3 py-2 bg-[#014434] rounded disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">
-              «
-            </button>
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              className="px-3 py-2 bg-[#014434] rounded disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">
-              ‹ Anterior
-            </button>
+        {/* ── DESKTOP TABLE ─────────────────────────────────────────── */}
+        <div className="hidden md:block rounded-2xl overflow-hidden border border-[#046C5E]/40 shadow-xl bg-gradient-to-b from-[#013d30] to-[#012E24]">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+                <tr>
+                  <th className="px-4 py-3 text-center">#</th>
+                  <Th label="Cliente"       col="nombre"/>
+                  <Th label="Estado"        col="estado_cliente" align="center"/>
+                  <Th label="Vendedor"      col="vendedor"/>
+                  <Th label="Unidades"      col="unidades"       align="right"/>
+                  <Th label="Ventas"        col="dolares"        align="right"/>
+                  <Th label="Facturas"      col="facturas"       align="right"/>
+                  <Th label="Tipo Negocio"  col="tipo_negocio"/>
+                  <Th label="Pago"          col="tipo_pago"/>
+                  <Th label="Última Compra" col="ultima_compra"  align="right"/>
+                </tr>
+              </thead>
 
-            {pageNumbers.map((n, i) =>
-              n === "..." ? (
-                <span key={`dots-${i}`} className="px-2 text-white/30">…</span>
-              ) : (
-                <button key={n}
-                  onClick={() => setPage(n as number)}
-                  className={`px-3 py-2 rounded text-sm transition ${
-                    page === n
-                      ? "bg-emerald-600 text-white font-bold"
-                      : "bg-[#014434] hover:bg-[#025f4b]"
-                  }`}>
-                  {n}
-                </button>
-              )
-            )}
+              <tbody>
+                {pageData.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-10 text-center text-white/30 text-sm italic">
+                      No se encontraron clientes
+                    </td>
+                  </tr>
+                ) : pageData.map((row, idx) => {
+                  const globalIdx = (page - 1) * PAGE_SIZE + idx + 1;
+                  return (
+                    <tr key={`${row.codigo}-${idx}`}
+                      onClick={() => navigate(`/dashboard/cliente/${row.codigo}`)}
+                      className={`cursor-pointer transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57]`}>
+                      <td className="px-4 py-2 font-bold text-gray-300 text-center">{globalIdx}</td>
+                      <td className="px-4 py-2">{row.nombre}</td>
+                      <td className="px-4 py-2 text-center text-lg">{estadoIcon(row.estado_cliente)}</td>
+                      <td className="px-4 py-2">{row.vendedor}</td>
+                      <td className="px-4 py-2 text-right text-green-400 font-bold">{row.unidades.toLocaleString("es-EC")}</td>
+                      <td className="px-4 py-2 text-right text-blue-400 font-bold">{money(row.dolares)}</td>
+                      <td className="px-4 py-2 text-right">{row.facturas}</td>
+                      <td className="px-4 py-2">{row.tipo_negocio || "-"}</td>
+                      <td className="px-4 py-2 font-semibold">{row.tipo_pago || (row.tiene_credito ? "CREDITO" : "CONTADO")}</td>
+                      <td className="px-4 py-2 text-right">
+                        {row.ultima_compra ? new Date(row.ultima_compra).toLocaleDateString("es-EC") : "-"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
 
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-              className="px-3 py-2 bg-[#014434] rounded disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">
-              Siguiente ›
-            </button>
-            <button
-              onClick={() => setPage(totalPages)} disabled={page === totalPages}
-              className="px-3 py-2 bg-[#014434] rounded disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">
-              »
-            </button>
-
-            <span className="text-sm text-white/40 ml-2">
-              Pág {page} / {totalPages} — mostrando {((page-1)*PAGE_SIZE)+1}–{Math.min(page*PAGE_SIZE, filteredSorted.length)} de {filteredSorted.length.toLocaleString("es-EC")}
-            </span>
+              <tfoot className="bg-[#014434] font-bold border-t border-[#046C5E]">
+                <tr>
+                  <td colSpan={4} className="px-4 py-3 text-green-300">
+                    TOTAL — {filteredSorted.length.toLocaleString("es-EC")} clientes
+                    {inputQuery && ` (filtrado de ${clientes.length.toLocaleString("es-EC")})`}
+                  </td>
+                  <td className="px-4 py-3 text-right text-green-400">{totalUnidades.toLocaleString("es-EC")}</td>
+                  <td className="px-4 py-3 text-right text-blue-400">{money(totalDolares)}</td>
+                  <td className="px-4 py-3 text-right">{totalFacturas.toLocaleString("es-EC")}</td>
+                  <td/><td/><td/>
+                </tr>
+              </tfoot>
+            </table>
           </div>
-        )}
+
+          {/* Paginación desktop */}
+          {totalPages > 1 && (
+            <div className="border-t border-[#046C5E]/30 px-4 py-3">
+              <div className="flex justify-center items-center gap-2 flex-wrap">
+                <button onClick={() => setPage(1)} disabled={page === 1}
+                  className="px-3 py-2 bg-[#014434] rounded-lg disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">«</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                  className="px-3 py-2 bg-[#014434] rounded-lg disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">‹ Anterior</button>
+                {pageNumbers.map((n, i) =>
+                  n === "..." ? <span key={`dd-${i}`} className="px-2 text-white/30">…</span> : (
+                    <button key={n} onClick={() => setPage(n as number)}
+                      className={`px-3 py-2 rounded-lg text-sm transition ${page === n ? "bg-emerald-600 text-white font-bold" : "bg-[#014434] hover:bg-[#025f4b]"}`}>
+                      {n}
+                    </button>
+                  )
+                )}
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                  className="px-3 py-2 bg-[#014434] rounded-lg disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">Siguiente ›</button>
+                <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+                  className="px-3 py-2 bg-[#014434] rounded-lg disabled:opacity-30 hover:bg-[#025f4b] transition text-sm">»</button>
+                <span className="text-sm text-white/40 ml-2">
+                  Pág {page} / {totalPages} — mostrando {((page-1)*PAGE_SIZE)+1}–{Math.min(page*PAGE_SIZE, filteredSorted.length)} de {filteredSorted.length.toLocaleString("es-EC")}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

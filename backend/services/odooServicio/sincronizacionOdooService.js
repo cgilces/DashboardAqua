@@ -66,7 +66,7 @@ const fetchClientesBatch = async (uid, ids) => {
         "id", "name", "company_id", "vat", "email",
         "phone", "mobile", "street", "city", "country_id",
         "industry_id", "property_payment_term_id", "x_studio_ruta",
-        "mobilvendor_id",
+        "mobilvendor_id", "partner_latitude", "partner_longitude"
       ],
     },
   ]);
@@ -194,6 +194,8 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
       telefono_cliente            : cliente.phone || cliente.mobile || null,
       contacto_cliente            : cliente.name             || null,
       direccion_cliente           : cliente.street           || null,
+      latitud_cliente             : toNumber(cliente.partner_latitude)  || null,
+      longitud_cliente            : toNumber(cliente.partner_longitude) || null,
       ciudad_cliente              : cliente.city             || null,
       pais_cliente                : cliente.country_id?.[1]  || null,
       industria_cliente           : cliente.industry_id?.[1] || null,
