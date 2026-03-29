@@ -79,7 +79,7 @@ const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses }) =>
     
 
       {/* ── KPI Cards ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:max-w-2xl mx-auto w-full">
 
         {/* TOTAL DÓLARES */}
         <div className="bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg text-center">
