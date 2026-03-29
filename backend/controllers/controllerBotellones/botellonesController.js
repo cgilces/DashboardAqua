@@ -7,6 +7,7 @@ const {
 const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
 const MetaPreventa = require("../../models/metaPreventa");
+const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
 
 // Secciones que tienen metas configurables (solo autoventas)
 const SECCIONES_CON_METAS = ["TIENDAS_VIP", "TIENDAS", "MAYORISTA", "RURAL"];
@@ -88,6 +89,7 @@ const metaHistoricaBotellon = async () => {
         ON dd.documento_code = o.code
       WHERE
         o.status IN (2,4,5)
+        AND o.origen_sistema = 'MOBILVENDOR'
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND (
           o.seller_code ILIKE 'M%'
@@ -164,34 +166,9 @@ const metaHistoricaBotellon = async () => {
 };
 
 /* ======================================================
-   DÍAS HÁBILES (L–S)
+   DÍAS HÁBILES — importados de utils/diasFestivos.js
+   (lunes–sábado, excluyendo festivos nacionales)
 ====================================================== */
-const getDiasHabilesTranscurridos = (anio, mes) => {
-  const hoy = new Date();
-  const ultimoDia =
-    hoy.getFullYear() === anio && hoy.getMonth() + 1 === mes
-      ? hoy.getDate() - 1
-      : new Date(anio, mes, 0).getDate();
-
-  let habiles = 0;
-
-  for (let d = 1; d <= ultimoDia; d++) {
-    const fecha = new Date(anio, mes - 1, d);
-    if (fecha.getDay() !== 0) habiles++;
-  }
-  return habiles;
-};
-
-const getDiasLaborablesMes = (anio, mes) => {
-  const diasMes = new Date(anio, mes, 0).getDate();
-  let total = 0;
-
-  for (let d = 1; d <= diasMes; d++) {
-    const fecha = new Date(anio, mes - 1, d);
-    if (fecha.getDay() !== 0) total++;
-  }
-  return total;
-};
 
 const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}) => {
   const { inicio, fin } = getRangoFechas(anio, mes);
@@ -228,6 +205,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {})
       ON dd.documento_code = o.code
     WHERE
       o.status IN (2,4,5)
+      AND o.origen_sistema = 'MOBILVENDOR'
       AND dd.descripcion_categoria = 'BOTELLÓN'
       AND (
         o.seller_code ILIKE 'M%'
@@ -389,6 +367,62 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {})
 
 
 /* ======================================================
+   TENDENCIA 6 MESES BOTELLÓN (ordenes MV + facturas E/A/V/U1)
+====================================================== */
+const tendencia6MesesBotellon = async (anioNum, mesNum) => {
+  const NOMBRES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  let mesInicio = mesNum - 5, anioInicio = anioNum;
+  while (mesInicio <= 0) { mesInicio += 12; anioInicio--; }
+  const inicio6 = `${anioInicio}-${String(mesInicio).padStart(2,'0')}-01 00:00:00`;
+  let mesFin = mesNum + 1, anioFin = anioNum;
+  if (mesFin === 13) { mesFin = 1; anioFin++; }
+  const fin6 = `${anioFin}-${String(mesFin).padStart(2,'0')}-01 00:00:00`;
+
+  const rows = await sequelize.query(`
+    SELECT mes_periodo, SUM(dolares) AS dolares, SUM(unidades) AS unidades
+    FROM (
+      SELECT DATE_TRUNC('month', o.fecha_creacion) AS mes_periodo,
+             SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.status IN (2,4,5)
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND o.fecha_creacion >= :inicio6 AND o.fecha_creacion < :fin6
+      GROUP BY DATE_TRUNC('month', o.fecha_creacion)
+
+      UNION ALL
+
+      SELECT DATE_TRUNC('month', f.fecha_entrega) AS mes_periodo,
+             SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.status IN ('2','4','5')
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND f.fecha_entrega >= :inicio6 AND f.fecha_entrega < :fin6
+      GROUP BY DATE_TRUNC('month', f.fecha_entrega)
+    ) combinado
+    GROUP BY mes_periodo
+    ORDER BY mes_periodo
+  `, { replacements: { inicio6, fin6 }, type: Sequelize.QueryTypes.SELECT });
+
+  const hoy = new Date();
+  return rows.map(r => {
+    const d        = new Date(r.mes_periodo);
+    const mes      = d.getMonth() + 1;
+    const anio     = d.getFullYear();
+    const dolares  = Number(Number(r.dolares  || 0).toFixed(2));
+    const unidades = Number(r.unidades || 0);
+    const esCurrent = anio === hoy.getFullYear() && mes === hoy.getMonth() + 1;
+    const diasT = esCurrent ? getDiasHabilesTranscurridos(anio, mes) : 0;
+    const diasL = esCurrent ? getDiasLaborablesMes(anio, mes) : 0;
+    const proyeccion = esCurrent && diasT > 0
+      ? Number(((dolares / diasT) * diasL).toFixed(2))
+      : dolares;
+    return { label: NOMBRES[d.getMonth()], anio, mes, dolares, unidades, proyeccion };
+  });
+};
+
+/* ======================================================
    CONTROLLER EXPRESS
 ====================================================== */
 const obtenerDashboardBotellones = async (req, res) => {
@@ -428,10 +462,13 @@ const obtenerDashboardBotellones = async (req, res) => {
       );
     }
 
+    const tendencia6Meses = await tendencia6MesesBotellon(anioNum, mesNum);
+
     return res.json({
       anio: anioNum,
       mes: mesNum,
       botellones,
+      tendencia6Meses,
     });
   } catch (error) {
     console.error("❌ ERROR BOTELLONES:", error);

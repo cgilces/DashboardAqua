@@ -117,8 +117,8 @@ const DetalleHieloPage: React.FC = () => {
   if (cargando)
     return (
       <DashboardLayout>
-        <div className="flex flex-col justify-center items-center h-screen text-gray-300">
-          <div className="w-10 h-10 border-4 border-t-emerald-400 border-gray-700 rounded-full animate-spin mb-4"/>
+        <div className="flex flex-col justify-center items-center py-32 gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400"/>
           <p>Cargando datos de {ruta}…</p>
         </div>
       </DashboardLayout>

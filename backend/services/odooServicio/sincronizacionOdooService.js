@@ -85,6 +85,7 @@ const fetchDireccionesBatch = async (uid, parentIds) => {
         "street", "street2", "city", "zip",
         "phone", "mobile", "email",
       ],
+      limit: 0,
     },
   ]);
   const map = {};
@@ -111,6 +112,7 @@ const fetchLineasPedidosBatch = async (uid, ordenIds) => {
         "invoice_status", "is_downpayment", "is_delivery",
         "product_uom", "sequence", "state",
       ],
+      limit: 0,
     },
   ]);
   const map = {};
@@ -139,6 +141,7 @@ const fetchLineasFacturasBatch = async (uid, facturaIds) => {
         "tax_base_amount", "product_uom_id",
         "display_type", "parent_state", "is_downpayment", "date",
       ],
+      limit: 0,
     },
   ]);
   const map = {};

@@ -34,30 +34,7 @@ function getFechaFinMes(anio, mes) {
   return `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
 }
 
-const obtenerFechaSincronizacion = async () => {
-  const result = await sequelize.query(
-    `SELECT hasta_date FROM sincronizaciones_ventas ORDER BY fecha_sync DESC LIMIT 1`,
-    { type: Sequelize.QueryTypes.SELECT }
-  );
-  if (!result || result.length === 0) throw new Error("No hay fecha de sincronización");
-  return result[0].hasta_date;
-};
-
-//  DESPUÉS (Date maneja el desbordamiento automáticamente)
-const getFechaFinQuery = async (anio, mes) => {
-  const hoy = new Date();
-  const esMesActual = anio === hoy.getFullYear() && mes === hoy.getMonth() + 1;
-  if (esMesActual) {
-    const ultimaSync = await obtenerFechaSincronizacion();
-    const [yyyy, mm, dd] = String(ultimaSync).substring(0, 10).split("-").map(Number);
-    const diaSiguiente = new Date(yyyy, mm - 1, dd + 1);
-    const y = diaSiguiente.getFullYear();
-    const m = String(diaSiguiente.getMonth() + 1).padStart(2, "0");
-    const d = String(diaSiguiente.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d} 00:00:00`;
-  }
-  return getFechaFinMes(anio, mes);
-};
+const getFechaFinQuery = (anio, mes) => getFechaFinMes(anio, mes);
 
 
 // ================================================================

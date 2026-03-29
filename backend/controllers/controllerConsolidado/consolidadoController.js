@@ -219,6 +219,7 @@ function qTotalOrdenes(inicio, fin) {
     FROM ordenes o
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.status IN (2,4,5)
+      AND o.origen_sistema = 'MOBILVENDOR'
       AND o.fecha_creacion >= :inicio
       AND o.fecha_creacion <  :fin
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
@@ -243,22 +244,80 @@ function qTotalFacturas(inicio, fin) {
 }
 
 // ================================================================
+// TENDENCIA 6 MESES POR EMPRESA (5 empresas dinámicamente)
+// Facturas → company_id  |  Ordenes → descripcion_company (CASE)
+// ================================================================
+const COMPANIES = [
+  { id: 1, nombre: 'GRUPOAQUA S.A.',    color: '#34d399' },
+  { id: 2, nombre: 'AQUASUPPLY S.A.',   color: '#60a5fa' },
+  { id: 3, nombre: 'COTTSA S.A.',       color: '#fbbf24' },
+  { id: 4, nombre: 'IIBC S.A.',        color: '#a78bfa' },
+  { id: 5, nombre: 'DISTRINTER S.A.',   color: '#f87171' },
+];
+
+function qPorEmpresa(inicio6m, fin) {
+  return sequelize.query(`
+    SELECT
+      empresa_id,
+      DATE_TRUNC('month', fecha_creacion) AS mes_truncado,
+      SUM(dolares) AS total
+    FROM (
+      -- FACTURAS: clasificadas por company_id de Odoo
+      SELECT
+        COALESCE(f.company_id, 1)::INT AS empresa_id,
+        f.fecha_creacion,
+        dd.total AS dolares
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.status IN (2,4,5)
+        AND f.fecha_creacion >= :inicio6m
+        AND f.fecha_creacion <  :fin
+
+      UNION ALL
+
+      -- ORDENES MobilVendor: clasificadas por descripcion_company
+      SELECT
+        CASE
+          WHEN o.descripcion_company ILIKE '%AQUASUPPLY%'                                     THEN 2
+          WHEN o.descripcion_company ILIKE '%COTT%'
+            OR o.descripcion_company ILIKE '%TRADICION%TROPICAL%'                             THEN 3
+          WHEN o.descripcion_company ILIKE '%IIBC%'                                           THEN 4
+          WHEN o.descripcion_company ILIKE '%DISTRINTER%'
+            OR o.descripcion_company ILIKE '%DISTRIBUIDORA%ALIMENTOS%'                        THEN 5
+          ELSE 1
+        END::INT AS empresa_id,
+        o.fecha_creacion,
+        dd.total AS dolares
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.status IN (2,4,5)
+        AND o.origen_sistema = 'MOBILVENDOR'
+        AND o.fecha_creacion >= :inicio6m
+        AND o.fecha_creacion <  :fin
+    ) raw
+    GROUP BY empresa_id, DATE_TRUNC('month', fecha_creacion)
+    ORDER BY empresa_id, DATE_TRUNC('month', fecha_creacion)
+  `, { replacements: { inicio6m, fin }, type: Sequelize.QueryTypes.SELECT });
+}
+
+// ================================================================
 // TENDENCIA 6 MESES — total empresa (todas las ordenes + facturas)
 // ================================================================
 function qTendencia(inicio6m, fin6m) {
   return sequelize.query(`
     SELECT mes_truncado, SUM(dolares) AS total
     FROM (
-      -- Todas las ordenes (MobilVendor + Odoo)
+      -- Solo ordenes MobilVendor (Odoo vende mediante facturas, no ordenes)
       SELECT DATE_TRUNC('month', o.fecha_creacion) AS mes_truncado, SUM(dd.total) AS dolares
       FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
       WHERE o.status IN (2,4,5)
+        AND o.origen_sistema = 'MOBILVENDOR'
         AND o.fecha_creacion >= :inicio6m AND o.fecha_creacion < :fin6m
       GROUP BY DATE_TRUNC('month', o.fecha_creacion)
 
       UNION ALL
 
-      -- Todas las facturas (MobilVendor)
+      -- Todas las facturas Odoo (fuente autoritativa para ventas Odoo)
       SELECT DATE_TRUNC('month', f.fecha_creacion) AS mes_truncado, SUM(dd.total) AS dolares
       FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.status IN (2,4,5)
@@ -280,15 +339,16 @@ function qTopProductos(inicio, fin) {
   return sequelize.query(`
     SELECT descripcion AS nombre, SUM(cantidad) AS unidades, SUM(dolares) AS dolares
     FROM (
-      -- Todas las ordenes
+      -- Solo ordenes MobilVendor
       SELECT dd.descripcion, dd.cantidad, dd.total AS dolares
       FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
       WHERE o.status IN (2,4,5)
+        AND o.origen_sistema = 'MOBILVENDOR'
         AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
 
       UNION ALL
 
-      -- Todas las facturas
+      -- Facturas Odoo
       SELECT dd.descripcion, dd.cantidad, dd.total AS dolares
       FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.status IN (2,4,5)
@@ -311,18 +371,19 @@ function qTopClientes(inicio, fin) {
   return sequelize.query(`
     SELECT customer_code AS codigo, MAX(nombre) AS nombre, SUM(dolares) AS dolares
     FROM (
-      -- Todas las ordenes (MobilVendor + Odoo)
+      -- Solo ordenes MobilVendor
       SELECT o.customer_code, COALESCE(c.nombre_cliente, o.customer_code) AS nombre, SUM(dd.total) AS dolares
       FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
       LEFT JOIN clientes c ON c.codigo_cliente = o.customer_code
       WHERE o.status IN (2,4,5)
+        AND o.origen_sistema = 'MOBILVENDOR'
         AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
       GROUP BY o.customer_code, c.nombre_cliente
 
       UNION ALL
 
-      -- Todas las facturas (MobilVendor)
+      -- Facturas Odoo
       SELECT f.customer_code, COALESCE(c.nombre_cliente, f.customer_code) AS nombre, SUM(dd.total) AS dolares
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
@@ -408,6 +469,7 @@ const obtenerDashboardConsolidado = async (req, res) => {
       tendenciaRaw,
       topProdRaw,
       topClientesRaw,
+      porEmpresaRaw,
     ] = await Promise.all([
       qPreventa(inicio, fin),          qPreventa(antInicio, antFin),
       qBotellonesOrdenes(inicio, fin), qBotellonesOrdenes(antInicio, antFin),
@@ -420,6 +482,7 @@ const obtenerDashboardConsolidado = async (req, res) => {
       qTendencia(inicio6m, fin6m),
       qTopProductos(inicio, fin),
       qTopClientes(inicio, fin),
+      qPorEmpresa(inicio6m, fin),
     ]);
 
     // ── Unir botellones (ordenes + facturas) ──────────────────
@@ -442,26 +505,19 @@ const obtenerDashboardConsolidado = async (req, res) => {
       buildCanal('DESC. ODOO',    odooAct,  odooAnt,  diasT, diasL, esMesActual),
     ];
 
-    // ── KPIs totales REALES (todas las ordenes + todas las facturas) ──
-    const totalVentasOrd  = Number(totOrdAct?.dolares  || 0);
-    const totalVentasFact = Number(totFactAct?.dolares || 0);
-    const totalVentas     = totalVentasOrd + totalVentasFact;
-
-    const totalUnidades   = Math.round(
-      Number(totOrdAct?.unidades  || 0) + Number(totFactAct?.unidades || 0)
-    );
-    const totalDocs       =
-      Number(totOrdAct?.docs      || 0) + Number(totFactAct?.docs     || 0);
-    const totalClientes   =
-      Number(totOrdAct?.clientes  || 0) + Number(totFactAct?.clientes || 0);
-
-    const totalMesAntOrd  = Number(totOrdAnt?.dolares  || 0);
-    const totalMesAntFact = Number(totFactAnt?.dolares || 0);
-    const totalMesAnterior = totalMesAntOrd + totalMesAntFact;
-
-    // Proyección total: basada en el total real de ventas (todas las ordenes + facturas)
-    const totalProyeccion = esMesActual && diasT > 0
-      ? (totalVentas / diasT) * diasL
+    // ── KPIs totales — qTotalOrdenes(MOBILVENDOR) + qTotalFacturas ──────────
+    // qTotalOrdenes ya filtra AND o.origen_sistema = 'MOBILVENDOR', por lo que
+    // no incluye órdenes Odoo. qTotalFacturas cubre todas las facturas Odoo.
+    // Esto evita el doble conteo y coincide con la suma de las tarjetas por empresa.
+    const totalVentasOrd   = Number(totOrdAct?.dolares  || 0);
+    const totalVentasFact  = Number(totFactAct?.dolares || 0);
+    const totalVentas      = Number((totalVentasOrd + totalVentasFact).toFixed(2));
+    const totalUnidades    = Math.round(Number(totOrdAct?.unidades || 0) + Number(totFactAct?.unidades || 0));
+    const totalDocs        = Number(totOrdAct?.docs     || 0) + Number(totFactAct?.docs     || 0);
+    const totalClientes    = Number(totOrdAct?.clientes || 0) + Number(totFactAct?.clientes || 0);
+    const totalMesAnterior = Number((Number(totOrdAnt?.dolares || 0) + Number(totFactAnt?.dolares || 0)).toFixed(2));
+    const totalProyeccion  = esMesActual && diasT > 0
+      ? Number(((totalVentas / diasT) * diasL).toFixed(2))
       : totalVentas;
 
     const varAbs  = totalVentas - totalMesAnterior;
@@ -469,7 +525,11 @@ const obtenerDashboardConsolidado = async (req, res) => {
 
     // ── Tendencia: mapear a estructura de 6 meses ─────────────
     const tendenciaMap = new Map(
-      tendenciaRaw.map(r => [String(r.mes_truncado).substring(0,7), Number(r.total || 0)])
+      tendenciaRaw.map(r => {
+        const dt = new Date(r.mes_truncado);
+        const k = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+        return [k, Number(r.total || 0)];
+      })
     );
     const tendencia = meses6.map(m => ({
       label: m.label,
@@ -489,6 +549,44 @@ const obtenerDashboardConsolidado = async (req, res) => {
       nombre:  String(c.nombre || 'SIN NOMBRE').substring(0, 35),
       dolares: Number(Number(c.dolares || 0).toFixed(2)),
     }));
+
+    // ── Por empresa — 5 empresas dinámicas ────────────────────
+    // Agrupar porEmpresaRaw por empresa_id en un Map de Map<mesKey, total>
+    console.log('porEmpresaRaw count:', porEmpresaRaw.length, 'sample:', JSON.stringify(porEmpresaRaw.slice(0, 3)));
+    const empresaTendMaps = new Map();
+    for (const row of porEmpresaRaw) {
+      const empId = Number(row.empresa_id);
+      // mes_truncado puede venir como Date (pg) o como string ISO
+      const dt = new Date(row.mes_truncado);
+      const mesKey = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+      if (!empresaTendMaps.has(empId)) empresaTendMaps.set(empId, new Map());
+      empresaTendMaps.get(empId).set(mesKey, Number(row.total || 0));
+    }
+
+    // Claves de mes actual y anterior
+    const mesActKey  = `${anioNum}-${String(mesNum).padStart(2, '0')}`;
+    const { anio: aAnt, mes: mAnt } = getMesPrevio(anioNum, mesNum);
+    const mesAntKey  = `${aAnt}-${String(mAnt).padStart(2, '0')}`;
+
+    const porEmpresa = COMPANIES.map(emp => {
+      const tendMap  = empresaTendMaps.get(emp.id) || new Map();
+      const actual   = tendMap.get(mesActKey)  || 0;
+      const anterior = tendMap.get(mesAntKey)  || 0;
+      const varAbs   = actual - anterior;
+      const varPorc  = anterior > 0 ? (varAbs / anterior) * 100 : (actual > 0 ? 100 : 0);
+      return {
+        empresa:       emp.nombre,
+        color:         emp.color,
+        actual:        Number(actual.toFixed(2)),
+        anterior:      Number(anterior.toFixed(2)),
+        variacionAbs:  Number(varAbs.toFixed(2)),
+        variacionPorc: Number(varPorc.toFixed(2)),
+        tendencia: meses6.map(m => ({
+          label: m.label,
+          total: Number((tendMap.get(`${m.anio}-${String(m.mes).padStart(2,'0')}`) || 0).toFixed(2)),
+        })),
+      };
+    });
 
     return res.json({
       periodo: {
@@ -510,6 +608,7 @@ const obtenerDashboardConsolidado = async (req, res) => {
       tendencia,
       topProductos,
       topClientes,
+      porEmpresa,
     });
 
   } catch (error) {

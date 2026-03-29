@@ -18,38 +18,7 @@ function getFechaFinMes(anio, mes) {
   return `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
 }
 
-// ================================================================
-// FECHA DE ÚLTIMA SINCRONIZACIÓN
-// ================================================================
-const obtenerFechaSincronizacion = async () => {
-  const result = await sequelize.query(
-    'SELECT hasta_date FROM sincronizaciones_ventas ORDER BY fecha_sync DESC LIMIT 1',
-    { type: Sequelize.QueryTypes.SELECT }
-  );
-  if (!result || result.length === 0) throw new Error("No hay fecha de sincronización");
-  return result[0].hasta_date;
-};
-
-
-
-const getFechaFinQuery = async (anioNum, mesNum) => {
-  const hoy = new Date();
-  const esMesActual = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
-
-  if (esMesActual) {
-    const ultimaSync = await obtenerFechaSincronizacion();
-    const [yyyy, mm, dd] = String(ultimaSync).substring(0, 10).split('-').map(Number);
-
-    // ✅ Date maneja desbordamiento: día 31+1 → primer día del mes siguiente
-    const diaSiguiente = new Date(yyyy, mm - 1, dd + 1);
-    const y = diaSiguiente.getFullYear();
-    const m = String(diaSiguiente.getMonth() + 1).padStart(2, '0');
-    const d = String(diaSiguiente.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d} 00:00:00`;
-  }
-
-  return getFechaFinMes(anioNum, mesNum);
-};
+const getFechaFinQuery = (anioNum, mesNum) => getFechaFinMes(anioNum, mesNum);
 
 // ================================================================
 // QUERY PRINCIPAL — rutas COTSA
@@ -406,4 +375,62 @@ const obtenerClientesCOTSA = async (req, res) => {
   }
 };
 
-module.exports = { obtenerDashboardCOTSA, obtenerDetalleRutaCOTSA, obtenerClientesCOTSA };
+// ================================================================
+// ENDPOINT DIAGNÓSTICO — comparar header total vs detalle total
+// GET /api/cotsa/diagnostico?anio=YYYY&mes=MM
+// ================================================================
+const diagnosticoCOTSA = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    const inicio = getFechaInicioMes(anioNum, mesNum);
+    const fin    = getFechaFinMes(anioNum, mesNum);
+
+    const [porStatus, headerVsDetalle, porCompany] = await Promise.all([
+      // ① Cuántas facturas hay por cada status (company_id=3)
+      sequelize.query(`
+        SELECT status, COUNT(*) AS cant, SUM(total) AS total_header
+        FROM facturas
+        WHERE company_id = ${COTSA_COMPANY_ID}
+          AND fecha_creacion >= '${inicio}'
+          AND fecha_creacion  < '${fin}'
+        GROUP BY status
+        ORDER BY status
+      `, { type: Sequelize.QueryTypes.SELECT }),
+
+      // ② Header total vs Detalle total para status IN (2,4,5)
+      sequelize.query(`
+        SELECT
+          COUNT(DISTINCT f.code)          AS facturas_con_detalle,
+          SUM(f.total)                    AS total_header,
+          SUM(dd.total)                   AS total_detalle,
+          SUM(dd.cantidad)                AS unidades_detalle
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.company_id = ${COTSA_COMPANY_ID}
+          AND f.status IN (2, 4, 5)
+          AND f.fecha_creacion >= '${inicio}'
+          AND f.fecha_creacion  < '${fin}'
+      `, { type: Sequelize.QueryTypes.SELECT }),
+
+      // ③ Distribución de TODAS las facturas del mes por company_id (sin filtro de empresa)
+      sequelize.query(`
+        SELECT company_id, status, COUNT(*) AS cant, SUM(total) AS total_header
+        FROM facturas
+        WHERE fecha_creacion >= '${inicio}'
+          AND fecha_creacion  < '${fin}'
+          AND status IN (2, 4, 5)
+        GROUP BY company_id, status
+        ORDER BY company_id, status
+      `, { type: Sequelize.QueryTypes.SELECT }),
+    ]);
+
+    return res.json({ periodo: `${anioNum}-${String(mesNum).padStart(2,'0')}`, porStatus, headerVsDetalle, porCompany });
+  } catch (error) {
+    console.error('❌ ERROR DIAGNÓSTICO COTSA:', error);
+    return res.status(500).json({ message: 'Error diagnóstico' });
+  }
+};
+
+module.exports = { obtenerDashboardCOTSA, obtenerDetalleRutaCOTSA, obtenerClientesCOTSA, diagnosticoCOTSA };

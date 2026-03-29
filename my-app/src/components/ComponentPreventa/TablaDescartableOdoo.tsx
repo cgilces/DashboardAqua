@@ -54,6 +54,7 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
           onTotalesLoaded({
             canal: "EMPRESA DESCARTABLE ODOO",
             monto: data.periodo.esMesActual ? data.totales.proyeccion : data.totales.dolares,
+            montoReal: data.totales.dolares,
             mesAnterior: data.totales.mes_anterior.dolares,
             variacionAbs: data.totales.variacion.abs,
             variacionPorc: data.totales.variacion.porcentaje ?? 0,

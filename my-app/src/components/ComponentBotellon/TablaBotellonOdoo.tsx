@@ -1,7 +1,7 @@
 // components/ComponentBotellon/TablaBotellonOdoo.tsx
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { BsDownload } from "react-icons/bs";
+import { BsDownload, BsDroplet } from "react-icons/bs";
 import { useAuth } from "../../components/auth/AuthContext";
 import { API_BASE_URL } from "../../config";
 
@@ -233,7 +233,7 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
         <div>
           <h2 className="text-lg md:text-xl font-bold text-blue-300">
-            💧 BOTELLÓN — RUTAS EMPRESA (ODOO)
+            <BsDroplet className="inline mr-1 text-blue-300" size={16} /> BOTELLÓN — RUTAS EMPRESA (ODOO)
           </h2>
           {/* <p className="text-xs text-gray-400 mt-1">
             {esMesActual

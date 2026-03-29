@@ -12,6 +12,13 @@ const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
 
+const RUTAS_ODOO_HIELO = [
+  "Carmen Garcia", "Estefania Flores", "Tamara Villacres",
+  "RUTA E1","RUTA E2","RUTA E3","RUTA E4","RUTA E5",
+  "RUTA E6","RUTA E7","RUTA E8","RUTA E9","RUTA E10",
+  "RUTA EA1", "RUTA U2", "Distribucion OK/E", "Domicilio",
+];
+
 const calcularKPIsMes = async (anioNum, mesNum) => {
 
   // ===============================
@@ -306,6 +313,72 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
 
 
 
+// ================================================================
+// TENDENCIA 6 MESES (MV facturas H* + Odoo ordenes cat 28)
+// ================================================================
+const tendencia6MesesHielo = async (anioNum, mesNum) => {
+  const NOMBRES_MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  // Calcular rango: 6 meses hacia atrás hasta el mes actual
+  let mesInicio = mesNum - 5, anioInicio = anioNum;
+  while (mesInicio <= 0) { mesInicio += 12; anioInicio--; }
+
+  const inicio6 = `${anioInicio}-${String(mesInicio).padStart(2,'0')}-01 00:00:00`;
+  let mesFin = mesNum + 1, anioFin = anioNum;
+  if (mesFin === 13) { mesFin = 1; anioFin++; }
+  const fin6 = `${anioFin}-${String(mesFin).padStart(2,'0')}-01 00:00:00`;
+
+  const placeholders = RUTAS_ODOO_HIELO.map((_, i) => `:ruta${i}`).join(', ');
+  const bindings = {};
+  RUTAS_ODOO_HIELO.forEach((r, i) => { bindings[`ruta${i}`] = r; });
+  bindings.inicio6 = inicio6;
+  bindings.fin6 = fin6;
+
+  const rows = await sequelize.query(`
+    SELECT mes_periodo, SUM(dolares) AS dolares, SUM(unidades) AS unidades
+    FROM (
+      SELECT DATE_TRUNC('month', f.fecha_entrega) AS mes_periodo,
+             SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10','h3'))
+        AND f.status IN ('2','4','5')
+        AND f.fecha_entrega >= :inicio6 AND f.fecha_entrega < :fin6
+      GROUP BY DATE_TRUNC('month', f.fecha_entrega)
+
+      UNION ALL
+
+      SELECT DATE_TRUNC('month', o.fecha_creacion) AS mes_periodo,
+             SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.type = 2 AND o.status IN (2,4,5)
+        AND dd.codigo_categoria = '28'
+        AND o.seller_nombre IN (${placeholders})
+        AND o.fecha_creacion >= :inicio6 AND o.fecha_creacion < :fin6
+      GROUP BY DATE_TRUNC('month', o.fecha_creacion)
+    ) combinado
+    GROUP BY mes_periodo
+    ORDER BY mes_periodo
+  `, { replacements: bindings, type: Sequelize.QueryTypes.SELECT });
+
+  const hoy = new Date();
+  return rows.map(r => {
+    const d        = new Date(r.mes_periodo);
+    const mes      = d.getMonth() + 1;
+    const anio     = d.getFullYear();
+    const dolares  = Number(Number(r.dolares  || 0).toFixed(2));
+    const unidades = Number(r.unidades || 0);
+    const esCurrent = anio === hoy.getFullYear() && mes === hoy.getMonth() + 1;
+    const diasT = esCurrent ? getDiasHabilesTranscurridos(anio, mes) : 0;
+    const diasL = esCurrent ? getDiasLaborablesMes(anio, mes) : 0;
+    const proyeccion = esCurrent && diasT > 0
+      ? Number(((dolares / diasT) * diasL).toFixed(2))
+      : dolares;
+    return { label: NOMBRES_MESES[d.getMonth()], anio, mes, dolares, unidades, proyeccion };
+  });
+};
+
 const dasboardventasHielo = async (req, res) => {
     try {
         const { anio, mes } = req.query;
@@ -322,19 +395,14 @@ const dasboardventasHielo = async (req, res) => {
         console.log("📅 Fechas:", anioNum, mesNum);
 
         // ============================
-        // KPIs GENERALES
+        // KPIs + TENDENCIA en paralelo
         // ============================
-        const resumenActual = await calcularKPIsMes(anioNum, mesNum);
-
-        // ============================
-        // VENTAS POR USUARIO
-        // ============================
-        const resumenVentasUsuario = await usuariosVentasHielo(anioNum, mesNum);
-
-        // ============================
-        // META HISTÓRICA
-        // ============================
-        const metasHistoricas = await metaHistoricaHielo();
+        const [resumenActual, resumenVentasUsuario, metasHistoricas, tendencia6Meses] = await Promise.all([
+          calcularKPIsMes(anioNum, mesNum),
+          usuariosVentasHielo(anioNum, mesNum),
+          metaHistoricaHielo(),
+          tendencia6MesesHielo(anioNum, mesNum),
+        ]);
 
         // ============================
         // UNIÓN FINAL
@@ -358,6 +426,7 @@ const dasboardventasHielo = async (req, res) => {
                 resumenActual,
             },
             resumenUsuariosVentasHielo,
+            tendencia6Meses,
         });
 
     } catch (error) {

@@ -11,6 +11,16 @@ import BotonActualizarSincronizacion from "../../components/elements/BotonActual
 import { API_BASE_URL } from "../../config";
 
 // ── Types ──────────────────────────────────────────────────────
+interface Empresa {
+  empresa: string;
+  color: string;
+  actual: number;
+  anterior: number;
+  variacionAbs: number;
+  variacionPorc: number;
+  tendencia: { label: string; total: number }[];
+}
+
 interface Canal {
   canal: string;
   dolares: number;
@@ -40,6 +50,7 @@ interface DatosConsolidado {
   tendencia: { label: string; total: number }[];
   topProductos: { nombre: string; unidades: number; dolares: number }[];
   topClientes:  { codigo: string; nombre: string; dolares: number }[];
+  porEmpresa:   Empresa[];
 }
 
 // ── Constants ──────────────────────────────────────────────────
@@ -145,7 +156,7 @@ export default function Dashboardconsolidado() {
       .finally(() => setCargando(false));
   }, [mesSeleccionado, anioSeleccionado]);
 
-  const { kpis, canales = [], tendencia = [], topProductos = [], topClientes = [], periodo } = datos || {};
+  const { kpis, canales = [], tendencia = [], topProductos = [], topClientes = [], periodo, porEmpresa = [] } = datos || {};
 
   // Pie data
   const pieData = canales.filter(c => c.dolares > 0).map(c => ({
@@ -268,6 +279,98 @@ export default function Dashboardconsolidado() {
                 color="text-purple-300"
               />
             </div>
+
+            {/* ══════════════════════════════════════════════════
+                CARDS POR EMPRESA
+            ══════════════════════════════════════════════════ */}
+            {porEmpresa.length > 0 && (() => {
+              const cottsa   = porEmpresa.find(e => e.empresa.toUpperCase().includes('COTT'));
+              const resto    = [...porEmpresa.filter(e => !e.empresa.toUpperCase().includes('COTT'))].sort((a, b) => b.actual - a.actual);
+              const fila1    = resto.slice(0, 2);
+              const fila3    = resto.slice(2);
+
+              const EmpCard = ({ emp }: { emp: Empresa }) => {
+                const pos      = emp.variacionAbs >= 0;
+                const sinDatos = emp.actual === 0 && emp.anterior === 0;
+                return (
+                  <div
+                    className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl p-4 shadow-lg flex flex-col gap-3"
+                    style={{ borderTopColor: emp.color, borderTopWidth: 2 }}
+                  >
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest mb-0.5" style={{ color: emp.color }}>
+                        {emp.empresa}
+                      </p>
+                      <p className="text-xl md:text-2xl font-extrabold text-white leading-tight">
+                        {sinDatos ? <span className="text-gray-600 text-base">Sin datos</span> : `$${fmt(emp.actual)}`}
+                      </p>
+                    </div>
+                    {!sinDatos && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Mes anterior</p>
+                          <p className="text-xs font-semibold text-gray-300">${fmt(emp.anterior)}</p>
+                        </div>
+                        <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg border ${
+                          pos ? "text-green-400 border-green-400/30 bg-green-400/10"
+                             : "text-red-400 border-red-400/30 bg-red-400/10"
+                        }`}>
+                          {pos ? "▲" : "▼"} {emp.variacionPorc >= 0 ? "+" : ""}{emp.variacionPorc.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                    {!sinDatos && (
+                      <div>
+                        <p className="text-[9px] text-gray-600 uppercase tracking-wide mb-1">6 meses</p>
+                        <ResponsiveContainer width="100%" height={64}>
+                          <BarChart data={emp.tendencia} barSize={10} margin={{ top: 2, right: 2, left: 2, bottom: 0 }}>
+                            <XAxis dataKey="label" tick={{ fill: "#4b5563", fontSize: 8 }} axisLine={false} tickLine={false} />
+                            <Tooltip
+                              formatter={(v: any) => [`$${fmt(v)}`, ""]}
+                              contentStyle={{ background: "#012E24", border: `1px solid ${emp.color}50`, borderRadius: 8, fontSize: 10 }}
+                              cursor={{ fill: "#046C5E15" }}
+                            />
+                            <Bar dataKey="total" fill={emp.color} radius={[2, 2, 0, 0]} opacity={0.8} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
+                );
+              };
+
+              return (
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Ventas por Empresa</p>
+                      <p className="text-xs text-gray-500">Grupo AQUA — todas las razones sociales</p>
+                    </div>
+                  </div>
+
+                  {/* Fila 1 — top 2 por ventas */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    {fila1.map(emp => <EmpCard key={emp.empresa} emp={emp} />)}
+                  </div>
+
+                  {/* Fila 2 — COTTSA centrado */}
+                  {cottsa && (
+                    <div className="flex justify-center mb-4">
+                      <div className="w-full sm:w-1/2">
+                        <EmpCard emp={cottsa} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fila 3 — restantes */}
+                  {fila3.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {fila3.map(emp => <EmpCard key={emp.empresa} emp={emp} />)}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ══════════════════════════════════════════════════
                 GRÁFICO BARRAS COMPARATIVO + DONA

@@ -24,6 +24,10 @@ import ConfigurarMetasBotellon from "./pages/pagesBotellon/ConfigurarMetasBotell
 
 import DashboardHielo from "./pages/pagesHielo/DashboardHielo";
 import DetalleHieloPage from "./pages/pagesHielo/DetalleHieloPage";
+import DetalleHieloOdooPage from "./pages/pagesHielo/DetalleHieloOdooPage";
+
+import DashboardCafe from "./pages/pagesCafe/DashboardCafe";
+import DetalleClientesCafePage from "./pages/pagesCafe/DetalleClientesCafePage";
 
 import DashboardRutasVisitas from "./pages/pagesRutasVisitas/DashboardRutasVisitas";
 
@@ -124,6 +128,20 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/detalle-hielo/:ruta/:anio/:mes"
               element={<DetalleHieloPage />}
+            />
+            <Route
+              path="/hielo-odoo/clientes/:anio/:mes"
+              element={<DetalleHieloOdooPage />}
+            />
+
+            {/* CAFÉ — IIBC S.A. */}
+            <Route
+              path="/dashboard/cafe"
+              element={<DashboardCafe />}
+            />
+            <Route
+              path="/cafe/clientes/:anio/:mes"
+              element={<DetalleClientesCafePage />}
             />
 
             {/* VISITAS */}

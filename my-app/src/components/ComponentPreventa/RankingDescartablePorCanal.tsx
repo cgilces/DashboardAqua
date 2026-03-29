@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../components/auth/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -42,6 +42,11 @@ const RankingDescartablePorCanal = ({
   const [sortedData, setSortedData] = useState<VentaDescartable[]>(
     Object.values(data)
   );
+
+  useEffect(() => {
+    setSortedData(Object.values(data));
+  }, [data]);
+
   const [sortConfig, setSortConfig] = useState({
     key: "ranking",
     direction: "asc",

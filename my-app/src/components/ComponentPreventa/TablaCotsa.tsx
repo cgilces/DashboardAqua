@@ -66,6 +66,7 @@ export default function TablaCotsa({ anio, mes, onTotalesLoaded }: Props) {
           onTotalesLoaded({
             canal: "COTSA - AGUA OK",
             monto: esMes ? data.totales.proyeccion : data.totales.dolares,
+            montoReal: data.totales.dolares,
             mesAnterior: ant,
             variacionAbs: varAbs,
             variacionPorc: ant > 0 ? (varAbs / ant) * 100 : 0,

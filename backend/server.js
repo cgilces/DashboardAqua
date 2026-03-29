@@ -96,6 +96,11 @@ app.use("/api/cotsa", require("./routes/rutasCotsa/cotsaRoutes"));
 app.use("/api/consolidado", require("./routes/rutasConsolidado/consolidadoRoutes"));
 
 // ======================================================
+// ☕ CAFÉ — IIBC S.A.
+// ======================================================
+app.use("/api/cafe", require("./routes/rutasCafe/cafeRoutes"));
+
+// ======================================================
 // ❤️ HEALTHCHECK
 // ======================================================
 app.get("/health", (_req, res) => {

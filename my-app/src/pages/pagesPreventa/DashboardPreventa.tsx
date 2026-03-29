@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import GraficoTendencia from "../../components/common/GraficoTendencia";
 import logo from "../../assets/logo.png";
 import { useAuth } from "../../components/auth/AuthContext";
 import RankingPreventas from "../../components/ComponentPreventa/RankingPreventas";
@@ -37,6 +38,7 @@ export default function DashboardPreventa() {
   const [topClientesState, setTopClientesState] = useState<any[]>([]);
   const [cotsaCard,  setCotsaCard]  = useState<any>(null);
   const [odooCard,   setOdooCard]   = useState<any>(null);
+  const [tendencia6Meses, setTendencia6Meses] = useState<any[]>([]);
 
   useEffect(() => {
     if (mesSeleccionado && anioSeleccionado) {
@@ -58,6 +60,7 @@ export default function DashboardPreventa() {
       const data = await res.json();
       setDatos(data);
       setTopClientesState(data.topClientes || []);
+      setTendencia6Meses(data.tendencia6Meses ?? []);
     } catch (error) {
       console.error("Error obteniendo los datos", error);
     } finally {
@@ -69,34 +72,47 @@ export default function DashboardPreventa() {
   const resumenVentasPorCanal = datos?.resumenVentasPorCanal || {};
 
   const totalDescartable = useMemo(() => {
-    // Monto/mesAnterior: viene de resumenVentasPorCanal (incluye TIENDAS + RURAL + D/V/M)
     const canales = Object.values(datos?.resumenVentasPorCanal || {}) as any[];
-    // Unidades anteriores: solo disponibles en ventasDescartablePorCanal (D/V/M)
-    const vendedores = Object.values(datos?.ventasDescartablePorCanal || {}) as any[];
-    if (canales.length === 0 && vendedores.length === 0) return null;
+    if (canales.length === 0 && !cotsaCard && !odooCard) return null;
 
-    let totalUnidades = 0, totalMonto = 0, totalMesAnterior = 0;
+    let totalUnidades = 0, totalMonto = 0, totalMontoReal = 0, totalUnidadesAnterior = 0;
+
     canales.forEach((c: any) => {
-      totalUnidades    += Number(c.unidades   || 0);
-      totalMonto       += Number(c.monto      || 0);
-      totalMesAnterior += Number(c.mesAnterior || 0);
+      totalUnidades         += Number(c.unidades         || 0);
+      totalMonto            += Number(c.monto            || 0);
+      totalMontoReal        += Number(c.montoReal        || 0);
+      totalUnidadesAnterior += Number(c.unidadesAnterior || 0);
     });
+    if (cotsaCard) {
+      totalUnidades         += Number(cotsaCard.unidades         || 0);
+      totalMonto            += Number(cotsaCard.monto            || 0);
+      totalMontoReal        += Number(cotsaCard.montoReal ?? cotsaCard.monto ?? 0);
+      totalUnidadesAnterior += Number(cotsaCard.unidadesAnterior || 0);
+    }
+    if (odooCard) {
+      totalUnidades         += Number(odooCard.unidades         || 0);
+      totalMonto            += Number(odooCard.monto            || 0);
+      totalMontoReal        += Number(odooCard.montoReal ?? odooCard.monto ?? 0);
+      totalUnidadesAnterior += Number(odooCard.unidadesAnterior || 0);
+    }
 
-    let totalUnidadesAnterior = 0, totalVarAbsUnidades = 0;
-    vendedores.forEach((v: any) => {
-      totalUnidadesAnterior += Number(v.vsMesAnterior?.unidades_anterior     || 0);
-      totalVarAbsUnidades   += Number(v.vsMesAnterior?.variacion_abs_unidades || 0);
-    });
+    // Mes anterior: usar tendencia6Meses como fuente de verdad — ya agrega
+    // TODOS los canales completos (TIENDAS, RURAL, DOMICILIO, VIP, MAYORISTA, COTSA, ODOO)
+    const mesPrevNum  = Number(mesSeleccionado) > 1 ? Number(mesSeleccionado) - 1 : 12;
+    const anioPrevNum = Number(mesSeleccionado) > 1 ? Number(anioSeleccionado)   : Number(anioSeleccionado) - 1;
+    const puntoPrev   = tendencia6Meses.find((d: any) => d.mes === mesPrevNum && d.anio === anioPrevNum);
+    const totalMesAnterior = puntoPrev ? Number(puntoPrev.dolares) : 0;
 
-    const totalVariacionAbs  = totalMonto - totalMesAnterior;
-    const totalVariacionPorc = totalMesAnterior > 0 ? (totalVariacionAbs / totalMesAnterior) * 100 : 0;
+    const totalVarAbsUnidades = totalUnidades - totalUnidadesAnterior;
+    const totalVariacionAbs   = totalMontoReal - totalMesAnterior;
+    const totalVariacionPorc  = totalMesAnterior > 0 ? (totalVariacionAbs / totalMesAnterior) * 100 : 0;
     const totalVarPorcUnidades = totalUnidadesAnterior > 0 ? (totalVarAbsUnidades / totalUnidadesAnterior) * 100 : 0;
 
     return {
-      totalUnidades, totalMonto, totalMesAnterior, totalVariacionAbs, totalVariacionPorc,
+      totalUnidades, totalMonto, totalMontoReal, totalMesAnterior, totalVariacionAbs, totalVariacionPorc,
       totalUnidadesAnterior, totalVarAbsUnidades, totalVarPorcUnidades,
     };
-  }, [datos]);
+  }, [datos, cotsaCard, odooCard, tendencia6Meses, mesSeleccionado, anioSeleccionado]);
 
   const navigate = useNavigate();
   const [seccionActiva, setSeccionActiva] = useState<string | null>(null);
@@ -171,69 +187,57 @@ export default function DashboardPreventa() {
           </div>
         </header>
 
-        {cargando && <p className="text-center animate-pulse">Cargando datos…</p>}
+        {cargando && (
+          <div className="flex flex-col justify-center items-center py-32 gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400" />
+            <p className="text-gray-400 text-sm">Cargando datos…</p>
+          </div>
+        )}
 
         {datos && !cargando && kpis && (
           <>
+            {/* ── Gráfico tendencia ── */}
+            {tendencia6Meses.length > 0 && (() => {
+              // Sobrescribir el mes seleccionado con los valores exactos del card Total Descartable
+              const tendenciaFinal = totalDescartable
+                ? tendencia6Meses.map((d: any) =>
+                    d.mes === Number(mesSeleccionado) && d.anio === Number(anioSeleccionado)
+                      ? { ...d, dolares: totalDescartable.totalMontoReal, proyeccion: totalDescartable.totalMonto }
+                      : d
+                  )
+                : tendencia6Meses;
+              return <GraficoTendencia datos={tendenciaFinal} subtitulo="Últimos 6 meses · Preventa" />;
+            })()}
+
             {/* ── Tarjeta Total Descartable ── */}
-            {isAdmin && totalDescartable && (
+            {isAdmin && totalDescartable && (() => {
+              const esMesActual = mesActual === parseInt(mesSeleccionado) && anioActual === parseInt(anioSeleccionado);
+              return (
               <div className="mb-8">
                 <h3 className="text-sm text-emerald-300 mb-4 uppercase px-2 tracking-wider">
                   Total Descartable
                 </h3>
-                <div className="grid grid-cols-2 gap-6 max-w-2xl mx-auto w-full">
-
-                  {/* TOTAL UNIDADES */}
-                  <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center">
-                    <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-4">
-                      Total Unidades
+                <div className="flex justify-center">
+                  <div className="min-w-0 w-full max-w-sm bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg text-center">
+                    <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-1">
+                      {esMesActual ? "Proyección $" : "Total Dólares"}
                     </p>
-                    <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
-                      Proyección
-                    </p>
-                    <p className="font-bold text-white text-2xl md:text-4xl leading-none mb-5 break-all">
-                      {totalDescartable.totalUnidades.toLocaleString("es-EC")}
-                    </p>
-                    <div className="border-t border-[#046C5E]/30 pt-3 space-y-2">
-                      <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
-                      <p className="text-white font-semibold text-base">
-                        {totalDescartable.totalUnidadesAnterior.toLocaleString("es-EC")} Uni
-                      </p>
-                      <div className="flex justify-center">
-                        <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
-                            totalDescartable.totalVarAbsUnidades >= 0
-                              ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
-                              : "text-red-400 border-red-400/20 bg-red-400/10"
-                          }`}
-                        >
-                          {totalDescartable.totalVarAbsUnidades >= 0 ? "▲" : "▼"}
-                          {Math.abs(totalDescartable.totalVarAbsUnidades).toLocaleString("es-EC")}
-                          <span className="opacity-90">({totalDescartable.totalVarPorcUnidades.toFixed(1)}%)</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* TOTAL DÓLARES */}
-                  <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center">
-                    <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-4">
-                      Total Dólares
-                    </p>
-                    <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
-                      Proyección
-                    </p>
-                    <p className="font-bold text-emerald-400 text-2xl md:text-4xl leading-none mb-5 break-all">
+                    <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-1 break-all">
                       ${totalDescartable.totalMonto.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                     </p>
-                    <div className="border-t border-[#046C5E]/30 pt-3 space-y-2">
-                      <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
-                      <p className="text-white font-semibold text-base">
+                    {esMesActual && (
+                      <p className="text-xs text-gray-400 mb-3">
+                        Real: ${totalDescartable.totalMontoReal.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                      </p>
+                    )}
+                    <div className="border-t border-[#046C5E]/30 pt-2 space-y-1">
+                      <p className="text-xs text-gray-400">Mes anterior</p>
+                      <p className="text-white font-semibold text-sm">
                         ${totalDescartable.totalMesAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                       </p>
                       <div className="flex justify-center">
                         <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${
                             totalDescartable.totalVariacionAbs >= 0
                               ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
                               : "text-red-400 border-red-400/20 bg-red-400/10"
@@ -246,10 +250,10 @@ export default function DashboardPreventa() {
                       </div>
                     </div>
                   </div>
-
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* ── Cards canal — solo ADMIN ── */}
             {isAdmin && resumenVentasPorCanal && (
@@ -273,6 +277,10 @@ export default function DashboardPreventa() {
                         navigate(`/cotsa/clientes/${anioSeleccionado}/${mesSeleccionado}`);
                       else if (esOdoo)
                         navigate(`/descartable-odoo/clientes/${anioSeleccionado}/${mesSeleccionado}`);
+                      else if (canal.canal === "RURAL")
+                        activarSeccion("seccion-ranking-rutas-r");
+                      else if (["DOMICILIO", "MAYORISTA", "VIP"].includes(canal.canal))
+                        activarSeccion("seccion-ranking-descartable");
                       else
                         activarSeccion("seccion-ranking-preventas");
                     };
@@ -289,7 +297,7 @@ export default function DashboardPreventa() {
                             {canal.canal}
                           </p>
                           <span className="text-[10px] text-gray-400 italic shrink-0 ml-1">
-                            {esCotsa || esOdoo ? "Ver clientes →" : "Ver rutas ↓"}
+                            {esCotsa || esOdoo ? "Ver clientes →" : "Ver tabla ↓"}
                           </span>
                         </div>
 
@@ -300,6 +308,11 @@ export default function DashboardPreventa() {
                             <p className="text-2xl font-extrabold text-white leading-tight break-all">
                               ${canal.monto.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                             </p>
+                            {canal.montoReal != null && canal.montoReal !== canal.monto && (
+                              <p className="text-[10px] text-gray-400 mt-0.5">
+                                Real: ${canal.montoReal.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                              </p>
+                            )}
                           </div>
                           <div className="flex flex-col items-end">
                             <span className="text-[10px] text-gray-400 uppercase tracking-wide">Unidades</span>
@@ -359,11 +372,20 @@ export default function DashboardPreventa() {
 
             {/* ── RankingRutasR — ADMIN + SUPERVISOR + VENDEDOR ── */}
             {puedeVerRanking && (
-              <RankingRutasR
-                data={datos.rankingRutasR}
-                anio={anioSeleccionado}
-                mes={mesSeleccionado}
-              />
+              <div
+                id="seccion-ranking-rutas-r"
+                className={`rounded-xl transition-all duration-500 ${
+                  seccionActiva === "seccion-ranking-rutas-r"
+                    ? "ring-2 ring-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.35)]"
+                    : ""
+                }`}
+              >
+                <RankingRutasR
+                  data={datos.rankingRutasR}
+                  anio={anioSeleccionado}
+                  mes={mesSeleccionado}
+                />
+              </div>
             )}
 
 
@@ -385,11 +407,20 @@ export default function DashboardPreventa() {
             {/* ── Resto — solo ADMIN ── */}
             {isAdmin && (
               <>
-                <RankingDescartablePorCanal
-                  data={datos.ventasDescartablePorCanal}
-                  anio={anioSeleccionado}
-                  mes={mesSeleccionado}
-                />
+                <div
+                  id="seccion-ranking-descartable"
+                  className={`rounded-xl transition-all duration-500 ${
+                    seccionActiva === "seccion-ranking-descartable"
+                      ? "ring-2 ring-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.35)]"
+                      : ""
+                  }`}
+                >
+                  <RankingDescartablePorCanal
+                    data={datos.ventasDescartablePorCanal}
+                    anio={anioSeleccionado}
+                    mes={mesSeleccionado}
+                  />
+                </div>
 
 
 

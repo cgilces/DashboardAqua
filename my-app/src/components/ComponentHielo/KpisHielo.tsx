@@ -1,4 +1,5 @@
 import React from "react";
+import GraficoTendencia from "../common/GraficoTendencia";
 
 /* ============================
    TIPOS
@@ -27,7 +28,10 @@ interface Props {
     monto: Variacion;
   };
 
-  totalProyeccion: number; // ESTA LÍNEA FALTABA
+  totalProyeccion: number;
+  totalProyeccionUnidades?: number;
+  esMesActual?: boolean;
+  tendencia6Meses?: { label: string; anio: number; mes: number; dolares: number; unidades: number }[];
   onCardClick?: () => void;
 }
 
@@ -55,20 +59,17 @@ const colorVariacion = (v?: Variacion) => {
 /* ============================
    COMPONENTE
 ============================ */
-const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion, onCardClick }) => {
-  // 🔒 LIMITAMOS BARRAS AL 100%
-  const cumplimientoUnidadesVisual = Math.min(
-    100,
-    Math.max(0, kpis.cumplimientoUnidadesMensual ?? 0)
-  );
 
-  const cumplimientoUSDVisual = Math.min(
-    100,
-    Math.max(0, kpis.cumplimientoUSDMensual ?? 0)
-  );
+const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion, totalProyeccionUnidades, esMesActual, tendencia6Meses, onCardClick }) => {
+
+  const proyUnidades = totalProyeccionUnidades ?? kpis.unidadesTotales;
 
   return (
     <div className="mb-10">
+
+      {/* ── GRÁFICO TENDENCIA 6 MESES ────────────────────────── */}
+      <GraficoTendencia datos={tendencia6Meses ?? []} subtitulo="Últimos 6 meses · MobilVendor + Odoo" />
+
       <h3 className="text-sm text-emerald-300 mb-4 uppercase px-2 tracking-wider">
         Total Hielo
       </h3>
@@ -78,29 +79,31 @@ const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion, onCard
         {/* TOTAL UNIDADES */}
         <div
           onClick={onCardClick}
-          className={`min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center transition-all duration-300 hover:shadow-xl hover:border-emerald-400/60 hover:scale-[1.02] ${onCardClick ? "cursor-pointer" : ""}`}
+          className={`min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg text-center transition-all duration-300 hover:shadow-xl hover:border-emerald-400/60 hover:scale-[1.02] ${onCardClick ? "cursor-pointer" : ""}`}
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-1">
             <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold">
-              Total Unidades
+              {esMesActual ? "Proyección Uni" : "Total Unidades"}
             </p>
             {onCardClick && <span className="text-[10px] text-gray-400 italic">Ver rutas ↓</span>}
           </div>
-          <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
-            Proyección
+          <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-3 break-all">
+            {proyUnidades.toLocaleString("es-EC")}
           </p>
-          <p className="font-bold text-white text-2xl md:text-4xl leading-none mb-5 break-all">
-            {kpis.unidadesTotales.toLocaleString("es-EC")}
-          </p>
+          {esMesActual && (
+            <p className="text-xs text-gray-400 mb-2">
+              Real: {kpis.unidadesTotales.toLocaleString("es-EC")}
+            </p>
+          )}
           {comparativa?.unidades && (
-            <div className="border-t border-[#046C5E]/30 pt-3 space-y-2">
-              <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
-              <p className="text-white font-semibold text-base">
+            <div className="border-t border-[#046C5E]/30 pt-2 space-y-1">
+              <p className="text-xs text-gray-400">Mes anterior</p>
+              <p className="text-white font-semibold text-sm">
                 {comparativa.unidades.anterior.toLocaleString("es-EC")} Uni
               </p>
               <div className="flex justify-center">
                 <span
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${
                     comparativa.unidades.variacionAbs >= 0
                       ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
                       : "text-red-400 border-red-400/20 bg-red-400/10"
@@ -118,29 +121,31 @@ const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion, onCard
         {/* TOTAL DÓLARES */}
         <div
           onClick={onCardClick}
-          className={`min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center transition-all duration-300 hover:shadow-xl hover:border-emerald-400/60 hover:scale-[1.02] ${onCardClick ? "cursor-pointer" : ""}`}
+          className={`min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg text-center transition-all duration-300 hover:shadow-xl hover:border-emerald-400/60 hover:scale-[1.02] ${onCardClick ? "cursor-pointer" : ""}`}
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-1">
             <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold">
-              Total Dólares
+              {esMesActual ? "Proyección $" : "Total Dólares"}
             </p>
             {onCardClick && <span className="text-[10px] text-gray-400 italic">Ver rutas ↓</span>}
           </div>
-          <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
-            Proyección
-          </p>
-          <p className="font-bold text-emerald-400 text-2xl md:text-4xl leading-none mb-5 break-all">
+          <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-3 break-all">
             {money(totalProyeccion)}
           </p>
+          {esMesActual && (
+            <p className="text-xs text-gray-400 mb-2">
+              Real: {money(kpis.montoTotal)}
+            </p>
+          )}
           {comparativa?.monto && (
-            <div className="border-t border-[#046C5E]/30 pt-3 space-y-2">
-              <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
-              <p className="text-white font-semibold text-base">
+            <div className="border-t border-[#046C5E]/30 pt-2 space-y-1">
+              <p className="text-xs text-gray-400">Mes anterior</p>
+              <p className="text-white font-semibold text-sm">
                 {money(comparativa.monto.anterior)}
               </p>
               <div className="flex justify-center">
                 <span
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${
                     comparativa.monto.variacionAbs >= 0
                       ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
                       : "text-red-400 border-red-400/20 bg-red-400/10"

@@ -34,33 +34,32 @@ function getFechaFinMes(anio, mes) {
   return `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
 }
 
-const obtenerFechaSincronizacion = async () => {
-  const result = await sequelize.query(
-    `SELECT hasta_date FROM sincronizaciones_ventas ORDER BY fecha_sync DESC LIMIT 1`,
-    { type: Sequelize.QueryTypes.SELECT }
+const getFechaFinQuery = (anio, mes) => getFechaFinMes(anio, mes);
+
+
+// ================================================================
+// QUERY VENTAS HIELO MOBILVENDOR (facturas H*)
+// ================================================================
+const queryMVHielo = async (inicio, fin) => {
+  const [row] = await sequelize.query(
+    `SELECT
+       SUM(dd.cantidad) AS unidades,
+       SUM(dd.total)    AS dolares,
+       COUNT(DISTINCT f.code) AS cant_facturas
+     FROM facturas f
+     JOIN detalle_documento dd ON dd.documento_code = f.code
+     WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
+       AND f.status IN ('2','4','5')
+       AND f.fecha_entrega >= :inicio
+       AND f.fecha_entrega <  :fin`,
+    { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT }
   );
-  if (!result || result.length === 0) throw new Error("No hay fecha de sincronización");
-  return result[0].hasta_date;
+  return {
+    unidades:      Number(row?.unidades      || 0),
+    dolares:       Number(row?.dolares       || 0),
+    cant_facturas: Number(row?.cant_facturas || 0),
+  };
 };
-
-const getFechaFinQuery = async (anio, mes) => {
-  const hoy = new Date();
-  const esMesActual = anio === hoy.getFullYear() && mes === hoy.getMonth() + 1;
-  if (esMesActual) {
-    const ultimaSync = await obtenerFechaSincronizacion();
-    const [yyyy, mm, dd] = String(ultimaSync).substring(0, 10).split("-").map(Number);
-
-    // ✅ Usar Date para manejar overflow de días correctamente
-    const fechaSig = new Date(yyyy, mm - 1, dd + 1);
-    const anioFin = fechaSig.getFullYear();
-    const mesFin = fechaSig.getMonth() + 1;
-    const diaFin = fechaSig.getDate();
-
-    return `${anioFin}-${String(mesFin).padStart(2, "0")}-${String(diaFin).padStart(2, "0")} 00:00:00`;
-  }
-  return getFechaFinMes(anio, mes);
-};
-
 
 // ================================================================
 // QUERY VENTAS HIELO POR RUTA
@@ -134,9 +133,31 @@ const obtenerVentasHielo = async (req, res) => {
     const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum);
 
     // ── Queries paralelos ───────────────────────────────────────
-    const [ventasActual, ventasAnterior] = await Promise.all([
+    const placeholders = RUTAS_ODOO.map((_, i) => `:ruta${i}`).join(', ');
+    const rutaBindings = {};
+    RUTAS_ODOO.forEach((r, i) => { rutaBindings[`ruta${i}`] = r; });
+
+    const [ventasActual, ventasAnterior, mvActual, mvAnterior, conteosExtra] = await Promise.all([
       queryVentasPorRuta(inicio, fin),
       queryVentasPorRuta(inicioPrev, finPrev),
+      queryMVHielo(inicio, fin),
+      queryMVHielo(inicioPrev, finPrev),
+      sequelize.query(`
+        SELECT
+          (SELECT COUNT(DISTINCT customer_code)
+           FROM (
+             SELECT customer_code FROM facturas
+             WHERE (seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3'))
+               AND status IN ('2','4','5')
+               AND fecha_entrega >= :inicio AND fecha_entrega < :fin
+             UNION
+             SELECT customer_code FROM ordenes
+             WHERE type = 2 AND status IN (2,4,5)
+               AND seller_nombre IN (${placeholders})
+               AND fecha_creacion >= :inicio AND fecha_creacion < :fin
+           ) combined
+          ) AS cant_clientes
+      `, { replacements: { ...rutaBindings, inicio, fin }, type: Sequelize.QueryTypes.SELECT }),
     ]);
 
     // ── Mapa mes anterior ───────────────────────────────────────
@@ -197,27 +218,47 @@ const obtenerVentasHielo = async (req, res) => {
       };
     });
 
-    // ── Totales generales ───────────────────────────────────────
-    const totales = {
-      unidades: rutas.reduce((a, r) => a + r.unidades, 0),
-      dolares: Number(rutas.reduce((a, r) => a + r.dolares, 0).toFixed(2)),
-      proyeccion_unidades: Number(rutas.reduce((a, r) => a + r.proyeccion_unidades, 0).toFixed(0)),
-      proyeccion_dolares: Number(rutas.reduce((a, r) => a + r.proyeccion_dolares, 0).toFixed(2)),
-      cant_ordenes: rutas.reduce((a, r) => a + r.cant_ordenes, 0),
-      mes_anterior: {
-        unidades: rutas.reduce((a, r) => a + r.mes_anterior.unidades, 0),
-        dolares: Number(rutas.reduce((a, r) => a + r.mes_anterior.dolares, 0).toFixed(2)),
-      },
-    };
+    // ── Totales generales (Odoo + MobilVendor combinados) ───────
+    const odooDolares      = rutas.reduce((a, r) => a + r.dolares, 0);
+    const odooUnidades     = rutas.reduce((a, r) => a + r.unidades, 0);
+    const odooAntDolares   = rutas.reduce((a, r) => a + r.mes_anterior.dolares, 0);
+    const odooAntUnidades  = rutas.reduce((a, r) => a + r.mes_anterior.unidades, 0);
 
-    const varTotalAbs = totales.unidades - totales.mes_anterior.unidades;
-    const varTotalPorc = totales.mes_anterior.unidades > 0
-      ? (varTotalAbs / totales.mes_anterior.unidades) * 100
+    const totalDolares    = odooDolares   + mvActual.dolares;
+    const totalUnidades   = odooUnidades  + mvActual.unidades;
+    const totalAntDolares = odooAntDolares + mvAnterior.dolares;
+    const totalAntUnidades= odooAntUnidades + mvAnterior.unidades;
+
+    // Proyección combinada sobre dólares totales
+    const proyeccionDolares = esMesActual && diasTranscurridos > 0
+      ? (totalDolares / diasTranscurridos) * diasLaborablesMes
+      : totalDolares;
+
+    const proyeccionUnidades = esMesActual && diasTranscurridos > 0
+      ? (totalUnidades / diasTranscurridos) * diasLaborablesMes
+      : totalUnidades;
+
+    const varDolaresAbs  = totalDolares - totalAntDolares;
+    const varDolaresPorc = totalAntDolares > 0
+      ? (varDolaresAbs / totalAntDolares) * 100
       : null;
 
-    totales.variacion = {
-      abs: varTotalAbs,
-      porcentaje: varTotalPorc !== null ? Number(varTotalPorc.toFixed(2)) : null,
+    const totales = {
+      unidades:           totalUnidades,
+      dolares:            Number(totalDolares.toFixed(2)),
+      proyeccion_unidades:Number(proyeccionUnidades.toFixed(0)),
+      proyeccion_dolares: Number(proyeccionDolares.toFixed(2)),
+      cant_ordenes:       rutas.reduce((a, r) => a + r.cant_ordenes, 0),
+      cant_facturas:      mvActual.cant_facturas,
+      cant_clientes:      Number(conteosExtra[0]?.cant_clientes || 0),
+      mes_anterior: {
+        unidades: totalAntUnidades,
+        dolares:  Number(totalAntDolares.toFixed(2)),
+      },
+      variacion: {
+        abs:        Number(varDolaresAbs.toFixed(2)),
+        porcentaje: varDolaresPorc !== null ? Number(varDolaresPorc.toFixed(2)) : null,
+      },
     };
 
     return res.status(200).json({
@@ -234,4 +275,253 @@ const obtenerVentasHielo = async (req, res) => {
   }
 };
 
-module.exports = { obtenerVentasHielo };
+// ================================================================
+// ENDPOINT CLIENTES HIELO — MobilVendor (facturas H*) + Odoo (cat 28)
+// Separado por dirección de entrega (customer_address_code)
+// GET /api/odoo/hielo-clientes?anio=YYYY&mes=MM
+// ================================================================
+const obtenerClientesHieloOdoo = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes)
+      return res.status(400).json({ error: 'Debe enviar ?anio=YYYY&mes=MM' });
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const inicio = getFechaInicioMes(anioNum, mesNum);
+    const fin    = await getFechaFinQuery(anioNum, mesNum);
+
+    let mesPrev = mesNum - 1, anioPrev = anioNum;
+    if (mesPrev === 0) { mesPrev = 12; anioPrev--; }
+    const antInicio = getFechaInicioMes(anioPrev, mesPrev);
+    const antFin    = getFechaFinMes(anioPrev, mesPrev);
+
+    const inicioAnio = `${anioNum}-01-01 00:00:00`;
+    const finAnio    = `${anioNum + 1}-01-01 00:00:00`;
+
+    const placeholders = RUTAS_ODOO.map((_, i) => `:ruta${i}`).join(', ');
+    const rutaBindings = {};
+    RUTAS_ODOO.forEach((r, i) => { rutaBindings[`ruta${i}`] = r; });
+
+    const R = { ...rutaBindings, inicio, fin, antInicio, antFin, inicioAnio, finAnio };
+
+    // ── Filtros base reutilizables ─────────────────────────────────────────────
+    const mvWhere  = `(seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3')) AND status IN ('2','4','5')`;
+    const odooWhere= `type = 2 AND status IN (2,4,5) AND seller_nombre IN (${placeholders})`;
+
+    // NOTA: customer_address_code es VARCHAR en facturas e INTEGER en ordenes
+    // → se castea a TEXT en todos los UNION para compatibilidad de tipos
+
+    // ── 1. Un row por (customer_code, customer_address_code) del año ──────────
+    const clientesSQL = `
+      SELECT DISTINCT ON (src.customer_code, src.customer_address_code)
+        src.customer_code,
+        src.customer_address_code,
+        c.nombre_cliente,
+        tn.descripcion                                              AS tipo_negocio,
+        COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente) AS direccion_entrega,
+        COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente)AS telefono_cliente,
+        dc.latitud_direccion_cliente                               AS latitud_cliente,
+        dc.longitud_direccion_cliente                              AS longitud_cliente
+      FROM (
+        SELECT customer_code, customer_address_code::TEXT AS customer_address_code
+        FROM facturas
+        WHERE ${mvWhere}
+          AND fecha_entrega >= :inicioAnio AND fecha_entrega < :finAnio
+
+        UNION
+
+        SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE ${odooWhere}
+          AND dd.codigo_categoria = '28'
+          AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
+      ) src
+      LEFT JOIN clientes c              ON c.codigo_cliente = src.customer_code
+      LEFT JOIN tipos_negocio tn        ON tn.codigo = c.codigo_tipo_negocio
+      LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente::TEXT = src.customer_address_code
+      ORDER BY src.customer_code, src.customer_address_code, c.nombre_cliente
+    `;
+
+    // ── 2. Consumo por (cliente, dirección) ───────────────────────────────────
+    const consumoSQL = `
+      SELECT customer_code, customer_address_code,
+        SUM(CASE WHEN fecha >= :inicio    AND fecha < :fin    THEN total    ELSE 0 END) AS consumo_actual,
+        SUM(CASE WHEN fecha >= :antInicio AND fecha < :antFin THEN total    ELSE 0 END) AS consumo_anterior,
+        SUM(CASE WHEN fecha >= :inicio    AND fecha < :fin    THEN cantidad ELSE 0 END) AS cantidad_actual
+      FROM (
+        SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
+               f.fecha_entrega AS fecha, dd.total, dd.cantidad
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE ${mvWhere}
+
+        UNION ALL
+
+        SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
+               o.fecha_creacion AS fecha, dd.total, dd.cantidad
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE ${odooWhere} AND dd.codigo_categoria = '28'
+      ) comb
+      GROUP BY customer_code, customer_address_code
+    `;
+
+    // ── 3. Máximo consumo mensual del año ─────────────────────────────────────
+    const maxConsumoSQL = `
+      WITH cm AS (
+        SELECT customer_code, customer_address_code,
+               DATE_TRUNC('month', fecha) AS mes, SUM(total) AS consumo_mes
+        FROM (
+          SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
+                 f.fecha_entrega AS fecha, dd.total
+          FROM facturas f
+          JOIN detalle_documento dd ON dd.documento_code = f.code
+          WHERE ${mvWhere}
+            AND f.fecha_entrega >= :inicioAnio AND f.fecha_entrega < :finAnio
+
+          UNION ALL
+
+          SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
+                 o.fecha_creacion AS fecha, dd.total
+          FROM ordenes o
+          JOIN detalle_documento dd ON dd.documento_code = o.code
+          WHERE ${odooWhere} AND dd.codigo_categoria = '28'
+            AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
+        ) comb
+        GROUP BY customer_code, customer_address_code, DATE_TRUNC('month', fecha)
+      )
+      SELECT DISTINCT ON (customer_code, customer_address_code)
+        customer_code, customer_address_code, mes, consumo_mes
+      FROM cm
+      ORDER BY customer_code, customer_address_code, consumo_mes DESC
+    `;
+
+    // ── 4. Última fecha por (cliente, dirección) ──────────────────────────────
+    const ultimaSQL = `
+      SELECT customer_code, customer_address_code, MAX(fecha) AS ultima_factura
+      FROM (
+        SELECT customer_code, customer_address_code::TEXT AS customer_address_code,
+               fecha_entrega AS fecha
+        FROM facturas WHERE ${mvWhere}
+
+        UNION ALL
+
+        SELECT customer_code, customer_address_code::TEXT AS customer_address_code,
+               fecha_creacion AS fecha
+        FROM ordenes WHERE ${odooWhere}
+      ) comb
+      GROUP BY customer_code, customer_address_code
+    `;
+
+    // ── 5. Productos vendidos (combinados) ────────────────────────────────────
+    const productosSQL = `
+      SELECT descripcion AS producto,
+             SUM(cantidad) AS unidades_vendidas, SUM(total) AS monto_usd
+      FROM (
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE ${mvWhere}
+          AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+
+        UNION ALL
+
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE ${odooWhere} AND dd.codigo_categoria = '28'
+          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+      ) comb
+      GROUP BY descripcion
+      ORDER BY unidades_vendidas DESC
+    `;
+
+    const [clientes, consumoData, maxConsumoData, ultimaData, productosVendidos] = await Promise.all([
+      sequelize.query(clientesSQL,   { replacements: R, type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(consumoSQL,    { replacements: R, type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(maxConsumoSQL, { replacements: R, type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(ultimaSQL,     { replacements: R, type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(productosSQL,  { replacements: R, type: Sequelize.QueryTypes.SELECT }),
+    ]);
+
+    const clave = (r) => `${r.customer_code}__${r.customer_address_code ?? ''}`;
+
+    const mapConsumo    = new Map(consumoData.map(r   => [clave(r), r]));
+    const mapMaxConsumo = new Map(maxConsumoData.map(r => [clave(r), r]));
+    const mapUltima     = new Map(ultimaData.map(r     => [clave(r), r.ultima_factura]));
+
+    const fmtFecha = (f) => {
+      if (!f) return null;
+      const d = new Date(f);
+      if (isNaN(d.getTime())) return null;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const nombreMes = (fecha) => {
+      if (!fecha) return null;
+      const M = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      return M[new Date(fecha).getMonth()];
+    };
+
+    const resultado = clientes.map(c => {
+      const k = clave(c);
+      const consumo  = mapConsumo.get(k)    || {};
+      const maxC     = mapMaxConsumo.get(k) || {};
+      const ultFecha = mapUltima.get(k)     || null;
+
+      const consumoActual   = Number(consumo.consumo_actual)   || 0;
+      const consumoAnterior = Number(consumo.consumo_anterior) || 0;
+      const varAbs  = consumoActual - consumoAnterior;
+      const varPorc = consumoAnterior > 0
+        ? (varAbs / consumoAnterior) * 100
+        : consumoActual > 0 ? 100 : 0;
+
+      return {
+        codigo_cliente:         c.customer_code,
+        codigo_direccion:       c.customer_address_code || null,
+        nombre_cliente:         c.nombre_cliente,
+        direccion_entrega:      c.direccion_entrega,
+        tipo_negocio:           c.tipo_negocio || 'SIN CLASIFICAR',
+        telefono_cliente:       c.telefono_cliente || '—',
+        latitud_cliente:        c.latitud_cliente  || '—',
+        longitud_cliente:       c.longitud_cliente || '—',
+        cantidad_productos:     Number(consumo.cantidad_actual) || 0,
+        consumo_actual:         consumoActual.toFixed(2),
+        max_consumo:            Number(maxC.consumo_mes || 0).toFixed(2),
+        mes_max_consumo_nombre: nombreMes(maxC.mes),
+        ultima_factura:         fmtFecha(ultFecha),
+        ultima_visita:          fmtFecha(ultFecha),
+        vsMesAnterior: {
+          monto_anterior: consumoAnterior.toFixed(2),
+          variacion_abs:  varAbs.toFixed(2),
+          variacion_porc: `${varPorc.toFixed(2)}%`,
+        },
+        tuvo_consumo: consumoActual > 0 ? 'Sí' : 'No',
+      };
+    });
+
+    const conConsumo     = resultado.filter(r => r.tuvo_consumo === 'Sí').length;
+    const clientesUnicos = new Set(resultado.map(r => r.codigo_cliente)).size;
+
+    return res.json({
+      clientes: resultado,
+      resumen: {
+        totalClientes:      clientesUnicos,
+        totalDirecciones:   resultado.length,
+        clientesConConsumo: conConsumo,
+        clientesSinConsumo: resultado.length - conConsumo,
+      },
+      productosVendidos,
+    });
+
+  } catch (error) {
+    console.error('❌ ERROR CLIENTES HIELO (MV+ODOO):', error);
+    return res.status(500).json({ message: 'Error al obtener clientes hielo', detalle: error.message });
+  }
+};
+
+module.exports = { obtenerVentasHielo, obtenerClientesHieloOdoo };

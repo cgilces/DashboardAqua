@@ -11,6 +11,7 @@ import TablaVipBotellon from "../../components/ComponentBotellon/TablaVipBotello
 import TablaDomicilioBotellon from "../../components/ComponentBotellon/TablaDomicilioBotellon";
 import TablaEmpresasBotellon from "../../components/ComponentBotellon/TablaEmpresasBotellon";
 import { API_BASE_URL } from "../../config";
+import GraficoTendencia from "../../components/common/GraficoTendencia";
 
 
 /* ================================
@@ -49,14 +50,15 @@ export default function DashboardBotellon() {
   const anioActual = hoy.getFullYear();
 
   const [mesSeleccionado, setMesSeleccionado] = useState(
-    localStorage.getItem("mesSeleccionado") ?? mesActual.toString()
+    localStorage.getItem("mesSeleccionadoBotellon") ?? mesActual.toString()
   );
   const [anioSeleccionado, setAnioSeleccionado] = useState(
-    localStorage.getItem("anioSeleccionado") ?? anioActual.toString()
+    localStorage.getItem("anioSeleccionadoBotellon") ?? anioActual.toString()
   );
 
   const [botellones, setBotellones] = useState<any>(null);
   const [empresasData, setEmpresasData] = useState<any>(null);
+  const [tendencia6Meses, setTendencia6Meses] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
   const [cargandoEmpresas, setCargandoEmpresas] = useState(false);
   const [mostrarTablas, setMostrarTablas] = useState(false);
@@ -80,6 +82,7 @@ export default function DashboardBotellon() {
       setCargandoEmpresas(true);
       setBotellones(null);
       setEmpresasData(null);
+      setTendencia6Meses([]);
       setMostrarTablas(false);
 
       const [resDash, resEmp] = await Promise.all([
@@ -92,6 +95,7 @@ export default function DashboardBotellon() {
 
       setBotellones(jsonDash.botellones);
       setEmpresasData(jsonEmp);
+      setTendencia6Meses(jsonDash.tendencia6Meses ?? []);
     } catch (error) {
       console.error("Error cargando dashboard botellones", error);
     } finally {
@@ -101,8 +105,8 @@ export default function DashboardBotellon() {
   };
 
   useEffect(() => {
-    localStorage.setItem("mesSeleccionado", mesSeleccionado);
-    localStorage.setItem("anioSeleccionado", anioSeleccionado);
+    localStorage.setItem("mesSeleccionadoBotellon", mesSeleccionado);
+    localStorage.setItem("anioSeleccionadoBotellon", anioSeleccionado);
   }, [mesSeleccionado, anioSeleccionado]);
 
   useEffect(() => {
@@ -146,6 +150,8 @@ export default function DashboardBotellon() {
       totalDolaresAnterior !== 0 ? (varAbsDolares / totalDolaresAnterior) * 100 : 0;
 
     return {
+      totalUnidades,
+      totalDolares,
       totalProyeccionUnidades,
       totalProyeccionDolares,
       totalUnidadesAnterior,
@@ -238,8 +244,15 @@ export default function DashboardBotellon() {
           </div>
         )}
 
+        {/* ── Gráfico tendencia ── */}
+        {!cargando && !cargandoEmpresas && tendencia6Meses.length > 0 && (
+          <GraficoTendencia datos={tendencia6Meses} subtitulo="Últimos 6 meses · MobilVendor + Odoo" />
+        )}
+
         {/* ── Tarjeta Total Botellones ── */}
-        {!cargando && !cargandoEmpresas && isAdmin && resumenTotal && (
+        {!cargando && !cargandoEmpresas && isAdmin && resumenTotal && (() => {
+          const esMesActual = Number(mesSeleccionado) === mesActual && Number(anioSeleccionado) === anioActual;
+          return (
           <div className="mb-8">
             <h3 className="text-sm text-emerald-300 mb-4 uppercase px-2 tracking-wider">
               Total Botellones
@@ -247,24 +260,26 @@ export default function DashboardBotellon() {
             <div className="grid grid-cols-2 gap-6 max-w-2xl mx-auto w-full">
 
               {/* TOTAL UNIDADES */}
-              <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center">
-                <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-4">
-                  Total Unidades
+              <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg text-center">
+                <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-1">
+                  {esMesActual ? "Proyección Uni" : "Total Unidades"}
                 </p>
-                <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
-                  Proyección
-                </p>
-                <p className="font-bold text-white text-2xl md:text-4xl leading-none mb-5 break-all">
+                <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-3 break-all">
                   {resumenTotal.totalProyeccionUnidades.toLocaleString("es-EC")}
                 </p>
-                <div className="border-t border-[#046C5E]/30 pt-4 space-y-2">
-                  <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
-                  <p className="text-white font-semibold text-base">
+                {esMesActual && (
+                  <p className="text-xs text-gray-400 mb-2">
+                    Real: {resumenTotal.totalUnidades.toLocaleString("es-EC")}
+                  </p>
+                )}
+                <div className="border-t border-[#046C5E]/30 pt-2 space-y-1">
+                  <p className="text-xs text-gray-400">Mes anterior</p>
+                  <p className="text-white font-semibold text-sm">
                     {resumenTotal.totalUnidadesAnterior.toLocaleString("es-EC")} Uni
                   </p>
                   <div className="flex justify-center">
                     <span
-                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${
                         resumenTotal.varAbsUnidades >= 0
                           ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
                           : "text-red-400 border-red-400/20 bg-red-400/10"
@@ -279,24 +294,26 @@ export default function DashboardBotellon() {
               </div>
 
               {/* TOTAL DÓLARES */}
-              <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-6 shadow-lg text-center">
-                <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-4">
-                  Total Dólares
+              <div className="min-w-0 bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg text-center">
+                <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold mb-1">
+                  {esMesActual ? "Proyección $" : "Total Dólares"}
                 </p>
-                <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide mb-1">
-                  Proyección
-                </p>
-                <p className="font-bold text-emerald-400 text-2xl md:text-4xl leading-none mb-5 break-all">
+                <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-3 break-all">
                   ${resumenTotal.totalProyeccionDolares.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                 </p>
-                <div className="border-t border-[#046C5E]/30 pt-4 space-y-2">
-                  <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
-                  <p className="text-white font-semibold text-base">
+                {esMesActual && (
+                  <p className="text-xs text-gray-400 mb-2">
+                    Real: ${resumenTotal.totalDolares.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                  </p>
+                )}
+                <div className="border-t border-[#046C5E]/30 pt-2 space-y-1">
+                  <p className="text-xs text-gray-400">Mes anterior</p>
+                  <p className="text-white font-semibold text-sm">
                     ${resumenTotal.totalDolaresAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                   </p>
                   <div className="flex justify-center">
                     <span
-                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold border ${
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${
                         resumenTotal.varAbsDolares >= 0
                           ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
                           : "text-red-400 border-red-400/20 bg-red-400/10"
@@ -312,7 +329,8 @@ export default function DashboardBotellon() {
 
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ── Resumen USD ── */}
         {!cargando && !cargandoEmpresas && isAdmin && resumenVentasUSD && (

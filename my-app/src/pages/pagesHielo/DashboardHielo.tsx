@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import logo from "../../assets/imagen-hielo.png";
 import DashboardLayout from "../../layout/DashboardLayout";
-import ResumenVentasHielo from "../../components/ComponentHielo/ResumenVentasHielo";
 import KpisHielo from "../../components/ComponentHielo/KpisHielo";
 import TablaHieloOdoo from "../../components/ComponentHielo/TablaHieloOdoo";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
@@ -22,27 +21,24 @@ const DashboardHielo: React.FC = () => {
   const { user } = useAuth();
   const isAdmin  = (user?.role ?? "").toUpperCase() === "ADMIN";
 
-  const [mesSeleccionado,  setMesSeleccionado]  = useState(meses.Enero);
-  const [anioSeleccionado, setAnioSeleccionado] = useState("2026");
+  const hoy        = new Date();
+  const mesActual  = String(hoy.getMonth() + 1).padStart(2, "0");
+  const anioActual = String(hoy.getFullYear());
 
-  const [resumenUsuariosVentasHielo, setResumenUsuariosVentasHielo] = useState<any[]>([]);
-
-  const totalProyeccion = resumenUsuariosVentasHielo.reduce(
-    (acc, r) => acc + Number(r.proyeccion || 0),
-    0
+  const [mesSeleccionado,  setMesSeleccionado]  = useState(
+    localStorage.getItem("mesSeleccionadoHielo") ?? mesActual
+  );
+  const [anioSeleccionado, setAnioSeleccionado] = useState(
+    localStorage.getItem("anioSeleccionadoHielo") ?? anioActual
   );
 
   const [kpisHielo,             setKpisHielo]             = useState<any | null>(null);
   const [comparativaMesAnterior, setComparativaMesAnterior] = useState<any | null>(null);
+  const [tendencia6Meses,       setTendencia6Meses]       = useState<any[]>([]);
   const [loading, setLoading]   = useState<boolean>(true);
   const [error,   setError]     = useState<string | null>(null);
-  const [seccionActiva, setSeccionActiva] = useState<string | null>(null);
-
-  const activarSeccion = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setSeccionActiva(id);
-    setTimeout(() => setSeccionActiva(null), 3000);
-  };
+  const [proyeccionDolares,   setProyeccionDolares]   = useState<number>(0);
+  const [proyeccionUnidades,  setProyeccionUnidades]  = useState<number>(0);
 
   /* ============================
      FETCH DATA
@@ -51,6 +47,9 @@ const DashboardHielo: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
+      setProyeccionDolares(0);
+      setProyeccionUnidades(0);
+      setTendencia6Meses([]);
       try {
         const response = await fetch(
           `${API_BASE_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
@@ -58,8 +57,6 @@ const DashboardHielo: React.FC = () => {
         if (!response.ok) throw new Error("Error al obtener los datos");
         const data = await response.json();
         console.log("📊 Fetch Response Hielo:", data);
-
-        setResumenUsuariosVentasHielo(data?.resumenUsuariosVentasHielo ?? []);
 
         const resumenActual = data?.kpisGenerales?.resumenActual;
         if (resumenActual?.kpisGenerales) {
@@ -77,6 +74,7 @@ const DashboardHielo: React.FC = () => {
           setKpisHielo(null);
           setComparativaMesAnterior(null);
         }
+        setTendencia6Meses(data?.tendencia6Meses ?? []);
       } catch (err: any) {
         console.error("❌ Error fetch Hielo:", err);
         setError(err.message || "Error desconocido");
@@ -87,6 +85,11 @@ const DashboardHielo: React.FC = () => {
       }
     };
     fetchData();
+  }, [mesSeleccionado, anioSeleccionado]);
+
+  useEffect(() => {
+    localStorage.setItem("mesSeleccionadoHielo",  mesSeleccionado);
+    localStorage.setItem("anioSeleccionadoHielo", anioSeleccionado);
   }, [mesSeleccionado, anioSeleccionado]);
 
   return (
@@ -136,7 +139,10 @@ const DashboardHielo: React.FC = () => {
             ESTADOS
         ============================ */}
         {loading && (
-          <p className="text-gray-300 text-center">Cargando datos…</p>
+          <div className="flex flex-col justify-center items-center py-32 gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400" />
+          <p className="text-gray-400 text-sm">Cargando datos…</p>
+        </div>
         )}
         {error && (
           <p className="text-red-400 text-center">Error: {error}</p>
@@ -149,8 +155,10 @@ const DashboardHielo: React.FC = () => {
           <KpisHielo
             kpis={kpisHielo}
             comparativa={comparativaMesAnterior}
-            totalProyeccion={totalProyeccion}
-            onCardClick={() => activarSeccion("seccion-resumen-hielo")}
+            totalProyeccion={proyeccionDolares}
+            totalProyeccionUnidades={proyeccionUnidades}
+            esMesActual={mesSeleccionado === mesActual && anioSeleccionado === anioActual}
+            tendencia6Meses={tendencia6Meses}
           />
         )}
 
@@ -163,31 +171,16 @@ const DashboardHielo: React.FC = () => {
           <TablaHieloOdoo
             anio={anioSeleccionado}
             mes={mesSeleccionado}
+            onTotalesLoaded={(t) => {
+              setProyeccionDolares(t.monto);
+              setProyeccionUnidades(t.proyeccionUnidades);
+            }}
           />
         )}
 
 
 
 
-           {/* ============================
-            TABLA RESUMEN
-        ============================ */}
-        {!loading && !error && (
-          <div
-            id="seccion-resumen-hielo"
-            className={`rounded-xl transition-all duration-500 ${
-              seccionActiva === "seccion-resumen-hielo"
-                ? "ring-2 ring-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.35)]"
-                : ""
-            }`}
-          >
-            <ResumenVentasHielo
-              data={resumenUsuariosVentasHielo}
-              anio={anioSeleccionado}
-              mes={mesSeleccionado}
-            />
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );

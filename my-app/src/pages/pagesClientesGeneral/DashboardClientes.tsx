@@ -25,8 +25,20 @@ const FETCH_LIMIT   = 10000; // traer todo de una vez
 const money = (n?: number) =>
   Number(n || 0).toLocaleString("es-EC", { style: "currency", currency: "USD" });
 
-const estadoIcon = (e?: string) =>
-  e === "ACTIVO" ? "🟢" : e === "RIESGO" ? "🟡" : e === "INACTIVO" ? "🔴" : "⚪";
+const ESTADO_CFG: Record<string, { dot: string; badge: string; label: string }> = {
+  ACTIVO:   { dot: "bg-green-500",  badge: "text-green-400 bg-green-500/15 border-green-500/30",  label: "Activo"   },
+  RIESGO:   { dot: "bg-yellow-400", badge: "text-yellow-400 bg-yellow-400/15 border-yellow-400/30", label: "Riesgo"   },
+  INACTIVO: { dot: "bg-red-500",    badge: "text-red-400 bg-red-500/15 border-red-500/30",         label: "Inactivo" },
+};
+const estadoIcon = (e?: string) => {
+  const cfg = ESTADO_CFG[e || ""] ?? { dot: "bg-gray-400", badge: "text-gray-400 bg-gray-500/15 border-gray-500/30", label: "—" };
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold ${cfg.badge}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+};
 
 const Arrow = ({ col, sk, sd }: { col: SortKey; sk: SortKey; sd: SortDir }) => (
   <span className="ml-1 opacity-50 text-[10px]">{sk === col ? (sd === "asc" ? "↑" : "↓") : "↕"}</span>
@@ -175,9 +187,9 @@ export default function DashboardClientesTabla() {
   if (initialLoading)
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-screen text-white gap-3">
-          <span className="w-5 h-5 border-2 border-green-400/30 border-t-green-400 rounded-full animate-spin"/>
-          Cargando clientes...
+        <div className="flex flex-col justify-center items-center py-32 gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400" />
+          <p className="text-gray-400 text-sm">Cargando datos…</p>
         </div>
       </DashboardLayout>
     );
