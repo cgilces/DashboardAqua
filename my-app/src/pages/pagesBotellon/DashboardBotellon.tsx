@@ -122,8 +122,8 @@ export default function DashboardBotellon() {
     let totalDolares = 0;
     let totalProyeccionUnidades = 0;
     let totalProyeccionDolares = 0;
-    let totalUnidadesAnterior = 0;
-    let totalDolaresAnterior = 0;
+    let totalUnidadesAnteriorFuentes = 0;
+    let totalDolaresAnteriorFuentes = 0;
 
     SECCIONES.forEach((s) => {
       const total = botellones[s.key]?.total;
@@ -132,8 +132,8 @@ export default function DashboardBotellon() {
 
       totalUnidades += total?.unidades ?? 0;
       totalDolares += total?.dolares ?? 0;
-      totalUnidadesAnterior += mesAnterior?.unidades ?? 0;
-      totalDolaresAnterior += mesAnterior?.dolares ?? 0;
+      totalUnidadesAnteriorFuentes += mesAnterior?.unidades ?? 0;
+      totalDolaresAnteriorFuentes += mesAnterior?.dolares ?? 0;
       totalProyeccionUnidades += detalle.reduce(
         (acc: number, item: any) => acc + Number(item.proyeccion?.unidades || 0), 0
       );
@@ -142,10 +142,35 @@ export default function DashboardBotellon() {
       );
     });
 
-    const varAbsUnidades = totalProyeccionUnidades - totalUnidadesAnterior;
+    // Incluir VIP, DOMICILIO y EMPRESAS en el total
+    [botellones.VIP, botellones.DOMICILIO, empresasData].forEach((src) => {
+      if (!src) return;
+      const total = src.total;
+      const detalle = src.detalle || [];
+      const mesAnterior = total?.mesAnterior;
+      totalUnidades += total?.unidades ?? 0;
+      totalDolares += total?.dolares ?? 0;
+      totalUnidadesAnteriorFuentes += mesAnterior?.unidades ?? 0;
+      totalDolaresAnteriorFuentes += mesAnterior?.dolares ?? 0;
+      totalProyeccionUnidades += detalle.reduce(
+        (acc: number, item: any) => acc + Number(item.proyeccion?.unidades || 0), 0
+      );
+      totalProyeccionDolares += detalle.reduce(
+        (acc: number, item: any) => acc + Number(item.proyeccion?.dolares || 0), 0
+      );
+    });
+
+    // Mes anterior: usar tendencia6Meses como fuente de verdad
+    const mesPrevNum  = Number(mesSeleccionado) > 1 ? Number(mesSeleccionado) - 1 : 12;
+    const anioPrevNum = Number(mesSeleccionado) > 1 ? Number(anioSeleccionado)   : Number(anioSeleccionado) - 1;
+    const puntoPrev   = tendencia6Meses.find((d: any) => d.mes === mesPrevNum && d.anio === anioPrevNum);
+    const totalDolaresAnterior  = puntoPrev ? Number(puntoPrev.dolares)   : totalDolaresAnteriorFuentes;
+    const totalUnidadesAnterior = puntoPrev ? Number(puntoPrev.unidades)  : totalUnidadesAnteriorFuentes;
+
+    const varAbsUnidades = totalUnidades - totalUnidadesAnterior;
     const varPorcUnidades =
       totalUnidadesAnterior !== 0 ? (varAbsUnidades / totalUnidadesAnterior) * 100 : 0;
-    const varAbsDolares = totalProyeccionDolares - totalDolaresAnterior;
+    const varAbsDolares = totalDolares - totalDolaresAnterior;
     const varPorcDolares =
       totalDolaresAnterior !== 0 ? (varAbsDolares / totalDolaresAnterior) * 100 : 0;
 
@@ -161,7 +186,7 @@ export default function DashboardBotellon() {
       varAbsDolares,
       varPorcDolares,
     };
-  }, [botellones]);
+  }, [botellones, empresasData, tendencia6Meses, mesSeleccionado, anioSeleccionado]);
 
   const resumenVentasUSD = useMemo(() => {
     if (!botellones) return null;
@@ -245,9 +270,16 @@ export default function DashboardBotellon() {
         )}
 
         {/* ── Gráfico tendencia ── */}
-        {!cargando && !cargandoEmpresas && tendencia6Meses.length > 0 && (
-          <GraficoTendencia datos={tendencia6Meses} subtitulo="Últimos 6 meses · MobilVendor + Odoo" />
-        )}
+        {!cargando && !cargandoEmpresas && tendencia6Meses.length > 0 && (() => {
+          const tendenciaFinal = resumenTotal
+            ? tendencia6Meses.map((d: any) =>
+                d.mes === Number(mesSeleccionado) && d.anio === Number(anioSeleccionado)
+                  ? { ...d, dolares: resumenTotal.totalDolares, proyeccion: resumenTotal.totalProyeccionDolares }
+                  : d
+              )
+            : tendencia6Meses;
+          return <GraficoTendencia datos={tendenciaFinal} subtitulo="Últimos 6 meses · MobilVendor + Odoo" />;
+        })()}
 
         {/* ── Tarjeta Total Botellones ── */}
         {!cargando && !cargandoEmpresas && isAdmin && resumenTotal && (() => {

@@ -772,7 +772,7 @@ const resumirRankingParaCard = (ranking = [], canal) => {
 // ================================================================
 const tendencia6MesesPreventa = async (anioNum, mesNum) => {
   const NOMBRES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  let mesInicio = mesNum - 5, anioInicio = anioNum;
+  let mesInicio = mesNum - 11, anioInicio = anioNum;
   while (mesInicio <= 0) { mesInicio += 12; anioInicio--; }
   const inicio6 = getFechaInicioMes(anioInicio, mesInicio);
   const fin6    = getFechaFinMes(anioNum, mesNum);

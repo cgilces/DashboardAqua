@@ -319,8 +319,8 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
 const tendencia6MesesHielo = async (anioNum, mesNum) => {
   const NOMBRES_MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
-  // Calcular rango: 6 meses hacia atrás hasta el mes actual
-  let mesInicio = mesNum - 5, anioInicio = anioNum;
+  // Calcular rango: 12 meses hacia atrás hasta el mes actual
+  let mesInicio = mesNum - 11, anioInicio = anioNum;
   while (mesInicio <= 0) { mesInicio += 12; anioInicio--; }
 
   const inicio6 = `${anioInicio}-${String(mesInicio).padStart(2,'0')}-01 00:00:00`;

@@ -2,91 +2,101 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --- ESTILOS GLOBALES DEL DASHBOARD --- */
+/* ========================================================
+   GLOBAL BASE
+======================================================== */
 @layer base {
   body {
     @apply text-white font-sans;
-    background: linear-gradient(180deg, #162B25 100%, #162B25 100%);
+    background: #0d1f1a;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -10%, rgba(4,108,94,0.18) 0%, transparent 70%),
+      linear-gradient(180deg, #111e1a 0%, #0d1f1a 100%);
     font-family: 'Poppins', sans-serif !important;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Animación global */
+  /* ── Scrollbar global (Webkit) ── */
+  ::-webkit-scrollbar        { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track  { background: rgba(0,0,0,0.15); }
+  ::-webkit-scrollbar-thumb  { background: rgba(4,108,94,0.55); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(0,200,150,0.7); }
+
+  /* ── Focus ring ── */
+  :focus-visible {
+    outline: 2px solid rgba(0,200,150,0.6);
+    outline-offset: 2px;
+  }
+
+  /* ── Smooth transitions for selection ── */
+  ::selection { background: rgba(0,200,150,0.3); color: #fff; }
+
+  /* ── Fade-in animation ── */
   @keyframes aparecerSuave {
-    from {
-      opacity: 0;
-      transform: translateY(15px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
 
-  .fade-in {
-    animation: aparecerSuave 0.6s ease forwards;
-  }
+  .fade-in        { animation: aparecerSuave 0.5s ease forwards; }
+  .fade-in-fast   { animation: aparecerSuave 0.3s ease forwards; }
 
-  /* ========================================================
-     TARJETAS RESPONSIVE & EFECTOS
-  ======================================================== */
+  /* ── Cards ── */
   .tarjeta {
-    @apply bg-[#045C4C]
-      rounded-2xl
-      p-6
-      shadow-lg
-      transition-transform
-      duration-500
-      ease-in-out
-      hover:shadow-2xl
-      w-full
-      max-w-full;
+    @apply bg-gradient-to-br from-[#012E24] to-[#014034]
+      rounded-2xl p-6 shadow-lg
+      transition-all duration-300 ease-in-out
+      hover:shadow-2xl w-full max-w-full;
+    animation: aparecerSuave 0.5s ease forwards;
+  }
+  .tarjeta:hover { transform: translateY(-3px); }
 
-    animation: aparecerSuave 0.6s ease forwards;
-  }
-
-  .tarjeta:hover {
-    transform: scale(1.06) translateY(-6px);
-    box-shadow: 0 20px 35px rgba(0,0,0,0.45);
-  }
-
-  /* ========================================================
-     PROGRESO
-  ======================================================== */
-  .barra-progreso {
-    @apply w-full h-2 bg-gray-700 rounded-full overflow-hidden;
-  }
-  .relleno-progreso {
-    @apply h-full bg-[#00C896] transition-all duration-500 ease-out;
-  }
+  /* ── Progress bar ── */
+  .barra-progreso  { @apply w-full h-1.5 bg-gray-700/60 rounded-full overflow-hidden; }
+  .relleno-progreso { @apply h-full bg-emerald-400 transition-all duration-500 ease-out rounded-full; }
 }
 
 /* ========================================================
-     RESPONSIVE BREAKPOINTS ADICIONALES
+   TABLES — global horizontal scroll on small screens
 ======================================================== */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-responsive table { min-width: 600px; }
 
-/* Para tablets */
+/* Scroll hint shadow on tables */
+.table-scroll-hint {
+  position: relative;
+}
+.table-scroll-hint::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  background: linear-gradient(to right, transparent, rgba(1,15,12,0.7));
+  pointer-events: none;
+  border-radius: 0 8px 8px 0;
+}
+
+/* ========================================================
+   RESPONSIVE BREAKPOINTS
+======================================================== */
 @media (max-width: 900px) {
-  .tarjeta {
-    @apply p-4;
-    transform: none !important;
-  }
+  .tarjeta { @apply p-4; transform: none !important; }
 }
 
-/* Teléfonos grandes */
 @media (max-width: 600px) {
-  .tarjeta {
-    @apply p-3 rounded-xl;
-    font-size: 0.95rem;
-  }
+  .tarjeta { @apply p-3 rounded-xl; font-size: 0.93rem; }
 }
 
-/* Teléfonos chicos */
 @media (max-width: 400px) {
-  .tarjeta {
-    @apply p-2 rounded-lg;
-    font-size: 0.9rem;
-  }
+  .tarjeta { @apply p-2 rounded-lg; font-size: 0.88rem; }
 }
-
-

@@ -223,7 +223,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
   /* ───────────────── RENDER ───────────────── */
 
   return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
+    <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
 
       {/* HEADER */}
 
@@ -271,7 +271,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
       </div>
 
       {/* TABLA */}
-
+      <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
 
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
@@ -411,6 +411,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
         </tfoot>
 
       </table>
+      </div>
     </div>
   );
 };

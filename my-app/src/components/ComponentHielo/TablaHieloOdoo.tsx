@@ -30,6 +30,7 @@ interface Props {
   onTotalesLoaded?: (totales: {
     canal: string;
     monto: number;
+    montoReal: number;
     mesAnterior: number;
     variacionAbs: number;
     variacionPorc: number;
@@ -65,6 +66,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
           onTotalesLoaded({
             canal: "HIELO EMPRESA ODOO",
             monto: data.periodo.esMesActual ? data.totales.proyeccion_dolares : data.totales.dolares,
+            montoReal: data.totales.dolares,
             mesAnterior: data.totales.mes_anterior.dolares,
             variacionAbs: data.totales.variacion.abs,
             variacionPorc: data.totales.variacion.porcentaje ?? 0,
@@ -128,7 +130,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
   };
 
   return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6 mb-10">
+    <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6 mb-10">
 
       {/* ── Encabezado con KPIs ──────────────────────────────── */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
@@ -177,6 +179,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
       </div>
 
       {/* ── Fila única del canal ─────────────────────────────── */}
+      <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
@@ -199,6 +202,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
           >
             <td className="px-4 py-3 font-bold text-cyan-300">
               HIELO EMPRESA — ODOO
+              <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
             </td>
 
             <td className="px-4 py-3 text-right text-green-400 font-bold">
@@ -246,6 +250,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

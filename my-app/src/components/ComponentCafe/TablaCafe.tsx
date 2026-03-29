@@ -118,7 +118,7 @@ export default function TablaCafe({ anio, mes }: Props) {
       <KpisCafe totales={totales} esMesActual={esMesActual} tendencia6Meses={tendencia6Meses} />
 
       {/* Tabla */}
-      <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
+      <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
 
         {/* Encabezado */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
@@ -161,6 +161,7 @@ export default function TablaCafe({ anio, mes }: Props) {
         </div>
 
         {/* Tabla */}
+        <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-[#014434] text-green-300 uppercase text-xs">
             <tr>
@@ -180,7 +181,10 @@ export default function TablaCafe({ anio, mes }: Props) {
               className="bg-[#013d32] border-l-4 border-transparent cursor-pointer hover:bg-[#016a57] transition"
               onClick={() => navigate(`/cafe/clientes/${anio}/${mes}`)}
             >
-              <td className="px-4 py-3 font-bold text-cyan-300">CAFÉ — IIBC S.A.</td>
+              <td className="px-4 py-3 font-bold text-cyan-300">
+                CAFÉ — IIBC S.A.
+                <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
+              </td>
               <td className="px-4 py-3 text-right text-green-400 font-bold">{fmtInt(totales.unidades)}</td>
               <td className="px-4 py-3 text-right font-bold text-white">${fmt(totales.dolares)}</td>
               {esMesActual && (
@@ -213,6 +217,7 @@ export default function TablaCafe({ anio, mes }: Props) {
 
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

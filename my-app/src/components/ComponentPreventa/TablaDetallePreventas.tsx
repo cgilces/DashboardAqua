@@ -10,7 +10,7 @@ const TablaDetallePreventas: React.FC<Props> = ({ ruta, datos }) => {
   const totalUSD = datos.reduce((acc, d) => acc + (d.monto || 0), 0);
 
   return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
+    <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
         <h2 className="text-lg md:text-xl font-bold text-green-400">
           Detalle por Producto - {ruta}
@@ -26,6 +26,7 @@ const TablaDetallePreventas: React.FC<Props> = ({ ruta, datos }) => {
           </div>
         </div>
       </div>
+      <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
@@ -85,6 +86,7 @@ const TablaDetallePreventas: React.FC<Props> = ({ ruta, datos }) => {
           </tr>
         </tfoot>
       </table>
+      </div>
     </div>
   );
 };

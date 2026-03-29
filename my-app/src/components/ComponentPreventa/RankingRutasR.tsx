@@ -160,7 +160,7 @@ const RankingRutasInner = ({
   const fmtInt = (n: number) => n.toLocaleString("es-EC");
 
   return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
+    <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
         <h2 className="text-lg md:text-xl font-bold text-blue-300">
           RANKING R - DESCARTABLE
@@ -210,6 +210,7 @@ const RankingRutasInner = ({
         </div>
       </div>
 
+      <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
@@ -332,6 +333,7 @@ const RankingRutasInner = ({
           </tr>
         </tfoot>
       </table>
+      </div>
     </div>
   );
 };

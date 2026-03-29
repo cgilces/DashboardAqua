@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import logo from "../../assets/imagen-hielo.png";
 import DashboardLayout from "../../layout/DashboardLayout";
 import KpisHielo from "../../components/ComponentHielo/KpisHielo";
@@ -39,6 +39,8 @@ const DashboardHielo: React.FC = () => {
   const [error,   setError]     = useState<string | null>(null);
   const [proyeccionDolares,   setProyeccionDolares]   = useState<number>(0);
   const [proyeccionUnidades,  setProyeccionUnidades]  = useState<number>(0);
+  const [realDolares,         setRealDolares]         = useState<number>(0);
+  const [realUnidades,        setRealUnidades]        = useState<number>(0);
 
   /* ============================
      FETCH DATA
@@ -49,6 +51,8 @@ const DashboardHielo: React.FC = () => {
       setError(null);
       setProyeccionDolares(0);
       setProyeccionUnidades(0);
+      setRealDolares(0);
+      setRealUnidades(0);
       setTendencia6Meses([]);
       try {
         const response = await fetch(
@@ -91,6 +95,55 @@ const DashboardHielo: React.FC = () => {
     localStorage.setItem("mesSeleccionadoHielo",  mesSeleccionado);
     localStorage.setItem("anioSeleccionadoHielo", anioSeleccionado);
   }, [mesSeleccionado, anioSeleccionado]);
+
+  const tendenciaFinal = useMemo(() => {
+    if (!tendencia6Meses.length || !kpisHielo) return tendencia6Meses;
+    const montoRealFinal    = realDolares  || kpisHielo.montoTotal;
+    const unidadesRealFinal = realUnidades || kpisHielo.unidadesTotales;
+    return tendencia6Meses.map((d: any) =>
+      d.mes === Number(mesSeleccionado) && d.anio === Number(anioSeleccionado)
+        ? { ...d, dolares: montoRealFinal, proyeccion: proyeccionDolares, unidades: unidadesRealFinal }
+        : d
+    );
+  }, [tendencia6Meses, kpisHielo, realDolares, realUnidades, proyeccionDolares, mesSeleccionado, anioSeleccionado]);
+
+  const comparativaCorregida = useMemo(() => {
+    if (!comparativaMesAnterior || !tendencia6Meses.length || !kpisHielo) return comparativaMesAnterior;
+    const mesPrevNum  = Number(mesSeleccionado) > 1 ? Number(mesSeleccionado) - 1 : 12;
+    const anioPrevNum = Number(mesSeleccionado) > 1 ? Number(anioSeleccionado)   : Number(anioSeleccionado) - 1;
+    const puntoPrev   = tendencia6Meses.find((d: any) => d.mes === mesPrevNum && d.anio === anioPrevNum);
+    if (!puntoPrev) return comparativaMesAnterior;
+
+    // Dólares
+    const anteriorDolares    = Number(puntoPrev.dolares);
+    const montoRealFinal     = realDolares  || kpisHielo.montoTotal;
+    const varAbsDolares      = montoRealFinal - anteriorDolares;
+    const varPorcDolares     = anteriorDolares !== 0 ? (varAbsDolares / anteriorDolares) * 100 : 0;
+
+    // Unidades
+    const anteriorUnidades   = Number(puntoPrev.unidades);
+    const unidadesRealFinal  = realUnidades || kpisHielo.unidadesTotales;
+    const varAbsUnidades     = unidadesRealFinal - anteriorUnidades;
+    const varPorcUnidades    = anteriorUnidades !== 0 ? (varAbsUnidades / anteriorUnidades) * 100 : 0;
+
+    return {
+      ...comparativaMesAnterior,
+      monto: {
+        ...comparativaMesAnterior.monto,
+        anterior: anteriorDolares,
+        actual:   montoRealFinal,
+        variacionAbs:  varAbsDolares,
+        variacionPorc: varPorcDolares,
+      },
+      unidades: {
+        ...comparativaMesAnterior.unidades,
+        anterior: anteriorUnidades,
+        actual:   unidadesRealFinal,
+        variacionAbs:  varAbsUnidades,
+        variacionPorc: varPorcUnidades,
+      },
+    };
+  }, [comparativaMesAnterior, tendencia6Meses, kpisHielo, realDolares, realUnidades, mesSeleccionado, anioSeleccionado]);
 
   return (
     <DashboardLayout>
@@ -153,12 +206,16 @@ const DashboardHielo: React.FC = () => {
         ============================ */}
         {!loading && !error && kpisHielo && (
           <KpisHielo
-            kpis={kpisHielo}
-            comparativa={comparativaMesAnterior}
+            kpis={{
+              ...kpisHielo,
+              montoTotal:      realDolares  || kpisHielo.montoTotal,
+              unidadesTotales: realUnidades || kpisHielo.unidadesTotales,
+            }}
+            comparativa={comparativaCorregida}
             totalProyeccion={proyeccionDolares}
             totalProyeccionUnidades={proyeccionUnidades}
             esMesActual={mesSeleccionado === mesActual && anioSeleccionado === anioActual}
-            tendencia6Meses={tendencia6Meses}
+            tendencia6Meses={tendenciaFinal}
           />
         )}
 
@@ -174,6 +231,8 @@ const DashboardHielo: React.FC = () => {
             onTotalesLoaded={(t) => {
               setProyeccionDolares(t.monto);
               setProyeccionUnidades(t.proyeccionUnidades);
+              setRealDolares(t.montoReal);
+              setRealUnidades(t.unidades);
             }}
           />
         )}

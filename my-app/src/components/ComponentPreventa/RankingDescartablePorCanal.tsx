@@ -218,7 +218,7 @@ const RankingDescartablePorCanal = ({
   const fmtInt = (n: number) => n.toLocaleString("es-EC");
 
   return (
-    <div className="overflow-x-auto bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
+    <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
 
       {/* HEADER */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
@@ -270,6 +270,7 @@ const RankingDescartablePorCanal = ({
       </div>
 
       {/* TABLA */}
+      <div className="overflow-x-auto -webkit-overflow-scrolling-touch">
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
@@ -397,6 +398,7 @@ const RankingDescartablePorCanal = ({
           </tr>
         </tfoot>
       </table>
+      </div>
     </div>
   );
 };
