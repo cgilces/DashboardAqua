@@ -84,7 +84,7 @@ const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses }) =>
         {/* TOTAL DÓLARES */}
         <div className="bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg text-center">
           <p className="text-xs text-blue-300 uppercase tracking-wider font-semibold mb-1">
-            {esMesActual ? "Proyección $" : "Total Dólares"}
+            {esMesActual ? "Proyección Dólares $" : "Total Dólares"}
           </p>
           <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-3 break-all">
             {money(esMesActual ? totales.proyeccion_dolares : totales.dolares)}
@@ -114,7 +114,7 @@ const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses }) =>
         {/* TOTAL UNIDADES */}
         <div className="bg-gradient-to-br from-[#012E24] to-[#014034] border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg text-center">
           <p className="text-xs text-blue-300 uppercase tracking-wider font-semibold mb-1">
-            {esMesActual ? "Proyección Uni" : "Total Unidades"}
+            {esMesActual ? "Proyección Unidades" : "Total Unidades"}
           </p>
           <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-3 break-all">
             {fmtInt(esMesActual ? totales.proyeccion_unidades : totales.unidades)}
