@@ -115,7 +115,7 @@ export default function TablaCafe({ anio, mes }: Props) {
     <div className="mt-6 mb-10">
 
       {/* KPI Cards */}
-      <KpisCafe totales={totales} esMesActual={esMesActual} tendencia6Meses={tendencia6Meses} />
+      <KpisCafe totales={totales} esMesActual={esMesActual} tendencia6Meses={tendencia6Meses} anioFiltro={Number(anio)} mesFiltro={Number(mes)} />
 
       {/* Tabla */}
       <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">

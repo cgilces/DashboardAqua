@@ -278,7 +278,7 @@ export default function DashboardBotellon() {
                 : d
             )
             : tendencia6Meses;
-          return <GraficoTendencia datos={tendenciaFinal} subtitulo="Últimos 6 meses · MobilVendor + Odoo" />;
+          return <GraficoTendencia datos={tendenciaFinal} subtitulo="MobilVendor + Odoo" anioFiltro={Number(anioSeleccionado)} mesFiltro={Number(mesSeleccionado)} />;
         })()}
 
         {/* ── Tarjeta Total Botellones ── */}

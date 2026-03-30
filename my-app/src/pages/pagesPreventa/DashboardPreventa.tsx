@@ -206,7 +206,7 @@ export default function DashboardPreventa() {
                       : d
                   )
                 : tendencia6Meses;
-              return <GraficoTendencia datos={tendenciaFinal} subtitulo="Últimos 6 meses · Preventa" />;
+              return <GraficoTendencia datos={tendenciaFinal} subtitulo="Preventa" anioFiltro={Number(anioSeleccionado)} mesFiltro={Number(mesSeleccionado)} />;
             })()}
 
             {/* ── Tarjeta Total Descartable ── */}

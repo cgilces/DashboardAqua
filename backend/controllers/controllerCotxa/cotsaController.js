@@ -118,12 +118,16 @@ const obtenerDashboardCOTSA = async (req, res) => {
     });
 
     // Totales para las cards superiores
+    // mesAnterior: suma TODAS las rutas del mes anterior (no solo las que tienen ventas actuales)
+    const totalMesAnterior = ventasAnteriores.reduce((a, r) => a + (Number(r.dolares) || 0), 0);
+
     const totales = {
       unidades: ranking.reduce((a, r) => a + r.unidades, 0),
       dolares: ranking.reduce((a, r) => a + r.dolares, 0),
       proyeccion: ranking.reduce((a, r) => a + r.proyeccion, 0),
       cant_facturas: ranking.reduce((a, r) => a + r.cant_facturas, 0),
       cant_clientes: ranking.reduce((a, r) => a + r.cant_clientes, 0),
+      mesAnterior: Number(totalMesAnterior.toFixed(2)),
     };
 
     return res.status(200).json({ ranking, totales });

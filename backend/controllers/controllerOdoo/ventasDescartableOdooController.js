@@ -158,13 +158,16 @@ const obtenerVentasDescartableOdoo = async (req, res) => {
     });
 
     // ── Totales generales ───────────────────────────────────────
+    // mes_anterior: suma TODAS las rutas del mes anterior (no solo las que tienen ventas actuales)
+    const totalMesAnterior = ventasAnterior.reduce((a, r) => a + (Number(r.dolares) || 0), 0);
+
     const totales = {
       unidades     : rutas.reduce((a, r) => a + r.unidades,     0),
       dolares      : Number(rutas.reduce((a, r) => a + r.dolares,      0).toFixed(2)),
       proyeccion   : Number(rutas.reduce((a, r) => a + r.proyeccion,   0).toFixed(2)),
       cant_ordenes : rutas.reduce((a, r) => a + r.cant_ordenes, 0),
       mes_anterior : {
-        dolares    : Number(rutas.reduce((a, r) => a + r.mes_anterior.dolares, 0).toFixed(2)),
+        dolares    : Number(totalMesAnterior.toFixed(2)),
       },
     };
     totales.variacion = {

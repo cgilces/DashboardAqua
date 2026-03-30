@@ -19,6 +19,8 @@ export interface PuntoTendencia {
 interface Props {
   datos: PuntoTendencia[];
   subtitulo?: string;
+  anioFiltro?: number;
+  mesFiltro?: number;
 }
 
 /* ── Tooltip ─────────────────────────────────────────────── */
@@ -112,19 +114,40 @@ const ProyeccionDot = (props: any) => {
   );
 };
 
+const NOMBRES_MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
 /* ── Componente principal ────────────────────────────────── */
-const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo }) => {
+const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFiltro }) => {
   if (!datos || datos.length === 0) return null;
 
   const hoy = new Date();
   const mesActual  = hoy.getMonth() + 1;
   const anioActual = hoy.getFullYear();
 
+  /* ── Completar el año filtrado con ceros para meses sin ventas ── */
+  const datosCompletos = useMemo(() => {
+    if (!anioFiltro || !mesFiltro) return datos;
+
+    // Generar desde enero del año filtrado hasta el mes seleccionado
+    const rango: PuntoTendencia[] = [];
+    for (let m = 1; m <= mesFiltro; m++) {
+      rango.push({ label: NOMBRES_MES[m - 1], anio: anioFiltro, mes: m, dolares: 0, unidades: 0 });
+    }
+
+    // Superponer los datos reales del año filtrado; lo que no existe queda en cero
+    const map = new Map(
+      datos
+        .filter(d => d.anio === anioFiltro)
+        .map(d => [`${d.mes}`, d])
+    );
+    return rango.map(p => map.get(`${p.mes}`) ?? p);
+  }, [datos, anioFiltro, mesFiltro]);
+
   /* ── Calcular acumulado YTD (se reinicia en enero de cada año) ── */
   const dataConAcumulado = useMemo(() => {
     let acum = 0;
     let lastAnio = -1;
-    return datos.map(d => {
+    return datosCompletos.map(d => {
       if (d.anio !== lastAnio) {
         acum = 0;
         lastAnio = d.anio;
@@ -135,11 +158,11 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo }) => {
       acum = Number((acum + valorMes).toFixed(2));
       return { ...d, acumulado: acum };
     });
-  }, [datos]);
+  }, [datosCompletos]);
 
   const maxRef = Math.max(...dataConAcumulado.map(d => Math.max(d.dolares, d.proyeccion ?? d.dolares)));
   const maxAcum = Math.max(...dataConAcumulado.map(d => d.acumulado ?? 0));
-  const maxUni  = Math.max(...datos.map(d => d.unidades));
+  const maxUni  = Math.max(...datosCompletos.map(d => d.unidades));
 
   // Punto actual para mostrar KPI rápido en header
   const puntoActual = dataConAcumulado.find(d => d.mes === mesActual && d.anio === anioActual);
@@ -152,7 +175,11 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo }) => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
         <div>
           <p className="text-sm font-semibold text-white tracking-wide">Evolución de Ventas</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">{subtitulo ?? "Últimos 12 meses"}</p>
+          <p className="text-[11px] text-gray-500 mt-0.5">
+            {anioFiltro
+              ? `Ene – ${NOMBRES_MES[(mesFiltro ?? 12) - 1]} ${anioFiltro}${subtitulo ? ` · ${subtitulo}` : ""}`
+              : (subtitulo ?? "Últimos 12 meses")}
+          </p>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap text-[10px]">

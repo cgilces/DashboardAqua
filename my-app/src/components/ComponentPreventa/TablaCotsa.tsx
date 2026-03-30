@@ -12,6 +12,7 @@ interface TotalesCotsa {
   proyeccion: number;
   cant_facturas: number;
   cant_clientes: number;
+  mesAnterior?: number;
 }
 
 interface RutaCotsa {
@@ -59,13 +60,15 @@ export default function TablaCotsa({ anio, mes, onTotalesLoaded }: Props) {
       .then((data: DatosCotsa) => {
         setDatos(data);
         if (onTotalesLoaded) {
-          const ant = data.ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
-          const varAbs = data.ranking.reduce((a, r) => a + r.vsMesAnterior.variacion_abs, 0);
+          // Usar mesAnterior del backend (incluye TODAS las rutas del mes anterior, no solo las actuales)
+          const ant = data.totales.mesAnterior ?? data.ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
           const hoy = new Date();
           const esMes = Number(anio) === hoy.getFullYear() && Number(mes) === hoy.getMonth() + 1;
+          const montoComparar = esMes ? data.totales.proyeccion : data.totales.dolares;
+          const varAbs = montoComparar - ant;
           onTotalesLoaded({
             canal: "COTSA - AGUA OK",
-            monto: esMes ? data.totales.proyeccion : data.totales.dolares,
+            monto: montoComparar,
             montoReal: data.totales.dolares,
             mesAnterior: ant,
             variacionAbs: varAbs,
@@ -98,8 +101,10 @@ export default function TablaCotsa({ anio, mes, onTotalesLoaded }: Props) {
   const { totales, ranking } = datos;
 
   // Calcular variación total del canal
-  const totalAnterior  = ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
-  const totalVariacion = ranking.reduce((a, r) => a + r.vsMesAnterior.variacion_abs, 0);
+  // totalAnterior: usa el valor del backend que incluye TODAS las rutas del mes anterior
+  const totalAnterior  = totales.mesAnterior ?? ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
+  const montoActualTabla = esMesActual ? totales.proyeccion : totales.dolares;
+  const totalVariacion = montoActualTabla - totalAnterior;
   const porcVariacion  = totalAnterior > 0 ? (totalVariacion / totalAnterior) * 100 : null;
   const esPositivo     = totalVariacion >= 0;
   const sinDatos       = totalAnterior === 0;

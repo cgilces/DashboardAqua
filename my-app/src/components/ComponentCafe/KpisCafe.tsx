@@ -20,6 +20,8 @@ interface Props {
     variacion_unidades: { abs: number; porcentaje: number | null };
   };
   esMesActual: boolean;
+  anioFiltro?: number;
+  mesFiltro?: number;
 }
 
 const money  = (v: number) => `$${v.toLocaleString("es-EC", { minimumFractionDigits: 2 })}`;
@@ -40,7 +42,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses }) => {
+const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses, anioFiltro, mesFiltro }) => {
   const varDolPos = totales.variacion_dolares.abs >= 0;
   const varUniPos = totales.variacion_unidades.abs >= 0;
   const sinDatos  = totales.mes_anterior.dolares === 0;
@@ -73,7 +75,7 @@ const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses }) =>
   return (
     <div>
       {/* ── Gráfico tendencia 6 meses ─────────────────────────── */}
-      <GraficoTendencia datos={tendencia6Meses ?? []} subtitulo="Últimos 6 meses · IIBC S.A." />
+      <GraficoTendencia datos={tendencia6Meses ?? []} subtitulo="IIBC S.A." anioFiltro={anioFiltro} mesFiltro={mesFiltro} />
 
       {/* ── Gráfico comparativa ───────────────────────────────── */}
     

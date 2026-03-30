@@ -33,6 +33,8 @@ interface Props {
   esMesActual?: boolean;
   tendencia6Meses?: { label: string; anio: number; mes: number; dolares: number; unidades: number }[];
   onCardClick?: () => void;
+  anioFiltro?: number;
+  mesFiltro?: number;
 }
 
 
@@ -60,7 +62,7 @@ const colorVariacion = (v?: Variacion) => {
    COMPONENTE
 ============================ */
 
-const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion, totalProyeccionUnidades, esMesActual, tendencia6Meses, onCardClick }) => {
+const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion, totalProyeccionUnidades, esMesActual, tendencia6Meses, onCardClick, anioFiltro, mesFiltro }) => {
 
   const proyUnidades = totalProyeccionUnidades ?? kpis.unidadesTotales;
 
@@ -68,7 +70,7 @@ const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion, totalP
     <div className="mb-10">
 
       {/* ── GRÁFICO TENDENCIA 6 MESES ────────────────────────── */}
-      <GraficoTendencia datos={tendencia6Meses ?? []} subtitulo="Últimos 6 meses · MobilVendor + Odoo" />
+      <GraficoTendencia datos={tendencia6Meses ?? []} subtitulo="MobilVendor + Odoo" anioFiltro={anioFiltro} mesFiltro={mesFiltro} />
 
       <h3 className="text-sm text-emerald-300 mb-4 uppercase px-2 tracking-wider">
         Total Hielo

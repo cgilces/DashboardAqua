@@ -216,6 +216,8 @@ const DashboardHielo: React.FC = () => {
             totalProyeccionUnidades={proyeccionUnidades}
             esMesActual={mesSeleccionado === mesActual && anioSeleccionado === anioActual}
             tendencia6Meses={tendenciaFinal}
+            anioFiltro={Number(anioSeleccionado)}
+            mesFiltro={Number(mesSeleccionado)}
           />
         )}
 
