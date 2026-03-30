@@ -160,12 +160,9 @@ export default function DashboardBotellon() {
       );
     });
 
-    // Mes anterior: usar tendencia6Meses como fuente de verdad
-    const mesPrevNum = Number(mesSeleccionado) > 1 ? Number(mesSeleccionado) - 1 : 12;
-    const anioPrevNum = Number(mesSeleccionado) > 1 ? Number(anioSeleccionado) : Number(anioSeleccionado) - 1;
-    const puntoPrev = tendencia6Meses.find((d: any) => d.mes === mesPrevNum && d.anio === anioPrevNum);
-    const totalDolaresAnterior = puntoPrev ? Number(puntoPrev.dolares) : totalDolaresAnteriorFuentes;
-    const totalUnidadesAnterior = puntoPrev ? Number(puntoPrev.unidades) : totalUnidadesAnteriorFuentes;
+    // Mes anterior: usar la suma de los valores reales por grupo (fuente de verdad del backend)
+    const totalDolaresAnterior  = totalDolaresAnteriorFuentes;
+    const totalUnidadesAnterior = totalUnidadesAnteriorFuentes;
 
     const varAbsUnidades = totalUnidades - totalUnidadesAnterior;
     const varPorcUnidades =
@@ -186,7 +183,7 @@ export default function DashboardBotellon() {
       varAbsDolares,
       varPorcDolares,
     };
-  }, [botellones, empresasData, tendencia6Meses, mesSeleccionado, anioSeleccionado]);
+  }, [botellones, empresasData]);
 
   const resumenVentasUSD = useMemo(() => {
     if (!botellones) return null;

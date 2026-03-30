@@ -79,8 +79,9 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
           if (!d) return null;
 
           const proyeccionUSD = d.proyeccion ?? 0;
+          const montoReal = d.monto ?? 0;
+          const hayProyeccion = Math.abs(proyeccionUSD - montoReal) > 0.01;
           const proyeccionUnidades = d.proyeccion_unidades ?? 0;
-          // const unidadesActuales = d.unidades ?? 0;
           const mesAnterior = d.vsMesAnterior;
           const unidadesMesAnterior = mesAnterior?.unidades ?? 0;
           const variacionAbsUnidades = mesAnterior?.variacionAbsUnidades ?? 0;
@@ -113,16 +114,14 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
               className={`
                 bg-gradient-to-br from-[#012E24] to-[#014034]
                 border border-[#046C5E]/40
-                rounded-2xl p-6
-                shadow-lg
-                flex flex-col
-                transition-all duration-300
-                hover:shadow-xl
+                rounded-2xl p-5
+                shadow-lg flex flex-col
+                transition-all duration-300 hover:shadow-xl
                 ${clickable ? "cursor-pointer hover:border-emerald-400/60 hover:scale-[1.02]" : ""}
               `}
             >
-              {/* CANAL */}
-              <div className="flex items-center justify-between mb-5">
+              {/* ── Cabecera canal ─────────────────────────── */}
+              <div className="flex items-center justify-between mb-4">
                 <p className="uppercase tracking-wider text-xs text-blue-300 font-semibold">
                   {CANALES_LABELS[canal] ?? canal}
                 </p>
@@ -133,134 +132,68 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-2 gap-4 md:gap-8 mb-6">
+              {/* ── Grid 2 columnas: cada fila alineada ────── */}
+              <div className="flex-1 grid grid-cols-2 gap-x-4">
 
-                {/* ===================== COLUMNA UNIDADES ===================== */}
-                <div className="space-y-2 md:space-y-4 min-w-0">
+                {/* ── FILA 1: etiquetas ─────────────────────── */}
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide leading-tight">
+                  Proy. Unidades
+                </p>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide leading-tight text-right">
+                  Proy. Dólares
+                </p>
 
-                  {/* PROYECCIÓN */}
-                  <div className="min-w-0">
-                    <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                      Proyección Unidades
-                    </p>
+                {/* ── FILA 2: valores proyección ────────────── */}
+                <p className="font-bold text-white text-xl md:text-2xl leading-tight mt-0.5 truncate">
+                  {proyeccionUnidades.toLocaleString("es-EC")}
+                </p>
+                <p className="font-bold text-emerald-400 text-xl md:text-2xl leading-tight mt-0.5 text-right truncate">
+                  {money(proyeccionUSD)}
+                </p>
 
-                    <p className="font-bold text-white text-xl md:text-2xl xl:text-3xl leading-none truncate">
-                      {proyeccionUnidades.toLocaleString("es-EC")}
-                    </p>
-                  </div>
+                {/* ── FILA 3: real (reserva espacio siempre) ── */}
+                <p className="invisible text-[11px] leading-tight mt-0.5">—</p>
+                <p className={`text-[11px] leading-tight mt-0.5 text-right ${hayProyeccion ? "text-gray-400" : "invisible"}`}>
+                  Real: <span className="text-white font-semibold">{money(montoReal)}</span>
+                </p>
 
-                  {/* ✅ DESKTOP: Mes anterior (Unidades) */}
-                  <div className="hidden md:block border-t border-[#046C5E]/30 pt-3 space-y-2 min-w-0">
-                    <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
+                {/* ── SEPARADOR compartido ─────────────────── */}
+                <div className="col-span-2 border-t border-[#046C5E]/30 my-3" />
 
-                    <p className="text-white font-semibold text-base truncate">
-                      {unidadesMesAnterior.toLocaleString("es-EC")} Uni
-                    </p>
+                {/* ── FILA 4: etiqueta mes anterior ─────────── */}
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide">Mes anterior</p>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide text-right">Mes anterior</p>
 
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold border ${variacionAbsUnidades >= 0
-                        ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
-                        : "text-red-400 border-red-400/20 bg-red-400/10"
-                        }`}
-                    >
-                      {variacionAbsUnidades >= 0 ? "▲" : "▼"}
-                      <span className="truncate">
-                        {Math.abs(variacionAbsUnidades).toLocaleString("es-EC")}
-                      </span>
-                      <span className="opacity-90">({variacionPorcUnidades.toFixed(1)}%)</span>
-                    </span>
+                {/* ── FILA 5: valores mes anterior ─────────── */}
+                <p className="text-white font-semibold text-sm mt-0.5 truncate">
+                  {unidadesMesAnterior.toLocaleString("es-EC")} Uni
+                </p>
+                <p className="text-white font-semibold text-sm mt-0.5 text-right truncate">
+                  {money(montoAnterior)}
+                </p>
 
-
-                  </div>
+                {/* ── FILA 6: badges variación ──────────────── */}
+                <div className="mt-1.5">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border
+                    ${variacionAbsUnidades >= 0
+                      ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
+                      : "text-red-400 border-red-400/20 bg-red-400/10"}`}>
+                    {variacionAbsUnidades >= 0 ? "▲" : "▼"}
+                    {Math.abs(variacionAbsUnidades).toLocaleString("es-EC")}
+                    <span className="opacity-80">({variacionPorcUnidades.toFixed(1)}%)</span>
+                  </span>
+                </div>
+                <div className="mt-1.5 flex justify-end">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border
+                    ${variacionAbs >= 0
+                      ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
+                      : "text-red-400 border-red-400/20 bg-red-400/10"}`}>
+                    {variacionAbs >= 0 ? "▲" : "▼"}
+                    {money(Math.abs(variacionAbs))}
+                    <span className="opacity-80">({variacionPorc.toFixed(1)}%)</span>
+                  </span>
                 </div>
 
-                {/* ===================== COLUMNA USD ===================== */}
-                <div className="space-y-2 md:space-y-4 text-right border-l border-[#046C5E]/40 pl-2  ">
-
-                  {/* PROYECCIÓN */}
-                  <div className="min-w-0">
-                    <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                      Proyección Dólares
-                    </p>
-
-                    <p className="font-bold text-emerald-400 text-xl md:text-2xl xl:text2xl leading-none whitespace-nowrap">
-                      {money(proyeccionUSD)}
-                    </p>
-                  </div>
-
-                  {/* ✅ DESKTOP: Mes anterior (USD) */}
-                  <div className="hidden md:block border-t border-[#046C5E]/30 pt-4 space-y-2 min-w-0">
-                    <p className="text-xs text-gray-400 uppercase tracking-wide">Mes anterior</p>
-
-                    <p className="text-white font-semibold text-base truncate">
-                      {money(montoAnterior)}
-                    </p>
-
-                    <span
-                      className={`inline-flex items-center justify-end gap-1 px-2 py-1 rounded-md text-xs font-semibold border ${variacionAbs >= 0
-                        ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
-                        : "text-red-400 border-red-400/20 bg-red-400/10"
-                        }`}
-                    >
-                      {variacionAbs >= 0 ? "▲" : "▼"}
-                      <span className="truncate">{money(Math.abs(variacionAbs))}</span>
-                      <span className="opacity-90">({variacionPorc.toFixed(1)}%)</span>
-                    </span>
-                  </div>
-
-                </div>
-
-                {/* ===================== ✅ MÓVIL ABAJO: DOS BLOQUES ===================== */}
-                {/* ✅ MÓVIL ABAJO: Dos bloques */}
-                <div className="col-span-2 md:hidden border-t border-[#046C5E]/30 pt-3 grid grid-cols-2 gap-4">
-
-                  {/* BLOQUE UNIDADES */}
-                  <div className="space-y-1 min-w-0">
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">
-                      Mes anterior
-                    </p>
-
-                    <p className="text-white font-semibold text-sm truncate">
-                      {unidadesMesAnterior.toLocaleString("es-EC")} Uni
-                    </p>
-
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border ${variacionAbsUnidades >= 0
-                          ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
-                          : "text-red-400 border-red-400/20 bg-red-400/10"
-                        }`}
-                    >
-                      {variacionAbsUnidades >= 0 ? "▲" : "▼"}
-                      <span className="truncate">
-                        {Math.abs(variacionAbsUnidades).toLocaleString("es-EC")}
-                      </span>
-                      <span className="opacity-90">({variacionPorcUnidades.toFixed(1)}%)</span>
-                    </span>
-                  </div>
-
-                  {/* BLOQUE USD */}
-                  <div className="space-y-1 text-right min-w-0">
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">
-                      Mes anterior
-                    </p>
-
-                    <p className="text-white font-semibold text-sm truncate">
-                      {money(montoAnterior)}
-                    </p>
-
-                    <span
-                      className={`inline-flex items-center justify-end gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border ${variacionAbs >= 0
-                          ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
-                          : "text-red-400 border-red-400/20 bg-red-400/10"
-                        }`}
-                    >
-                      {variacionAbs >= 0 ? "▲" : "▼"}
-                      <span className="truncate">{money(Math.abs(variacionAbs))}</span>
-                      <span className="opacity-90">({variacionPorc.toFixed(1)}%)</span>
-                    </span>
-                  </div>
-
-                </div>
               </div>
             </div>
 

@@ -26,8 +26,6 @@ const LoginScreen: React.FC = () => {
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-10"
              style={{ background: 'radial-gradient(circle, #00c896, transparent 70%)' }} />
-        <div className="absolute -bottom-24 -right-24 w-80 h-80 rounded-full opacity-8"
-             style={{ background: 'radial-gradient(circle, #046C5E, transparent 70%)' }} />
       </div>
 
       {/* Card */}
@@ -43,7 +41,7 @@ const LoginScreen: React.FC = () => {
       >
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center gap-2">
-          <div className="w-64 h-16 text-emerald-300 drop-shadow-lg">
+          <div className="w-64 h-16 text-white drop-shadow-lg">
             <AquaLogo className="w-full h-full" />
           </div>
           <div className="flex items-center gap-2 mt-1">

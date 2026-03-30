@@ -32,7 +32,7 @@ export const AquaGotaparaMain = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const AquaLogo = (props: React.SVGProps<SVGSVGElement>) => (
   // LOGO PREMIUM
-  <svg xmlns="http://www.w3.org/2000/svg" fill="#162b25" version="1.1" viewBox="0 0 2350 980" {...props}>
+  <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" version="1.1" viewBox="0 0 2350 980" {...props}>
 
 
     <g>
