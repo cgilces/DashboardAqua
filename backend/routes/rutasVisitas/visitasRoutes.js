@@ -4,9 +4,10 @@ const router = express.Router();
 
 const { sincronizarRutasYDetalles } = require("../../services/syncRouteDetailsService");
 const { obtenerHistorialDeUsuarios } = require("../../services/syncHistorialVisitasService"); // Asegúrate de que la ruta sea correcta
-const { obtenerDashboardVisitas,  obtenerClientesNoVisitados} = require("../../controllers/controllerVIsitas/visitasController");
+const { obtenerDashboardVisitas, obtenerClientesNoVisitados, obtenerDashboardPorUsuario } = require("../../controllers/controllerVIsitas/visitasController");
 
 router.get("/dashboard", obtenerDashboardVisitas);
+router.get("/dashboard-usuarios", obtenerDashboardPorUsuario);
 router.get("/no-visitados", obtenerClientesNoVisitados);
 
 // Ruta para sincronizar rutas y detalles de rutas

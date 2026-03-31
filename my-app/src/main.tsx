@@ -18,6 +18,10 @@ import DetalleClientesCanalDescartablePage from "./pages/pagesPreventa/DetalleCl
 import DashboardBotellon from "./pages/pagesBotellon/DashboardBotellon";
 import DetalleBotellonPage from "./pages/pagesBotellon/DetalleBotellonPage";
 import DetalleVipBotellonPage from "./pages/pagesBotellon/DetalleVipBotellonPage";
+import VipClientesPorTipoPage from "./pages/pagesBotellon/VipClientesPorTipoPage";
+import VipDetalleClientePage from "./pages/pagesBotellon/VipDetalleClientePage";
+import EmpresasClientesPorTipoPage from "./pages/pagesBotellon/EmpresasClientesPorTipoPage";
+import EmpresasDetalleClientePage from "./pages/pagesBotellon/EmpresasDetalleClientePage";
 import DetalleClientesDomicilioPage from "./pages/pagesBotellon/DetalleClientesDomicilioPage";
 import DetalleClientesEmpresasPage from "./pages/pagesBotellon/DetalleClientesEmpresasPage";
 import ConfigurarMetasBotellon from "./pages/pagesBotellon/ConfigurarMetasBotellon";
@@ -108,12 +112,28 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               element={<DetalleVipBotellonPage />}
             />
             <Route
+              path="/vip-botellon/tipo/:tipo/:anio/:mes"
+              element={<VipClientesPorTipoPage />}
+            />
+            <Route
+              path="/vip-botellon/cliente/:clienteCode/:anio/:mes"
+              element={<VipDetalleClientePage />}
+            />
+            <Route
               path="/domicilio-botellon/clientes/:anio/:mes"
               element={<DetalleClientesDomicilioPage />}
             />
             <Route
               path="/empresas-botellon/clientes/:anio/:mes"
               element={<DetalleClientesEmpresasPage />}
+            />
+            <Route
+              path="/empresas-botellon/tipo/:tipo/:anio/:mes"
+              element={<EmpresasClientesPorTipoPage />}
+            />
+            <Route
+              path="/empresas-botellon/cliente/:clienteCode/:anio/:mes"
+              element={<EmpresasDetalleClientePage />}
             />
             <Route
               path="/configurar-metas-botellon/:seccion"
