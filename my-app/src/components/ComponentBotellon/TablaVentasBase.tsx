@@ -401,19 +401,31 @@ const TablaVentasBase: React.FC<Props> = ({
                             </td>
 
                             {/* VARIACIÓN */}
-                            <td className={`px-4 py-2 text-right font-bold ${(row.vsMesAnterior?.variacion_abs ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                                {(() => {
-                                    const abs = row.vsMesAnterior?.variacion_abs ?? 0;
-                                    return <>{abs >= 0 ? "+" : "-"}{money(Math.abs(abs))}</>;
-                                })()}
-                            </td>
-                            {/* % */}
-                            <td className={`px-4 py-2 text-right font-bold ${(row.vsMesAnterior?.variacion_porc ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                                {(() => {
-                                    const porc = row.vsMesAnterior?.variacion_porc ?? 0;
-                                    return `${porc >= 0 ? "+" : ""}${porc.toFixed(2)}%`;
-                                })()}
-                            </td>
+                            {(() => {
+                                const cupoDolares = row.cupo?.cupo_dolares ?? 0;
+                                const proyDolares = row.proyeccion?.dolares ?? 0;
+                                const variacionAbs = seccionMetas ? proyDolares - cupoDolares : row.vsMesAnterior?.variacion_abs ?? 0;
+                                const variacionPorc = seccionMetas
+                                    ? (cupoDolares > 0 ? ((proyDolares - cupoDolares) / cupoDolares) * 100 : 0)
+                                    : row.vsMesAnterior?.variacion_porc ?? 0;
+                                const tieneCupo = !seccionMetas || cupoDolares > 0;
+                                return (
+                                    <>
+                                    <td className={`px-4 py-2 text-right font-bold ${variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
+                                        {variacionAbs !== 0
+                                            ? <>{variacionAbs >= 0 ? "+" : "-"}{money(Math.abs(variacionAbs))}</>
+                                            : <span className="text-gray-500">—</span>
+                                        }
+                                    </td>
+                                    <td className={`px-4 py-2 text-right font-bold ${variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
+                                        {variacionAbs !== 0 && tieneCupo
+                                            ? `${variacionPorc >= 0 ? "+" : ""}${variacionPorc.toFixed(2)}%`
+                                            : <span className="text-gray-500">—</span>
+                                        }
+                                    </td>
+                                    </>
+                                );
+                            })()}
                         </tr>
                     ))}
                 </tbody>
@@ -450,9 +462,17 @@ const TablaVentasBase: React.FC<Props> = ({
                             {money(totalProyeccionDolares)}
                         </td>
 
-                        <td className={`px-4 py-3 text-right ${totalvsmesanterior >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {totalvsmesanterior >= 0 ? "+" : "-"}{money(Math.abs(totalvsmesanterior))}
-                        </td>
+                        {(() => {
+                            const totalVariacion = seccionMetas ? totalProyeccionDolares - totalCupoDolares : totalvsmesanterior;
+                            return (
+                                <td className={`px-4 py-3 text-right ${totalVariacion >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                    {seccionMetas && totalCupoDolares === 0
+                                        ? <span className="text-gray-400">—</span>
+                                        : <>{totalVariacion >= 0 ? "+" : "-"}{money(Math.abs(totalVariacion))}</>
+                                    }
+                                </td>
+                            );
+                        })()}
                         <td className="px-4 py-3 text-right text-gray-400">—</td>
                     </tr>
                 </tfoot>

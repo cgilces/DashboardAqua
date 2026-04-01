@@ -363,7 +363,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
 
                 {/* % */}
                 <td className={`px-4 py-2 text-right font-bold ${Number(variacionPorc) < 0 ? "text-red-400" : Number(variacionPorc) > 0 ? "text-green-400" : "text-gray-400"}`}>
-                  {variacionAbs !== 0 ? (
+                  {variacionAbs !== 0 && objetivo > 0 ? (
                     <>{Number(variacionPorc) > 0 ? "+" : ""}{variacionPorc}%</>
                   ) : (
                     <span className="text-gray-500 text-xs italic">—</span>
