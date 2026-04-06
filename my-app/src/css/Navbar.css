@@ -1,0 +1,229 @@
+/* ==============================
+   SIDEBAR BASE
+============================== */
+.sidebar {
+  background: rgba(1, 15, 12, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right: 1px solid rgba(4, 108, 94, 0.25);
+  color: white;
+  width: 240px;
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  transition: width 0.28s cubic-bezier(.4,0,.2,1),
+              left 0.28s cubic-bezier(.4,0,.2,1),
+              box-shadow 0.28s ease;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 999;
+  box-shadow: 4px 0 24px rgba(0,0,0,0.35);
+}
+
+/* Scrollbar */
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(4,108,94,0.4); border-radius: 4px; }
+
+/* ==============================
+   SIDEBAR CERRADO
+============================== */
+.sidebar.closed {
+  width: 62px;
+}
+
+.sidebar.closed .menu-item {
+  justify-content: center;
+  padding: 13px 0 !important;
+}
+
+.sidebar.closed ul li { padding: 0 !important; }
+
+.sidebar.closed .menu-icon {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin: 0 auto !important;
+}
+
+.sidebar.closed .menu-text { display: none !important; }
+.sidebar.closed .submenu  { display: none; }
+
+.sidebar.closed .active-menu {
+  width: 100% !important;
+  padding: 13px 0 !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  border-radius: 0 !important;
+}
+
+/* ==============================
+   BOTÓN TOGGLE
+============================== */
+.toggle-btn {
+  position: fixed;
+  top: 12px;
+  left: 10px;
+  background: linear-gradient(135deg, #00c896, #007a5e);
+  border: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  z-index: 2000;
+  cursor: pointer;
+  color: #fff;
+  line-height: 0;
+  box-shadow: 0 2px 12px rgba(0,200,150,0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.toggle-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 18px rgba(0,200,150,0.5);
+}
+
+/* ==============================
+   MENÚ PRINCIPAL
+============================== */
+.sidebar ul {
+  list-style: none;
+  padding: 8px 8px 24px;
+  margin: 0;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background 0.18s ease, border-color 0.18s ease;
+  text-decoration: none;
+  color: rgba(255,255,255,0.75);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  border-left: 2px solid transparent;
+}
+
+.menu-item:hover {
+  background: rgba(4,108,94,0.22);
+  color: #fff;
+  border-left-color: rgba(0,200,150,0.5);
+}
+
+/* ==============================
+   MENU ACTIVO
+============================== */
+.active-menu {
+  background: linear-gradient(90deg, rgba(0,200,150,0.18), rgba(0,200,150,0.06)) !important;
+  color: #1df4be !important;
+  font-weight: 700 !important;
+  border-left: 2px solid #00c896 !important;
+}
+.active-menu svg  { color: #00c896 !important; }
+.active-menu img  { filter: drop-shadow(0 0 4px rgba(0,200,150,0.6)); }
+.active-menu:hover { background: linear-gradient(90deg, rgba(0,200,150,0.25), rgba(0,200,150,0.08)) !important; }
+
+/* ==============================
+   ICONOS
+============================== */
+.menu-icon img {
+  width: 32px;
+  height: 28px;
+  object-fit: contain;
+  opacity: 0.85;
+  transition: opacity 0.18s ease;
+}
+.menu-item:hover .menu-icon img,
+.active-menu .menu-icon img { opacity: 1; }
+
+.menu-icon svg {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+/* ==============================
+   CONTENT — desktop
+============================== */
+.main-content {
+  width: calc(100% - 240px);
+  margin-left: 240px;
+  padding: 20px;
+  transition: margin-left 0.28s cubic-bezier(.4,0,.2,1),
+              width 0.28s cubic-bezier(.4,0,.2,1);
+}
+
+.sidebar.closed ~ .main-content {
+  width: calc(100% - 62px);
+  margin-left: 62px;
+}
+
+/* ==============================
+   DESKTOP SPACING
+============================== */
+@media (min-width: 900px) {
+  .sidebar.open ul  { margin-top: 80px; }
+  .sidebar.closed ul { margin-top: 56px; }
+
+  .toggle-btn { left: 10px; }
+  .sidebar.open  ~ .toggle-btn { left: 262px; }
+  .sidebar.closed ~ .toggle-btn { left: 78px; }
+}
+
+/* ==============================
+   TABLET  < 900px
+============================== */
+@media (max-width: 900px) {
+  .sidebar {
+    width: 220px;
+    left: -220px;
+  }
+  .sidebar.open { left: 0; box-shadow: 6px 0 32px rgba(0,0,0,0.6); }
+
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+}
+
+/* ==============================
+   MOBILE  < 600px
+============================== */
+@media (max-width: 600px) {
+  .sidebar {
+    width: 0 !important;
+    left: 0 !important;
+    overflow: hidden;
+    transition: width 0.28s cubic-bezier(.4,0,.2,1);
+  }
+  .sidebar.open {
+    width: 200px !important;
+    overflow-y: auto;
+    box-shadow: 6px 0 32px rgba(0,0,0,0.7);
+  }
+  .sidebar.closed { width: 0 !important; }
+
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 12px !important;
+  }
+
+  .toggle-btn {
+    top: 0;
+    left: 0;
+    padding: 13px 15px;
+    border-radius: 0 0 8px 0;
+    z-index: 3000;
+  }
+
+  .sidebar.open ul { margin-top: 80px; }
+}

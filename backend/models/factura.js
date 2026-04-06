@@ -1,0 +1,151 @@
+const { DataTypes } = require("sequelize");
+const sequelize = require("../db");
+
+const Factura = sequelize.define("Factura", {
+  code: {
+    type: DataTypes.STRING,
+    primaryKey: true,
+    allowNull: false,
+  },
+
+  type: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+  status: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+  fecha_creacion: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+
+  fecha_autorizacion: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+
+  fecha_entrega: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+
+  fecha_vencimiento: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+
+  customer_code: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  customer_address_code: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  route_code: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  seller_code: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  total: {
+    type: DataTypes.DECIMAL(18, 2),
+    allowNull: true,
+  },
+
+  subtotal: {
+    type: DataTypes.DECIMAL(18, 2),
+    allowNull: true,
+  },
+
+  iva: {
+    type: DataTypes.DECIMAL(18, 2),
+    allowNull: true,
+  },
+
+  discount: {
+    type: DataTypes.DECIMAL(18, 2),
+    allowNull: true,
+  },
+
+  saldo_pendiente: {
+    type: DataTypes.DECIMAL(18, 2),
+    allowNull: true,
+  },
+
+  estado_pago: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  tipo_documento: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  moneda: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  // parent_id: {
+  //   type: DataTypes.STRING,
+  //   allowNull: true,
+  // },
+
+  auth_code: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  access_key: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  latitude: {
+    type: DataTypes.DECIMAL(12, 8),
+    allowNull: true,
+  },
+
+  longitude: {
+    type: DataTypes.DECIMAL(12, 8),
+    allowNull: true,
+  },
+
+  notes: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+
+  origen_sistema: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  company_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+  reversed_entry_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+}, {
+  tableName: "facturas",
+  timestamps: false,
+});
+
+module.exports = Factura;
