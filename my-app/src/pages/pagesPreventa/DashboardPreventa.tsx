@@ -56,10 +56,14 @@ export default function DashboardPreventa() {
   const obtenerDatos = async (anio: number, mes: number) => {
     try {
       setCargando(true);
+<<<<<<< HEAD
       const token = localStorage.getItem('app_token');
       const res = await fetch(`${API_BASE_URL}/api/ventas/dashboard?anio=${anio}&mes=${mes}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+=======
+      const res = await fetch(`${API_BASE_URL}/api/ventas/dashboard?anio=${anio}&mes=${mes}`);
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
       const data = await res.json();
       setDatos(data);
       setTopClientesState(data.topClientes || []);
@@ -132,6 +136,7 @@ export default function DashboardPreventa() {
   const isSupervisor = rol === "SUPERVISOR";
   const isVendedor = rol === "VENDEDOR";
 
+<<<<<<< HEAD
   // Rutas asignadas (solo relevante para VENDEDOR)
   const rutasAsignadas: string[] = Array.isArray(user?.assigned_routes)
     ? user!.assigned_routes.map((r: string) => r.toUpperCase())
@@ -142,6 +147,8 @@ export default function DashboardPreventa() {
   const puedeVerCotsa  = !isVendedor;
   const puedeVerOdoo   = !isVendedor;
 
+=======
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
   const puedeVerRanking = isAdmin || isSupervisor || isVendedor;
   const soloAdmin = isAdmin;
 
@@ -209,8 +216,13 @@ export default function DashboardPreventa() {
 
         {datos && !cargando && kpis && (
           <>
+<<<<<<< HEAD
             {/* ── Gráfico tendencia — solo ADMIN/SUPERVISOR ── */}
             {!isVendedor && tendencia6Meses.length > 0 && (() => {
+=======
+            {/* ── Gráfico tendencia ── */}
+            {tendencia6Meses.length > 0 && (() => {
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
               // Sobrescribir el mes seleccionado con los valores exactos del card Total Descartable
               const tendenciaFinal = totalDescartable
                 ? tendencia6Meses.map((d: any) =>
@@ -365,8 +377,13 @@ export default function DashboardPreventa() {
 
            
 
+<<<<<<< HEAD
             {/* ── RankingPreventas — ADMIN + SUPERVISOR + VENDEDOR con PV* ── */}
             {puedeVerRanking && tieneRutasPV && (
+=======
+            {/* ── RankingPreventas — ADMIN + SUPERVISOR + VENDEDOR ── */}
+            {puedeVerRanking && (
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
               <div
                 id="seccion-ranking-preventas"
                 className={`rounded-xl transition-all duration-500 ${
@@ -383,8 +400,13 @@ export default function DashboardPreventa() {
               </div>
             )}
 
+<<<<<<< HEAD
             {/* ── RankingRutasR — solo si tiene rutas R* ── */}
             {puedeVerRanking && tieneRutasR && (
+=======
+            {/* ── RankingRutasR — ADMIN + SUPERVISOR + VENDEDOR ── */}
+            {puedeVerRanking && (
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
               <div
                 id="seccion-ranking-rutas-r"
                 className={`rounded-xl transition-all duration-500 ${
@@ -402,6 +424,7 @@ export default function DashboardPreventa() {
             )}
 
 
+<<<<<<< HEAD
              {/* ── Tabla COTSA — solo visible si no es VENDEDOR ── */}
             {puedeVerCotsa && (
               <TablaCotsa
@@ -419,6 +442,22 @@ export default function DashboardPreventa() {
                 onTotalesLoaded={setOdooCard}
               />
             )}
+=======
+             {/* ── Tabla COTSA  nueva ──────────────────────────── */}
+            <TablaCotsa
+              anio={anioSeleccionado}
+              mes={mesSeleccionado}
+              onTotalesLoaded={setCotsaCard}
+            />
+
+
+            {/* ── NUEVO: Tabla rutas Odoo descartable ── */}
+            <TablaDescartableOdoo
+              anio={anioSeleccionado}
+              mes={mesSeleccionado}
+              onTotalesLoaded={setOdooCard}
+            />
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
 
             {/* ── Resto — solo ADMIN ── */}
             {isAdmin && (

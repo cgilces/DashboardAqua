@@ -85,11 +85,17 @@ export default function DashboardBotellon() {
       setTendencia6Meses([]);
       setMostrarTablas(false);
 
+<<<<<<< HEAD
       const token = localStorage.getItem('app_token');
       const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       const [resDash, resEmp] = await Promise.all([
         fetch(`${API_BASE_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/api/botellones/empresas-consolidado?anio=${anioSeleccionado}&mes=${mesSeleccionado}`, { headers: authHeaders }),
+=======
+      const [resDash, resEmp] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`),
+        fetch(`${API_BASE_URL}/api/botellones/empresas-consolidado?anio=${anioSeleccionado}&mes=${mesSeleccionado}`),
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
       ]);
 
       const jsonDash = await resDash.json();
@@ -166,10 +172,17 @@ export default function DashboardBotellon() {
     const totalDolaresAnterior  = totalDolaresAnteriorFuentes;
     const totalUnidadesAnterior = totalUnidadesAnteriorFuentes;
 
+<<<<<<< HEAD
     const varAbsUnidades = totalProyeccionUnidades - totalUnidadesAnterior;
     const varPorcUnidades =
       totalUnidadesAnterior !== 0 ? (varAbsUnidades / totalUnidadesAnterior) * 100 : 0;
     const varAbsDolares = totalProyeccionDolares - totalDolaresAnterior;
+=======
+    const varAbsUnidades = totalUnidades - totalUnidadesAnterior;
+    const varPorcUnidades =
+      totalUnidadesAnterior !== 0 ? (varAbsUnidades / totalUnidadesAnterior) * 100 : 0;
+    const varAbsDolares = totalDolares - totalDolaresAnterior;
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     const varPorcDolares =
       totalDolaresAnterior !== 0 ? (varAbsDolares / totalDolaresAnterior) * 100 : 0;
 
@@ -296,7 +309,11 @@ export default function DashboardBotellon() {
                       {esMesActual ? "Proyección Unidades" : "Total Unidades"}
                     </p>
                     <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-3 break-all">
+<<<<<<< HEAD
                       {Math.round(resumenTotal.totalProyeccionUnidades).toLocaleString("es-EC")}
+=======
+                      {resumenTotal.totalProyeccionUnidades.toLocaleString("es-EC")}
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
                     </p>
                     {esMesActual && (
                       <p className="text-xs text-gray-400 mb-2">
@@ -316,7 +333,11 @@ export default function DashboardBotellon() {
                             }`}
                         >
                           {resumenTotal.varAbsUnidades >= 0 ? "▲" : "▼"}
+<<<<<<< HEAD
                           {Math.round(Math.abs(resumenTotal.varAbsUnidades)).toLocaleString("es-EC")}
+=======
+                          {Math.abs(resumenTotal.varAbsUnidades).toLocaleString("es-EC")}
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
                           <span className="opacity-90">({resumenTotal.varPorcUnidades.toFixed(1)}%)</span>
                         </span>
                       </div>

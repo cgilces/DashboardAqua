@@ -73,6 +73,7 @@ function verificarToken(req, res, next) {
   }
 }
 
+<<<<<<< HEAD
 // Middleware opcional: no bloquea si no hay token, solo popula req.user si hay uno válido
 function verificarTokenOpcional(req, res, next) {
   try {
@@ -93,3 +94,6 @@ function verificarTokenOpcional(req, res, next) {
 }
 
 module.exports = { verificarToken, verificarTokenOpcional };
+=======
+module.exports = { verificarToken };
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c

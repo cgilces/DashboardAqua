@@ -203,9 +203,12 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
   // ============================
   // FECHAS MES ACTUAL
   // ============================
+<<<<<<< HEAD
   const hoyDate = new Date();
   const esMesActualHielo = hoyDate.getFullYear() === anioNum && hoyDate.getMonth() + 1 === mesNum;
 
+=======
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
   const fechaInicioStr = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
   let mesFin = mesNum + 1;
   let anioFin = anioNum;
@@ -213,10 +216,14 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
     mesFin = 1;
     anioFin++;
   }
+<<<<<<< HEAD
   const fechaFinMes = `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
   // Para el mes actual cortamos en hoy 00:00:00, consistente con diasTranscurridos
   const fechaFinHoy = `${hoyDate.getFullYear()}-${String(hoyDate.getMonth() + 1).padStart(2, '0')}-${String(hoyDate.getDate()).padStart(2, '0')} 00:00:00`;
   const fechaFinStr = esMesActualHielo ? fechaFinHoy : fechaFinMes;
+=======
+  const fechaFinStr = `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
 
   // ============================
   // FECHAS MES ANTERIOR
@@ -288,6 +295,7 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
     const actual = Number(row.total);
     const anterior = mapAnterior[row.usuario] || 0;
 
+<<<<<<< HEAD
     //  PROYECCIÓN
     const proyeccion = esMesActualHielo && diasTranscurridos > 0
       ? (actual / diasTranscurridos) * diasLaborablesMes
@@ -298,6 +306,18 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
     const variacionPorc =
       anterior > 0 ? (variacionAbs / anterior) * 100 : null;
 
+=======
+    const variacionAbs = actual - anterior;
+    const variacionPorc =
+      anterior > 0 ? (variacionAbs / anterior) * 100 : null;
+
+    //  PROYECCIÓN
+    const proyeccion =
+      diasTranscurridos > 0
+        ? (actual / diasTranscurridos) * diasLaborablesMes
+        : 0;
+
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     return {
       usuario: row.usuario,
       cantidadVendida: Number(row.cantidad),
@@ -400,11 +420,14 @@ const dasboardventasHielo = async (req, res) => {
 
         console.log("📅 Fechas:", anioNum, mesNum);
 
+<<<<<<< HEAD
         // ── Filtro por rutas si VENDEDOR ──────────────────────────────
         const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
           ? req.user.rutas_asignadas.map(r => r.toUpperCase())
           : null;
 
+=======
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
         // ============================
         // KPIs + TENDENCIA en paralelo
         // ============================
@@ -418,7 +441,11 @@ const dasboardventasHielo = async (req, res) => {
         // ============================
         // UNIÓN FINAL
         // ============================
+<<<<<<< HEAD
         let resumenUsuariosVentasHielo = resumenVentasUsuario.map((u) => {
+=======
+        const resumenUsuariosVentasHielo = resumenVentasUsuario.map((u) => {
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
             const meta = metasHistoricas.find(
                 (m) => m.usuario === u.usuario
             );
@@ -432,6 +459,7 @@ const dasboardventasHielo = async (req, res) => {
             };
         });
 
+<<<<<<< HEAD
         // ── Filtrar por rutas asignadas si VENDEDOR ───────────────────
         if (rutasPermitidas) {
           resumenUsuariosVentasHielo = resumenUsuariosVentasHielo.filter(u =>
@@ -439,6 +467,8 @@ const dasboardventasHielo = async (req, res) => {
           );
         }
 
+=======
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
         return res.status(200).json({
             kpisGenerales: {
                 resumenActual,

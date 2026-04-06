@@ -170,6 +170,7 @@ const metaHistoricaBotellon = async () => {
    (lunes–sábado, excluyendo festivos nacionales)
 ====================================================== */
 
+<<<<<<< HEAD
 const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}, rutasPermitidas = null) => {
   const hoyDate = new Date();
   const esMesActual = hoyDate.getFullYear() === anio && hoyDate.getMonth() + 1 === mes;
@@ -178,6 +179,10 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
   // Para el mes actual, cortamos en hoy 00:00:00 para ser consistentes con diasTranscurridos
   const finHoy = `${hoyDate.getFullYear()}-${String(hoyDate.getMonth() + 1).padStart(2, '0')}-${String(hoyDate.getDate()).padStart(2, '0')} 00:00:00`;
   const fin = esMesActual ? finHoy : finFull;
+=======
+const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}) => {
+  const { inicio, fin } = getRangoFechas(anio, mes);
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
 
   const { inicio: inicioAnt, fin: finAnt } = getRangoFechas(
     mes === 1 ? anio - 1 : anio,
@@ -259,13 +264,21 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
   `;
 
   // Ventas actuales
+<<<<<<< HEAD
   let actual = await sequelize.query(sql, {
+=======
+  const actual = await sequelize.query(sql, {
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     replacements: { inicio, fin, grupo: nombreGrupo },
     type: Sequelize.QueryTypes.SELECT,
   });
 
   // Ventas del mes anterior
+<<<<<<< HEAD
   let anterior = await sequelize.query(sql, {
+=======
+  const anterior = await sequelize.query(sql, {
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     replacements: {
       inicio: inicioAnt,
       fin: finAnt,
@@ -274,12 +287,15 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     type: Sequelize.QueryTypes.SELECT,
   });
 
+<<<<<<< HEAD
   // ── Filtrar por rutas permitidas si VENDEDOR ──────────────────
   if (rutasPermitidas) {
     actual   = actual.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
     anterior = anterior.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
   }
 
+=======
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
   // Mapeo de ventas del mes anterior por código de ruta
   const mapAnterior = {};
   anterior.forEach(r => mapAnterior[r.codigo] = {
@@ -302,6 +318,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     dolares: anterior.reduce((acc, r) => acc + (mapAnterior[r.codigo]?.dolares || 0), 0)
   };
 
+<<<<<<< HEAD
   // Proyección del total (usa real si mes cerrado o diasTrans=0)
   const proyeccionTotalDolares = esMesActual && diasTrans > 0
     ? (totalActual.dolares / diasTrans) * diasMes
@@ -315,6 +332,13 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
   const variacionPorc = totalAnterior.dolares > 0 ? (variacionAbs / totalAnterior.dolares) * 100 : 0;
 
   const variacionAbsUnidades = proyeccionTotalUnidades - totalAnterior.unidades;
+=======
+  // Variación
+  const variacionAbs = totalActual.dolares - totalAnterior.dolares;
+  const variacionPorc = totalAnterior.dolares > 0 ? (variacionAbs / totalAnterior.dolares) * 100 : 0;
+
+  const variacionAbsUnidades = totalActual.unidades - totalAnterior.unidades;
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
   const variacionPorcUnidades =
     totalAnterior.unidades > 0 ? (variacionAbsUnidades / totalAnterior.unidades) * 100 : null;
 
@@ -456,11 +480,14 @@ const obtenerDashboardBotellones = async (req, res) => {
     const anioNum = Number(anio);
     const mesNum = Number(mes);
 
+<<<<<<< HEAD
     // ── Filtro por rutas si VENDEDOR ──────────────────────────────
     const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
       ? req.user.rutas_asignadas.map(r => r.toUpperCase())
       : null;
 
+=======
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     // Cargar metas configuradas para este mes/año (solo secciones TV, T, M, R)
     const metasDB = await MetaPreventa.findAll({
       where: { anio: anioNum, mes: mesNum, seccion: SECCIONES_CON_METAS },
@@ -483,8 +510,12 @@ const obtenerDashboardBotellones = async (req, res) => {
         nombre,
         anioNum,
         mesNum,
+<<<<<<< HEAD
         metasConfigMap,
         rutasPermitidas
+=======
+        metasConfigMap
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
       );
     }
 
@@ -702,6 +733,7 @@ const obtenerEmpresasConsolidado = async (req, res) => {
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
+<<<<<<< HEAD
     const hoyEmp = new Date();
     const esMesActualEmp = hoyEmp.getFullYear() === anioNum && hoyEmp.getMonth() + 1 === mesNum;
 
@@ -709,6 +741,9 @@ const obtenerEmpresasConsolidado = async (req, res) => {
     const finHoyEmp = `${hoyEmp.getFullYear()}-${String(hoyEmp.getMonth() + 1).padStart(2, '0')}-${String(hoyEmp.getDate()).padStart(2, '0')} 00:00:00`;
     const fin = esMesActualEmp ? finHoyEmp : finFull;
 
+=======
+    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     const { inicio: inicioAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -722,6 +757,7 @@ const obtenerEmpresasConsolidado = async (req, res) => {
       queryTotalesEmpresas(inicioAnt, finAnt),
     ]);
 
+<<<<<<< HEAD
     const proyDolares  = esMesActualEmp && diasTrans > 0
       ? (actual.dolares  / diasTrans) * diasMes
       : actual.dolares;
@@ -733,6 +769,14 @@ const obtenerEmpresasConsolidado = async (req, res) => {
     const variacionAbs  = proyDolares  - anterior.dolares;
     const variacionPorc = anterior.dolares > 0 ? (variacionAbs / anterior.dolares) * 100 : 0;
     const varAbsUnid    = proyUnidades  - anterior.unidades;
+=======
+    const proyDolares  = diasTrans > 0 ? (actual.dolares  / diasTrans) * diasMes : actual.dolares;
+    const proyUnidades = diasTrans > 0 ? (actual.unidades / diasTrans) * diasMes : actual.unidades;
+
+    const variacionAbs  = actual.dolares  - anterior.dolares;
+    const variacionPorc = anterior.dolares > 0 ? (variacionAbs / anterior.dolares) * 100 : 0;
+    const varAbsUnid    = actual.unidades  - anterior.unidades;
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     const varPorcUnid   = anterior.unidades > 0 ? (varAbsUnid / anterior.unidades) * 100 : 0;
 
     return res.json({

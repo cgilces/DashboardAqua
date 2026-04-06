@@ -96,11 +96,15 @@ const obtenerVentasDescartableOdoo = async (req, res) => {
 
     // ── Fechas mes actual ───────────────────────────────────────
     const inicio = getFechaInicioMes(anioNum, mesNum);
+<<<<<<< HEAD
     // Para el mes actual cortamos en HOY al 00:00:00 para que sea consistente
     // con getDiasHabilesTranscurridos (que también cuenta hasta ayer).
     // Si usáramos fin-de-mes incluiríamos órdenes de hoy sin sumarlas al denominador.
     const finHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')} 00:00:00`;
     const fin    = esMesActual ? finHoy : getFechaFinMes(anioNum, mesNum);
+=======
+    const fin    = await getFechaFinQuery(anioNum, mesNum);
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
 
     // ── Fechas mes anterior ─────────────────────────────────────
     let mesPrev = mesNum - 1, anioPrev = anioNum;
@@ -137,7 +141,11 @@ const obtenerVentasDescartableOdoo = async (req, res) => {
         ? (montoActual / diasTranscurridos) * diasLaborablesMes
         : montoActual;
 
+<<<<<<< HEAD
       const variacionAbs  = proyeccion - anterior.dolares;
+=======
+      const variacionAbs  = montoActual - anterior.dolares;
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
       const variacionPorc = anterior.dolares > 0
         ? (variacionAbs / anterior.dolares) * 100
         : null;
@@ -175,9 +183,15 @@ const obtenerVentasDescartableOdoo = async (req, res) => {
       },
     };
     totales.variacion = {
+<<<<<<< HEAD
       abs       : Number((totales.proyeccion - totales.mes_anterior.dolares).toFixed(2)),
       porcentaje: totales.mes_anterior.dolares > 0
         ? Number(((totales.proyeccion - totales.mes_anterior.dolares) / totales.mes_anterior.dolares * 100).toFixed(2))
+=======
+      abs       : Number((totales.dolares - totales.mes_anterior.dolares).toFixed(2)),
+      porcentaje: totales.mes_anterior.dolares > 0
+        ? Number(((totales.dolares - totales.mes_anterior.dolares) / totales.mes_anterior.dolares * 100).toFixed(2))
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
         : null,
     };
 

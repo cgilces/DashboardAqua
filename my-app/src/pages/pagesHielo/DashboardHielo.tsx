@@ -55,10 +55,15 @@ const DashboardHielo: React.FC = () => {
       setRealUnidades(0);
       setTendencia6Meses([]);
       try {
+<<<<<<< HEAD
         const token = localStorage.getItem('app_token');
         const response = await fetch(
           `${API_BASE_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`,
           { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+=======
+        const response = await fetch(
+          `${API_BASE_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
+>>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
         );
         if (!response.ok) throw new Error("Error al obtener los datos");
         const data = await response.json();
