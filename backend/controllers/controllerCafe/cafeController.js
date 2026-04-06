@@ -129,8 +129,10 @@ const obtenerDashboardCafe = async (req, res) => {
     const hoy = new Date();
     const esMesActual = anioNum === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
 
-    const inicio     = getFechaInicioMes(anioNum, mesNum);
-    const fin        = await getFechaFinQuery(anioNum, mesNum);
+    const inicio    = getFechaInicioMes(anioNum, mesNum);
+    const finFull   = getFechaFinMes(anioNum, mesNum);
+    const finHoy    = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')} 00:00:00`;
+    const fin       = esMesActual ? finHoy : finFull;
 
     let mesPrev = mesNum - 1, anioPrev = anioNum;
     if (mesPrev === 0) { mesPrev = 12; anioPrev--; }
@@ -155,12 +157,13 @@ const obtenerDashboardCafe = async (req, res) => {
       ? (actual.unidades / diasTranscurridos) * diasLaborablesMes
       : actual.unidades;
 
-    const varDolaresAbs  = actual.dolares  - anterior.dolares;
+    // Variación: proyección vs mes anterior (no valor real vs mes anterior)
+    const varDolaresAbs  = proyeccionDolares  - anterior.dolares;
     const varDolaresPorc = anterior.dolares > 0
       ? (varDolaresAbs / anterior.dolares) * 100
       : null;
 
-    const varUnidadesAbs  = actual.unidades  - anterior.unidades;
+    const varUnidadesAbs  = proyeccionUnidades - anterior.unidades;
     const varUnidadesPorc = anterior.unidades > 0
       ? (varUnidadesAbs / anterior.unidades) * 100
       : null;

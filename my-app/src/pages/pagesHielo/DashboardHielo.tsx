@@ -55,15 +55,10 @@ const DashboardHielo: React.FC = () => {
       setRealUnidades(0);
       setTendencia6Meses([]);
       try {
-<<<<<<< HEAD
         const token = localStorage.getItem('app_token');
         const response = await fetch(
           `${API_BASE_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`,
           { headers: token ? { Authorization: `Bearer ${token}` } : {} }
-=======
-        const response = await fetch(
-          `${API_BASE_URL}/api/hielo/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
         );
         if (!response.ok) throw new Error("Error al obtener los datos");
         const data = await response.json();
@@ -121,36 +116,38 @@ const DashboardHielo: React.FC = () => {
     const puntoPrev   = tendencia6Meses.find((d: any) => d.mes === mesPrevNum && d.anio === anioPrevNum);
     if (!puntoPrev) return comparativaMesAnterior;
 
-    // Dólares
-    const anteriorDolares    = Number(puntoPrev.dolares);
-    const montoRealFinal     = realDolares  || kpisHielo.montoTotal;
-    const varAbsDolares      = montoRealFinal - anteriorDolares;
-    const varPorcDolares     = anteriorDolares !== 0 ? (varAbsDolares / anteriorDolares) * 100 : 0;
+    // Dólares: usar proyección (no el valor real acumulado)
+    const anteriorDolares   = Number(puntoPrev.dolares);
+    const proyDolares       = kpisHielo.proyeccionMonto ?? (realDolares || kpisHielo.montoTotal);
+    const varAbsDolares     = proyDolares - anteriorDolares;
+    const varPorcDolares    = anteriorDolares !== 0 ? (varAbsDolares / anteriorDolares) * 100 : 0;
 
-    // Unidades
-    const anteriorUnidades   = Number(puntoPrev.unidades);
-    const unidadesRealFinal  = realUnidades || kpisHielo.unidadesTotales;
-    const varAbsUnidades     = unidadesRealFinal - anteriorUnidades;
-    const varPorcUnidades    = anteriorUnidades !== 0 ? (varAbsUnidades / anteriorUnidades) * 100 : 0;
+    // Unidades: usar proyección (no el valor real acumulado)
+    const anteriorUnidades  = Number(puntoPrev.unidades);
+    const proyUnidades      = kpisHielo.proyeccionUnidades ?? (realUnidades || kpisHielo.unidadesTotales);
+    const varAbsUnidades    = proyUnidades - anteriorUnidades;
+    const varPorcUnidades   = anteriorUnidades !== 0 ? (varAbsUnidades / anteriorUnidades) * 100 : 0;
 
     return {
       ...comparativaMesAnterior,
       monto: {
         ...comparativaMesAnterior.monto,
-        anterior: anteriorDolares,
-        actual:   montoRealFinal,
+        anterior:      anteriorDolares,
+        actual:        realDolares  || kpisHielo.montoTotal,
+        proyeccion:    proyDolares,
         variacionAbs:  varAbsDolares,
         variacionPorc: varPorcDolares,
       },
       unidades: {
         ...comparativaMesAnterior.unidades,
-        anterior: anteriorUnidades,
-        actual:   unidadesRealFinal,
+        anterior:      anteriorUnidades,
+        actual:        realUnidades || kpisHielo.unidadesTotales,
+        proyeccion:    proyUnidades,
         variacionAbs:  varAbsUnidades,
         variacionPorc: varPorcUnidades,
       },
     };
-  }, [comparativaMesAnterior, tendencia6Meses, kpisHielo, realDolares, realUnidades, mesSeleccionado, anioSeleccionado]);
+  }, [comparativaMesAnterior, tendencia6Meses, kpisHielo, realDolares, realUnidades, proyeccionDolares, proyeccionUnidades, mesSeleccionado, anioSeleccionado]);
 
   return (
     <DashboardLayout>

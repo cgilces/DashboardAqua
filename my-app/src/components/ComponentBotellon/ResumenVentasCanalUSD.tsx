@@ -82,11 +82,8 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
           const montoReal = d.monto ?? 0;
           const hayProyeccion = Math.abs(proyeccionUSD - montoReal) > 0.01;
           const proyeccionUnidades = d.proyeccion_unidades ?? 0;
-<<<<<<< HEAD
           const unidadesReal = d.unidades ?? 0;
           const hayProyeccionUnidades = Math.abs(proyeccionUnidades - unidadesReal) > 0.5;
-=======
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
           const mesAnterior = d.vsMesAnterior;
           const unidadesMesAnterior = mesAnterior?.unidades ?? 0;
           const variacionAbsUnidades = mesAnterior?.variacionAbsUnidades ?? 0;
@@ -149,7 +146,6 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
                 </p>
 
                 {/* ── FILA 2: valores proyección ────────────── */}
-<<<<<<< HEAD
                 <p className="font-bold text-white text-base md:text-lg leading-tight mt-0.5 whitespace-nowrap overflow-hidden">
                   {proyeccionUnidades.toLocaleString("es-EC")}
                 </p>
@@ -161,17 +157,6 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
                 <p className={`text-[11px] leading-tight mt-0.5 ${hayProyeccionUnidades ? "text-gray-400" : "invisible"}`}>
                   Real: <span className="text-white font-semibold">{unidadesReal.toLocaleString("es-EC")}</span>
                 </p>
-=======
-                <p className="font-bold text-white text-xl md:text-2xl leading-tight mt-0.5 truncate">
-                  {proyeccionUnidades.toLocaleString("es-EC")}
-                </p>
-                <p className="font-bold text-emerald-400 text-xl md:text-2xl leading-tight mt-0.5 text-right truncate">
-                  {money(proyeccionUSD)}
-                </p>
-
-                {/* ── FILA 3: real (reserva espacio siempre) ── */}
-                <p className="invisible text-[11px] leading-tight mt-0.5">—</p>
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
                 <p className={`text-[11px] leading-tight mt-0.5 text-right ${hayProyeccion ? "text-gray-400" : "invisible"}`}>
                   Real: <span className="text-white font-semibold">{money(montoReal)}</span>
                 </p>
@@ -198,11 +183,7 @@ const ResumenVentasCanalUSD: React.FC<Props> = ({
                       ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
                       : "text-red-400 border-red-400/20 bg-red-400/10"}`}>
                     {variacionAbsUnidades >= 0 ? "▲" : "▼"}
-<<<<<<< HEAD
                     {Math.round(Math.abs(variacionAbsUnidades)).toLocaleString("es-EC")}
-=======
-                    {Math.abs(variacionAbsUnidades).toLocaleString("es-EC")}
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
                     <span className="opacity-80">({variacionPorcUnidades.toFixed(1)}%)</span>
                   </span>
                 </div>

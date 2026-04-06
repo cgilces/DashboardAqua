@@ -24,6 +24,9 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   // ===============================
   // FECHAS MES ACTUAL
   // ===============================
+  const hoyDate = new Date();
+  const esMesActual = hoyDate.getFullYear() === anioNum && hoyDate.getMonth() + 1 === mesNum;
+
   const fechaInicioActual = `${anioNum}-${String(mesNum).padStart(2, "0")}-01 00:00:00`;
 
   let mesFin = mesNum + 1;
@@ -33,7 +36,10 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     anioFin++;
   }
 
-  const fechaFinActual = `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
+  const fechaFinMes = `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
+  // Para el mes actual cortamos en hoy 00:00:00, consistente con diasTranscurridos
+  const fechaFinHoy = `${hoyDate.getFullYear()}-${String(hoyDate.getMonth() + 1).padStart(2, '0')}-${String(hoyDate.getDate()).padStart(2, '0')} 00:00:00`;
+  const fechaFinActual = esMesActual ? fechaFinHoy : fechaFinMes;
 
   // ===============================
   // FECHAS MES ANTERIOR
@@ -50,10 +56,16 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   const fechaFinAnterior = fechaInicioActual;
 
   // ===============================
+  // DÍAS HÁBILES
+  // ===============================
+  const diasTranscurridos = getDiasHabilesTranscurridos(anioNum, mesNum);
+  const diasLaborablesMes = getDiasLaborablesMes(anioNum, mesNum);
+
+  // ===============================
   // QUERY MES ACTUAL
   // ===============================
   const [actualSQL] = await sequelize.query(`
-    SELECT 
+    SELECT
       SUM(dd.cantidad) AS unidades,
       SUM(dd.total) AS monto
     FROM facturas f
@@ -69,7 +81,7 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   // QUERY MES ANTERIOR
   // ===============================
   const [anteriorSQL] = await sequelize.query(`
-    SELECT 
+    SELECT
       SUM(dd.cantidad) AS unidades,
       SUM(dd.total) AS monto
     FROM facturas f
@@ -85,21 +97,31 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   // NORMALIZAR VALORES
   // ===============================
   const unidadesActual = Number(actualSQL[0]?.unidades || 0);
-  const montoActual = Number(actualSQL[0]?.monto || 0);
+  const montoActual    = Number(actualSQL[0]?.monto    || 0);
 
   const unidadesAnterior = Number(anteriorSQL[0]?.unidades || 0);
-  const montoAnterior = Number(anteriorSQL[0]?.monto || 0);
+  const montoAnterior    = Number(anteriorSQL[0]?.monto    || 0);
 
   // ===============================
-  // VARIACIONES
+  // PROYECCIÓN
   // ===============================
-  const variacionUnidadesAbs = unidadesActual - unidadesAnterior;
+  const proyeccionMonto    = esMesActual && diasTranscurridos > 0
+    ? (montoActual    / diasTranscurridos) * diasLaborablesMes
+    : montoActual;
+  const proyeccionUnidades = esMesActual && diasTranscurridos > 0
+    ? Math.round((unidadesActual / diasTranscurridos) * diasLaborablesMes)
+    : unidadesActual;
+
+  // ===============================
+  // VARIACIONES (proyección vs mes anterior)
+  // ===============================
+  const variacionUnidadesAbs = proyeccionUnidades - unidadesAnterior;
   const variacionUnidadesPorc =
     unidadesAnterior > 0
       ? (variacionUnidadesAbs / unidadesAnterior) * 100
       : null;
 
-  const variacionMontoAbs = montoActual - montoAnterior;
+  const variacionMontoAbs = proyeccionMonto - montoAnterior;
   const variacionMontoPorc =
     montoAnterior > 0
       ? (variacionMontoAbs / montoAnterior) * 100
@@ -109,13 +131,10 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   // METAS
   // ===============================
   const metaMensualUnidades = 200000;
-  const metaMensualDolares = 200000;
+  const metaMensualDolares  = 200000;
 
-  const cumplimientoUnidadesMensual =
-    (unidadesActual / metaMensualUnidades) * 100;
-
-  const cumplimientoUSDMensual =
-    (montoActual / metaMensualDolares) * 100;
+  const cumplimientoUnidadesMensual = (unidadesActual / metaMensualUnidades) * 100;
+  const cumplimientoUSDMensual      = (montoActual    / metaMensualDolares)  * 100;
 
   // ===============================
   // RESPUESTA FINAL
@@ -123,7 +142,9 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   return {
     kpisGenerales: {
       unidadesTotales: unidadesActual,
-      montoTotal: montoActual,
+      montoTotal:      montoActual,
+      proyeccionMonto:    Number(proyeccionMonto.toFixed(2)),
+      proyeccionUnidades,
       metaMensualUnidades,
       metaMensualDolares,
       cumplimientoUnidadesMensual,
@@ -131,15 +152,17 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     },
     comparativaMesAnterior: {
       unidades: {
-        anterior: unidadesAnterior,
-        actual: unidadesActual,
+        anterior:     unidadesAnterior,
+        actual:       unidadesActual,
+        proyeccion:   proyeccionUnidades,
         variacionAbs: variacionUnidadesAbs,
         variacionPorc: variacionUnidadesPorc
       },
       monto: {
-        anterior: montoAnterior,
-        actual: montoActual,
-        variacionAbs: variacionMontoAbs,
+        anterior:     montoAnterior,
+        actual:       montoActual,
+        proyeccion:   Number(proyeccionMonto.toFixed(2)),
+        variacionAbs: Number(variacionMontoAbs.toFixed(2)),
         variacionPorc: variacionMontoPorc
       }
     }
@@ -203,12 +226,9 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
   // ============================
   // FECHAS MES ACTUAL
   // ============================
-<<<<<<< HEAD
   const hoyDate = new Date();
   const esMesActualHielo = hoyDate.getFullYear() === anioNum && hoyDate.getMonth() + 1 === mesNum;
 
-=======
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
   const fechaInicioStr = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
   let mesFin = mesNum + 1;
   let anioFin = anioNum;
@@ -216,14 +236,10 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
     mesFin = 1;
     anioFin++;
   }
-<<<<<<< HEAD
   const fechaFinMes = `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
   // Para el mes actual cortamos en hoy 00:00:00, consistente con diasTranscurridos
   const fechaFinHoy = `${hoyDate.getFullYear()}-${String(hoyDate.getMonth() + 1).padStart(2, '0')}-${String(hoyDate.getDate()).padStart(2, '0')} 00:00:00`;
   const fechaFinStr = esMesActualHielo ? fechaFinHoy : fechaFinMes;
-=======
-  const fechaFinStr = `${anioFin}-${String(mesFin).padStart(2, "0")}-01 00:00:00`;
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
 
   // ============================
   // FECHAS MES ANTERIOR
@@ -252,7 +268,7 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
       COALESCE(SUM(dd.cantidad), 0) AS cantidad,
       COALESCE(SUM(dd.total), 0) AS total
     FROM facturas f
-    LEFT JOIN detalle_documento dd 
+    LEFT JOIN detalle_documento dd
       ON f.code = dd.documento_code
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
@@ -270,7 +286,7 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
       f.seller_code AS usuario,
       COALESCE(SUM(dd.total), 0) AS total_anterior
     FROM facturas f
-    LEFT JOIN detalle_documento dd 
+    LEFT JOIN detalle_documento dd
       ON f.code = dd.documento_code
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
@@ -295,7 +311,6 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
     const actual = Number(row.total);
     const anterior = mapAnterior[row.usuario] || 0;
 
-<<<<<<< HEAD
     //  PROYECCIÓN
     const proyeccion = esMesActualHielo && diasTranscurridos > 0
       ? (actual / diasTranscurridos) * diasLaborablesMes
@@ -306,18 +321,6 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
     const variacionPorc =
       anterior > 0 ? (variacionAbs / anterior) * 100 : null;
 
-=======
-    const variacionAbs = actual - anterior;
-    const variacionPorc =
-      anterior > 0 ? (variacionAbs / anterior) * 100 : null;
-
-    //  PROYECCIÓN
-    const proyeccion =
-      diasTranscurridos > 0
-        ? (actual / diasTranscurridos) * diasLaborablesMes
-        : 0;
-
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     return {
       usuario: row.usuario,
       cantidadVendida: Number(row.cantidad),
@@ -420,14 +423,11 @@ const dasboardventasHielo = async (req, res) => {
 
         console.log("📅 Fechas:", anioNum, mesNum);
 
-<<<<<<< HEAD
         // ── Filtro por rutas si VENDEDOR ──────────────────────────────
         const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
           ? req.user.rutas_asignadas.map(r => r.toUpperCase())
           : null;
 
-=======
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
         // ============================
         // KPIs + TENDENCIA en paralelo
         // ============================
@@ -441,11 +441,7 @@ const dasboardventasHielo = async (req, res) => {
         // ============================
         // UNIÓN FINAL
         // ============================
-<<<<<<< HEAD
         let resumenUsuariosVentasHielo = resumenVentasUsuario.map((u) => {
-=======
-        const resumenUsuariosVentasHielo = resumenVentasUsuario.map((u) => {
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
             const meta = metasHistoricas.find(
                 (m) => m.usuario === u.usuario
             );
@@ -459,7 +455,6 @@ const dasboardventasHielo = async (req, res) => {
             };
         });
 
-<<<<<<< HEAD
         // ── Filtrar por rutas asignadas si VENDEDOR ───────────────────
         if (rutasPermitidas) {
           resumenUsuariosVentasHielo = resumenUsuariosVentasHielo.filter(u =>
@@ -467,8 +462,6 @@ const dasboardventasHielo = async (req, res) => {
           );
         }
 
-=======
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
         return res.status(200).json({
             kpisGenerales: {
                 resumenActual,

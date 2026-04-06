@@ -67,16 +67,12 @@ const login = async (req, res) => {
       {
         id: user.id,
         usuario: user.usuario,
-<<<<<<< HEAD
         rol: user.rol,
         rutas_asignadas: user.rutas_asignadas
           ? Array.isArray(user.rutas_asignadas)
             ? user.rutas_asignadas
             : user.rutas_asignadas.split(',').map(r => r.trim())
           : []
-=======
-        rol: user.rol
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
       },
       config.JWT_SECRET,
       {

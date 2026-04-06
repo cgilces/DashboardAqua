@@ -901,14 +901,11 @@ const obtenerDatosDashboard = async (req, res) => {
     if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
       return res.status(400).json({ error: "Parámetros anio/mes inválidos." });
 
-<<<<<<< HEAD
     // ── Filtro por rutas si el usuario es VENDEDOR ─────────────
     const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
       ? req.user.rutas_asignadas.map(r => r.toUpperCase())
       : null;
 
-=======
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     const resumenActual     = await calcularKPIsMes(anioNum, mesNum);
     const objetivosGerencia = await obtenerObjetivosGerencia(anioNum, mesNum);
 
@@ -977,7 +974,6 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     });
 
-<<<<<<< HEAD
     // ── Aplicar filtro de rutas si VENDEDOR ───────────────────────
     if (rutasPermitidas) {
       resumenActual.rankingPreventas = (resumenActual.rankingPreventas || [])
@@ -986,8 +982,6 @@ const obtenerDatosDashboard = async (req, res) => {
         .filter(r => rutasPermitidas.includes((r.usuario || '').toUpperCase()));
     }
 
-=======
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     // ── Descartable con comparativa (usa fecha fin dinámica internamente) ──
     const ventasDescartableConComparativa = await calcularVentasDescartableConComparativa(anioNum, mesNum);
 
@@ -1003,7 +997,6 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     });
 
-<<<<<<< HEAD
     // ── Filtrar descartable por rutas si VENDEDOR ─────────────────
     if (rutasPermitidas) {
       Object.keys(ventasDescartableConComparativa).forEach(key => {
@@ -1012,8 +1005,6 @@ const obtenerDatosDashboard = async (req, res) => {
       });
     }
 
-=======
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     const resumenDescartablePorCanal = agruparDescartablePorCanalResumen(ventasDescartableConComparativa);
 
     const resumenVentasPorCanal = {
@@ -1029,11 +1020,7 @@ const obtenerDatosDashboard = async (req, res) => {
       const tiendasPrev = (resumenPrev.rankingPreventas || [])
         .reduce((s, r) => s + Number(r.monto || 0), 0);
       resumenVentasPorCanal.TIENDAS.mesAnterior  = Number(tiendasPrev.toFixed(2));
-<<<<<<< HEAD
       resumenVentasPorCanal.TIENDAS.variacionAbs = Number((resumenVentasPorCanal.TIENDAS.monto - tiendasPrev).toFixed(2));
-=======
-      resumenVentasPorCanal.TIENDAS.variacionAbs = Number((resumenVentasPorCanal.TIENDAS.montoReal - tiendasPrev).toFixed(2));
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
       resumenVentasPorCanal.TIENDAS.variacionPorc = tiendasPrev > 0
         ? Number(((resumenVentasPorCanal.TIENDAS.variacionAbs / tiendasPrev) * 100).toFixed(2)) : null;
 
@@ -1041,11 +1028,7 @@ const obtenerDatosDashboard = async (req, res) => {
       const ruralPrev = (resumenPrev.rankingRutasR || [])
         .reduce((s, r) => s + Number(r.dolares || 0), 0);
       resumenVentasPorCanal.RURAL.mesAnterior  = Number(ruralPrev.toFixed(2));
-<<<<<<< HEAD
       resumenVentasPorCanal.RURAL.variacionAbs = Number((resumenVentasPorCanal.RURAL.monto - ruralPrev).toFixed(2));
-=======
-      resumenVentasPorCanal.RURAL.variacionAbs = Number((resumenVentasPorCanal.RURAL.montoReal - ruralPrev).toFixed(2));
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
       resumenVentasPorCanal.RURAL.variacionPorc = ruralPrev > 0
         ? Number(((resumenVentasPorCanal.RURAL.variacionAbs / ruralPrev) * 100).toFixed(2)) : null;
 
@@ -1060,11 +1043,7 @@ const obtenerDatosDashboard = async (req, res) => {
       ['DOMICILIO', 'MAYORISTA', 'VIP'].forEach(c => {
         const prev = descPrev[c];
         resumenVentasPorCanal[c].mesAnterior   = Number(prev.toFixed(2));
-<<<<<<< HEAD
         resumenVentasPorCanal[c].variacionAbs  = Number((resumenVentasPorCanal[c].monto - prev).toFixed(2));
-=======
-        resumenVentasPorCanal[c].variacionAbs  = Number((resumenVentasPorCanal[c].montoReal - prev).toFixed(2));
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
         resumenVentasPorCanal[c].variacionPorc = prev > 0
           ? Number(((resumenVentasPorCanal[c].variacionAbs / prev) * 100).toFixed(2)) : null;
       });
@@ -1078,15 +1057,12 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     }
 
-<<<<<<< HEAD
     // ── Filtrar top clientes por rutas si VENDEDOR ────────────────
     if (rutasPermitidas) {
       resumenActual.topClientes = (resumenActual.topClientes || [])
         .filter(c => rutasPermitidas.includes((c.preventa || c.ruta || '').toUpperCase()));
     }
 
-=======
->>>>>>> 3e145c1ea3658674e887177a34c1260b43081e2c
     const { _raw, clientesDetalle, topClientes: _tc, ...publicResumen } = resumenActual;
 
     const productosVendidos   = await obtenerProductosVendidosMes(anioNum, mesNum);
