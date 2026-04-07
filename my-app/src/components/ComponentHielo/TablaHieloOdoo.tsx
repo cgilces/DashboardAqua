@@ -32,6 +32,7 @@ interface Props {
     monto: number;
     montoReal: number;
     mesAnterior: number;
+    mesAnteriorUnidades: number;
     variacionAbs: number;
     variacionPorc: number;
     unidades: number;
@@ -68,6 +69,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
             monto: data.periodo.esMesActual ? data.totales.proyeccion_dolares : data.totales.dolares,
             montoReal: data.totales.dolares,
             mesAnterior: data.totales.mes_anterior.dolares,
+            mesAnteriorUnidades: data.totales.mes_anterior.unidades,
             variacionAbs: data.totales.variacion.abs,
             variacionPorc: data.totales.variacion.porcentaje ?? 0,
             unidades: data.totales.unidades,

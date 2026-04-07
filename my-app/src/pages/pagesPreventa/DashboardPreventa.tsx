@@ -107,7 +107,7 @@ export default function DashboardPreventa() {
     const totalMesAnterior = puntoPrev ? Number(puntoPrev.dolares) : 0;
 
     const totalVarAbsUnidades = totalUnidades - totalUnidadesAnterior;
-    const totalVariacionAbs   = totalMontoReal - totalMesAnterior;
+    const totalVariacionAbs   = totalMonto - totalMesAnterior;
     const totalVariacionPorc  = totalMesAnterior > 0 ? (totalVariacionAbs / totalMesAnterior) * 100 : 0;
     const totalVarPorcUnidades = totalUnidadesAnterior > 0 ? (totalVarAbsUnidades / totalUnidadesAnterior) * 100 : 0;
 

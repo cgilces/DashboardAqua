@@ -37,10 +37,12 @@ const DashboardHielo: React.FC = () => {
   const [tendencia6Meses,       setTendencia6Meses]       = useState<any[]>([]);
   const [loading, setLoading]   = useState<boolean>(true);
   const [error,   setError]     = useState<string | null>(null);
-  const [proyeccionDolares,   setProyeccionDolares]   = useState<number>(0);
-  const [proyeccionUnidades,  setProyeccionUnidades]  = useState<number>(0);
-  const [realDolares,         setRealDolares]         = useState<number>(0);
-  const [realUnidades,        setRealUnidades]        = useState<number>(0);
+  const [proyeccionDolares,         setProyeccionDolares]         = useState<number>(0);
+  const [proyeccionUnidades,        setProyeccionUnidades]        = useState<number>(0);
+  const [realDolares,               setRealDolares]               = useState<number>(0);
+  const [realUnidades,              setRealUnidades]              = useState<number>(0);
+  const [mesAnteriorCombinado,      setMesAnteriorCombinado]      = useState<number>(0);
+  const [mesAnteriorCombinadoUnid,  setMesAnteriorCombinadoUnid]  = useState<number>(0);
 
   /* ============================
      FETCH DATA
@@ -53,6 +55,8 @@ const DashboardHielo: React.FC = () => {
       setProyeccionUnidades(0);
       setRealDolares(0);
       setRealUnidades(0);
+      setMesAnteriorCombinado(0);
+      setMesAnteriorCombinadoUnid(0);
       setTendencia6Meses([]);
       try {
         const token = localStorage.getItem('app_token');
@@ -74,6 +78,8 @@ const DashboardHielo: React.FC = () => {
             metaMensualDolares         : k.metaMensualDolares,
             cumplimientoUnidadesMensual: k.cumplimientoUnidadesMensual,
             cumplimientoUSDMensual     : k.cumplimientoUSDMensual,
+            proyeccionMonto            : k.proyeccionMonto,
+            proyeccionUnidades         : k.proyeccionUnidades,
           });
           setComparativaMesAnterior(resumenActual.comparativaMesAnterior ?? null);
         } else {
@@ -110,23 +116,22 @@ const DashboardHielo: React.FC = () => {
   }, [tendencia6Meses, kpisHielo, realDolares, realUnidades, proyeccionDolares, mesSeleccionado, anioSeleccionado]);
 
   const comparativaCorregida = useMemo(() => {
-    if (!comparativaMesAnterior || !tendencia6Meses.length || !kpisHielo) return comparativaMesAnterior;
-    const mesPrevNum  = Number(mesSeleccionado) > 1 ? Number(mesSeleccionado) - 1 : 12;
-    const anioPrevNum = Number(mesSeleccionado) > 1 ? Number(anioSeleccionado)   : Number(anioSeleccionado) - 1;
-    const puntoPrev   = tendencia6Meses.find((d: any) => d.mes === mesPrevNum && d.anio === anioPrevNum);
-    if (!puntoPrev) return comparativaMesAnterior;
+    if (!comparativaMesAnterior || !kpisHielo) return comparativaMesAnterior;
 
-    // Dólares: usar proyección (no el valor real acumulado)
-    const anteriorDolares   = Number(puntoPrev.dolares);
-    const proyDolares       = kpisHielo.proyeccionMonto ?? (realDolares || kpisHielo.montoTotal);
-    const varAbsDolares     = proyDolares - anteriorDolares;
-    const varPorcDolares    = anteriorDolares !== 0 ? (varAbsDolares / anteriorDolares) * 100 : 0;
+    // Proyección: Odoo si disponible, si no el cálculo del backend KPI
+    const proyDolares  = proyeccionDolares  || kpisHielo.proyeccionMonto  || (realDolares  || kpisHielo.montoTotal);
+    const proyUnidades = proyeccionUnidades || kpisHielo.proyeccionUnidades || (realUnidades || kpisHielo.unidadesTotales);
 
-    // Unidades: usar proyección (no el valor real acumulado)
-    const anteriorUnidades  = Number(puntoPrev.unidades);
-    const proyUnidades      = kpisHielo.proyeccionUnidades ?? (realUnidades || kpisHielo.unidadesTotales);
-    const varAbsUnidades    = proyUnidades - anteriorUnidades;
-    const varPorcUnidades   = anteriorUnidades !== 0 ? (varAbsUnidades / anteriorUnidades) * 100 : 0;
+    // Mes anterior: usar el combinado (MV + Odoo) cuando la tabla Odoo ya cargó,
+    // de lo contrario usar el valor del backend KPI (solo MV)
+    const anteriorDolares  = mesAnteriorCombinado  > 0 ? mesAnteriorCombinado  : Number(comparativaMesAnterior.monto?.anterior    ?? 0);
+    const anteriorUnidades = mesAnteriorCombinadoUnid > 0 ? mesAnteriorCombinadoUnid : Number(comparativaMesAnterior.unidades?.anterior ?? 0);
+
+    const varAbsDolares   = proyDolares  - anteriorDolares;
+    const varPorcDolares  = anteriorDolares  !== 0 ? (varAbsDolares  / anteriorDolares)  * 100 : 0;
+
+    const varAbsUnidades  = proyUnidades - anteriorUnidades;
+    const varPorcUnidades = anteriorUnidades !== 0 ? (varAbsUnidades / anteriorUnidades) * 100 : 0;
 
     return {
       ...comparativaMesAnterior,
@@ -147,7 +152,7 @@ const DashboardHielo: React.FC = () => {
         variacionPorc: varPorcUnidades,
       },
     };
-  }, [comparativaMesAnterior, tendencia6Meses, kpisHielo, realDolares, realUnidades, proyeccionDolares, proyeccionUnidades, mesSeleccionado, anioSeleccionado]);
+  }, [comparativaMesAnterior, kpisHielo, realDolares, realUnidades, proyeccionDolares, proyeccionUnidades, mesAnteriorCombinado, mesAnteriorCombinadoUnid]);
 
   return (
     <DashboardLayout>
@@ -216,8 +221,8 @@ const DashboardHielo: React.FC = () => {
               unidadesTotales: realUnidades || kpisHielo.unidadesTotales,
             }}
             comparativa={comparativaCorregida}
-            totalProyeccion={proyeccionDolares}
-            totalProyeccionUnidades={proyeccionUnidades}
+            totalProyeccion={proyeccionDolares || kpisHielo.proyeccionMonto || 0}
+            totalProyeccionUnidades={proyeccionUnidades || kpisHielo.proyeccionUnidades || 0}
             esMesActual={mesSeleccionado === mesActual && anioSeleccionado === anioActual}
             tendencia6Meses={tendenciaFinal}
             anioFiltro={Number(anioSeleccionado)}
@@ -239,6 +244,8 @@ const DashboardHielo: React.FC = () => {
               setProyeccionUnidades(t.proyeccionUnidades);
               setRealDolares(t.montoReal);
               setRealUnidades(t.unidades);
+              setMesAnteriorCombinado(t.mesAnterior);
+              setMesAnteriorCombinadoUnid(t.mesAnteriorUnidades);
             }}
           />
         )}

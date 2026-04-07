@@ -238,7 +238,8 @@ const obtenerVentasHielo = async (req, res) => {
       ? (totalUnidades / diasTranscurridos) * diasLaborablesMes
       : totalUnidades;
 
-    const varDolaresAbs  = totalDolares - totalAntDolares;
+    // Variación: proyección vs mes anterior (no real vs mes anterior)
+    const varDolaresAbs  = proyeccionDolares - totalAntDolares;
     const varDolaresPorc = totalAntDolares > 0
       ? (varDolaresAbs / totalAntDolares) * 100
       : null;
