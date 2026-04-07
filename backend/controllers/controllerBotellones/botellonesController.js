@@ -324,14 +324,11 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
       dolares: totalActual.dolares,
       mesAnterior: {
         dolares: totalAnterior.dolares,
-        variacionAbs,
-        variacionPorc,
+        variacionAbs:         Number(variacionAbs.toFixed(2)),
+        variacionPorc:        Number(variacionPorc.toFixed(2)),
         unidades: totalAnterior.unidades,
-
-
-        //  NUEVO
-        variacionAbsUnidades,
-        variacionPorcUnidades,
+        variacionAbsUnidades: Math.round(variacionAbsUnidades),
+        variacionPorcUnidades: variacionPorcUnidades !== null ? Number(variacionPorcUnidades.toFixed(2)) : null,
       }
     },
     detalle: actual.map(r => {
@@ -744,7 +741,7 @@ const obtenerEmpresasConsolidado = async (req, res) => {
           variacionAbs:         Number(variacionAbs.toFixed(2)),
           variacionPorc:        Number(variacionPorc.toFixed(2)),
           unidades:             anterior.unidades,
-          variacionAbsUnidades: varAbsUnid,
+          variacionAbsUnidades: Math.round(varAbsUnid),
           variacionPorcUnidades: Number(varPorcUnid.toFixed(2)),
         },
       },

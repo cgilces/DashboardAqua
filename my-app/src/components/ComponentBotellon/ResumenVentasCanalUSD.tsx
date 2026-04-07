@@ -39,7 +39,7 @@ interface Props {
    HELPERS
 ============================ */
 const money = (v: number) =>
-  `$${v.toLocaleString("es-EC", { minimumFractionDigits: 2 })}`;
+  `$${v.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const CANALES_LABELS: Record<string, string> = {
   domicilio: "Domicilio",

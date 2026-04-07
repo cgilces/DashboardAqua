@@ -329,17 +329,17 @@ export default function DashboardBotellon() {
                       {esMesActual ? "Proyección Dólares $" : "Total Dólares"}
                     </p>
                     <p className="font-bold text-white text-2xl md:text-3xl leading-none mb-3 break-all">
-                      ${resumenTotal.totalProyeccionDolares.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                      ${resumenTotal.totalProyeccionDolares.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                     {esMesActual && (
                       <p className="text-xs text-gray-400 mb-2">
-                        Real: ${resumenTotal.totalDolares.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                        Real: ${resumenTotal.totalDolares.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     )}
                     <div className="border-t border-[#046C5E]/30 pt-2 space-y-1">
                       <p className="text-xs text-gray-400">Mes anterior</p>
                       <p className="text-white font-semibold text-sm">
-                        ${resumenTotal.totalDolaresAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                        ${resumenTotal.totalDolaresAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                       <div className="flex justify-center">
                         <span
@@ -349,7 +349,7 @@ export default function DashboardBotellon() {
                             }`}
                         >
                           {resumenTotal.varAbsDolares >= 0 ? "▲" : "▼"}
-                          ${Math.abs(resumenTotal.varAbsDolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                          ${Math.abs(resumenTotal.varAbsDolares).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           <span className="opacity-90">({resumenTotal.varPorcDolares.toFixed(1)}%)</span>
                         </span>
                       </div>
