@@ -90,7 +90,7 @@ const DetallePreventasPage: React.FC = () => {
       Dirección: c.direccion_entrega ?? "", "Tipo Negocio": c.tipo_negocio ?? "",
       Teléfono: c.telefono_cliente ?? "", Latitud: c.latitud_cliente ?? "", Longitud: c.longitud_cliente ?? "",
       "Cantidad Actual": Number(c.cantidad_productos || 0),
-      "Consumo Actual($)": Number(c.consumo_actual || 0), "Max Consumo($)": Number(c.max_consumo || 0),
+      "Consumo Actual($)": Number(c.consumo_actual || 0),
       "VS MES ANT": c.vsMesAnterior ? `${c.vsMesAnterior.variacion_abs > 0 ? "+" : ""}${Number(c.vsMesAnterior.variacion_abs || 0).toFixed(2)} (${c.vsMesAnterior.variacion_porc})` : "",
       "Última Visita": c.ultima_visita ?? "—", "Última Factura": c.ultima_factura ?? "—",
       "Tuvo Consumo": c.tuvo_consumo,
@@ -345,7 +345,6 @@ const DetallePreventasPage: React.FC = () => {
                     ["Longitud",       "longitud_cliente"],
                     ["Cant. Actual",   "cantidad_productos"],
                     ["Consumo Actual", "consumo_actual"],
-                    ["Max Consumo",    "max_consumo"],
                     ["VS Mes Ant",     "vsMesAnterior"],
                     ["Últ. Visita",    "ultima_visita"],
                     ["Últ. Factura",   "ultima_factura"],
@@ -378,10 +377,6 @@ const DetallePreventasPage: React.FC = () => {
                           <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud_cliente || "—"}</td>
                           <td className="px-3 py-2 text-right text-blue-300 font-semibold">{c.cantidad_productos}</td>
                           <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                          <td className="px-3 py-2 text-right">
-                            <span className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</span>
-                            {c.mes_max_consumo_nombre && <span className="block text-[10px] text-gray-400">{c.mes_max_consumo_nombre}</span>}
-                          </td>
                           <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
                             {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                             {c.vsMesAnterior?.variacion_porc && <span className="block text-[10px] opacity-70">{c.vsMesAnterior.variacion_porc}</span>}

@@ -46,7 +46,14 @@ const Cliente = sequelize.define(
       allowNull: true,
     },
 
+    // 🔥 CLAVE PARA RELACIONES
     codigo_tipo_negocio: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+
+    // 🔥 NUEVO (TE FALTABA)
+    codigo_subcanal: {
       type: DataTypes.STRING(50),
       allowNull: true,
     },
@@ -163,21 +170,20 @@ const Cliente = sequelize.define(
     },
 
     // =========================
-    // GEOLOCALIZACIÓN
+    // GEOLOCALIZACIÓN (MEJORADO)
     // =========================
     latitud_cliente: {
-      type: DataTypes.STRING(100), // o DECIMAL (recomendado abajo)
+      type: DataTypes.DECIMAL(12, 8), // 🔥 mejor que string
       allowNull: true,
     },
 
     longitud_cliente: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.DECIMAL(12, 8),
       allowNull: true,
     },
 
     // =========================
     // VÍNCULO MOBILVENDOR
-    // Permite unificar clientes de Odoo con su contraparte en MobilVendor
     // =========================
     mobilvendor_id_cliente: {
       type: DataTypes.STRING(100),

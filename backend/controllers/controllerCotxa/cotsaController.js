@@ -1,9 +1,32 @@
-// controllers/cotsaController.js
-const { sequelize } = require('../../models');
+// controllers/COTTSAController.js
+const { sequelize, MetaPreventa } = require('../../models');
 const Sequelize = require('sequelize');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
 
-const COTSA_COMPANY_ID = 3;
+// ================================================================
+// HELPER — objetivos de gerencia (reutiliza tabla MetaPreventa)
+// ================================================================
+const obtenerObjetivosGerencia = async (anioNum, mesNum) => {
+  try {
+    const registros = await MetaPreventa.findAll({
+      where: { mes: mesNum, anio: anioNum },
+      attributes: ['codigo_ruta', 'meta_dolares', 'meta_unidades'],
+      raw: true,
+    });
+    const mapa = {};
+    registros.forEach(m => {
+      mapa[m.codigo_ruta.toUpperCase()] = {
+        meta_dolares: Number(m.meta_dolares) || 0,
+        meta_unidades: Number(m.meta_unidades) || 0,
+      };
+    });
+    return mapa;
+  } catch {
+    return {};
+  }
+};
+
+const COTTSA_COMPANY_ID = 3;
 
 // ================================================================
 // HELPERS DE FECHA
@@ -21,9 +44,9 @@ function getFechaFinMes(anio, mes) {
 const getFechaFinQuery = (anioNum, mesNum) => getFechaFinMes(anioNum, mesNum);
 
 // ================================================================
-// QUERY PRINCIPAL — rutas COTSA
+// QUERY PRINCIPAL — rutas COTTSA
 // ================================================================
-const obtenerVentasCOTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
+const obtenerVentasCOTTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
   const inicio = getFechaInicioMes(anioNum, mesNum);
   const fin = fechaFin || getFechaFinMes(anioNum, mesNum);
 
@@ -38,8 +61,8 @@ const obtenerVentasCOTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
       COUNT(DISTINCT f.customer_code)     AS cant_clientes
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.company_id = ${COTSA_COMPANY_ID}
-      AND f.status IN (2, 4, 5)
+    WHERE f.company_id = ${COTTSA_COMPANY_ID}
+      AND f.status IN (0,2,3,4,5)
       AND f.fecha_creacion >= '${inicio}'
       AND f.fecha_creacion  < '${fin}'
     GROUP BY f.route_code, f.seller_code
@@ -51,7 +74,7 @@ const obtenerVentasCOTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
 // ================================================================
 // ENDPOINT PRINCIPAL
 // ================================================================
-const obtenerDashboardCOTSA = async (req, res) => {
+const obtenerDashboardCOTTSA = async (req, res) => {
   try {
     const { anio, mes } = req.query;
     if (!anio || !mes)
@@ -76,10 +99,11 @@ const obtenerDashboardCOTSA = async (req, res) => {
     let mesPrev = mesNum - 1, anioPrev = anioNum;
     if (mesPrev === 0) { mesPrev = 12; anioPrev--; }
 
-    // Ambos en paralelo
-    const [ventasActuales, ventasAnteriores] = await Promise.all([
-      obtenerVentasCOTSAPorRuta(anioNum, mesNum, fechaFinDinamica),
-      obtenerVentasCOTSAPorRuta(anioPrev, mesPrev),
+    // Todos en paralelo
+    const [ventasActuales, ventasAnteriores, objetivos] = await Promise.all([
+      obtenerVentasCOTTSAPorRuta(anioNum, mesNum, fechaFinDinamica),
+      obtenerVentasCOTTSAPorRuta(anioPrev, mesPrev),
+      obtenerObjetivosGerencia(anioNum, mesNum),
     ]);
 
     // Mapa mes anterior
@@ -88,7 +112,7 @@ const obtenerDashboardCOTSA = async (req, res) => {
       mapAnterior[r.ruta] = Number(r.dolares) || 0;
     });
 
-    // Ranking con proyección y comparativa
+    // Ranking con proyección, comparativa y objetivo de gerencia
     const ranking = ventasActuales.map(r => {
       const montoActual = Number(r.dolares) || 0;
       const montoAnterior = mapAnterior[r.ruta] || 0;
@@ -99,6 +123,8 @@ const obtenerDashboardCOTSA = async (req, res) => {
       const variacionPorc = montoAnterior > 0
         ? (variacionAbs / montoAnterior) * 100
         : null;
+      const vendedorKey = (r.vendedor || '').toUpperCase();
+      const obj = objetivos[vendedorKey] || { meta_dolares: 0, meta_unidades: 0 };
 
       return {
         ruta: r.ruta,
@@ -109,6 +135,8 @@ const obtenerDashboardCOTSA = async (req, res) => {
         proyeccion: Number(proyeccion.toFixed(2)),
         cant_facturas: Number(r.cant_facturas),
         cant_clientes: Number(r.cant_clientes),
+        objetivo_gerencia: obj.meta_dolares,
+        objetivo_gerencia_unidades: obj.meta_unidades,
         vsMesAnterior: {
           dolares_anterior: Number(montoAnterior.toFixed(2)),
           variacion_abs: Number(variacionAbs.toFixed(2)),
@@ -121,6 +149,9 @@ const obtenerDashboardCOTSA = async (req, res) => {
     // mesAnterior: suma TODAS las rutas del mes anterior (no solo las que tienen ventas actuales)
     const totalMesAnterior = ventasAnteriores.reduce((a, r) => a + (Number(r.dolares) || 0), 0);
 
+    // Objetivo de gerencia para el canal completo (clave 'COTTSA')
+    const objCanal = objetivos['COTTSA'] || { meta_dolares: 0, meta_unidades: 0 };
+
     const totales = {
       unidades: ranking.reduce((a, r) => a + r.unidades, 0),
       dolares: ranking.reduce((a, r) => a + r.dolares, 0),
@@ -128,65 +159,97 @@ const obtenerDashboardCOTSA = async (req, res) => {
       cant_facturas: ranking.reduce((a, r) => a + r.cant_facturas, 0),
       cant_clientes: ranking.reduce((a, r) => a + r.cant_clientes, 0),
       mesAnterior: Number(totalMesAnterior.toFixed(2)),
+      objetivo_gerencia: objCanal.meta_dolares,
+      objetivo_gerencia_unidades: objCanal.meta_unidades,
     };
 
     return res.status(200).json({ ranking, totales });
 
   } catch (error) {
-    console.error('❌ ERROR DASHBOARD COTSA:', error);
-    return res.status(500).json({ message: 'Error al obtener datos COTSA' });
+    console.error('❌ ERROR DASHBOARD COTTSA:', error);
+    return res.status(500).json({ message: 'Error al obtener datos COTTSA' });
   }
 };
 
 // ================================================================
-// ENDPOINT DETALLE POR RUTA
+// ENDPOINT DETALLE POR RUTA / VENDEDOR
 // ================================================================
-const obtenerDetalleRutaCOTSA = async (req, res) => {
+const obtenerDetalleRutaCOTTSA = async (req, res) => {
   try {
-    const { ruta, anio, mes } = req.query;
-    if (!ruta || !anio || !mes)
-      return res.status(400).json({ error: 'Debe enviar ruta, anio y mes' });
+    const { ruta, vendedor, anio, mes } = req.query;
+    if ((!ruta && !vendedor) || !anio || !mes)
+      return res.status(400).json({ error: 'Debe enviar (ruta o vendedor), anio y mes' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum = parseInt(mes, 10);
-    const inicio = getFechaInicioMes(anioNum, mesNum);
-    const fin = getFechaFinMes(anioNum, mesNum);
+    const mesNum  = parseInt(mes, 10);
+    const inicio  = getFechaInicioMes(anioNum, mesNum);
+    const fin     = getFechaFinMes(anioNum, mesNum);
+    const inicioAnio = `${anioNum}-01-01 00:00:00`;
+    const finAnio    = `${anioNum + 1}-01-01 00:00:00`;
 
-    const sql = `
+    const filtro = vendedor
+      ? `f.seller_code = '${vendedor}'`
+      : `f.route_code  = '${ruta}'`;
+
+    const productosSql = `
       SELECT
         dd.codigo_producto,
         dd.descripcion,
-        SUM(dd.cantidad)   AS unidades,
-        SUM(dd.subtotal)   AS subtotal,
-        SUM(dd.total)      AS dolares,
-        CASE WHEN SUM(dd.cantidad) > 0
-          THEN SUM(dd.total) / SUM(dd.cantidad)
-          ELSE 0
-        END                AS precio_promedio
+        SUM(dd.cantidad) AS unidades,
+        SUM(dd.subtotal) AS subtotal,
+        SUM(dd.total)    AS dolares
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = ${COTSA_COMPANY_ID}
-        AND f.status IN (2, 4, 5)
-        AND f.route_code = '${ruta}'
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND f.status IN (0,2,3,4,5)
+        AND ${filtro}
         AND f.fecha_creacion >= '${inicio}'
         AND f.fecha_creacion  < '${fin}'
       GROUP BY dd.codigo_producto, dd.descripcion
       ORDER BY unidades DESC
     `;
 
-    const detalle = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
-    return res.status(200).json(detalle);
+    const clientesSql = `
+      SELECT
+        COUNT(DISTINCT f.customer_code) AS total_clientes,
+        COUNT(DISTINCT CASE
+          WHEN f.fecha_creacion >= '${inicio}' AND f.fecha_creacion < '${fin}'
+          THEN f.customer_code END) AS con_consumo
+      FROM facturas f
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND f.status IN (0,2,3,4,5)
+        AND ${filtro}
+        AND f.fecha_creacion >= '${inicioAnio}'
+        AND f.fecha_creacion  < '${finAnio}'
+    `;
+
+    const [productos, clientesData] = await Promise.all([
+      sequelize.query(productosSql, { type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(clientesSql,  { type: Sequelize.QueryTypes.SELECT }),
+    ]);
+
+    const totalClientes = Number(clientesData[0]?.total_clientes || 0);
+    const conConsumo    = Number(clientesData[0]?.con_consumo    || 0);
+
+    return res.status(200).json({
+      productos,
+      resumen: {
+        totalClientes,
+        conConsumo,
+        sinConsumo: totalClientes - conConsumo,
+      },
+    });
 
   } catch (error) {
-    console.error('❌ Error en obtenerDetalleRutaCOTSA:', error);
+    console.error('❌ Error en obtenerDetalleRutaCOTTSA:', error);
     return res.status(500).json({ message: 'Error interno' });
   }
 };
 
 // ================================================================
-// ENDPOINT CLIENTES COTSA (todos los clientes del canal)
+// ENDPOINT CLIENTES COTTSA (todos los clientes del canal)
 // ================================================================
-const obtenerClientesCOTSA = async (req, res) => {
+const obtenerClientesCOTTSA = async (req, res) => {
   try {
     const { anio, mes } = req.query;
     if (!anio || !mes)
@@ -208,7 +271,7 @@ const obtenerClientesCOTSA = async (req, res) => {
     const inicioAnio = `${anioNum}-01-01 00:00:00`;
     const finAnio    = `${anioNum + 1}-01-01 00:00:00`;
 
-    // 1. Todos los clientes COTSA activos en el año
+    // 1. Todos los clientes COTTSA activos en el año
     const clientesSQL = `
       SELECT DISTINCT ON (f.customer_code)
         f.customer_code,
@@ -234,8 +297,8 @@ const obtenerClientesCOTSA = async (req, res) => {
           (telefono_direccion_cliente IS NOT NULL) DESC
         LIMIT 1
       ) best_dc ON true
-      WHERE f.company_id = ${COTSA_COMPANY_ID}
-        AND f.status IN (2, 4, 5)
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND f.status IN (0,2,3,4,5)
         AND f.fecha_creacion >= '${inicioAnio}'
         AND f.fecha_creacion  < '${finAnio}'
       ORDER BY f.customer_code
@@ -253,8 +316,8 @@ const obtenerClientesCOTSA = async (req, res) => {
             THEN dd.cantidad ELSE 0 END) AS cantidad_actual
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = ${COTSA_COMPANY_ID}
-        AND f.status IN (2, 4, 5)
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND f.status IN (0,2,3,4,5)
       GROUP BY f.customer_code
     `;
 
@@ -267,8 +330,8 @@ const obtenerClientesCOTSA = async (req, res) => {
           SUM(dd.total) AS consumo_mes
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.company_id = ${COTSA_COMPANY_ID}
-          AND f.status IN (2, 4, 5)
+        WHERE f.company_id = ${COTTSA_COMPANY_ID}
+          AND f.status IN (0,2,3,4,5)
           AND f.fecha_creacion >= '${inicioAnio}'
           AND f.fecha_creacion  < '${finAnio}'
         GROUP BY f.customer_code, DATE_TRUNC('month', f.fecha_creacion)
@@ -279,13 +342,13 @@ const obtenerClientesCOTSA = async (req, res) => {
       ORDER BY customer_code, consumo_mes DESC
     `;
 
-    // 4. Última factura COTSA por cliente
+    // 4. Última factura COTTSA por cliente
     const ultimaFacturaSQL = `
       SELECT
         customer_code,
         MAX(COALESCE(fecha_autorizacion, fecha_entrega, fecha_creacion)) AS ultima_factura
       FROM facturas
-      WHERE company_id = ${COTSA_COMPANY_ID}
+      WHERE company_id = ${COTTSA_COMPANY_ID}
       GROUP BY customer_code
     `;
 
@@ -356,8 +419,8 @@ const obtenerClientesCOTSA = async (req, res) => {
              SUM(dd.total)    AS monto_usd
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = ${COTSA_COMPANY_ID}
-        AND f.status IN (2,4,5)
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND f.status IN (0,2,3,4,5)
         AND f.fecha_creacion >= '${inicio}' AND f.fecha_creacion < '${fin}'
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC
@@ -374,16 +437,16 @@ const obtenerClientesCOTSA = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ ERROR CLIENTES COTSA:', error);
-    return res.status(500).json({ message: 'Error al obtener clientes COTSA' });
+    console.error('❌ ERROR CLIENTES COTTSA:', error);
+    return res.status(500).json({ message: 'Error al obtener clientes COTTSA' });
   }
 };
 
 // ================================================================
 // ENDPOINT DIAGNÓSTICO — comparar header total vs detalle total
-// GET /api/cotsa/diagnostico?anio=YYYY&mes=MM
+// GET /api/COTTSA/diagnostico?anio=YYYY&mes=MM
 // ================================================================
-const diagnosticoCOTSA = async (req, res) => {
+const diagnosticoCOTTSA = async (req, res) => {
   try {
     const { anio, mes } = req.query;
     const anioNum = parseInt(anio, 10);
@@ -396,7 +459,7 @@ const diagnosticoCOTSA = async (req, res) => {
       sequelize.query(`
         SELECT status, COUNT(*) AS cant, SUM(total) AS total_header
         FROM facturas
-        WHERE company_id = ${COTSA_COMPANY_ID}
+        WHERE company_id = ${COTTSA_COMPANY_ID}
           AND fecha_creacion >= '${inicio}'
           AND fecha_creacion  < '${fin}'
         GROUP BY status
@@ -412,8 +475,8 @@ const diagnosticoCOTSA = async (req, res) => {
           SUM(dd.cantidad)                AS unidades_detalle
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.company_id = ${COTSA_COMPANY_ID}
-          AND f.status IN (2, 4, 5)
+        WHERE f.company_id = ${COTTSA_COMPANY_ID}
+          AND f.status IN (0,2,3,4,5)
           AND f.fecha_creacion >= '${inicio}'
           AND f.fecha_creacion  < '${fin}'
       `, { type: Sequelize.QueryTypes.SELECT }),
@@ -432,9 +495,9 @@ const diagnosticoCOTSA = async (req, res) => {
 
     return res.json({ periodo: `${anioNum}-${String(mesNum).padStart(2,'0')}`, porStatus, headerVsDetalle, porCompany });
   } catch (error) {
-    console.error('❌ ERROR DIAGNÓSTICO COTSA:', error);
+    console.error('❌ ERROR DIAGNÓSTICO COTTSA:', error);
     return res.status(500).json({ message: 'Error diagnóstico' });
   }
 };
 
-module.exports = { obtenerDashboardCOTSA, obtenerDetalleRutaCOTSA, obtenerClientesCOTSA, diagnosticoCOTSA };
+module.exports = { obtenerDashboardCOTTSA, obtenerDetalleRutaCOTTSA, obtenerClientesCOTTSA, diagnosticoCOTTSA };

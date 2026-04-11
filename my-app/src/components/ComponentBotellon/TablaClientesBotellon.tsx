@@ -8,7 +8,6 @@ interface ClienteRuta {
   codigo_cliente: string;
   nombre_cliente: string;
   direccion_entrega: string;
-  max_consumo: number;
   total_botellones: number;
   consumo_actual: number;
   porcentaje_cambio: number;
@@ -206,7 +205,6 @@ export default function TablaClientesBotellon({
       ["Cliente", "nombre_cliente"],
       ["Dirección", "direccion_entrega"],
       ["Ruta", "ruta_asignada"],
-      ["Consumo Prime", "max_consumo"],
       ["Cantidad", "total_botellones"],
       ["Consumo Actual", "consumo_actual"],
       ["VS Mes Ant", "porcentaje_cambio"],
@@ -268,7 +266,6 @@ export default function TablaClientesBotellon({
                     <span title={c.direccion_entrega} className="line-clamp-2">{c.direccion_entrega}</span>
                   </td>
                   <td className="px-4 py-2">{c.ruta_asignada}</td>
-                  <td className="px-4 py-2">{c.max_consumo}</td>
                   <td className="px-4 py-2">{c.total_botellones}</td>
                   <td className="px-4 py-2">{c.consumo_actual}</td>
                   <td className="px-4 py-2">{c.porcentaje_cambio}</td>

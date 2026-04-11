@@ -62,14 +62,14 @@ const CANAL_COLORS: Record<string, string> = {
   PREVENTA:    "#60a5fa",
   BOTELLONES:  "#34d399",
   HIELO:       "#a78bfa",
-  COTSA:       "#fbbf24",
+  COTTSA:       "#fbbf24",
   "DESC. ODOO":"#f87171",
 };
 const CANAL_LABELS: Record<string, string> = {
   PREVENTA:    "Preventa",
   BOTELLONES:  "Botellones",
   HIELO:       "Hielo",
-  COTSA:       "COTSA",
+  COTTSA:       "COTTSA",
   "DESC. ODOO":"Desc. Odoo",
 };
 

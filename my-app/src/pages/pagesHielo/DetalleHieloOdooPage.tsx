@@ -22,8 +22,6 @@ type Cliente = {
   longitud_cliente: string;
   cantidad_productos: number;
   consumo_actual: string;
-  max_consumo: string;
-  mes_max_consumo_nombre: string | null;
   ultima_visita: string | null;
   ultima_factura: string | null;
   tuvo_consumo: "Sí" | "No";
@@ -95,7 +93,6 @@ const DetalleHieloOdooPage: React.FC = () => {
       Dirección: c.direccion_entrega, "Tipo Negocio": c.tipo_negocio,
       Teléfono: c.telefono_cliente, Latitud: c.latitud_cliente, Longitud: c.longitud_cliente,
       "Cant. Actual": c.cantidad_productos, "Consumo Actual ($)": Number(c.consumo_actual),
-      "Max Consumo ($)": Number(c.max_consumo),
       "VS Mes Ant": c.vsMesAnterior
         ? `${Number(c.vsMesAnterior.variacion_abs) > 0 ? "+" : ""}${Number(c.vsMesAnterior.variacion_abs).toFixed(2)} (${c.vsMesAnterior.variacion_porc})`
         : "",
@@ -277,10 +274,6 @@ const DetalleHieloOdooPage: React.FC = () => {
                             <p className="text-cyan-300 font-semibold">{c.cantidad_productos}</p>
                           </div>
                           <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Max Consumo</p>
-                            <p className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</p>
-                          </div>
-                          <div>
                             <p className="text-[10px] text-gray-500 uppercase tracking-wide">Tipo Negocio</p>
                             <p className="text-gray-300 truncate">{c.tipo_negocio || "—"}</p>
                           </div>
@@ -320,7 +313,6 @@ const DetalleHieloOdooPage: React.FC = () => {
                       ["Longitud",       "longitud_cliente"],
                       ["Cant. Actual",   "cantidad_productos"],
                       ["Consumo Actual", "consumo_actual"],
-                      ["Max Consumo",    "max_consumo"],
                       ["VS Mes Ant",     "vsMesAnterior"],
                       ["Últ. Factura",   "ultima_factura"],
                       ["Estado",         "tuvo_consumo"],
@@ -354,10 +346,6 @@ const DetalleHieloOdooPage: React.FC = () => {
                             <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud_cliente || "—"}</td>
                             <td className="px-3 py-2 text-right text-cyan-300 font-semibold">{c.cantidad_productos}</td>
                             <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                            <td className="px-3 py-2 text-right">
-                              <span className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</span>
-                              {c.mes_max_consumo_nombre && <span className="block text-[10px] text-gray-400">{c.mes_max_consumo_nombre}</span>}
-                            </td>
                             <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
                               {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                               {c.vsMesAnterior?.variacion_porc && <span className="block text-[10px] opacity-70">{c.vsMesAnterior.variacion_porc}</span>}

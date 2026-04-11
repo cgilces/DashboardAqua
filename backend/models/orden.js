@@ -12,6 +12,19 @@ const Orden = sequelize.define('Orden', {
   status: DataTypes.INTEGER,
 
   // =========================
+  // 🔥 NUEVOS CAMPOS CLAVE
+  // =========================
+  codigo_subcanal: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+
+  codigo_tipo_negocio: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+
+  // =========================
   // ESTADOS
   // =========================
   estado_odoo: {
@@ -132,7 +145,7 @@ const Orden = sequelize.define('Orden', {
   notes: DataTypes.TEXT,
 
   // =========================
-  // CLIENTE / COMERCIAL (desnormalizados)
+  // CLIENTE DESNORMALIZADO
   // =========================
   customer_nombre: {
     type: DataTypes.STRING,
@@ -155,7 +168,7 @@ const Orden = sequelize.define('Orden', {
   },
 
   // =========================
-  // MONETARIO
+  // RENTABILIDAD
   // =========================
   margen: {
     type: DataTypes.DECIMAL(12, 2),
@@ -183,7 +196,7 @@ const Orden = sequelize.define('Orden', {
   },
 
   // =========================
-  // LOGÍSTICA
+  // LOGÍSTICA DESNORMALIZADA
   // =========================
   almacen_nombre: {
     type: DataTypes.STRING,
@@ -215,14 +228,10 @@ const Orden = sequelize.define('Orden', {
   },
 
   customer_address_code: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING, //  corregido (antes INTEGER)
     allowNull: true
   },
 
-  // =========================
-  // VÍNCULO MOBILVENDOR
-  // Permite unificar órdenes de Odoo con su documento origen en MobilVendor
-  // =========================
   mobilvendor_id: {
     type: DataTypes.STRING(100),
     allowNull: true

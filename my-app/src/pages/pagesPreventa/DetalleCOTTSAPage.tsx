@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { BsDownload } from "react-icons/bs";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
+
+type LocationState = {
+  objetivo_gerencia?:          number;
+  objetivo_gerencia_unidades?: number;
+  proyeccion?:                 number;
+  monto?:                      number;
+};
 
 const fmt = (n: number) =>
   n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,8 +29,6 @@ type Cliente = {
   longitud_cliente: string;
   cantidad_productos: number;
   consumo_actual: string;
-  max_consumo: string;
-  mes_max_consumo_nombre: string | null;
   ultima_visita: string | null;
   ultima_factura: string | null;
   tuvo_consumo: "Sí" | "No";
@@ -36,9 +41,21 @@ type Producto = { producto: string; unidades_vendidas: number; monto_usd: number
 
 const POR_PAGINA = 60;
 
-const DetalleCotsaPage: React.FC = () => {
+const DetalleCOTTSAPage: React.FC = () => {
   const { anio, mes } = useParams<{ anio: string; mes: string }>();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+
+  // Estado pasado desde TablaCOTTSA al hacer click en la fila
+  const state       = (location.state || {}) as LocationState;
+  const objetivo    = Number(state.objetivo_gerencia          || 0);
+  const objUnidades = Number(state.objetivo_gerencia_unidades || 0);
+  const proyeccion  = Number(state.proyeccion                 || 0);
+  const monto       = Number(state.monto                      || 0);
+
+  const faltaUSD     = objetivo > 0 ? objetivo - proyeccion : 0;
+  const porcObjetivo = objetivo > 0 ? (proyeccion / objetivo) * 100 : null;
+  const superado     = faltaUSD <= 0;
 
   const [clientes,   setClientes]   = useState<Cliente[]>([]);
   const [resumen,    setResumen]    = useState<Resumen | null>(null);
@@ -67,7 +84,7 @@ const DetalleCotsaPage: React.FC = () => {
 
   useEffect(() => {
     setCargando(true);
-    fetch(`${API_BASE_URL}/api/cotsa/clientes?anio=${anio}&mes=${mes}`)
+    fetch(`${API_BASE_URL}/api/COTTSA/clientes?anio=${anio}&mes=${mes}`)
       .then(r => r.json())
       .then(data => {
         let lista = data.clientes || [];
@@ -94,7 +111,6 @@ const DetalleCotsaPage: React.FC = () => {
       Dirección: c.direccion_entrega, "Tipo Negocio": c.tipo_negocio,
       Teléfono: c.telefono_cliente, Latitud: c.latitud_cliente, Longitud: c.longitud_cliente,
       "Cant. Actual": c.cantidad_productos, "Consumo Actual ($)": Number(c.consumo_actual),
-      "Max Consumo ($)": Number(c.max_consumo),
       "VS Mes Ant": c.vsMesAnterior
         ? `${Number(c.vsMesAnterior.variacion_abs) > 0 ? "+" : ""}${Number(c.vsMesAnterior.variacion_abs).toFixed(2)} (${c.vsMesAnterior.variacion_porc})`
         : "",
@@ -102,8 +118,8 @@ const DetalleCotsaPage: React.FC = () => {
     }));
     const ws = XLSX.utils.json_to_sheet(datos);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "COTSA");
-    XLSX.writeFile(wb, `clientes_cotsa_${anio}_${mes}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "COTTSA");
+    XLSX.writeFile(wb, `clientes_COTTSA_${anio}_${mes}.xlsx`);
   };
 
   const Paginacion = () => (
@@ -149,7 +165,7 @@ const DetalleCotsaPage: React.FC = () => {
             <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">
               ← Volver
             </button>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight">COTSA — Clientes Agua OK</h1>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight">COTTSA — Clientes Agua OK</h1>
             <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio}</p>
           </div>
           <button onClick={exportar}
@@ -157,6 +173,86 @@ const DetalleCotsaPage: React.FC = () => {
             <BsDownload size={16} /> Exportar Excel
           </button>
         </div>
+
+        {/* Objetivo de Gerencia — solo si fue configurado */}
+        {objetivo > 0 && (
+          <div className="mb-8 p-5 rounded-2xl border border-amber-500/30 bg-gradient-to-br from-[#1a1200]/80 to-[#012a20]/80 shadow-xl backdrop-blur-sm">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="w-1 h-6 rounded-full bg-gradient-to-b from-amber-400 to-yellow-600" />
+              <h2 className="text-base font-bold text-amber-300 uppercase tracking-wider">
+                Objetivo de Gerencia — COTTSA AGUA OK
+              </h2>
+              <span className="ml-auto text-xs text-white/30 font-mono">{mes}/{anio}</span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+              <div className="rounded-xl bg-white/5 border border-amber-500/20 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400/70 mb-1">Objetivo USD</p>
+                <p className="text-xl font-bold text-amber-300">
+                  ${objetivo.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                {objUnidades > 0 && (
+                  <p className="text-xs text-white/40 mt-0.5">{objUnidades.toLocaleString("es-EC")} unidades</p>
+                )}
+              </div>
+
+              <div className="rounded-xl bg-white/5 border border-blue-500/20 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400/70 mb-1">Proyección</p>
+                <p className="text-xl font-bold text-blue-300">
+                  ${proyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-white/40 mt-0.5">
+                  Venta actual: ${monto.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div className={`rounded-xl bg-white/5 border p-4 ${superado ? "border-green-500/30" : "border-red-500/30"}`}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-white/40">
+                  {superado ? "Superado en" : "Falta alcanzar"}
+                </p>
+                <p className={`text-xl font-bold ${superado ? "text-green-400" : "text-red-400"}`}>
+                  {superado ? "+" : "−"}${Math.abs(faltaUSD).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Cumplimiento</p>
+                <div>
+                  <div className="w-full h-2.5 rounded-full bg-white/10 mb-2 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        porcObjetivo! >= 100 ? "bg-green-400" :
+                        porcObjetivo! >= 80  ? "bg-yellow-400" : "bg-red-400"
+                      }`}
+                      style={{ width: `${Math.min(porcObjetivo ?? 0, 100)}%` }}
+                    />
+                  </div>
+                  <p className={`text-2xl font-extrabold ${
+                    porcObjetivo! >= 100 ? "text-green-400" :
+                    porcObjetivo! >= 80  ? "text-yellow-400" : "text-red-400"
+                  }`}>
+                    {porcObjetivo !== null ? `${porcObjetivo.toFixed(1)}%` : "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className={`rounded-xl px-4 py-3 text-sm font-semibold border ${
+              superado
+                ? "bg-green-500/10 border-green-500/25 text-green-300"
+                : porcObjetivo! >= 80
+                ? "bg-yellow-500/10 border-yellow-500/25 text-yellow-300"
+                : "bg-red-500/10 border-red-500/25 text-red-300"
+            }`}>
+              {superado
+                ? `✓ COTTSA ha superado el objetivo de gerencia. Proyección ${porcObjetivo!.toFixed(1)}% del objetivo.`
+                : porcObjetivo! >= 80
+                ? `⚡ COTTSA está cerca del objetivo. Con $${Math.abs(faltaUSD).toLocaleString("es-EC", { minimumFractionDigits: 2 })} más se alcanza la meta.`
+                : `⚠ COTTSA necesita $${Math.abs(faltaUSD).toLocaleString("es-EC", { minimumFractionDigits: 2 })} adicionales (${porcObjetivo!.toFixed(1)}% alcanzado).`
+              }
+            </div>
+          </div>
+        )}
 
         {/* Resumen */}
         {resumen && (
@@ -274,10 +370,6 @@ const DetalleCotsaPage: React.FC = () => {
                             <p className="text-blue-300 font-semibold">{c.cantidad_productos}</p>
                           </div>
                           <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Max Consumo</p>
-                            <p className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</p>
-                          </div>
-                          <div>
                             <p className="text-[10px] text-gray-500 uppercase tracking-wide">Tipo Negocio</p>
                             <p className="text-gray-300 truncate">{c.tipo_negocio || "—"}</p>
                           </div>
@@ -316,7 +408,6 @@ const DetalleCotsaPage: React.FC = () => {
                       ["Longitud",       "longitud_cliente"],
                       ["Cant. Actual",   "cantidad_productos"],
                       ["Consumo Actual", "consumo_actual"],
-                      ["Max Consumo",    "max_consumo"],
                       ["VS Mes Ant",     "vsMesAnterior"],
                       ["Últ. Factura",   "ultima_factura"],
                       ["Estado",         "tuvo_consumo"],
@@ -349,10 +440,6 @@ const DetalleCotsaPage: React.FC = () => {
                             <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud_cliente || "—"}</td>
                             <td className="px-3 py-2 text-right text-blue-300 font-semibold">{c.cantidad_productos}</td>
                             <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                            <td className="px-3 py-2 text-right">
-                              <span className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</span>
-                              {c.mes_max_consumo_nombre && <span className="block text-[10px] text-gray-400">{c.mes_max_consumo_nombre}</span>}
-                            </td>
                             <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
                               {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                               {c.vsMesAnterior?.variacion_porc && <span className="block text-[10px] opacity-70">{c.vsMesAnterior.variacion_porc}</span>}
@@ -381,4 +468,4 @@ const DetalleCotsaPage: React.FC = () => {
   );
 };
 
-export default DetalleCotsaPage;
+export default DetalleCOTTSAPage;

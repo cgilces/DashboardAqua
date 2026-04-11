@@ -20,7 +20,6 @@ interface ClienteTipo {
   cantidad_actual: number;
   consumo_actual: number;
   consumo_anterior: number;
-  max_consumo: number;
   ultima_factura: string | null;
   total_sucursales: number;
 }
@@ -91,7 +90,6 @@ export default function VipClientesPorTipoPage() {
       "Cant. Actual": Number(c.cantidad_actual),
       "Consumo Actual ($)": Number(c.consumo_actual),
       "Consumo Anterior ($)": Number(c.consumo_anterior),
-      "Max Consumo ($)": Number(c.max_consumo),
       "VS Mes Ant ($)": Number(c.consumo_actual) - Number(c.consumo_anterior),
       "Última Factura": c.ultima_factura || "—",
       "Estado": Number(c.consumo_actual) > 0 ? "Activo" : "Sin consumo",
@@ -276,7 +274,6 @@ export default function VipClientesPorTipoPage() {
                       ["Sucursales",     "total_sucursales"],
                       ["Cant. Actual",   "cantidad_actual"],
                       ["Consumo Actual", "consumo_actual"],
-                      ["Max Consumo",    "max_consumo"],
                       ["VS Mes Ant",     "vsAnt"],
                       ["Últ. Factura",   "ultima_factura"],
                       ["Estado",         "estado"],
@@ -305,7 +302,6 @@ export default function VipClientesPorTipoPage() {
                             <td className="px-3 py-2 text-center text-blue-300 font-semibold">{Number(c.total_sucursales)}</td>
                             <td className="px-3 py-2 text-right text-blue-300 font-semibold">{Number(c.cantidad_actual).toLocaleString("es-EC")}</td>
                             <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                            <td className="px-3 py-2 text-right text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</td>
                             <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                               {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                             </td>

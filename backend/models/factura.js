@@ -143,6 +143,17 @@ const Factura = sequelize.define("Factura", {
     allowNull: true,
   },
 
+  // Clasificación directa del canal y subcanal (igual que en ordenes)
+  codigo_tipo_negocio: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+
+  codigo_subcanal: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+
 }, {
   tableName: "facturas",
   timestamps: false,

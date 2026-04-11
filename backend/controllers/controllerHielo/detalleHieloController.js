@@ -210,7 +210,7 @@ const obtenerDetalleRuta = async (req, res) => {
                 FROM facturas f
                 JOIN detalle_documento d ON d.documento_code = f.code
                 WHERE f.seller_code = :ruta  
-                  AND f.status IN ('2', '4', '5')  
+                  AND f.status IN ('0','2','4','5')  
                 GROUP BY f.customer_code
             `;
     // Definir las fechas de inicio y fin para los meses actual y anterior
@@ -248,7 +248,7 @@ const obtenerDetalleRuta = async (req, res) => {
                 ON d.documento_code = f.code
             WHERE 
                 f.seller_code = :ruta
-                AND f.status IN ('2','4','5')
+                AND f.status IN ('0','2','4','5')
                 AND d.codigo_categoria = '40'
                 AND f.fecha_entrega >= :inicioAnio
                 AND f.fecha_entrega <  :finAnio
@@ -332,7 +332,7 @@ const obtenerDetalleRuta = async (req, res) => {
         JOIN detalle_documento dd
             ON dd.documento_code = f.code
         WHERE 
-            f.status IN ('2', '4', '5')  -- Estado de la factura (entregada)
+            f.status IN ('0','2','4','5')  -- Estado de la factura (entregada)
             AND f.seller_code = :ruta  -- Ruta H7
             AND f.fecha_entrega >= :inicio  -- Fecha de inicio (1 de diciembre de 2025)
             AND f.fecha_entrega < :fin  -- Fecha de fin (31 de diciembre de 2025)

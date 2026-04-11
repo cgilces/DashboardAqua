@@ -1,5 +1,5 @@
 // components/common/GraficoTendencia.tsx
-// Gráfico de tendencia 12 meses — reutilizable en todos los dashboards
+// Gráfico de tendencia — muestra los últimos 3 meses incluyendo el actual
 import React, { useMemo } from "react";
 import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -23,6 +23,13 @@ interface Props {
   mesFiltro?: number;
 }
 
+/* ── Helpers de formato ──────────────────────────────────── */
+const fmtDol = (v: number) =>
+  "$" + v.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const fmtUni = (v: number) =>
+  v.toLocaleString("es-EC") + " u";
+
 /* ── Tooltip ─────────────────────────────────────────────── */
 const TooltipTendencia = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -39,7 +46,7 @@ const TooltipTendencia = ({ active, payload, label }: any) => {
           <BsCurrencyDollar className="text-emerald-400 shrink-0" size={12} />
           <span className="text-gray-400">Real:</span>{" "}
           <span className="font-semibold text-emerald-300">
-            ${Number(dol.value).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+            {fmtDol(Number(dol.value))}
           </span>
         </p>
       )}
@@ -48,7 +55,7 @@ const TooltipTendencia = ({ active, payload, label }: any) => {
           <BsGraphUpArrow className="text-yellow-400 shrink-0" size={12} />
           <span className="text-gray-400">Proyección:</span>{" "}
           <span className="font-semibold text-yellow-300">
-            ${Number(proy.value).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+            {fmtDol(Number(proy.value))}
           </span>
         </p>
       )}
@@ -66,7 +73,7 @@ const TooltipTendencia = ({ active, payload, label }: any) => {
           <BsStack className="text-violet-400 shrink-0" size={12} />
           <span className="text-gray-400">Acumulado:</span>{" "}
           <span className="font-semibold text-violet-300">
-            ${Number(acum.value).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+            {fmtDol(Number(acum.value))}
           </span>
         </p>
       )}
@@ -128,13 +135,11 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
   const datosCompletos = useMemo(() => {
     if (!anioFiltro || !mesFiltro) return datos;
 
-    // Generar desde enero del año filtrado hasta el mes seleccionado
     const rango: PuntoTendencia[] = [];
     for (let m = 1; m <= mesFiltro; m++) {
       rango.push({ label: NOMBRES_MES[m - 1], anio: anioFiltro, mes: m, dolares: 0, unidades: 0 });
     }
 
-    // Superponer los datos reales del año filtrado; lo que no existe queda en cero
     const map = new Map(
       datos
         .filter(d => d.anio === anioFiltro)
@@ -143,7 +148,7 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
     return rango.map(p => map.get(`${p.mes}`) ?? p);
   }, [datos, anioFiltro, mesFiltro]);
 
-  /* ── Calcular acumulado YTD (se reinicia en enero de cada año) ── */
+  /* ── Calcular acumulado YTD ── */
   const dataConAcumulado = useMemo(() => {
     let acum = 0;
     let lastAnio = -1;
@@ -160,12 +165,14 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
     });
   }, [datosCompletos]);
 
-  const maxRef = Math.max(...dataConAcumulado.map(d => Math.max(d.dolares, d.proyeccion ?? d.dolares)));
-  const maxAcum = Math.max(...dataConAcumulado.map(d => d.acumulado ?? 0));
-  const maxUni  = Math.max(...datosCompletos.map(d => d.unidades));
+  /* ── Últimos 3 meses (incluyendo el actual) ── */
+  const datos3Meses = useMemo(() => dataConAcumulado.slice(-3), [dataConAcumulado]);
 
-  // Punto actual para mostrar KPI rápido en header
-  const puntoActual = dataConAcumulado.find(d => d.mes === mesActual && d.anio === anioActual);
+  const maxRef  = Math.max(...datos3Meses.map(d => Math.max(d.dolares, d.proyeccion ?? d.dolares)));
+  const maxAcum = Math.max(...datos3Meses.map(d => d.acumulado ?? 0));
+  const maxUni  = Math.max(...datos3Meses.map(d => d.unidades));
+
+  const puntoActual     = datos3Meses.find(d => d.mes === mesActual && d.anio === anioActual);
   const tieneProyeccion = puntoActual && puntoActual.proyeccion != null && puntoActual.proyeccion !== puntoActual.dolares;
 
   return (
@@ -176,9 +183,7 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
         <div>
           <p className="text-sm font-semibold text-white tracking-wide">Evolución de Ventas</p>
           <p className="text-[11px] text-gray-500 mt-0.5">
-            {anioFiltro
-              ? `Ene – ${NOMBRES_MES[(mesFiltro ?? 12) - 1]} ${anioFiltro}${subtitulo ? ` · ${subtitulo}` : ""}`
-              : (subtitulo ?? "Últimos 12 meses")}
+            Últimos 3 meses{subtitulo ? ` · ${subtitulo}` : ""}
           </p>
         </div>
 
@@ -186,21 +191,19 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
           {tieneProyeccion && (
             <div className="flex items-center gap-2 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-1.5">
               <span className="text-yellow-300 font-bold text-xs">
-                Proy: ${((puntoActual!.proyeccion ?? 0) / 1000).toFixed(1)}k
+                Proy: {fmtDol(puntoActual!.proyeccion ?? 0)}
               </span>
               <span className="text-gray-500">·</span>
               <span className="text-gray-400">
-                Real: ${((puntoActual!.dolares) / 1000).toFixed(1)}k
+                Real: {fmtDol(puntoActual!.dolares)}
               </span>
               <span className="text-gray-500">·</span>
               <span className="text-cyan-400 text-xs">
-                {puntoActual!.unidades >= 1000
-                  ? `${(puntoActual!.unidades / 1000).toFixed(1)}k`
-                  : puntoActual!.unidades} u
+                {fmtUni(puntoActual!.unidades)}
               </span>
               <span className="text-gray-500">·</span>
               <span className="text-violet-400 text-xs font-bold">
-                Acum: ${((puntoActual!.acumulado ?? 0) / 1000).toFixed(1)}k
+                Acum: {fmtDol(puntoActual!.acumulado ?? 0)}
               </span>
             </div>
           )}
@@ -223,9 +226,9 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
         </div>
       </div>
 
-      {/* Chart */}
-      <ResponsiveContainer width="100%" height={220}>
-        <ComposedChart data={dataConAcumulado} margin={{ top: 16, right: 52, left: 0, bottom: 0 }}>
+      {/* Chart — solo los 3 meses */}
+      <ResponsiveContainer width="100%" height={260}>
+        <ComposedChart data={datos3Meses} margin={{ top: 16, right: 52, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="gradDolaresShared" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%"   stopColor="#34d399" stopOpacity={0.28} />
@@ -236,28 +239,25 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
           <CartesianGrid strokeDasharray="4 4" stroke="#046C5E15" vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fill: "#6b7280", fontSize: 11 }}
+            tick={{ fill: "#6b7280", fontSize: 15 }}
             axisLine={false} tickLine={false}
           />
-          {/* Eje izquierdo: dólares mensuales */}
           <YAxis
             yAxisId="dol"
-            tick={{ fill: "#34d399", fontSize: 10 }}
+            tick={{ fill: "#34d399", fontSize: 13 }}
             axisLine={false} tickLine={false}
             tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-            width={46}
+            width={52}
             domain={[0, (dataMax: number) => Math.ceil(Math.max(dataMax, maxRef) * 1.1 / 1000) * 1000]}
           />
-          {/* Eje derecho: unidades */}
           <YAxis
             yAxisId="uni"
             orientation="right"
-            tick={{ fill: "#22d3ee", fontSize: 10 }}
+            tick={{ fill: "#22d3ee", fontSize: 13 }}
             axisLine={false} tickLine={false}
             tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
-            width={40}
+            width={44}
           />
-          {/* Eje oculto: acumulado (escala propia) */}
           <YAxis
             yAxisId="acum"
             orientation="right"
@@ -270,7 +270,6 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             cursor={{ stroke: "#046C5E60", strokeWidth: 1, strokeDasharray: "5 3" }}
           />
 
-          {/* Área dólares reales */}
           <Area
             yAxisId="dol"
             type="monotone"
@@ -281,8 +280,6 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             dot={(p: any) => <PulsingDot {...p} color="#34d399" mesActual={mesActual} anioActual={anioActual} />}
             activeDot={false}
           />
-
-          {/* Línea proyección — solo se separa del real en mes actual */}
           <Line
             yAxisId="dol"
             type="monotone"
@@ -294,8 +291,6 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             dot={(p: any) => <ProyeccionDot {...p} mesActual={mesActual} anioActual={anioActual} />}
             activeDot={false}
           />
-
-          {/* Línea unidades */}
           <Line
             yAxisId="uni"
             type="monotone"
@@ -307,8 +302,6 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             dot={(p: any) => <PulsingDot {...p} color="#22d3ee" mesActual={mesActual} anioActual={anioActual} />}
             activeDot={false}
           />
-
-          {/* Línea acumulado YTD */}
           <Line
             yAxisId="acum"
             type="monotone"
@@ -322,86 +315,73 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
         </ComposedChart>
       </ResponsiveContainer>
 
-      {/* Strip mensual */}
-      <div className="overflow-x-auto -mx-1 px-1 mt-1">
-      <div
-        className="grid border-t border-[#046C5E]/20 pt-3 gap-1"
-        style={{ gridTemplateColumns: `repeat(${dataConAcumulado.length}, minmax(48px, 1fr))` }}
-      >
-        {dataConAcumulado.map((d) => {
+      {/* Strip — 3 columnas, valores completos, texto más grande */}
+      <div className="grid grid-cols-3 border-t border-[#046C5E]/20 pt-3 gap-2 mt-1">
+        {datos3Meses.map((d) => {
           const esCurrent = d.mes === mesActual && d.anio === anioActual;
-          const pctDol  = maxRef > 0 ? Math.round((d.dolares / maxRef) * 100) : 0;
-          const pctProy = maxRef > 0 ? Math.round(((d.proyeccion ?? d.dolares) / maxRef) * 100) : 0;
-          const pctUni  = maxUni > 0 ? Math.round((d.unidades / maxUni) * 100) : 0;
+          const pctDol  = maxRef  > 0 ? Math.round((d.dolares / maxRef) * 100) : 0;
+          const pctProy = maxRef  > 0 ? Math.round(((d.proyeccion ?? d.dolares) / maxRef) * 100) : 0;
+          const pctUni  = maxUni  > 0 ? Math.round((d.unidades / maxUni) * 100) : 0;
           const pctAcum = maxAcum > 0 ? Math.round(((d.acumulado ?? 0) / maxAcum) * 100) : 0;
           const hayProy = esCurrent && d.proyeccion != null && d.proyeccion !== d.dolares;
           return (
             <div
               key={`${d.anio}-${d.mes}`}
-              className={`flex flex-col items-center gap-1 px-1 py-1.5 rounded-lg transition-all ${
+              className={`flex flex-col items-center gap-1.5 px-2 py-2 rounded-lg transition-all ${
                 esCurrent ? "bg-emerald-400/5 border border-emerald-400/15" : ""
               }`}
             >
-              {/* Proyección + Real (mes actual) */}
+              {/* Mes */}
+              <span className={`text-base font-bold leading-none ${esCurrent ? "text-emerald-400" : "text-gray-400"}`}>
+                {d.label} {d.anio}
+              </span>
+
+              {/* Dólares / Proyección */}
               {hayProy ? (
                 <>
-                  <span className="text-[10px] font-bold leading-none text-yellow-400">
-                    ↑${((d.proyeccion ?? 0) / 1000).toFixed(1)}k
+                  <span className="text-base font-bold leading-none text-yellow-400">
+                    ↑{fmtDol(d.proyeccion ?? 0)}
                   </span>
-                  <span className="text-[9px] leading-none text-emerald-400">
-                    R${(d.dolares / 1000).toFixed(1)}k
+                  <span className="text-sm leading-none text-emerald-400">
+                    R{fmtDol(d.dolares)}
                   </span>
                 </>
               ) : (
-                <span className={`text-[10px] font-bold leading-none ${esCurrent ? "text-emerald-400" : "text-gray-300"}`}>
-                  ${(d.dolares / 1000).toFixed(1)}k
+                <span className={`text-base font-bold leading-none ${esCurrent ? "text-emerald-400" : "text-gray-300"}`}>
+                  {fmtDol(d.dolares)}
                 </span>
               )}
 
               {/* Mini barras */}
               <div className="w-full flex flex-col gap-0.5">
-                {/* Real */}
                 <div className="w-full bg-[#046C5E]/20 rounded-full h-[3px]">
-                  <div
-                    className={`h-[3px] rounded-full ${esCurrent ? "bg-emerald-400" : "bg-emerald-700"}`}
-                    style={{ width: `${pctDol}%` }}
-                  />
+                  <div className={`h-[3px] rounded-full ${esCurrent ? "bg-emerald-400" : "bg-emerald-700"}`} style={{ width: `${pctDol}%` }} />
                 </div>
-                {/* Proyección */}
                 {hayProy && (
                   <div className="w-full bg-[#046C5E]/20 rounded-full h-[3px]">
                     <div className="h-[3px] rounded-full bg-yellow-400" style={{ width: `${pctProy}%` }} />
                   </div>
                 )}
-                {/* Unidades */}
                 <div className="w-full bg-[#046C5E]/20 rounded-full h-[3px]">
-                  <div
-                    className={`h-[3px] rounded-full ${esCurrent ? "bg-cyan-400" : "bg-cyan-700"}`}
-                    style={{ width: `${pctUni}%` }}
-                  />
+                  <div className={`h-[3px] rounded-full ${esCurrent ? "bg-cyan-400" : "bg-cyan-700"}`} style={{ width: `${pctUni}%` }} />
                 </div>
-                {/* Acumulado */}
                 <div className="w-full bg-[#046C5E]/20 rounded-full h-[3px]">
-                  <div
-                    className={`h-[3px] rounded-full ${esCurrent ? "bg-violet-400" : "bg-violet-700"}`}
-                    style={{ width: `${pctAcum}%` }}
-                  />
+                  <div className={`h-[3px] rounded-full ${esCurrent ? "bg-violet-400" : "bg-violet-700"}`} style={{ width: `${pctAcum}%` }} />
                 </div>
               </div>
 
-              <span className={`text-[9px] leading-none ${esCurrent ? "text-cyan-400" : "text-gray-600"}`}>
-                {d.unidades >= 1000 ? `${(d.unidades / 1000).toFixed(1)}k` : d.unidades} u
+              {/* Unidades */}
+              <span className={`text-sm font-semibold leading-none ${esCurrent ? "text-cyan-400" : "text-gray-500"}`}>
+                {fmtUni(d.unidades)}
               </span>
-              <span className={`text-[9px] leading-none ${esCurrent ? "text-violet-400" : "text-gray-600"} font-medium`}>
-                Σ${(d.acumulado / 1000).toFixed(0)}k
-              </span>
-              <span className={`text-[9px] leading-none font-medium ${esCurrent ? "text-emerald-500" : "text-gray-600"}`}>
-                {d.label}
+
+              {/* Acumulado YTD */}
+              <span className={`text-sm font-semibold leading-none ${esCurrent ? "text-violet-400" : "text-gray-500"}`}>
+                Σ{fmtDol(d.acumulado)}
               </span>
             </div>
           );
         })}
-      </div>
       </div>
 
     </div>

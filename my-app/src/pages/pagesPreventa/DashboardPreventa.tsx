@@ -14,7 +14,7 @@ import BotonActualizarSincronizacion from "../../components/elements/BotonActual
 import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
 import TablaDescartableOdoo from "../../components/ComponentPreventa/TablaDescartableOdoo";
 import { API_BASE_URL } from '../../config';
-import TablaCotsa from "../../components/ComponentPreventa/TablaCotsa";
+import TablaCOTTSA from "../../components/ComponentPreventa/TablaCOTTSA";
 
 
 const meses: Record<any, number> = {
@@ -36,13 +36,13 @@ export default function DashboardPreventa() {
   const [datos, setDatos] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
   const [topClientesState, setTopClientesState] = useState<any[]>([]);
-  const [cotsaCard,  setCotsaCard]  = useState<any>(null);
+  const [COTTSACard,  setCOTTSACard]  = useState<any>(null);
   const [odooCard,   setOdooCard]   = useState<any>(null);
   const [tendencia6Meses, setTendencia6Meses] = useState<any[]>([]);
 
   useEffect(() => {
     if (mesSeleccionado && anioSeleccionado) {
-      setCotsaCard(null);
+      setCOTTSACard(null);
       setOdooCard(null);
       obtenerDatos(parseInt(anioSeleccionado), parseInt(mesSeleccionado));
     }
@@ -76,7 +76,7 @@ export default function DashboardPreventa() {
 
   const totalDescartable = useMemo(() => {
     const canales = Object.values(datos?.resumenVentasPorCanal || {}) as any[];
-    if (canales.length === 0 && !cotsaCard && !odooCard) return null;
+    if (canales.length === 0 && !COTTSACard && !odooCard) return null;
 
     let totalUnidades = 0, totalMonto = 0, totalMontoReal = 0, totalUnidadesAnterior = 0;
 
@@ -86,11 +86,11 @@ export default function DashboardPreventa() {
       totalMontoReal        += Number(c.montoReal        || 0);
       totalUnidadesAnterior += Number(c.unidadesAnterior || 0);
     });
-    if (cotsaCard) {
-      totalUnidades         += Number(cotsaCard.unidades         || 0);
-      totalMonto            += Number(cotsaCard.monto            || 0);
-      totalMontoReal        += Number(cotsaCard.montoReal ?? cotsaCard.monto ?? 0);
-      totalUnidadesAnterior += Number(cotsaCard.unidadesAnterior || 0);
+    if (COTTSACard) {
+      totalUnidades         += Number(COTTSACard.unidades         || 0);
+      totalMonto            += Number(COTTSACard.monto            || 0);
+      totalMontoReal        += Number(COTTSACard.montoReal ?? COTTSACard.monto ?? 0);
+      totalUnidadesAnterior += Number(COTTSACard.unidadesAnterior || 0);
     }
     if (odooCard) {
       totalUnidades         += Number(odooCard.unidades         || 0);
@@ -100,7 +100,7 @@ export default function DashboardPreventa() {
     }
 
     // Mes anterior: usar tendencia6Meses como fuente de verdad — ya agrega
-    // TODOS los canales completos (TIENDAS, RURAL, DOMICILIO, VIP, MAYORISTA, COTSA, ODOO)
+    // TODOS los canales completos (TIENDAS, RURAL, DOMICILIO, VIP, MAYORISTA, COTTSA, ODOO)
     const mesPrevNum  = Number(mesSeleccionado) > 1 ? Number(mesSeleccionado) - 1 : 12;
     const anioPrevNum = Number(mesSeleccionado) > 1 ? Number(anioSeleccionado)   : Number(anioSeleccionado) - 1;
     const puntoPrev   = tendencia6Meses.find((d: any) => d.mes === mesPrevNum && d.anio === anioPrevNum);
@@ -115,7 +115,7 @@ export default function DashboardPreventa() {
       totalUnidades, totalMonto, totalMontoReal, totalMesAnterior, totalVariacionAbs, totalVariacionPorc,
       totalUnidadesAnterior, totalVarAbsUnidades, totalVarPorcUnidades,
     };
-  }, [datos, cotsaCard, odooCard, tendencia6Meses, mesSeleccionado, anioSeleccionado]);
+  }, [datos, COTTSACard, odooCard, tendencia6Meses, mesSeleccionado, anioSeleccionado]);
 
   const navigate = useNavigate();
   const [seccionActiva, setSeccionActiva] = useState<string | null>(null);
@@ -139,7 +139,7 @@ export default function DashboardPreventa() {
 
   const tieneRutasPV   = !isVendedor || rutasAsignadas.some(r => r.startsWith('PV') || r.startsWith('PREVENTA') || r.startsWith('TELEVENTA'));
   const tieneRutasR    = !isVendedor || rutasAsignadas.some(r => /^R\d/i.test(r) || r.startsWith('PVR'));
-  const puedeVerCotsa  = !isVendedor;
+  const puedeVerCOTTSA  = !isVendedor;
   const puedeVerOdoo   = !isVendedor;
 
   const puedeVerRanking = isAdmin || isSupervisor || isVendedor;
@@ -277,17 +277,17 @@ export default function DashboardPreventa() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
                     ...Object.values(resumenVentasPorCanal).filter((c: any) => c.monto > 0 || c.unidades > 0),
-                    ...(cotsaCard ? [cotsaCard] : []),
+                    ...(COTTSACard ? [COTTSACard] : []),
                     ...(odooCard  ? [odooCard]  : []),
                   ].map((canal: any) => {
                     const positivo = canal.variacionAbs >= 0;
-                    const esCotsa = canal.canal === "COTSA - AGUA OK";
+                    const esCOTTSA = canal.canal === "COTTSA - AGUA OK";
                     const esOdoo  = canal.canal === "EMPRESA DESCARTABLE ODOO";
                     const esClickable = true;
 
                     const handleCardClick = () => {
-                      if (esCotsa)
-                        navigate(`/cotsa/clientes/${anioSeleccionado}/${mesSeleccionado}`);
+                      if (esCOTTSA)
+                        navigate(`/COTTSA/clientes/${anioSeleccionado}/${mesSeleccionado}`);
                       else if (esOdoo)
                         navigate(`/descartable-odoo/clientes/${anioSeleccionado}/${mesSeleccionado}`);
                       else if (canal.canal === "RURAL")
@@ -310,7 +310,7 @@ export default function DashboardPreventa() {
                             {canal.canal}
                           </p>
                           <span className="text-[10px] text-gray-400 italic shrink-0 ml-1">
-                            {esCotsa || esOdoo ? "Ver clientes →" : "Ver tabla ↓"}
+                            {esCOTTSA || esOdoo ? "Ver clientes →" : "Ver tabla ↓"}
                           </span>
                         </div>
 
@@ -402,12 +402,12 @@ export default function DashboardPreventa() {
             )}
 
 
-             {/* ── Tabla COTSA — solo visible si no es VENDEDOR ── */}
-            {puedeVerCotsa && (
-              <TablaCotsa
+             {/* ── Tabla COTTSA — solo visible si no es VENDEDOR ── */}
+            {puedeVerCOTTSA && (
+              <TablaCOTTSA
                 anio={anioSeleccionado}
                 mes={mesSeleccionado}
-                onTotalesLoaded={setCotsaCard}
+                onTotalesLoaded={setCOTTSACard}
               />
             )}
 

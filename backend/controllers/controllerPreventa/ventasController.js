@@ -227,7 +227,7 @@ const sqlActual = `
     SELECT f.seller_code AS usuario, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
            0::int AS cant_ordenes, COUNT(DISTINCT f.code) AS cant_facturas
     FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE dd.codigo_categoria='7' AND f.status IN(2,4,5)
+    WHERE dd.codigo_categoria='7' AND f.status IN(0,2,4,5)
       AND (f.seller_code ILIKE 'R%' OR f.seller_code ILIKE 'PVR%')
       AND f.fecha_creacion>='${inicio}' AND f.fecha_creacion<'${fin}'
     GROUP BY f.seller_code
@@ -245,7 +245,7 @@ const sqlPrev = `
     UNION ALL
     SELECT f.seller_code AS usuario, SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
     FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE dd.codigo_categoria='7' AND f.status IN(2,4,5)
+    WHERE dd.codigo_categoria='7' AND f.status IN(0,2,4,5)
       AND (f.seller_code ILIKE 'R%' OR f.seller_code ILIKE 'PVR%')
       AND f.fecha_creacion>='${inicioPrev}' AND f.fecha_creacion<'${finPrev}'
     GROUP BY f.seller_code
@@ -781,7 +781,7 @@ const tendencia6MesesPreventa = async (anioNum, mesNum) => {
   // 1) TIENDAS: PV*/PREVENTA*/TELEVENTA* ordenes (status=5, fecha_entrega)
   // 2) RURAL:   R*/PVR* ordenes + facturas (fecha_creacion)
   // 3) DOMICILIO/VIP/MAYORISTA: A*/V*/M* facturas + M6 ordenes (COALESCE fecha_entrega, fecha_creacion)
-  // 4) COTSA:   facturas company_id=3 (fecha_creacion, sin filtro categoría)
+  // 4) COTTSA:   facturas company_id=3 (fecha_creacion, sin filtro categoría)
   // 5) ODOO Descartable: ordenes RUTAS_ODOO categoria 7 (fecha_creacion)
   const RUTAS_ODOO_DESCARTABLE = [
     'Carmen Garcia','Estefania Flores','Tamara Villacres',
@@ -820,7 +820,7 @@ const tendencia6MesesPreventa = async (anioNum, mesNum) => {
       SELECT DATE_TRUNC('month', f.fecha_creacion) AS mes_periodo,
              SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
       FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE dd.codigo_categoria = '7' AND f.status IN (2,4,5)
+      WHERE dd.codigo_categoria = '7' AND f.status IN (0,2,3,4,5)
         AND (f.seller_code ILIKE 'R%' OR f.seller_code ILIKE 'PVR%')
         AND f.fecha_creacion >= :inicio6 AND f.fecha_creacion < :fin6
       GROUP BY DATE_TRUNC('month', f.fecha_creacion)
@@ -830,7 +830,7 @@ const tendencia6MesesPreventa = async (anioNum, mesNum) => {
       SELECT DATE_TRUNC('month', COALESCE(f.fecha_entrega, f.fecha_creacion)) AS mes_periodo,
              SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
       FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE dd.codigo_categoria = '7' AND f.status IN (2,4,5)
+      WHERE dd.codigo_categoria = '7' AND f.status IN (0,2,3,4,5)
         AND (f.seller_code ILIKE 'A%' OR f.seller_code ILIKE 'V%' OR f.seller_code ILIKE 'M%')
         AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio6
         AND COALESCE(f.fecha_entrega, f.fecha_creacion) < :fin6
@@ -852,7 +852,7 @@ const tendencia6MesesPreventa = async (anioNum, mesNum) => {
       SELECT DATE_TRUNC('month', f.fecha_creacion) AS mes_periodo,
              SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
       FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = 3 AND f.status IN (2,4,5)
+      WHERE f.company_id = 3 AND f.status IN (0,2,3,4,5)
         AND f.fecha_creacion >= :inicio6 AND f.fecha_creacion < :fin6
       GROUP BY DATE_TRUNC('month', f.fecha_creacion)
 
@@ -1008,7 +1008,7 @@ const obtenerDatosDashboard = async (req, res) => {
     const resumenDescartablePorCanal = agruparDescartablePorCanalResumen(ventasDescartableConComparativa);
 
     const resumenVentasPorCanal = {
-      TIENDAS: resumirRankingParaCard(resumenActual.rankingPreventas, "TIENDAS"),
+      TIENDAS: resumirRankingParaCard(resumenActual.rankingPreventas, "PREVENTAS"),
       RURAL  : resumirRankingParaCard(resumenActual.rankingRutasR,    "RURAL"),
       ...resumenDescartablePorCanal,
     };
@@ -1016,7 +1016,7 @@ const obtenerDatosDashboard = async (req, res) => {
     // ── Corregir mesAnterior con totales completos del mes anterior ──────────
     // Sin esto, las rutas sin ventas en el mes actual no contribuyen al anterior
     if (resumenPrev) {
-      // TIENDAS: todas las rutas PV*/PREVENTA*/TELEVENTA* del mes anterior
+      // PREVENTAS: todas las rutas PV*/PREVENTA*/TELEVENTA* del mes anterior
       const tiendasPrev = (resumenPrev.rankingPreventas || [])
         .reduce((s, r) => s + Number(r.monto || 0), 0);
       resumenVentasPorCanal.TIENDAS.mesAnterior  = Number(tiendasPrev.toFixed(2));
