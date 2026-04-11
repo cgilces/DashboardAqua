@@ -49,14 +49,14 @@ app.use("/api/ventas", require("./routes/rutasPreventas/detallePreventaRoutes"))
 app.use("/api/metas", require("./routes/rutasPreventas/metasRoutes"));
 
 // ======================================================
-// 🚚 BOTELLONES
+//  BOTELLONES
 // ======================================================
 app.use("/api/botellones", require("./routes/rutasBotellones/rutasBotellones"));
 app.use("/api/botellones", require("./routes/rutasBotellones/detalleBotellonesRoutes"));
 app.use("/api/metas-botellon", require("./routes/rutasBotellones/metasBotellonRoutes"));
 
 // ======================================================
-// ❄️ HIELO
+//  HIELO
 // ======================================================
 app.use("/api/hielo", require("./routes/rutasHielo/rutasHielo"));
 app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
@@ -71,7 +71,6 @@ const dashboardClientesRoutes = require("./routes/rutasClientes/dashboardCliente
 app.use("/api/dashboard-clientes", dashboardClientesRoutes);
 
 
-
 // ======================================================
 //  bot
 // ======================================================
@@ -79,29 +78,34 @@ app.use("/api/bot", require("./routes/rutasbotinteligente/chat.routes"));
 
 
 // ======================================================
-// 📊 ODOO
+//  ODOO
 // ======================================================
 app.use("/api/odoo", require("./routes/rutasOdoo/odooRoutes"));
 
 
 // ======================================================
-// 🏢 COTSA
+//  COTTSA
 // ======================================================
-app.use("/api/cotsa", require("./routes/rutasCotsa/cotsaRoutes"));
+app.use("/api/COTTSA", require("./routes/rutasCotsa/cotsaRoutes"));
 
 
 // ======================================================
-// 📊 CONSOLIDADO
+//  CONSOLIDADO
 // ======================================================
 app.use("/api/consolidado", require("./routes/rutasConsolidado/consolidadoRoutes"));
 
 // ======================================================
-// ☕ CAFÉ — IIBC S.A.
+//  CAFÉ — IIBC S.A.
 // ======================================================
 app.use("/api/cafe", require("./routes/rutasCafe/cafeRoutes"));
 
 // ======================================================
-// ❤️ HEALTHCHECK
+//  GERENCIA EJECUTIVA
+// ======================================================
+app.use("/api/gerencia", require("./routes/rutasGerencia/gerenciaRoutes"));
+
+// ======================================================
+// HEALTHCHECK
 // ======================================================
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });

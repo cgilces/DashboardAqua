@@ -124,7 +124,6 @@ const RankingDescartablePorCanal = ({
       Usuario: r.seller_code,
       Unidades: Number(r.unidades ?? 0),
       USD: Number(r.dolares ?? 0),
-      "HIST. MÁX": getMetaValue(r.meta),
       Proyección: Number(r.proyeccion ?? 0),
       "Vs Mes Anterior": r.vsMesAnterior?.variacion_abs ?? 0,
     }));
@@ -143,7 +142,6 @@ const RankingDescartablePorCanal = ({
         Usuario: "",
         Unidades: totalUnidades,
         USD: totalUSD,
-        "HIST. MÁX": totalMeta,
         Proyección: totalProyeccion,
         "Vs Mes Anterior": totalVsMesAnterior,
       }],
@@ -240,10 +238,6 @@ const RankingDescartablePorCanal = ({
             <p className="text-base font-bold text-white">${fmtNum(totalUSD)}</p>
           </div>
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-            <p className="text-xs text-gray-400">HIST.MAX</p>
-            <p className="text-base font-bold text-white">${fmtNum(totalMeta)}</p>
-          </div>
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Proyección</p>
             <p className="text-base font-bold text-emerald-400">${fmtNum(totalProyeccion)}</p>
           </div>
@@ -289,7 +283,6 @@ const RankingDescartablePorCanal = ({
             </th>
             <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Unidades ↕</th>
             <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">USD ↕</th>
-            <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">HIST. MÁX ↕</th>
             <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Proyección ↕</th>
             <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">Variación ↕</th>
             <th onClick={() => requestSort("vsMesAnterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">% ↕</th>
@@ -334,7 +327,6 @@ const RankingDescartablePorCanal = ({
                     <td className="px-4 py-2 text-right text-blue-300">
                       ${Number(r.dolares ?? 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="px-4 py-2 text-right">{renderMeta(r.meta)}</td>
                     <td className="px-4 py-2 text-right">
                       ${Number(r.proyeccion ?? 0).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                     </td>
@@ -363,7 +355,6 @@ const RankingDescartablePorCanal = ({
                   <td colSpan={3} className="px-4 py-3 text-right text-green-400 font-bold">TOTAL {canal}</td>
                   <td className="px-4 py-3 text-right">{totalCanalUnidades.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right">${totalCanalUSD.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</td>
-                  <td className="px-4 py-3 text-right">{totalCanalMeta.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</td>
                   <td className="px-4 py-3 text-right">{totalCanalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</td>
                   <td className={`px-4 py-3 text-right ${totalCanalVsMesAnterior >= 0 ? "text-green-400" : "text-red-400"}`}>
                     {totalCanalVsMesAnterior >= 0 ? "+" : "-"}${Math.abs(totalCanalVsMesAnterior).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
@@ -384,9 +375,6 @@ const RankingDescartablePorCanal = ({
             </td>
             <td className="px-4 py-3 text-right text-blue-400">
               ${totalUSD.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-            </td>
-            <td className="px-4 py-3 text-right">
-              ${totalMeta.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
             </td>
             <td className="px-4 py-3 text-right">
               ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2 })}

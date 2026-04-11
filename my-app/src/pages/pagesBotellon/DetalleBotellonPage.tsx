@@ -95,7 +95,7 @@ const DetalleBotellonPage: React.FC = () => {
       Código: c.codigo_cliente, Cliente: c.nombre_cliente,
       Dirección: c.direccion_cliente, "Última visita": c.ultima_visita || "—",
       "Última factura": c.ultima_factura || "—", "Consumo Actual": c.consumo_actual,
-      "Consumo Máx": c.max_consumo, Cantidad: c.cantidad_botellon,
+      Cantidad: c.cantidad_botellon,
       "Tuvo Consumo": c.tuvo_consumo,
     }));
     const ws = XLSX.utils.json_to_sheet(datos);
@@ -351,7 +351,6 @@ const DetalleBotellonPage: React.FC = () => {
                     ["Longitud",       "longitud_direccion_cliente"],
                     ["Cant. Botellón", "cantidad_botellon"],
                     ["Consumo Actual", "consumo_actual"],
-                    ["Max Consumo",    "max_consumo"],
                     ["VS Mes Ant",     "vsMesAnterior"],
                     ["Últ. Visita",    "ultima_visita"],
                     ["Últ. Factura",   "ultima_factura"],
@@ -384,10 +383,6 @@ const DetalleBotellonPage: React.FC = () => {
                           <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud_direccion_cliente || "—"}</td>
                           <td className="px-3 py-2 text-right text-blue-300 font-semibold">{c.cantidad_botellon}</td>
                           <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                          <td className="px-3 py-2 text-right">
-                            <span className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</span>
-                            {c.mes_max_consumo_nombre && <span className="block text-[10px] text-gray-400">{c.mes_max_consumo_nombre}</span>}
-                          </td>
                           <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
                             {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                             {c.vsMesAnterior?.variacion_porc && <span className="block text-[10px] opacity-70">{c.vsMesAnterior.variacion_porc}</span>}

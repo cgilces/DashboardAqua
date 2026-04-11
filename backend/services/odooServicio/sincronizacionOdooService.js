@@ -12,6 +12,8 @@ const {
   SincronizacionVenta,
 } = require("../../models");
 
+const { Op } = require("sequelize");
+
 const { object, loginOdoo } = require("./odooConexion");
 
 // ========================================================
@@ -216,7 +218,7 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
       estado_cliente              : 1,
       fecha_creacion_cliente      : new Date(),
       fecha_actualizacion_cliente : new Date(),
-    });
+    }, { conflictFields: ["codigo_cliente"] });
 
     for (const d of (direccionesMap[cliente.id] || [])) {
       await sequelize.query(
@@ -333,11 +335,24 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
   // 3. Productos (secuencial — un solo bulkCreate para todo el chunk)
   await upsertProductosBatch(productosMap, contadores);
 
+  // 3b. Leer clasificación (canal + subcanal) desde clientes locales en batch
+  const codigosClientesPedidos = [...new Set(
+    pedidos.map(o => o.partner_id?.[0] ? String(o.partner_id[0]) : null).filter(Boolean)
+  )];
+  const clientesLocalesPedidos = await Clientes.findAll({
+    where: { codigo_cliente: { [Op.in]: codigosClientesPedidos } },
+    attributes: ['codigo_cliente', 'codigo_tipo_negocio', 'codigo_subcanal'],
+  });
+  const clientesLocalesMapPedidos = Object.fromEntries(
+    clientesLocalesPedidos.map(c => [c.codigo_cliente, c])
+  );
+
   // 4. Ordenes en paralelo — solo tocan ordenes + detalle_documento (sin conflicto)
   await Promise.all(pedidos.map(async (orden) => {
     const t = await sequelize.transaction();
     try {
       const cliente            = clientesMap[orden.partner_id?.[0]] || null;
+      const clienteLocal       = clientesLocalesMapPedidos[String(orden.partner_id?.[0] ?? '')] || null;
       const idCompany          = Array.isArray(cliente?.company_id) ? cliente.company_id[0] : null;
       const descripcionCompany = Array.isArray(cliente?.company_id) ? cliente.company_id[1] : null;
 
@@ -383,6 +398,9 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
         source_document   : orden.client_order_ref   || null,
         mobilvendor_id    : orden.mobilvendor_id     || null,
         notes             : orden.note               || null,
+        // Clasificación del cliente tomada de la tabla clientes local
+        codigo_tipo_negocio: clienteLocal?.codigo_tipo_negocio || null,
+        codigo_subcanal    : clienteLocal?.codigo_subcanal      || null,
       }, { transaction: t });
 
       const lineas = lineasMap[orden.id] || [];
@@ -468,11 +486,24 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
   // 3. Productos (secuencial — un solo bulkCreate para todo el chunk)
   await upsertProductosBatch(productosMap, contadores);
 
+  // 3b. Leer clasificación (canal + subcanal) desde clientes locales en batch
+  const codigosClientes = [...new Set(
+    facturas.map(f => f.partner_id?.[0] ? String(f.partner_id[0]) : null).filter(Boolean)
+  )];
+  const clientesLocales = await Clientes.findAll({
+    where: { codigo_cliente: { [Op.in]: codigosClientes } },
+    attributes: ['codigo_cliente', 'codigo_tipo_negocio', 'codigo_subcanal'],
+  });
+  const clientesLocalesMap = Object.fromEntries(
+    clientesLocales.map(c => [c.codigo_cliente, c])
+  );
+
   // 4. Facturas en paralelo — solo tocan facturas + detalle_documento (sin conflicto)
   await Promise.all(facturas.map(async (factura) => {
     const t = await sequelize.transaction();
     try {
       const cliente       = clientesMap[factura.partner_id?.[0]] || null;
+      const clienteLocal  = clientesLocalesMap[String(factura.partner_id?.[0] ?? '')] || null;
       const statusNum     =
         factura.state === "posted"   ? 2
         : factura.state === "draft"  ? 1
@@ -510,6 +541,9 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
         company_id        : Array.isArray(factura.company_id)
           ? factura.company_id[0] : (factura.company_id || null),
         notes             : factura.narration                   || null,
+        // Clasificación del cliente tomada de la tabla clientes local
+        codigo_tipo_negocio: clienteLocal?.codigo_tipo_negocio  || null,
+        codigo_subcanal    : clienteLocal?.codigo_subcanal       || null,
       }, { transaction: t });
 
       const lineas = lineasMap[factura.id] || [];
@@ -637,7 +671,7 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
         fields: [
           "id", "name", "move_type", "state",
           "payment_state", "payment_reference",
-          "invoice_date", "invoice_date_due", "date",
+          "invoice_date", "invoice_date_due", "date", "create_date", "write_date",
           "partner_id", "partner_shipping_id", "invoice_user_id",
           "company_id", "currency_id", "team_id",
           "amount_total", "amount_untaxed", "amount_tax",

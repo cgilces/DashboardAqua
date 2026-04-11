@@ -294,9 +294,6 @@ const TablaVentasBase: React.FC<Props> = ({
                         <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
                             DÓLARES {iconSort("dolares")}
                         </th>
-                        <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
-                            HIST. MÁX {iconSort("meta")}
-                        </th>
                         {seccionMetas && (
                         <th onClick={() => requestSort("cupo_dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300">
                             CUPO {iconSort("cupo_dolares")}
@@ -359,18 +356,6 @@ const TablaVentasBase: React.FC<Props> = ({
 
                             <td className="px-4 py-2 text-right text-blue-400 font-bold">
                                 {money(row.dolares)}
-                            </td>
-
-                            {/* HIST. MÁX */}
-                            <td className="px-4 py-2 text-right text-gray-300">
-                                {row.meta
-                                    ? `${Number(row.meta.meta_historica).toLocaleString("es-EC", {
-                                        minimumFractionDigits: 2,
-                                    })} (${row.meta.mes_mayor_consumo ? new Date(row.meta.mes_mayor_consumo).toLocaleDateString(
-                                        "es-EC",
-                                        { month: "long" }
-                                    ) : "—"})`
-                                    : "—"}
                             </td>
 
                             {/* CUPO (configurado por gerencia) */}
@@ -442,10 +427,6 @@ const TablaVentasBase: React.FC<Props> = ({
 
                         <td className="px-4 py-3 text-right">
                             {money(totalDolares)}
-                        </td>
-
-                        <td className="px-4 py-3 text-right text-gray-300">
-                            {money(totalMeta)}
                         </td>
 
                         {seccionMetas && (

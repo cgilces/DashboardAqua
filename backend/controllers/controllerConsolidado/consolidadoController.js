@@ -1,6 +1,6 @@
 // controllers/controllerConsolidado/consolidadoController.js
 // Dashboard Consolidado General — Grupo AQUA S.A.
-// Agrega 5 canales: PREVENTA, BOTELLONES, HIELO, COTSA, DESCARTABLE ODOO
+// Agrega 5 canales: PREVENTA, BOTELLONES, HIELO, COTTSA, DESCARTABLE ODOO
 
 const Sequelize = require('sequelize');
 const { sequelize } = require('../../models');
@@ -9,7 +9,7 @@ const { getDiasHabiles } = require('../../utils/diasFestivos');
 // ================================================================
 // CONSTANTES DE CANALES
 // ================================================================
-const COTSA_COMPANY_ID = 3;
+const COTTSA_COMPANY_ID = 3;
 
 const RUTAS_PREVENTA = [
   'PV1','PV2','PV3','PV4','PV5','PV6','PV7',
@@ -129,17 +129,18 @@ function qBotellonesOrdenes(inicio, fin) {
 }
 
 // 3. BOTELLONES — facturas (DSD / entrega directa)
+// Usa dd.total + dd.impuesto_linea para obtener el total con IVA por línea BOTELLÓN
 function qBotellonesFacturas(inicio, fin) {
   return sequelize.query(`
     SELECT
-      COALESCE(SUM(dd.total),    0) AS dolares,
+      COALESCE(SUM(dd.total + COALESCE(dd.impuesto_linea, 0)), 0) AS dolares,
       COALESCE(SUM(dd.cantidad), 0) AS unidades,
       COUNT(DISTINCT f.code)              AS docs,
       COUNT(DISTINCT f.customer_code)     AS clientes
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE dd.descripcion_categoria = 'BOTELLÓN'
-      AND f.status IN (2,4,5)
+      AND f.status IN (0,2,3,4,5)
       AND (
         f.seller_code ILIKE 'A%'
         OR f.seller_code ILIKE 'E%'
@@ -153,34 +154,42 @@ function qBotellonesFacturas(inicio, fin) {
 }
 
 // 4. HIELO — facturas, seller_code H%
+// Usa f.total directamente para incluir IVA correcto
 function qHielo(inicio, fin) {
   return sequelize.query(`
     SELECT
-      COALESCE(SUM(dd.total),    0) AS dolares,
-      COALESCE(SUM(dd.cantidad), 0) AS unidades,
+      COALESCE(SUM(f.total), 0) AS dolares,
+      COALESCE(SUM(dd_agg.cantidad_total), 0) AS unidades,
       COUNT(DISTINCT f.code)              AS docs,
       COUNT(DISTINCT f.customer_code)     AS clientes
     FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
+    LEFT JOIN (
+      SELECT documento_code, SUM(cantidad) AS cantidad_total
+      FROM detalle_documento GROUP BY documento_code
+    ) dd_agg ON dd_agg.documento_code = f.code
     WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10','h3'))
-      AND f.status IN (2,4,5)
+      AND f.status IN (0,2,3,4,5)
       AND f.fecha_creacion >= :inicio
       AND f.fecha_creacion <  :fin
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 }
 
-// 5. COTSA — facturas, company_id = 3
-function qCotsa(inicio, fin) {
+// 5. COTTSA — facturas, company_id = 3
+// Usa f.total directamente para incluir IVA correcto
+function qCOTTSA(inicio, fin) {
   return sequelize.query(`
     SELECT
-      COALESCE(SUM(dd.total),    0) AS dolares,
-      COALESCE(SUM(dd.cantidad), 0) AS unidades,
+      COALESCE(SUM(f.total), 0) AS dolares,
+      COALESCE(SUM(dd_agg.cantidad_total), 0) AS unidades,
       COUNT(DISTINCT f.code)              AS docs,
       COUNT(DISTINCT f.customer_code)     AS clientes
     FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.company_id = ${COTSA_COMPANY_ID}
-      AND f.status IN (2,4,5)
+    LEFT JOIN (
+      SELECT documento_code, SUM(cantidad) AS cantidad_total
+      FROM detalle_documento GROUP BY documento_code
+    ) dd_agg ON dd_agg.documento_code = f.code
+    WHERE f.company_id = ${COTTSA_COMPANY_ID}
+      AND f.status IN (0,2,3,4,5)
       AND f.fecha_creacion >= :inicio
       AND f.fecha_creacion <  :fin
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
@@ -227,17 +236,21 @@ function qTotalOrdenes(inicio, fin) {
 
 // ================================================================
 // TOTAL EMPRESA — todas las facturas sin filtro de canal
+// Usa f.total para incluir IVA (coincide con Odoo)
 // ================================================================
 function qTotalFacturas(inicio, fin) {
   return sequelize.query(`
     SELECT
-      COALESCE(SUM(dd.total),    0) AS dolares,
-      COALESCE(SUM(dd.cantidad), 0) AS unidades,
+      COALESCE(SUM(f.total), 0) AS dolares,
+      COALESCE(SUM(dd_agg.cantidad_total), 0) AS unidades,
       COUNT(DISTINCT f.code)              AS docs,
       COUNT(DISTINCT f.customer_code)     AS clientes
     FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.status IN (2,4,5)
+    LEFT JOIN (
+      SELECT documento_code, SUM(cantidad) AS cantidad_total
+      FROM detalle_documento GROUP BY documento_code
+    ) dd_agg ON dd_agg.documento_code = f.code
+    WHERE f.status IN (0,2,3,4,5)
       AND f.fecha_creacion >= :inicio
       AND f.fecha_creacion <  :fin
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
@@ -258,45 +271,16 @@ const COMPANIES = [
 function qPorEmpresa(inicio6m, fin) {
   return sequelize.query(`
     SELECT
-      empresa_id,
-      DATE_TRUNC('month', fecha_creacion) AS mes_truncado,
-      SUM(dolares) AS total
-    FROM (
-      -- FACTURAS: clasificadas por company_id de Odoo
-      SELECT
-        COALESCE(f.company_id, 1)::INT AS empresa_id,
-        f.fecha_creacion,
-        dd.total AS dolares
-      FROM facturas f
-      JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.status IN (2,4,5)
-        AND f.fecha_creacion >= :inicio6m
-        AND f.fecha_creacion <  :fin
-
-      UNION ALL
-
-      -- ORDENES MobilVendor: clasificadas por descripcion_company
-      SELECT
-        CASE
-          WHEN o.descripcion_company ILIKE '%AQUASUPPLY%'                                     THEN 2
-          WHEN o.descripcion_company ILIKE '%COTT%'
-            OR o.descripcion_company ILIKE '%TRADICION%TROPICAL%'                             THEN 3
-          WHEN o.descripcion_company ILIKE '%IIBC%'                                           THEN 4
-          WHEN o.descripcion_company ILIKE '%DISTRINTER%'
-            OR o.descripcion_company ILIKE '%DISTRIBUIDORA%ALIMENTOS%'                        THEN 5
-          ELSE 1
-        END::INT AS empresa_id,
-        o.fecha_creacion,
-        dd.total AS dolares
-      FROM ordenes o
-      JOIN detalle_documento dd ON dd.documento_code = o.code
-      WHERE o.status IN (2,4,5)
-        AND o.origen_sistema = 'MOBILVENDOR'
-        AND o.fecha_creacion >= :inicio6m
-        AND o.fecha_creacion <  :fin
-    ) raw
-    GROUP BY empresa_id, DATE_TRUNC('month', fecha_creacion)
-    ORDER BY empresa_id, DATE_TRUNC('month', fecha_creacion)
+      f.company_id::INT AS empresa_id,
+      DATE_TRUNC('month', f.fecha_creacion) AS mes_truncado,
+      SUM(f.total) AS total
+    FROM facturas f
+    WHERE f.status IN (0,2,3,4,5)
+      AND f.company_id IS NOT NULL
+      AND f.fecha_creacion >= :inicio6m
+      AND f.fecha_creacion <  :fin
+    GROUP BY f.company_id, DATE_TRUNC('month', f.fecha_creacion)
+    ORDER BY f.company_id, DATE_TRUNC('month', f.fecha_creacion)
   `, { replacements: { inicio6m, fin }, type: Sequelize.QueryTypes.SELECT });
 }
 
@@ -317,10 +301,10 @@ function qTendencia(inicio6m, fin6m) {
 
       UNION ALL
 
-      -- Todas las facturas Odoo (fuente autoritativa para ventas Odoo)
-      SELECT DATE_TRUNC('month', f.fecha_creacion) AS mes_truncado, SUM(dd.total) AS dolares
-      FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.status IN (2,4,5)
+      -- Todas las facturas Odoo — usa f.total para incluir IVA (coincide con Odoo)
+      SELECT DATE_TRUNC('month', f.fecha_creacion) AS mes_truncado, SUM(f.total) AS dolares
+      FROM facturas f
+      WHERE f.status IN (0,2,3,4,5)
         AND f.fecha_creacion >= :inicio6m AND f.fecha_creacion < :fin6m
       GROUP BY DATE_TRUNC('month', f.fecha_creacion)
     ) t
@@ -351,7 +335,7 @@ function qTopProductos(inicio, fin) {
       -- Facturas Odoo
       SELECT dd.descripcion, dd.cantidad, dd.total AS dolares
       FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.status IN (2,4,5)
+      WHERE f.status IN (0,2,3,4,5)
         AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
     ) t
     WHERE descripcion IS NOT NULL AND descripcion != ''
@@ -362,6 +346,29 @@ function qTopProductos(inicio, fin) {
     replacements: { inicio, fin },
     type: Sequelize.QueryTypes.SELECT,
   });
+}
+
+// ================================================================
+// CLIENTES ACTIVOS — deduplicados entre ordenes y facturas
+// Usa UNION (sin ALL) para eliminar clientes que aparecen en ambas tablas
+// ================================================================
+function qClientesActivos(inicio, fin) {
+  return sequelize.query(`
+    SELECT COUNT(DISTINCT customer_code) AS clientes
+    FROM (
+      SELECT customer_code FROM ordenes
+      WHERE status IN (2,4,5)
+        AND fecha_creacion >= :inicio
+        AND fecha_creacion <  :fin
+        AND customer_code IS NOT NULL
+      UNION
+      SELECT customer_code FROM facturas
+      WHERE status IN (0,2,3,4,5)
+        AND fecha_creacion >= :inicio
+        AND fecha_creacion <  :fin
+        AND customer_code IS NOT NULL
+    ) t
+  `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 }
 
 // ================================================================
@@ -388,7 +395,7 @@ function qTopClientes(inicio, fin) {
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       LEFT JOIN clientes c ON c.codigo_cliente = f.customer_code
-      WHERE f.status IN (2,4,5)
+      WHERE f.status IN (0,2,3,4,5)
         AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
       GROUP BY f.customer_code, c.nombre_cliente
     ) t
@@ -462,23 +469,25 @@ const obtenerDashboardConsolidado = async (req, res) => {
       [botOAct],  [botOAnt],
       [botFAct],  [botFAnt],
       [hieloAct], [hieloAnt],
-      [cotsaAct], [cotsaAnt],
+      [COTTSAAct], [COTTSAAnt],
       [odooAct],  [odooAnt],
       [totOrdAct],  [totOrdAnt],
       [totFactAct], [totFactAnt],
+      [clientesActRow],
       tendenciaRaw,
       topProdRaw,
       topClientesRaw,
       porEmpresaRaw,
     ] = await Promise.all([
-      qPreventa(inicio, fin),          qPreventa(antInicio, antFin),
-      qBotellonesOrdenes(inicio, fin), qBotellonesOrdenes(antInicio, antFin),
-      qBotellonesFacturas(inicio, fin),qBotellonesFacturas(antInicio, antFin),
-      qHielo(inicio, fin),             qHielo(antInicio, antFin),
-      qCotsa(inicio, fin),             qCotsa(antInicio, antFin),
-      qOdoo(inicio, fin),              qOdoo(antInicio, antFin),
-      qTotalOrdenes(inicio, fin),      qTotalOrdenes(antInicio, antFin),
-      qTotalFacturas(inicio, fin),     qTotalFacturas(antInicio, antFin),
+      qPreventa(inicio, fin),           qPreventa(antInicio, antFin),
+      qBotellonesOrdenes(inicio, fin),  qBotellonesOrdenes(antInicio, antFin),
+      qBotellonesFacturas(inicio, fin), qBotellonesFacturas(antInicio, antFin),
+      qHielo(inicio, fin),              qHielo(antInicio, antFin),
+      qCOTTSA(inicio, fin),             qCOTTSA(antInicio, antFin),
+      qOdoo(inicio, fin),               qOdoo(antInicio, antFin),
+      qTotalOrdenes(inicio, fin),       qTotalOrdenes(antInicio, antFin),
+      qTotalFacturas(inicio, fin),      qTotalFacturas(antInicio, antFin),
+      qClientesActivos(inicio, fin),
       qTendencia(inicio6m, fin6m),
       qTopProductos(inicio, fin),
       qTopClientes(inicio, fin),
@@ -501,21 +510,19 @@ const obtenerDashboardConsolidado = async (req, res) => {
       buildCanal('PREVENTA',      prevAct,  prevAnt,  diasT, diasL, esMesActual),
       buildCanal('BOTELLONES',    botAct,   botAnt,   diasT, diasL, esMesActual),
       buildCanal('HIELO',         hieloAct, hieloAnt, diasT, diasL, esMesActual),
-      buildCanal('COTSA',         cotsaAct, cotsaAnt, diasT, diasL, esMesActual),
+      buildCanal('COTTSA',         COTTSAAct, COTTSAAnt, diasT, diasL, esMesActual),
       buildCanal('DESC. ODOO',    odooAct,  odooAnt,  diasT, diasL, esMesActual),
     ];
 
-    // ── KPIs totales — qTotalOrdenes(MOBILVENDOR) + qTotalFacturas ──────────
-    // qTotalOrdenes ya filtra AND o.origen_sistema = 'MOBILVENDOR', por lo que
-    // no incluye órdenes Odoo. qTotalFacturas cubre todas las facturas Odoo.
-    // Esto evita el doble conteo y coincide con la suma de las tarjetas por empresa.
-    const totalVentasOrd   = Number(totOrdAct?.dolares  || 0);
-    const totalVentasFact  = Number(totFactAct?.dolares || 0);
-    const totalVentas      = Number((totalVentasOrd + totalVentasFact).toFixed(2));
+    // ── KPIs totales — todas las ordenes MobilVendor + todas las facturas Odoo ──
+    // Las órdenes MobilVendor y las facturas Odoo son sistemas separados (distintos
+    // vendedores, distintas tablas), por lo que sumarlos no produce doble conteo.
+    // Los clientes se deduplicacan con UNION entre ambas tablas.
+    const totalVentas      = Number((Number(totOrdAct?.dolares || 0) + Number(totFactAct?.dolares || 0)).toFixed(2));
     const totalUnidades    = Math.round(Number(totOrdAct?.unidades || 0) + Number(totFactAct?.unidades || 0));
-    const totalDocs        = Number(totOrdAct?.docs     || 0) + Number(totFactAct?.docs     || 0);
-    const totalClientes    = Number(totOrdAct?.clientes || 0) + Number(totFactAct?.clientes || 0);
+    const totalDocs        = Number(totOrdAct?.docs || 0) + Number(totFactAct?.docs || 0);
     const totalMesAnterior = Number((Number(totOrdAnt?.dolares || 0) + Number(totFactAnt?.dolares || 0)).toFixed(2));
+    const totalClientes    = Number(clientesActRow?.clientes || 0);
     const totalProyeccion  = esMesActual && diasT > 0
       ? Number(((totalVentas / diasT) * diasL).toFixed(2))
       : totalVentas;

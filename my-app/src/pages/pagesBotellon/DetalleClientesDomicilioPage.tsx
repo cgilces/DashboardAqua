@@ -23,7 +23,6 @@ interface ClienteDomicilio {
   cantidad_actual: number;
   consumo_actual: number;
   consumo_anterior: number;
-  max_consumo: number;
   ultima_factura: string | null;
 }
 
@@ -96,7 +95,6 @@ export default function DetalleClientesDomicilioPage() {
       Dirección: c.direccion_entrega, "Tipo Negocio": c.tipo_negocio,
       Teléfono: c.telefono, Latitud: c.latitud, Longitud: c.longitud,
       "Cant. Actual": c.cantidad_actual, "Consumo Actual ($)": Number(c.consumo_actual),
-      "Max Consumo ($)": Number(c.max_consumo),
       "VS Mes Ant ($)": Number(c.consumo_actual) - Number(c.consumo_anterior),
       "Última Factura": c.ultima_factura || "—",
       "Tuvo Consumo": Number(c.consumo_actual) > 0 ? "Sí" : "No",
@@ -268,10 +266,6 @@ export default function DetalleClientesDomicilioPage() {
                             <p className="text-blue-300 font-semibold">{c.cantidad_actual}</p>
                           </div>
                           <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Max Consumo</p>
-                            <p className="text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</p>
-                          </div>
-                          <div>
                             <p className="text-[10px] text-gray-500 uppercase tracking-wide">Tipo Negocio</p>
                             <p className="text-gray-300 truncate">{c.tipo_negocio || "—"}</p>
                           </div>
@@ -310,7 +304,6 @@ export default function DetalleClientesDomicilioPage() {
                       ["Longitud",       "longitud"],
                       ["Cant. Actual",   "cantidad_actual"],
                       ["Consumo Actual", "consumo_actual"],
-                      ["Max Consumo",    "max_consumo"],
                       ["VS Mes Ant",     "vsAnt"],
                       ["Últ. Factura",   "ultima_factura"],
                       ["Estado",         "estado"],
@@ -343,7 +336,6 @@ export default function DetalleClientesDomicilioPage() {
                             <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud || "—"}</td>
                             <td className="px-3 py-2 text-right text-blue-300 font-semibold">{Number(c.cantidad_actual).toLocaleString("es-EC")}</td>
                             <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                            <td className="px-3 py-2 text-right text-amber-300 font-semibold">${fmt(Number(c.max_consumo))}</td>
                             <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
                               {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                             </td>

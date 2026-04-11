@@ -11,7 +11,7 @@ import DetallePreventasPage from "./pages/pagesPreventa/DetallePreventasPage";
 import ConfigurarMetas from "./pages/pagesPreventa/ConfigurarMetas";
 import DetalleRuta from "./pages/pagesPreventa/DetalleRuta";
 import DetalleRutaDescartable from "./pages/pagesPreventa/DetalleRutaDescartable";
-import DetalleCotsaPage from "./pages/pagesPreventa/DetalleCotsaPage";
+import DetalleCOTTSAPage from "./pages/pagesPreventa/DetalleCOTTSAPage";
 import DetalleDescartableOdooPage from "./pages/pagesPreventa/DetalleDescartableOdooPage";
 import DetalleClientesCanalDescartablePage from "./pages/pagesPreventa/DetalleClientesCanalDescartablePage";
 
@@ -34,6 +34,8 @@ import DashboardCafe from "./pages/pagesCafe/DashboardCafe";
 import DetalleClientesCafePage from "./pages/pagesCafe/DetalleClientesCafePage";
 
 import DashboardRutasVisitas from "./pages/pagesRutasVisitas/DashboardRutasVisitas";
+
+import DashboardGerencia from "./pages/pagesGerencia/DashboardGerencia";
 
 import { AuthProvider } from "./components/auth/AuthContext";
 import { SyncProvider } from "./context/SyncContext";
@@ -86,8 +88,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               element={<DetalleRutaDescartable />}
             />
             <Route
-              path="/cotsa/clientes/:anio/:mes"
-              element={<DetalleCotsaPage />}
+              path="/COTTSA/clientes/:anio/:mes"
+              element={<DetalleCOTTSAPage />}
             />
             <Route
               path="/descartable-odoo/clientes/:anio/:mes"
@@ -180,6 +182,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/dashboard/crearusuarios"
               element={<CreacionUsuario/>}
+            />
+
+            {/* GERENCIA */}
+            <Route
+              path="/dashboard/gerencia"
+              element={<DashboardGerencia />}
             />
           </Routes>
 

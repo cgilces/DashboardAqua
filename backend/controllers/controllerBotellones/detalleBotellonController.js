@@ -121,7 +121,7 @@ const obtenerDetalleRuta = async (req, res) => {
       JOIN detalle_documento d
         ON d.documento_code = f.code
       WHERE f.seller_code = :ruta
-        AND f.status IN (2, 4, 5)
+        AND f.status IN (0,2,3,4,5)
         AND d.codigo_categoria = '5'
         AND f.fecha_entrega >= :inicio
         AND f.fecha_entrega <  :fin
@@ -162,7 +162,7 @@ FROM (
     JOIN detalle_documento d
       ON d.documento_code = f.code
     WHERE f.seller_code = '${rutaUpper}'
-      AND f.status IN (2,4,5)
+      AND f.status IN (0,2,3,4,5)
       AND d.codigo_categoria = '5'
       AND f.fecha_entrega >= '${fInicio}'
       AND f.fecha_entrega <  '${fFin}'
@@ -226,7 +226,7 @@ FROM (
     FROM facturas f
     JOIN detalle_documento d ON d.documento_code = f.code
     WHERE f.seller_code = :ruta
-      AND f.status IN (2,4,5)
+      AND f.status IN (0,2,3,4,5)
       AND d.codigo_categoria = '5'
 
     UNION ALL
@@ -269,7 +269,7 @@ WITH movimientos AS (
     FROM facturas f
     JOIN detalle_documento d ON d.documento_code = f.code
     WHERE f.seller_code = :ruta
-      AND f.status IN (2,4,5)
+      AND f.status IN (0,2,3,4,5)
       AND d.codigo_categoria = '5'
       AND f.fecha_entrega >= :inicioAnio
       AND f.fecha_entrega <  :finAnio
@@ -349,7 +349,7 @@ FROM (
     FROM facturas f
     JOIN detalle_documento d ON d.documento_code = f.code
     WHERE f.seller_code = :ruta
-      AND f.status IN (2,4,5)
+      AND f.status IN (0,2,3,4,5)
       AND d.codigo_categoria = '5'
 
     UNION ALL
@@ -386,7 +386,7 @@ FROM (
     FROM facturas f
     JOIN detalle_documento d ON d.documento_code = f.code
     WHERE f.seller_code = :ruta
-      AND f.status IN (2,4,5)
+      AND f.status IN (0,2,3,4,5)
       AND d.codigo_categoria = '5'
 
     UNION ALL

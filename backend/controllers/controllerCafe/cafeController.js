@@ -34,7 +34,7 @@ const queryTotalesCafe = async (inicio, fin) => {
      FROM facturas f
      JOIN detalle_documento dd ON dd.documento_code = f.code
      WHERE f.company_id = 4
-       AND f.status IN ('2','4','5')
+       AND f.status IN ('0','2','4','5')
        AND f.fecha_creacion >= :inicio
        AND f.fecha_creacion <  :fin`,
     { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT }
@@ -61,7 +61,7 @@ const queryVentasPorRuta = async (inicio, fin) => {
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.company_id = 4
-      AND f.status IN ('2','4','5')
+      AND f.status IN ('0','2','4','5')
       AND f.fecha_creacion >= :inicio
       AND f.fecha_creacion <  :fin
     GROUP BY COALESCE(f.route_code, f.seller_code, 'SIN RUTA')
@@ -88,7 +88,7 @@ const tendencia6MesesCafe = async (anioNum, mesNum) => {
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.company_id = 4
-      AND f.status IN ('2','4','5')
+      AND f.status IN ('0','2','4','5')
       AND f.fecha_creacion >= :inicio6
       AND f.fecha_creacion <  :fin6
     GROUP BY DATE_TRUNC('month', f.fecha_creacion)
@@ -253,7 +253,7 @@ const obtenerClientesCafe = async (req, res) => {
       LEFT JOIN tipos_negocio tn        ON tn.codigo = c.codigo_tipo_negocio
       LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente::TEXT = f.customer_address_code
       WHERE f.company_id = 4
-        AND f.status IN ('2','4','5')
+        AND f.status IN ('0','2','4','5')
         AND f.fecha_creacion >= :inicioAnio
         AND f.fecha_creacion <  :finAnio
       ORDER BY f.customer_code, f.customer_address_code, c.nombre_cliente
@@ -267,7 +267,7 @@ const obtenerClientesCafe = async (req, res) => {
         SUM(CASE WHEN f.fecha_creacion >= :inicio    AND f.fecha_creacion < :fin    THEN dd.cantidad ELSE 0 END) AS cantidad_actual
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = 4 AND f.status IN ('2','4','5')
+      WHERE f.company_id = 4 AND f.status IN ('0','2','4','5')
       GROUP BY f.customer_code, f.customer_address_code
     `;
 
@@ -279,7 +279,7 @@ const obtenerClientesCafe = async (req, res) => {
                SUM(dd.total) AS consumo_mes
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.company_id = 4 AND f.status IN ('2','4','5')
+        WHERE f.company_id = 4 AND f.status IN ('0','2','4','5')
           AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
         GROUP BY f.customer_code, f.customer_address_code, DATE_TRUNC('month', f.fecha_creacion)
       )
@@ -304,7 +304,7 @@ const obtenerClientesCafe = async (req, res) => {
              SUM(dd.total)    AS monto_usd
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = 4 AND f.status IN ('2','4','5')
+      WHERE f.company_id = 4 AND f.status IN ('0','2','4','5')
         AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC

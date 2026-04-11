@@ -17,7 +17,9 @@ interface ClienteInfo {
 }
 
 interface Sucursal {
+  nombre_sucursal: string;
   direccion: string;
+  codigo_sucursal: string;
   telefono: string;
   latitud: string;
   longitud: string;
@@ -139,7 +141,12 @@ export default function EmpresasDetalleClientePage() {
                           ? "bg-red-900/20 border-red-500/30"
                           : "bg-gradient-to-br from-[#012E24] to-[#013d30] border-[#046C5E]/40"}`}>
                         <div className="flex items-start justify-between mb-3">
-                          <p className="font-semibold text-white text-sm leading-tight flex-1 pr-2">{s.direccion}</p>
+                          <div className="flex-1 pr-2">
+                            <p className="font-semibold text-white text-sm leading-tight">{s.nombre_sucursal || s.direccion}</p>
+                            {s.nombre_sucursal && s.direccion && s.nombre_sucursal !== s.direccion && (
+                              <p className="text-[10px] text-gray-400 mt-0.5">{s.direccion}</p>
+                            )}
+                          </div>
                           <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full
                             ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
                             {sinConsumo ? "Sin consumo" : "Activo"}
@@ -207,7 +214,10 @@ export default function EmpresasDetalleClientePage() {
                             className={`${sinConsumo ? "bg-[rgba(220,38,38,0.4)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
                             <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
                             <td className="px-3 py-2 text-white font-semibold max-w-[260px]">
-                              <span title={s.direccion} className="line-clamp-2 text-sm">{s.direccion}</span>
+                              <span title={s.nombre_sucursal || s.direccion} className="line-clamp-2 text-sm">{s.nombre_sucursal || s.direccion}</span>
+                              {s.nombre_sucursal && s.direccion && s.nombre_sucursal !== s.direccion && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-1">{s.direccion}</p>
+                              )}
                             </td>
                             <td className="px-3 py-2 text-gray-300 text-xs">{s.telefono || "—"}</td>
                             <td className="px-3 py-2 text-right text-blue-300 font-semibold">

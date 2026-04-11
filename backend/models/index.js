@@ -17,7 +17,8 @@ const Ruta = require('./Ruta');
 const DetalleRuta = require('./DetalleRuta');
 const TipoNegocio = require('./tipos_negocio');
 const TipoDocumentoLatam = require('./TipoDocumentoLatam');
-const Producto = require('./Producto'); // importante que coincida el nombre del archivo
+const Producto = require('./Producto');
+const Subcanal = require('./Subcanal'); // 🔥 NUEVO
 
 // =============================
 // RELACIONES
@@ -26,17 +27,20 @@ const Producto = require('./Producto'); // importante que coincida el nombre del
 // ---------- FACTURA ----------
 Factura.belongsTo(Clientes, {
   foreignKey: 'customer_code',
+  targetKey: 'codigo_cliente',
   as: 'cliente_venta',
 });
 
 Factura.hasMany(DetalleDocumento, {
   foreignKey: 'documento_code',
   sourceKey: 'code',
+  as: 'detalles',
 });
 
 DetalleDocumento.belongsTo(Factura, {
   foreignKey: 'documento_code',
   targetKey: 'code',
+  as: 'factura',
 });
 
 // Relación Factura con TipoDocumentoLatam
@@ -53,29 +57,60 @@ Factura.belongsTo(TipoDocumentoLatam, {
 // ---------- ORDEN ----------
 Orden.belongsTo(Clientes, {
   foreignKey: 'customer_code',
+  targetKey: 'codigo_cliente',
   as: 'cliente_venta',
 });
 
 Orden.hasMany(DetalleDocumento, {
   foreignKey: 'documento_code',
   sourceKey: 'code',
+  as: 'detalles',
 });
 
 DetalleDocumento.belongsTo(Orden, {
   foreignKey: 'documento_code',
   targetKey: 'code',
+  as: 'orden',
+});
+
+// 🔥 RELACIÓN ORDEN → SUBCANAL
+Orden.belongsTo(Subcanal, {
+  foreignKey: 'codigo_subcanal',
+  targetKey: 'codigo_subcanal',
+  as: 'subcanal',
+});
+
+// 🔥 RELACIÓN ORDEN → TIPO NEGOCIO
+Orden.belongsTo(TipoNegocio, {
+  foreignKey: 'codigo_tipo_negocio',
+  targetKey: 'codigo',
+  as: 'tipo_negocio',
+});
+
+// 🔥 RELACIÓN FACTURA → SUBCANAL
+Factura.belongsTo(Subcanal, {
+  foreignKey: 'codigo_subcanal',
+  targetKey: 'codigo_subcanal',
+  as: 'subcanal',
+});
+
+// 🔥 RELACIÓN FACTURA → TIPO NEGOCIO
+Factura.belongsTo(TipoNegocio, {
+  foreignKey: 'codigo_tipo_negocio',
+  targetKey: 'codigo',
+  as: 'tipo_negocio',
 });
 
 // ---------- PRODUCTO ----------
-// PK en Producto = codigo_producto
-// FK en DetalleDocumento = codigo_producto
 DetalleDocumento.belongsTo(Producto, {
   foreignKey: 'codigo_producto',
+  targetKey: 'codigo_producto',
   as: 'producto',
 });
 
 Producto.hasMany(DetalleDocumento, {
   foreignKey: 'codigo_producto',
+  sourceKey: 'codigo_producto',
   as: 'detalles',
 });
 
@@ -111,10 +146,49 @@ HistorialVisitas.belongsTo(Clientes, {
   as: 'cliente',
 });
 
+// 🔥 RELACIÓN CLIENTE → TIPO NEGOCIO
 Clientes.belongsTo(TipoNegocio, {
   foreignKey: 'codigo_tipo_negocio',
   targetKey: 'codigo',
   as: 'tipo_negocio',
+});
+
+// 🔥 RELACIÓN CLIENTE → SUBCANAL
+Clientes.belongsTo(Subcanal, {
+  foreignKey: 'codigo_subcanal',
+  targetKey: 'codigo_subcanal',
+  as: 'subcanal',
+});
+
+// ---------- SUBCANAL ----------
+Subcanal.hasMany(Clientes, {
+  foreignKey: 'codigo_subcanal',
+  sourceKey: 'codigo_subcanal',
+  as: 'clientes',
+});
+
+Subcanal.hasMany(Orden, {
+  foreignKey: 'codigo_subcanal',
+  sourceKey: 'codigo_subcanal',
+  as: 'ordenes',
+});
+
+Subcanal.hasMany(Factura, {
+  foreignKey: 'codigo_subcanal',
+  sourceKey: 'codigo_subcanal',
+  as: 'facturas',
+});
+
+TipoNegocio.hasMany(Factura, {
+  foreignKey: 'codigo_tipo_negocio',
+  sourceKey: 'codigo',
+  as: 'facturas',
+});
+
+TipoNegocio.hasMany(Orden, {
+  foreignKey: 'codigo_tipo_negocio',
+  sourceKey: 'codigo',
+  as: 'ordenes',
 });
 
 // ---------- HISTORIAL VISITAS Y ORDEN ----------
@@ -143,5 +217,6 @@ module.exports = {
   TipoNegocio,
   TipoDocumentoLatam,
   Producto,
+  Subcanal, //  NUEVO
   sequelize,
 };

@@ -12,6 +12,7 @@ const sequelize = require("../db");
 const {
   Clientes,
   TipoNegocio,
+    Subcanal, //  AGREGAR
   ClienteUsuarioVenta,
   Factura,
   Orden,
@@ -200,6 +201,44 @@ async function syncTipoNegocio(doc, transaction) {
   );
 }
 
+
+
+async function syncTipoNegocio(doc, transaction) {
+  const codigo = doc.business_type_code || null;
+  if (!codigo) return;
+
+  await TipoNegocio.upsert(
+    {
+      codigo,
+      descripcion        : doc.business_type_description || codigo,
+      estado             : 1,
+      fecha_creacion     : new Date(),
+      fecha_actualizacion: new Date(),
+    },
+    { transaction, conflictFields: ["codigo"] }
+  );
+}
+
+//  NUEVO: SUBCANAL
+async function syncSubcanal(doc, transaction) {
+  const codigo = doc.subchannel_code || null;
+  if (!codigo) return;
+
+  await Subcanal.upsert(
+    {
+      codigo_subcanal      : codigo,
+      descripcion_subcanal : doc.subchannel_description || codigo,
+      estado               : 1,
+      fecha_creacion       : new Date(),
+      fecha_actualizacion  : new Date(),
+    },
+    {
+      transaction,
+      conflictFields: ["codigo_subcanal"]
+    }
+  );
+}
+
 async function syncCliente(doc, customerCode, transaction) {
   if (!customerCode) return;
 
@@ -214,6 +253,7 @@ async function syncCliente(doc, customerCode, transaction) {
       nombre_comercial_cliente        : doc.company_name || doc.customer_name || null,
       contacto_cliente                : doc.contact                    || null,
       codigo_tipo_negocio             : doc.business_type_code         || null,
+      codigo_subcanal                 : doc.subchannel_code            || null,
       codigo_moneda_cliente           : doc.currency_code              || "USD",
       codigo_lista_precio_cliente     : doc.price_list_code            || null,
       metodo_pago_cliente             : doc.payment_method_description || null,
@@ -342,6 +382,10 @@ async function syncDocumento(doc, code, transaction) {
   const routeCode    = doc.route?.code || doc.route_code || null;
   const sellerCode   = String(doc.seller_code || doc.user_code || "").trim() || null;
 
+  // DEBUG TEMPORAL — ver campos de fecha cuando create_date falta
+  if (!doc.create_date || Number(doc.create_date) <= 0) {
+    console.log(`[DEBUG fechas] code=${doc.code} | create_date=${doc.create_date} | store_date=${doc.store_date} | dispatch_date=${doc.dispatch_date} | date=${doc.date} | document_date=${doc.document_date} | order_date=${doc.order_date}`);
+  }
   const creationDate = parseUnixToEcuador(doc.create_date || doc.store_date);
   const dispatchDate =
     parseUnixToEcuador(doc.dispatch_date) ||
@@ -383,7 +427,14 @@ async function syncDocumento(doc, code, transaction) {
 
   if (type === 2) {
     await Orden.upsert(
-      { ...basePayload, origen_sistema: "MOBILVENDOR" },
+      { 
+        ...basePayload,
+        origen_sistema: "MOBILVENDOR",
+
+        // 🔥 NUEVOS CAMPOS
+        codigo_subcanal: doc.subchannel_code || null,
+        codigo_tipo_negocio: doc.business_type_code || null
+      },
       { transaction }
     );
     return "orden";
@@ -505,6 +556,8 @@ async function procesarDocumento(doc, detallesPorDocumento, stats) {
 
   try {
     await syncTipoNegocio(doc, t);
+    await syncSubcanal(doc, t); //  AQUÍ
+
     await syncCliente(doc, customerCode, t);
     await syncDireccionCliente(doc, customerCode, t);
 

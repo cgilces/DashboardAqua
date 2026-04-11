@@ -94,7 +94,7 @@ const obtenerClientesCanal = async (req, res) => {
           SELECT DISTINCT f.customer_code, f.customer_address_code
           FROM facturas f
           WHERE ${filtro}
-            AND f.status IN ('2','4','5')
+            AND f.status IN ('0','2','4','5')
             AND f.fecha_entrega >= '${antInicio}'
             AND f.customer_address_code IS NOT NULL
         ),
@@ -106,7 +106,7 @@ const obtenerClientesCanal = async (req, res) => {
           JOIN detalle_documento dd ON dd.documento_code = f.code
           WHERE ${filtro}
             AND dd.codigo_categoria = '7'
-            AND f.status IN ('2','4','5')
+            AND f.status IN ('0','2','4','5')
             AND f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
           GROUP BY f.customer_code, f.customer_address_code
         ),
@@ -117,7 +117,7 @@ const obtenerClientesCanal = async (req, res) => {
           JOIN detalle_documento dd ON dd.documento_code = f.code
           WHERE ${filtro}
             AND dd.codigo_categoria = '7'
-            AND f.status IN ('2','4','5')
+            AND f.status IN ('0','2','4','5')
             AND f.fecha_entrega >= '${antInicio}' AND f.fecha_entrega < '${antFin}'
           GROUP BY f.customer_code, f.customer_address_code
         ),
@@ -125,7 +125,7 @@ const obtenerClientesCanal = async (req, res) => {
           SELECT f.customer_code, f.customer_address_code,
                  MAX(f.fecha_entrega) AS ultima
           FROM facturas f
-          WHERE ${filtro} AND f.status IN ('2','4','5')
+          WHERE ${filtro} AND f.status IN ('0','2','4','5')
           GROUP BY f.customer_code, f.customer_address_code
         )
         SELECT
@@ -272,7 +272,7 @@ const obtenerClientesCanal = async (req, res) => {
         JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE ${filtro}
           AND dd.codigo_categoria = '7'
-          AND f.status IN ('2','4','5')
+          AND f.status IN ('0','2','4','5')
           AND f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
         GROUP BY dd.descripcion
         ORDER BY unidades_vendidas DESC

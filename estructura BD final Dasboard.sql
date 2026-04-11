@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS app_users (
     clave TEXT NOT NULL,
     rol TEXT CHECK (rol IN ('ADMIN', 'VENDEDOR', 'DESPACHADOR', 'SUPERVISOR')) NOT NULL,
     rutas_asignadas TEXT[],
+    token_version INTEGER DEFAULT 0,
     creado_en TIMESTAMP DEFAULT NOW(),
     actualizado_en TIMESTAMP DEFAULT NOW()
 );
@@ -112,6 +113,7 @@ CREATE TABLE IF NOT EXISTS clientes (
 
   -- RELACIÓN CON TIPO DE NEGOCIO
   codigo_tipo_negocio VARCHAR(50),
+  codigo_subcanal VARCHAR(50),
 
   contacto_cliente VARCHAR(255),
 
@@ -345,6 +347,8 @@ CREATE TABLE IF NOT EXISTS ordenes (
     descripcion_company VARCHAR(60),
     medio_id INT,
     fuente_id INT,
+    codigo_tipo_negocio VARCHAR(50),
+    codigo_subcanal VARCHAR(50),
 
     -------------------------------------------------
     -- Estados
@@ -413,10 +417,6 @@ CREATE TABLE IF NOT EXISTS ordenes (
     origen_sistema VARCHAR(20)
 );
 
--------------------------------------------------
--- Índices (optimización de consultas)
--------------------------------------------------
-
 CREATE INDEX IF NOT EXISTS idx_orden_route
     ON ordenes(route_code);
 
@@ -452,6 +452,7 @@ CREATE TABLE IF NOT EXISTS facturas (
     fecha_entrega TIMESTAMP,                   -- Fecha de entrega de la factura
     customer_code VARCHAR(30),                 -- Código del cliente
     customer_address_code VARCHAR(30),         -- Código de la dirección del cliente
+    codigo_tipo_negocio VARCHAR(50),
     route_code VARCHAR(50),                    -- Código de la ruta de la venta
     seller_code VARCHAR(50),                   -- Código del vendedor (vendedor asociado)
     total DECIMAL(18,2),                       -- Monto total de la factura (total con impuestos)
@@ -567,10 +568,6 @@ CREATE TABLE IF NOT EXISTS detalle_documento (
     es_anticipo BOOLEAN DEFAULT FALSE,
     es_envio BOOLEAN DEFAULT FALSE
 );
-
--------------------------------------------------
--- Índices
--------------------------------------------------
 
 CREATE INDEX IF NOT EXISTS idx_doc_code
     ON detalle_documento(documento_code);
@@ -714,7 +711,7 @@ CREATE INDEX idx_historial_visitas_accion
 ON historial_visitas (accion);
 
 -- _________________________--
--- ----------------
+-- -- ----------------________
 
 CREATE TABLE metas_preventas (
   id_meta SERIAL PRIMARY KEY,  -- Usa SERIAL para el auto-incremento
@@ -723,13 +720,14 @@ CREATE TABLE metas_preventas (
   mes INT NOT NULL CHECK (mes >= 1 AND mes <= 12),
   meta_unidades INT NOT NULL DEFAULT 0,
   meta_dolares FLOAT NOT NULL DEFAULT 0,
+  seccion VARCHAR(50);
   CONSTRAINT unique_codigo_ruta_anio_mes UNIQUE (codigo_ruta, anio, mes)
 );
 
 
 -- ____________
 -- -- Tipo de documento
--- __________-
+-- __________-___________
 CREATE TABLE tipo_documento_latam (
     id SERIAL PRIMARY KEY,
     secuencia VARCHAR(255),                -- "sequence" en inglés
@@ -866,7 +864,8 @@ ON direcciones_clientes(codigo_cliente);
 
 
 
-
+--------------------------------------
+---------------------------
 
 CREATE TABLE IF NOT EXISTS clientes_categoria_relacion (
     categoria_id INTEGER NOT NULL,
@@ -876,3 +875,63 @@ CREATE TABLE IF NOT EXISTS clientes_categoria_relacion (
 
 CREATE INDEX IF NOT EXISTS idx_ccr_cliente   ON clientes_categoria_relacion(cliente_id);
 CREATE INDEX IF NOT EXISTS idx_ccr_categoria ON clientes_categoria_relacion(categoria_id);
+
+
+
+-- -- ------------------
+-----------------------------
+
+CREATE TABLE subcanales (
+  id_subcanal SERIAL PRIMARY KEY,
+  codigo_subcanal VARCHAR(50) UNIQUE NOT NULL,
+  descripcion_subcanal VARCHAR(255),
+  codigo_tipo_negocio VARCHAR(50),
+  estado INTEGER DEFAULT 1,
+  fecha_creacion TIMESTAMP DEFAULT NOW(),
+  fecha_actualizacion TIMESTAMP DEFAULT NOW()
+);
+
+
+-- ✅ Correcto
+CREATE INDEX IF NOT EXISTS idx_subcanales_codigo ON subcanales(codigo_subcanal);
+
+CREATE INDEX IF NOT EXISTS idx_subcanales_tipo_negocio
+    ON subcanales(codigo_tipo_negocio);
+
+
+
+ALTER TABLE clientes
+ADD CONSTRAINT fk_clientes_subcanal
+FOREIGN KEY (codigo_subcanal)
+REFERENCES subcanales(codigo_subcanal)  -- ✅ nombre correcto
+ON UPDATE CASCADE
+ON DELETE SET NULL;
+
+
+CREATE INDEX IF NOT EXISTS idx_clientes_subcanal
+ON clientes(codigo_subcanal);
+
+CREATE INDEX IF NOT EXISTS idx_ordenes_subcanal
+ON ordenes(codigo_subcanal);
+
+ALTER TABLE ordenes
+ADD CONSTRAINT fk_ordenes_tipo_negocio
+FOREIGN KEY (codigo_tipo_negocio)
+REFERENCES tipos_negocio(codigo)
+ON UPDATE CASCADE
+ON DELETE SET NULL;
+
+
+CREATE OR REPLACE FUNCTION update_subcanales_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.fecha_actualizacion = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_subcanales
+BEFORE UPDATE ON subcanales
+FOR EACH ROW
+EXECUTE FUNCTION update_subcanales_timestamp();
+

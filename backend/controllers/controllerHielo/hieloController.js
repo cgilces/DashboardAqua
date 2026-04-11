@@ -72,7 +72,7 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     JOIN detalle_documento dd ON f.code = dd.documento_code
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-      AND f.status IN ('2','4','5')
+      AND f.status IN ('0','2','4','5')
       AND f.fecha_entrega >= '${fechaInicioActual}'
       AND f.fecha_entrega < '${fechaFinActual}';
   `);
@@ -88,7 +88,7 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     JOIN detalle_documento dd ON f.code = dd.documento_code
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-      AND f.status IN ('2','4','5')
+      AND f.status IN ('0','2','4','5')
       AND f.fecha_entrega >= '${fechaInicioAnterior}'
       AND f.fecha_entrega < '${fechaFinAnterior}';
   `);
@@ -185,7 +185,7 @@ const metaHistoricaHielo = async () => {
                     ON dd.documento_code = f.code
                 WHERE
                     (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-                    AND f.status IN (2, 4, 5)
+                    AND f.status IN (0,2,3,4,5)
                 GROUP BY
                     f.seller_code,
                     DATE_TRUNC('month', f.fecha_entrega)
@@ -272,7 +272,7 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
       ON f.code = dd.documento_code
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-      AND f.status IN ('2','4','5')
+      AND f.status IN ('0','2','4','5')
       AND f.fecha_entrega >= '${fechaInicioStr}'
       AND f.fecha_entrega < '${fechaFinStr}'
     GROUP BY f.seller_code
@@ -290,7 +290,7 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
       ON f.code = dd.documento_code
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-      AND f.status IN ('2','4','5')
+      AND f.status IN ('0','2','4','5')
       AND f.fecha_entrega >= '${fechaInicioAntStr}'
       AND f.fecha_entrega < '${fechaFinAntStr}'
     GROUP BY f.seller_code;
@@ -371,7 +371,7 @@ const tendencia6MesesHielo = async (anioNum, mesNum) => {
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10','h3'))
-        AND f.status IN ('2','4','5')
+        AND f.status IN ('0','2','4','5')
         AND f.fecha_entrega >= :inicio6 AND f.fecha_entrega < :fin6
       GROUP BY DATE_TRUNC('month', f.fecha_entrega)
 

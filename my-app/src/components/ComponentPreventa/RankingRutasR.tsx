@@ -226,9 +226,6 @@ const RankingRutasInner = ({
             <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('dolares')}>
               Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('meta')}>
-              HIST. MÁX <span className="text-green-300">{sortConfig.key === 'meta' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
             <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
               CUPO <span className="text-amber-300">{sortConfig.key === 'objetivo_gerencia' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
             </th>
@@ -278,9 +275,6 @@ const RankingRutasInner = ({
               <td className="px-4 py-2 text-right text-blue-300 font-bold">
                 ${Number(r.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
               </td>
-              <td className="px-4 py-2 text-right text-gray-300">
-                ${Number(r.meta).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-              </td>
               <td className="px-4 py-2 text-right font-bold text-amber-300">
                 {tieneCupo ? `$${fmt(cupo)}` : <span className="text-gray-500">—</span>}
               </td>
@@ -313,9 +307,6 @@ const RankingRutasInner = ({
             <td className="px-4 py-3 text-right text-green-400">{totalUnidades.toLocaleString()}</td>
             <td className="px-4 py-3 text-right text-blue-400">
               ${totalUSD.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-            <td className="px-4 py-3 text-right text-gray-300">
-              ${totalMeta.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
             <td className="px-4 py-3 text-right text-amber-300">
               {totalCupo > 0 ? `$${fmt(totalCupo)}` : "—"}

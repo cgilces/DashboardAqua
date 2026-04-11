@@ -49,7 +49,7 @@ const queryMVHielo = async (inicio, fin) => {
      FROM facturas f
      JOIN detalle_documento dd ON dd.documento_code = f.code
      WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-       AND f.status IN ('2','4','5')
+       AND f.status IN ('0','2','4','5')
        AND f.fecha_entrega >= :inicio
        AND f.fecha_entrega <  :fin`,
     { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT }

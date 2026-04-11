@@ -11,7 +11,8 @@ const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 interface Subcanal {
-  tipo_negocio: string;
+  canal: string;
+  subcanal: string;
   total_clientes: number;
   clientes_con_consumo: number;
   unidades_actual: number;
@@ -151,86 +152,121 @@ export default function DetalleVipBotellonPage() {
           </div>
         )}
 
-        {/* Grid de subcanales */}
-        {!cargando && (
-          <>
-            <p className="text-xs text-gray-400 uppercase tracking-widest mb-4">
-              Módulos — {subcanales.length} tipo{subcanales.length !== 1 ? "s" : ""} de negocio
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {subcanales.map((s) => {
-                const sinConsumo = Number(s.total_clientes) - Number(s.clientes_con_consumo);
-                const varMonto   = Number(s.monto_actual) - Number(s.monto_anterior);
+        {/* Subcanales agrupados por canal */}
+        {!cargando && (() => {
+          // Agrupar por canal
+          const porCanal = subcanales.reduce<Record<string, Subcanal[]>>((acc, s) => {
+            const key = s.canal;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(s);
+            return acc;
+          }, {});
+
+          const canales = Object.keys(porCanal);
+
+          if (canales.length === 0) {
+            return (
+              <p className="text-center text-gray-400 py-16 text-sm">
+                No se encontraron datos para este período.
+              </p>
+            );
+          }
+
+          return (
+            <>
+              {canales.map((canal) => {
+                const items = porCanal[canal];
+                const canalTotal = items.reduce((a, s) => a + Number(s.monto_actual), 0);
+                const canalClientes = items.reduce((a, s) => a + Number(s.total_clientes), 0);
+
                 return (
-                  <div
-                    key={s.tipo_negocio}
-                    onClick={() =>
-                      navigate(`/vip-botellon/tipo/${encodeURIComponent(s.tipo_negocio)}/${anio}/${mes}`)
-                    }
-                    className="cursor-pointer bg-gradient-to-br from-[#012E24] to-[#014034]
-                      border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg flex flex-col gap-3
-                      hover:border-emerald-400/60 hover:scale-[1.02] transition-all duration-200"
-                  >
-                    {/* Encabezado */}
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-bold text-white leading-tight">{s.tipo_negocio}</p>
-                      <span className="shrink-0 text-[10px] text-gray-400 italic mt-0.5">Ver clientes →</span>
-                    </div>
-
-                    {/* Clientes */}
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div>
-                        <p className="text-[9px] text-gray-500 uppercase tracking-wide">Total</p>
-                        <p className="text-white font-bold text-base">{Number(s.total_clientes).toLocaleString("es-EC")}</p>
+                  <div key={canal} className="mb-10">
+                    {/* Cabecera del canal */}
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-[#046C5E]/40">
+                      <div className="flex items-center gap-3">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                        <h2 className="text-sm font-bold uppercase tracking-widest text-emerald-300">{canal}</h2>
+                        <span className="text-xs text-gray-500">{items.length} subcanal{items.length !== 1 ? "es" : ""}</span>
                       </div>
-                      <div>
-                        <p className="text-[9px] text-gray-500 uppercase tracking-wide">Activos</p>
-                        <p className="text-emerald-400 font-bold text-base">{Number(s.clientes_con_consumo).toLocaleString("es-EC")}</p>
-                      </div>
-                      <div>
-                        <p className="text-[9px] text-gray-500 uppercase tracking-wide">Sin consumo</p>
-                        <p className="text-red-400 font-bold text-base">{sinConsumo.toLocaleString("es-EC")}</p>
+                      <div className="flex items-center gap-4 text-xs text-gray-400">
+                        <span>{canalClientes.toLocaleString("es-EC")} clientes</span>
+                        <span className="text-amber-300 font-semibold">${fmt(canalTotal)}</span>
                       </div>
                     </div>
 
-                    <div className="border-t border-[#046C5E]/30" />
+                    {/* Grid de subcanales dentro del canal */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                      {items.map((s) => {
+                        const sinConsumo = Number(s.total_clientes) - Number(s.clientes_con_consumo);
+                        const varMonto   = Number(s.monto_actual) - Number(s.monto_anterior);
+                        return (
+                          <div
+                            key={`${canal}-${s.subcanal}`}
+                            onClick={() =>
+                              navigate(`/vip-botellon/tipo/${encodeURIComponent(s.subcanal)}/${anio}/${mes}`)
+                            }
+                            className="cursor-pointer bg-gradient-to-br from-[#012E24] to-[#014034]
+                              border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg flex flex-col gap-3
+                              hover:border-emerald-400/60 hover:scale-[1.02] transition-all duration-200"
+                          >
+                            {/* Encabezado */}
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-bold text-white leading-tight">{s.subcanal}</p>
+                              <span className="shrink-0 text-[10px] text-gray-400 italic mt-0.5">Ver clientes →</span>
+                            </div>
 
-                    {/* Montos */}
-                    <div>
-                      <p className="text-[9px] text-gray-500 uppercase tracking-wide mb-1">Dólares Actual</p>
-                      <p className="text-amber-300 font-extrabold text-lg">${fmt(Number(s.monto_actual))}</p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[9px] text-gray-500 uppercase tracking-wide">Mes anterior</p>
-                        <p className="text-gray-300 text-sm font-semibold">${fmt(Number(s.monto_anterior))}</p>
-                      </div>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border
-                        ${varMonto >= 0
-                          ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
-                          : "text-red-400 border-red-400/20 bg-red-400/10"}`}>
-                        {varMonto >= 0 ? "▲" : "▼"}
-                        ${fmt(Math.abs(varMonto))}
-                      </span>
-                    </div>
+                            {/* Clientes */}
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div>
+                                <p className="text-[9px] text-gray-500 uppercase tracking-wide">Total</p>
+                                <p className="text-white font-bold text-base">{Number(s.total_clientes).toLocaleString("es-EC")}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-gray-500 uppercase tracking-wide">Activos</p>
+                                <p className="text-emerald-400 font-bold text-base">{Number(s.clientes_con_consumo).toLocaleString("es-EC")}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-gray-500 uppercase tracking-wide">Sin consumo</p>
+                                <p className="text-red-400 font-bold text-base">{sinConsumo.toLocaleString("es-EC")}</p>
+                              </div>
+                            </div>
 
-                    {/* Unidades */}
-                    <div className="flex items-center justify-between border-t border-[#046C5E]/20 pt-2">
-                      <p className="text-[9px] text-gray-500 uppercase tracking-wide">Unidades</p>
-                      <p className="text-blue-300 font-bold">{Number(s.unidades_actual).toLocaleString("es-EC")}</p>
+                            <div className="border-t border-[#046C5E]/30" />
+
+                            {/* Montos */}
+                            <div>
+                              <p className="text-[9px] text-gray-500 uppercase tracking-wide mb-1">Dólares Actual</p>
+                              <p className="text-amber-300 font-extrabold text-lg">${fmt(Number(s.monto_actual))}</p>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-[9px] text-gray-500 uppercase tracking-wide">Mes anterior</p>
+                                <p className="text-gray-300 text-sm font-semibold">${fmt(Number(s.monto_anterior))}</p>
+                              </div>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border
+                                ${varMonto >= 0
+                                  ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
+                                  : "text-red-400 border-red-400/20 bg-red-400/10"}`}>
+                                {varMonto >= 0 ? "▲" : "▼"}
+                                ${fmt(Math.abs(varMonto))}
+                              </span>
+                            </div>
+
+                            {/* Unidades */}
+                            <div className="flex items-center justify-between border-t border-[#046C5E]/20 pt-2">
+                              <p className="text-[9px] text-gray-500 uppercase tracking-wide">Unidades</p>
+                              <p className="text-blue-300 font-bold">{Number(s.unidades_actual).toLocaleString("es-EC")}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
               })}
-            </div>
-
-            {subcanales.length === 0 && (
-              <p className="text-center text-gray-400 py-16 text-sm">
-                No se encontraron datos para este período.
-              </p>
-            )}
-          </>
-        )}
+            </>
+          );
+        })()}
       </div>
     </DashboardLayout>
   );

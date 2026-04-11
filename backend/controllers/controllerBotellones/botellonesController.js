@@ -49,8 +49,8 @@ const GRUPOS = {
     filtro: "o.seller_code ILIKE 'TV%'",
   },
   VIP: {
-    campo: "o.seller_code",
-    filtro: "(o.seller_code ILIKE 'V%' OR o.seller_code IN ('10','18','27'))",
+    campo: "f.codigo_tipo_negocio",
+    filtro: "f.codigo_tipo_negocio = '29'",
   },
 };
 
@@ -111,20 +111,19 @@ const metaHistoricaBotellon = async () => {
           WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
           WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
           WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
-          WHEN f.seller_code ILIKE 'V%'  THEN 'VIP'
-          WHEN f.seller_code IN ('10','18','27') THEN 'VIP'
+          WHEN f.codigo_tipo_negocio = '29' THEN 'VIP'
           WHEN f.seller_code = 'U1'      THEN 'QUITO'
         END AS grupo,
         f.seller_code AS codigo,
-        DATE_TRUNC('month', f.fecha_entrega) AS mes,
+        DATE_TRUNC('month', CASE WHEN f.codigo_tipo_negocio = '29' THEN f.fecha_creacion ELSE f.fecha_entrega END) AS mes,
         SUM(dd.total) AS total_usd
       FROM facturas f
       JOIN detalle_documento dd
         ON dd.documento_code = f.code
       WHERE
-        f.status IN (2,4,5)
+        f.status IN (0,2,3,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
-      GROUP BY grupo, f.seller_code, DATE_TRUNC('month', f.fecha_entrega)
+      GROUP BY grupo, f.seller_code, DATE_TRUNC('month', CASE WHEN f.codigo_tipo_negocio = '29' THEN f.fecha_creacion ELSE f.fecha_entrega END)
     ),
 
     /*  AQUÍ ESTÁ LA DIFERENCIA CLAVE */
@@ -235,8 +234,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
         WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
         WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
         WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
-        WHEN f.seller_code ILIKE 'V%'  THEN 'VIP'
-        WHEN f.seller_code IN ('10','18','27') THEN 'VIP'
+        WHEN f.codigo_tipo_negocio = '29' THEN 'VIP'
         WHEN f.seller_code = 'U1'      THEN 'QUITO'
         ELSE 'OTROS'
       END AS grupo,
@@ -247,10 +245,13 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     JOIN detalle_documento dd
       ON dd.documento_code = f.code
     WHERE
-      f.status IN (2,4,5)
+      f.status IN (0,2,3,4,5)
       AND dd.descripcion_categoria = 'BOTELLÓN'
-      AND f.fecha_entrega >= :inicio
-      AND f.fecha_entrega <  :fin
+      AND (
+        (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
+        OR
+        (f.codigo_tipo_negocio  = '29' AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin)
+      )
     GROUP BY grupo, f.seller_code
   ) t
   WHERE grupo = :grupo
@@ -413,7 +414,7 @@ const tendencia6MesesBotellon = async (anioNum, mesNum) => {
              SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.status IN ('2','4','5')
+      WHERE f.status IN ('0','2','4','5')
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND f.fecha_entrega >= :inicio6 AND f.fecha_entrega < :fin6
       GROUP BY DATE_TRUNC('month', f.fecha_entrega)
@@ -541,7 +542,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         SELECT DISTINCT f0.customer_code
         FROM facturas f0
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-        WHERE (f0.seller_code ILIKE 'V%' OR f0.seller_code IN ('10','18','27'))
+        WHERE f0.codigo_tipo_negocio = '29'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
           AND f0.status IN (2,4,5)
           AND f0.fecha_creacion >= :iniYear
@@ -567,7 +568,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         FROM facturas f2
         JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
         WHERE f2.customer_code = base.customer_code
-          AND (f2.seller_code ILIKE 'V%' OR f2.seller_code IN ('10','18','27'))
+          AND f2.codigo_tipo_negocio = '29'
           AND dd2.descripcion_categoria = 'BOTELLÓN'
           AND f2.status IN (2,4,5)
           AND f2.fecha_creacion >= :inicio
@@ -578,7 +579,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         FROM facturas f3
         JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
         WHERE f3.customer_code = base.customer_code
-          AND (f3.seller_code ILIKE 'V%' OR f3.seller_code IN ('10','18','27'))
+          AND f3.codigo_tipo_negocio = '29'
           AND dd3.descripcion_categoria = 'BOTELLÓN'
           AND f3.status IN (2,4,5)
           AND f3.fecha_creacion >= :iniAnt
@@ -589,7 +590,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         FROM facturas f4
         JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
         WHERE f4.customer_code = base.customer_code
-          AND (f4.seller_code ILIKE 'V%' OR f4.seller_code IN ('10','18','27'))
+          AND f4.codigo_tipo_negocio = '29'
           AND dd4.descripcion_categoria = 'BOTELLÓN'
           AND f4.status IN (2,4,5)
       ) mx ON true
@@ -598,7 +599,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         FROM facturas f5
         JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
         WHERE f5.customer_code = base.customer_code
-          AND (f5.seller_code ILIKE 'V%' OR f5.seller_code IN ('10','18','27'))
+          AND f5.codigo_tipo_negocio = '29'
           AND dd5.descripcion_categoria = 'BOTELLÓN'
           AND f5.status IN (2,4,5)
       ) ult ON true
@@ -618,8 +619,8 @@ const obtenerClientesVipBotellon = async (req, res) => {
              SUM(dd.total)    AS monto_usd
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE (f.seller_code ILIKE 'V%' OR f.seller_code IN ('10','18','27'))
-        AND f.status IN (2,4,5)
+      WHERE f.codigo_tipo_negocio = '29'
+        AND f.status IN (0,2,3,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
       GROUP BY dd.descripcion
@@ -661,7 +662,7 @@ const queryTotalesEmpresas = async (inicio, fin) => {
       SELECT COALESCE(SUM(dd.cantidad), 0) AS unidades, COALESCE(SUM(dd.total), 0) AS dolares
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
+      WHERE f.seller_code ILIKE 'E%' AND f.status IN (0,2,3,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
       UNION ALL
@@ -878,7 +879,7 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.seller_code ILIKE 'A%'
-        AND f.status IN (2,4,5)
+        AND f.status IN (0,2,3,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
       GROUP BY dd.descripcion
@@ -1054,7 +1055,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
+        WHERE f.seller_code ILIKE 'E%' AND f.status IN (0,2,3,4,5)
           AND dd.descripcion_categoria = 'BOTELLÓN'
           AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
         UNION ALL
@@ -1109,9 +1110,15 @@ const obtenerVipSubcanales = async (req, res) => {
     const iniYear = `${anioNum}-01-01 00:00:00`;
     const finYear = `${anioNum + 1}-01-01 00:00:00`;
 
+    /*
+     * Clientes VIP identificados directamente por f.codigo_tipo_negocio y f.codigo_subcanal
+     * en la tabla facturas (campos nuevos sincronizados desde Odoo, igual que en ordenes).
+     * Agrupamos por canal (tipos_negocio) → subcanal (subcanales) usando los campos de la factura.
+     */
     const subcanales = await sequelize.query(`
       SELECT
-        COALESCE(tn.descripcion, 'Sin Clasificar')                              AS tipo_negocio,
+        COALESCE(tn.descripcion, 'Sin Canal')                                   AS canal,
+        COALESCE(sc.descripcion_subcanal, 'Sin Clasificar')                     AS subcanal,
         COUNT(DISTINCT base.customer_code)                                       AS total_clientes,
         COUNT(DISTINCT CASE WHEN COALESCE(act.consumo_actual, 0) > 0
               THEN base.customer_code END)                                       AS clientes_con_consumo,
@@ -1119,42 +1126,47 @@ const obtenerVipSubcanales = async (req, res) => {
         COALESCE(SUM(act.consumo_actual),  0)                                   AS monto_actual,
         COALESCE(SUM(ant.consumo_anterior),0)                                   AS monto_anterior
       FROM (
-        SELECT DISTINCT f0.customer_code
+        -- Universo VIP: customer_code de facturas con codigo_tipo_negocio '29' + BOTELLÓN en el año
+        -- El canal/subcanal viene de los campos codigo_tipo_negocio y codigo_subcanal de la factura
+        SELECT DISTINCT f0.customer_code, f0.codigo_tipo_negocio, f0.codigo_subcanal
         FROM facturas f0
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-        WHERE (f0.seller_code ILIKE 'V%' OR f0.seller_code IN ('10','18','27'))
+        WHERE f0.codigo_tipo_negocio = '29'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
           AND f0.status IN (2,4,5)
           AND f0.fecha_creacion >= :iniYear
           AND f0.fecha_creacion <  :finYear
       ) base
-      LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
-      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      -- Canal y subcanal desde los campos directos de la factura
+      LEFT JOIN subcanales sc ON sc.codigo_subcanal = base.codigo_subcanal
+      LEFT JOIN tipos_negocio tn ON tn.codigo = sc.codigo_tipo_negocio
+      -- Métricas del mes actual por customer_code + tipo_negocio VIP + BOTELLÓN
       LEFT JOIN LATERAL (
         SELECT SUM(dd2.cantidad) AS cantidad_actual,
                SUM(dd2.total)   AS consumo_actual
         FROM facturas f2
         JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
         WHERE f2.customer_code = base.customer_code
-          AND (f2.seller_code ILIKE 'V%' OR f2.seller_code IN ('10','18','27'))
+          AND f2.codigo_tipo_negocio = '29'
           AND dd2.descripcion_categoria = 'BOTELLÓN'
           AND f2.status IN (2,4,5)
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
       ) act ON true
+      -- Métricas del mes anterior
       LEFT JOIN LATERAL (
         SELECT SUM(dd3.total) AS consumo_anterior
         FROM facturas f3
         JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
         WHERE f3.customer_code = base.customer_code
-          AND (f3.seller_code ILIKE 'V%' OR f3.seller_code IN ('10','18','27'))
+          AND f3.codigo_tipo_negocio = '29'
           AND dd3.descripcion_categoria = 'BOTELLÓN'
           AND f3.status IN (2,4,5)
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
       ) ant ON true
-      GROUP BY COALESCE(tn.descripcion, 'Sin Clasificar')
-      ORDER BY monto_actual DESC NULLS LAST
+      GROUP BY COALESCE(tn.descripcion, 'Sin Canal'), COALESCE(sc.descripcion_subcanal, 'Sin Clasificar')
+      ORDER BY canal, monto_actual DESC NULLS LAST
     `, {
       replacements: { iniYear, finYear, inicio, fin, iniAnt, finAnt },
       type: Sequelize.QueryTypes.SELECT,
@@ -1166,10 +1178,10 @@ const obtenerVipSubcanales = async (req, res) => {
              SUM(dd.total)    AS monto_usd
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE (f.seller_code ILIKE 'V%' OR f.seller_code IN ('10','18','27'))
+      WHERE f.codigo_tipo_negocio = '29'
         AND f.status IN (2,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
-        AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+        AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC
     `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
@@ -1206,7 +1218,8 @@ const obtenerVipClientesPorTipo = async (req, res) => {
       SELECT
         base.customer_code                                                        AS codigo_cliente,
         COALESCE(c.nombre_cliente, base.customer_code)                           AS nombre_cliente,
-        COALESCE(tn.descripcion, 'Sin Clasificar')                               AS tipo_negocio,
+        COALESCE(sc.descripcion_subcanal, 'Sin Clasificar')                      AS tipo_negocio,
+        COALESCE(tn.descripcion, 'Sin Canal')                                    AS canal,
         COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '')          AS telefono,
         COALESCE(act.cantidad_actual,  0)                                        AS cantidad_actual,
         COALESCE(act.consumo_actual,   0)                                        AS consumo_actual,
@@ -1215,17 +1228,21 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         ult.ultima_factura,
         COALESCE(nsuc.total_sucursales, 1)                                       AS total_sucursales
       FROM (
-        SELECT DISTINCT f0.customer_code
+        -- Universo VIP: customer_code con código_subcanal y tipo_negocio desde la factura
+        SELECT DISTINCT f0.customer_code, f0.codigo_tipo_negocio, f0.codigo_subcanal
         FROM facturas f0
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-        WHERE (f0.seller_code ILIKE 'V%' OR f0.seller_code IN ('10','18','27'))
+        WHERE f0.codigo_tipo_negocio = '29'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
           AND f0.status IN (2,4,5)
           AND f0.fecha_creacion >= :iniYear
           AND f0.fecha_creacion <  :finYear
       ) base
+      -- Nombre e info del cliente
       LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
-      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      -- Canal y subcanal desde campos directos de la factura
+      LEFT JOIN subcanales sc ON sc.codigo_subcanal = base.codigo_subcanal
+      LEFT JOIN tipos_negocio tn ON tn.codigo = sc.codigo_tipo_negocio
       LEFT JOIN LATERAL (
         SELECT telefono_direccion_cliente
         FROM direcciones_clientes
@@ -1233,57 +1250,57 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         ORDER BY (telefono_direccion_cliente IS NOT NULL) DESC
         LIMIT 1
       ) dc ON true
+      -- Sucursales del cliente — por customer_code
       LEFT JOIN LATERAL (
         SELECT COUNT(DISTINCT f0b.customer_address_code) AS total_sucursales
         FROM facturas f0b
         JOIN detalle_documento dd0b ON dd0b.documento_code = f0b.code
         WHERE f0b.customer_code = base.customer_code
-          AND (f0b.seller_code ILIKE 'V%' OR f0b.seller_code IN ('10','18','27'))
           AND dd0b.descripcion_categoria = 'BOTELLÓN'
           AND f0b.status IN (2,4,5)
       ) nsuc ON true
+      -- Consumo mes actual — por customer_code, sin filtrar seller
       LEFT JOIN LATERAL (
         SELECT SUM(dd2.cantidad) AS cantidad_actual,
                SUM(dd2.total)   AS consumo_actual
         FROM facturas f2
         JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
         WHERE f2.customer_code = base.customer_code
-          AND (f2.seller_code ILIKE 'V%' OR f2.seller_code IN ('10','18','27'))
           AND dd2.descripcion_categoria = 'BOTELLÓN'
           AND f2.status IN (2,4,5)
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
       ) act ON true
+      -- Consumo mes anterior — por customer_code, sin filtrar seller
       LEFT JOIN LATERAL (
         SELECT SUM(dd3.total) AS consumo_anterior
         FROM facturas f3
         JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
         WHERE f3.customer_code = base.customer_code
-          AND (f3.seller_code ILIKE 'V%' OR f3.seller_code IN ('10','18','27'))
           AND dd3.descripcion_categoria = 'BOTELLÓN'
           AND f3.status IN (2,4,5)
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
       ) ant ON true
+      -- Máximo histórico — por customer_code
       LEFT JOIN LATERAL (
         SELECT MAX(dd4.total) AS max_consumo
         FROM facturas f4
         JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
         WHERE f4.customer_code = base.customer_code
-          AND (f4.seller_code ILIKE 'V%' OR f4.seller_code IN ('10','18','27'))
           AND dd4.descripcion_categoria = 'BOTELLÓN'
           AND f4.status IN (2,4,5)
       ) mx ON true
+      -- Última factura — por customer_code
       LEFT JOIN LATERAL (
         SELECT MAX(f5.fecha_creacion)::date AS ultima_factura
         FROM facturas f5
         JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
         WHERE f5.customer_code = base.customer_code
-          AND (f5.seller_code ILIKE 'V%' OR f5.seller_code IN ('10','18','27'))
           AND dd5.descripcion_categoria = 'BOTELLÓN'
           AND f5.status IN (2,4,5)
       ) ult ON true
-      WHERE COALESCE(tn.descripcion, 'Sin Clasificar') = :tipo
+      WHERE COALESCE(sc.descripcion_subcanal, 'Sin Clasificar') = :tipo
       ORDER BY consumo_actual DESC NULLS LAST
     `, {
       replacements: { iniYear, finYear, inicio, fin, iniAnt, finAnt, tipo: tipo || '' },
@@ -1328,7 +1345,13 @@ const obtenerVipDetalleCliente = async (req, res) => {
 
     const sucursales = await sequelize.query(`
       SELECT
-        COALESCE(dc.calle1_direccion_cliente, 'Dirección Principal')             AS direccion,
+        CASE
+          WHEN LOWER(TRIM(COALESCE(dc.descripcion_direccion_cliente,''))) = ANY(ARRAY['delivery','invoice','contact','private','other',''])
+          THEN COALESCE(dc.calle1_direccion_cliente, base.customer_address_code::text)
+          ELSE COALESCE(NULLIF(TRIM(dc.descripcion_direccion_cliente),''), dc.calle1_direccion_cliente, base.customer_address_code::text)
+        END AS nombre_sucursal,
+        COALESCE(dc.calle1_direccion_cliente, '')                                                               AS direccion,
+        COALESCE(dc.codigo_direccion_cliente,   base.customer_address_code::text)                               AS codigo_sucursal,
         COALESCE(dc.telefono_direccion_cliente, '')                              AS telefono,
         COALESCE(dc.latitud_direccion_cliente::text,  '')                        AS latitud,
         COALESCE(dc.longitud_direccion_cliente::text, '')                        AS longitud,
@@ -1342,12 +1365,13 @@ const obtenerVipDetalleCliente = async (req, res) => {
         FROM facturas f0
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
         WHERE f0.customer_code = :clienteCode
-          AND (f0.seller_code ILIKE 'V%' OR f0.seller_code IN ('10','18','27'))
+          AND f0.codigo_tipo_negocio = '29'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
           AND f0.status IN (2,4,5)
       ) base
       LEFT JOIN direcciones_clientes dc
-             ON dc.codigo_direccion_cliente = base.customer_address_code
+             ON dc.codigo_cliente           = :clienteCode
+            AND dc.codigo_direccion_cliente = base.customer_address_code
       LEFT JOIN LATERAL (
         SELECT SUM(dd2.cantidad) AS cantidad_actual,
                SUM(dd2.total)   AS consumo_actual
@@ -1355,7 +1379,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
         JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
         WHERE f2.customer_code         = :clienteCode
           AND f2.customer_address_code = base.customer_address_code
-          AND (f2.seller_code ILIKE 'V%' OR f2.seller_code IN ('10','18','27'))
+          AND f2.codigo_tipo_negocio = '29'
           AND dd2.descripcion_categoria = 'BOTELLÓN'
           AND f2.status IN (2,4,5)
           AND f2.fecha_creacion >= :inicio
@@ -1367,7 +1391,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
         JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
         WHERE f3.customer_code         = :clienteCode
           AND f3.customer_address_code = base.customer_address_code
-          AND (f3.seller_code ILIKE 'V%' OR f3.seller_code IN ('10','18','27'))
+          AND f3.codigo_tipo_negocio = '29'
           AND dd3.descripcion_categoria = 'BOTELLÓN'
           AND f3.status IN (2,4,5)
           AND f3.fecha_creacion >= :iniAnt
@@ -1379,7 +1403,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
         JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
         WHERE f5.customer_code         = :clienteCode
           AND f5.customer_address_code = base.customer_address_code
-          AND (f5.seller_code ILIKE 'V%' OR f5.seller_code IN ('10','18','27'))
+          AND f5.codigo_tipo_negocio = '29'
           AND dd5.descripcion_categoria = 'BOTELLÓN'
           AND f5.status IN (2,4,5)
       ) ult ON true
@@ -1426,7 +1450,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
 
     const subcanales = await sequelize.query(`
       SELECT
-        COALESCE(tn.descripcion, 'Sin Clasificar')                              AS tipo_negocio,
+        COALESCE(tn.descripcion, 'EMPRESA')                                     AS tipo_negocio,
         COUNT(DISTINCT base.customer_code)                                       AS total_clientes,
         COUNT(DISTINCT CASE WHEN COALESCE(act.consumo_actual, 0) > 0
               THEN base.customer_code END)                                       AS clientes_con_consumo,
@@ -1488,7 +1512,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
         ) sub
       ) ant ON true
-      GROUP BY COALESCE(tn.descripcion, 'Sin Clasificar')
+      GROUP BY COALESCE(tn.descripcion, 'EMPRESA')
       ORDER BY monto_actual DESC NULLS LAST
     `, {
       replacements: { iniYear, finYear, inicio, fin, iniAnt, finAnt, ...rutasRepl },
@@ -1503,7 +1527,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
+        WHERE f.seller_code ILIKE 'E%' AND f.status IN (0,2,3,4,5)
           AND dd.descripcion_categoria = 'BOTELLÓN'
           AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
         UNION ALL
@@ -1555,7 +1579,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
       SELECT
         base.customer_code                                                          AS codigo_cliente,
         COALESCE(c.nombre_cliente, base.customer_code)                             AS nombre_cliente,
-        COALESCE(tn.descripcion, 'Sin Clasificar')                                 AS tipo_negocio,
+        COALESCE(tn.descripcion, 'EMPRESA')                                        AS tipo_negocio,
         COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '')            AS telefono,
         COALESCE(act.cantidad_actual,  0)                                          AS cantidad_actual,
         COALESCE(act.consumo_actual,   0)                                          AS consumo_actual,
@@ -1589,13 +1613,25 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
         LIMIT 1
       ) dc ON true
       LEFT JOIN LATERAL (
-        SELECT COUNT(DISTINCT f0b.customer_address_code) AS total_sucursales
-        FROM facturas f0b
-        JOIN detalle_documento dd0b ON dd0b.documento_code = f0b.code
-        WHERE f0b.customer_code = base.customer_code
-          AND f0b.seller_code ILIKE 'E%'
-          AND dd0b.descripcion_categoria = 'BOTELLÓN'
-          AND f0b.status IN (2,4,5)
+        SELECT COUNT(DISTINCT suc_code) AS total_sucursales
+        FROM (
+          SELECT f0b.customer_address_code::text AS suc_code
+          FROM facturas f0b
+          JOIN detalle_documento dd0b ON dd0b.documento_code = f0b.code
+          WHERE f0b.customer_code = base.customer_code
+            AND f0b.seller_code ILIKE 'E%'
+            AND dd0b.descripcion_categoria = 'BOTELLÓN'
+            AND f0b.status IN (2,4,5)
+          UNION
+          SELECT o0b.customer_address_code::text AS suc_code
+          FROM ordenes o0b
+          JOIN detalle_documento dd0b ON dd0b.documento_code = o0b.code
+          WHERE o0b.customer_code = base.customer_code
+            AND o0b.seller_nombre IN (${rutasPH})
+            AND o0b.type = 2 AND o0b.status IN (2,4,5)
+            AND dd0b.descripcion_categoria = 'BOTELLÓN'
+        ) suc_all
+        WHERE suc_code IS NOT NULL
       ) nsuc ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(sub.cantidad), 0) AS cantidad_actual,
@@ -1664,7 +1700,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
              AND dd5.descripcion_categoria = 'BOTELLÓN')
         ) AS ultima_factura
       ) ult ON true
-      WHERE COALESCE(tn.descripcion, 'Sin Clasificar') = :tipo
+      WHERE COALESCE(tn.descripcion, 'EMPRESA') = :tipo
       ORDER BY consumo_actual DESC NULLS LAST
     `, {
       replacements: { iniYear, finYear, inicio, fin, iniAnt, finAnt, tipo: tipo || '', ...rutasRepl },
@@ -1713,26 +1749,45 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
 
     const sucursales = await sequelize.query(`
       SELECT
-        COALESCE(dc.calle1_direccion_cliente, 'Dirección Principal')              AS direccion,
-        COALESCE(dc.telefono_direccion_cliente, '')                               AS telefono,
-        COALESCE(dc.latitud_direccion_cliente::text,  '')                         AS latitud,
-        COALESCE(dc.longitud_direccion_cliente::text, '')                         AS longitud,
+        CASE
+          WHEN LOWER(TRIM(COALESCE(dc.descripcion_direccion_cliente,''))) = ANY(ARRAY['delivery','invoice','contact','private','other',''])
+          THEN COALESCE(dc.calle1_direccion_cliente, base.customer_address_code::text)
+          ELSE COALESCE(NULLIF(TRIM(dc.descripcion_direccion_cliente),''), dc.calle1_direccion_cliente, base.customer_address_code::text)
+        END AS nombre_sucursal,
+        COALESCE(dc.calle1_direccion_cliente, '')                                AS direccion,
+        COALESCE(dc.codigo_direccion_cliente, base.customer_address_code::text)  AS codigo_sucursal,
+        COALESCE(dc.telefono_direccion_cliente, '')                              AS telefono,
+        COALESCE(dc.latitud_direccion_cliente::text,  '')                        AS latitud,
+        COALESCE(dc.longitud_direccion_cliente::text, '')                        AS longitud,
         base.customer_address_code,
-        COALESCE(act.cantidad_actual,  0)                                         AS cantidad_actual,
-        COALESCE(act.consumo_actual,   0)                                         AS consumo_actual,
-        COALESCE(ant.consumo_anterior, 0)                                         AS consumo_anterior,
+        COALESCE(act.cantidad_actual,  0)                                        AS cantidad_actual,
+        COALESCE(act.consumo_actual,   0)                                        AS consumo_actual,
+        COALESCE(ant.consumo_anterior, 0)                                        AS consumo_anterior,
         ult.ultima_factura
       FROM (
-        SELECT DISTINCT f0.customer_address_code
-        FROM facturas f0
-        JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-        WHERE f0.customer_code = :clienteCode
-          AND f0.seller_code ILIKE 'E%'
-          AND dd0.descripcion_categoria = 'BOTELLÓN'
-          AND f0.status IN (2,4,5)
+        SELECT DISTINCT suc_code AS customer_address_code
+        FROM (
+          SELECT f0.customer_address_code::text AS suc_code
+          FROM facturas f0
+          JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
+          WHERE f0.customer_code = :clienteCode
+            AND f0.seller_code ILIKE 'E%'
+            AND dd0.descripcion_categoria = 'BOTELLÓN'
+            AND f0.status IN (2,4,5)
+          UNION
+          SELECT o0.customer_address_code::text AS suc_code
+          FROM ordenes o0
+          JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
+          WHERE o0.customer_code = :clienteCode
+            AND o0.seller_nombre IN (${rutasPH})
+            AND o0.type = 2 AND o0.status IN (2,4,5)
+            AND dd0.descripcion_categoria = 'BOTELLÓN'
+        ) suc_src
+        WHERE suc_code IS NOT NULL
       ) base
       LEFT JOIN direcciones_clientes dc
-             ON dc.codigo_direccion_cliente = base.customer_address_code
+             ON dc.codigo_cliente           = :clienteCode
+            AND dc.codigo_direccion_cliente = base.customer_address_code
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(sub.cantidad), 0) AS cantidad_actual,
                COALESCE(SUM(sub.total),   0) AS consumo_actual
@@ -1748,7 +1803,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           SELECT dd2.cantidad, dd2.total FROM ordenes o2
           JOIN detalle_documento dd2 ON dd2.documento_code = o2.code
           WHERE o2.customer_code = :clienteCode
-            AND o2.customer_address_code = base.customer_address_code
+            AND o2.customer_address_code::text = base.customer_address_code
             AND o2.seller_nombre IN (${rutasPH})
             AND o2.type = 2 AND o2.status IN (2,4,5)
             AND dd2.descripcion_categoria = 'BOTELLÓN'
@@ -1769,7 +1824,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           SELECT dd3.total FROM ordenes o3
           JOIN detalle_documento dd3 ON dd3.documento_code = o3.code
           WHERE o3.customer_code = :clienteCode
-            AND o3.customer_address_code = base.customer_address_code
+            AND o3.customer_address_code::text = base.customer_address_code
             AND o3.seller_nombre IN (${rutasPH})
             AND o3.type = 2 AND o3.status IN (2,4,5)
             AND dd3.descripcion_categoria = 'BOTELLÓN'
