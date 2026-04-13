@@ -245,7 +245,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     JOIN detalle_documento dd
       ON dd.documento_code = f.code
     WHERE
-      f.status IN (0,2,3,4,5)
+      f.status IN (2,4,5)
       AND dd.descripcion_categoria = 'BOTELLÓN'
       AND (
         (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
@@ -804,8 +804,11 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
         WHERE f0.seller_code ILIKE 'A%'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
           AND f0.status IN (2,4,5)
-          AND f0.fecha_creacion >= :iniYear
-          AND f0.fecha_creacion <  :finYear
+          AND (
+            (f0.codigo_tipo_negocio != '29' AND f0.fecha_entrega  >= :iniYear AND f0.fecha_entrega  < :finYear)
+            OR
+            (f0.codigo_tipo_negocio  = '29' AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear)
+          )
       ) base
       LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
       LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
@@ -830,8 +833,11 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
           AND f2.seller_code ILIKE 'A%'
           AND dd2.descripcion_categoria = 'BOTELLÓN'
           AND f2.status IN (2,4,5)
-          AND f2.fecha_creacion >= :inicio
-          AND f2.fecha_creacion <  :fin
+          AND (
+            (f2.codigo_tipo_negocio != '29' AND f2.fecha_entrega  >= :inicio AND f2.fecha_entrega  < :fin)
+            OR
+            (f2.codigo_tipo_negocio  = '29' AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin)
+          )
       ) act ON true
       LEFT JOIN LATERAL (
         SELECT SUM(dd3.total) AS consumo_anterior
@@ -841,8 +847,11 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
           AND f3.seller_code ILIKE 'A%'
           AND dd3.descripcion_categoria = 'BOTELLÓN'
           AND f3.status IN (2,4,5)
-          AND f3.fecha_creacion >= :iniAnt
-          AND f3.fecha_creacion <  :finAnt
+          AND (
+            (f3.codigo_tipo_negocio != '29' AND f3.fecha_entrega  >= :iniAnt AND f3.fecha_entrega  < :finAnt)
+            OR
+            (f3.codigo_tipo_negocio  = '29' AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt)
+          )
       ) ant ON true
       LEFT JOIN LATERAL (
         SELECT MAX(dd4.total) AS max_consumo
@@ -879,9 +888,13 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.seller_code ILIKE 'A%'
-        AND f.status IN (0,2,3,4,5)
+        AND f.status IN (2,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
-        AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+        AND (
+          (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
+          OR
+          (f.codigo_tipo_negocio  = '29' AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin)
+        )
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC
     `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
