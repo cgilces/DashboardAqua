@@ -238,7 +238,7 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
             <tr
               key={i}
               onClick={() => navigate(`/detalle-hielo/${r.usuario}/${anio}/${mes}`)}  // Redirige al hacer clic en cualquier fila
-              className={`${i % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] cursor-pointer`}  // Agrega cursor pointer para mostrar que es clickeable
+              className={`${i % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] cursor-pointer`}  // Agrega cursor pointer para mostrar que es clickeable
             >
               <td className="px-4 py-2 text-blue-300 font-bold">{r.usuario}</td>
               <td className="px-4 py-2 text-right text-green-400 font-bold">

@@ -1,6 +1,6 @@
 // controllers/sincronizacionController.js
 const sequelize = require("../../db");
-const { sincronizarVentasRango }        = require("../../services/sincronizacionService");
+const { sincronizarVentasRango, sincronizarDirecciones } = require("../../services/sincronizacionService");
 const { sincronizarOdooCompletoRango }  = require("../../services/odooServicio/sincronizacionOdooService");
 const syncState = require("./syncState");
 
@@ -82,52 +82,74 @@ const sincronizarVentas = async (req, res) => {
       odoo       : { estado: "EN_PROCESO", errores: 0 },
     });
 
-    // ── Ejecutar ambas en paralelo en background ────────────────
-    Promise.allSettled([
-      sincronizarVentasRango(startDate, endDate, syncState),
-      sincronizarOdooCompletoRango(startDate, endDate),
-    ]).then(([resMV, resOdoo]) => {
+    // ── Ejecutar todo en background ────────────────
+    (async () => {
+      try {
+        // FASE 1: MobilVendor + Odoo en paralelo (0% → 70%)
+        syncState.percent = 5;
+        const [resMV, resOdoo] = await Promise.allSettled([
+          sincronizarVentasRango(startDate, endDate, syncState),
+          sincronizarOdooCompletoRango(startDate, endDate),
+        ]);
 
-      // MobilVendor
-      if (resMV.status === "fulfilled") {
-        syncState.mobilvendor.estado  = "COMPLETADO";
-        syncState.mobilvendor.errores = resMV.value?.erroresPorDocumento?.length ?? 0;
-        console.log("✅ [MobilVendor] Sincronización finalizada");
-      } else {
-        syncState.mobilvendor.estado = "ERROR";
-        syncState.mobilvendor.error  = resMV.reason?.message;
-        console.error("❌ [MobilVendor] Error:", resMV.reason?.message);
+        // MobilVendor
+        if (resMV.status === "fulfilled") {
+          syncState.mobilvendor.estado  = "COMPLETADO";
+          syncState.mobilvendor.errores = resMV.value?.erroresPorDocumento?.length ?? 0;
+          console.log("✅ [MobilVendor] Sincronización finalizada");
+        } else {
+          syncState.mobilvendor.estado = "ERROR";
+          syncState.mobilvendor.error  = resMV.reason?.message;
+          console.error("❌ [MobilVendor] Error:", resMV.reason?.message);
+        }
+
+        // Odoo
+        if (resOdoo.status === "fulfilled") {
+          syncState.odoo.estado = "COMPLETADO";
+          console.log("✅ [Odoo] Sincronización finalizada");
+        } else {
+          syncState.odoo.estado = "ERROR";
+          syncState.odoo.error  = resOdoo.reason?.message;
+          console.error("❌ [Odoo] Error:", resOdoo.reason?.message);
+        }
+
+        // FASE 2: Direcciones (70% → 95%)
+        syncState.percent = 70;
+        try {
+          console.log("📍 [Direcciones] Iniciando sincronización de customer_addresses...");
+          const resDirecciones = await sincronizarDirecciones();
+          console.log(`✅ [Direcciones] Completa: ${resDirecciones.totalProcessed} procesadas, ${resDirecciones.totalErrors} errores`);
+        } catch (errDir) {
+          console.error("❌ [Direcciones] Error:", errDir.message);
+        }
+
+        // FASE 3: Finalizar
+        const hayErrores =
+          resMV.status === "rejected" || resOdoo.status === "rejected";
+
+        syncState.running    = false;
+        syncState.percent    = 100;
+        syncState.finishedAt = new Date();
+        syncState.error      = hayErrores
+          ? "Una o más fuentes terminaron con errores. Revisar logs."
+          : null;
+
+        console.log(`\n📊 [SYNC] Resultado final:`);
+        console.log(`   MobilVendor : ${syncState.mobilvendor.estado}`);
+        console.log(`   Odoo        : ${syncState.odoo.estado}`);
+
+      } catch (err) {
+        syncState.running    = false;
+        syncState.percent    = 0;
+        syncState.finishedAt = new Date();
+        syncState.error      = err.message;
+        console.error("❌ [SYNC] Error global:", err.message);
       }
-
-      // Odoo
-      if (resOdoo.status === "fulfilled") {
-        syncState.odoo.estado = "COMPLETADO";
-        console.log("✅ [Odoo] Sincronización finalizada");
-      } else {
-        syncState.odoo.estado = "ERROR";
-        syncState.odoo.error  = resOdoo.reason?.message;
-        console.error("❌ [Odoo] Error:", resOdoo.reason?.message);
-      }
-
-      // Finalizar estado global
-      const hayErrores =
-        resMV.status === "rejected" || resOdoo.status === "rejected";
-
-      syncState.running    = false;
-      syncState.percent    = 100;
-      syncState.finishedAt = new Date();
-      syncState.error      = hayErrores
-        ? "Una o más fuentes terminaron con errores. Revisar logs."
-        : null;
-
-      console.log(`\n📊 [SYNC] Resultado final:`);
-      console.log(`   MobilVendor : ${syncState.mobilvendor.estado}`);
-      console.log(`   Odoo        : ${syncState.odoo.estado}`);
-    });
+    })();
 
     // ── Respuesta inmediata ─────────────────────────────────────
     return res.json({
-      mensaje: "Sincronización iniciada (MobilVendor + Odoo en paralelo)",
+      mensaje: "Sincronización iniciada (MobilVendor + Odoo + Direcciones en paralelo)",
       rango  : { desde: startDate, hasta: endDate },
     });
 
@@ -137,4 +159,30 @@ const sincronizarVentas = async (req, res) => {
   }
 };
 
-module.exports = { sincronizarVentas, getLastSync };
+// ================================================================
+// GET /api/sync/sincronizar-direcciones
+// Sincroniza direcciones desde customer_addresses de MobilVendor
+// ================================================================
+const sincronizarDireccionesCtrl = async (req, res) => {
+  try {
+    console.log("\n🚀 [SYNC] Iniciando sincronización de direcciones...");
+
+    // Ejecutar en background
+    sincronizarDirecciones()
+      .then((result) => {
+        console.log(`✅ [Direcciones] Completa: ${result.totalProcessed} procesadas, ${result.totalErrors} errores`);
+      })
+      .catch((err) => {
+        console.error("❌ [Direcciones] Error:", err.message);
+      });
+
+    return res.json({
+      mensaje: "Sincronización de direcciones iniciada en background",
+    });
+  } catch (error) {
+    console.error("❌ [SYNC DIRECCIONES]", error.message);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports = { sincronizarVentas, getLastSync, sincronizarDireccionesCtrl };

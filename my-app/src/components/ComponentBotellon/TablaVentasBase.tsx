@@ -342,7 +342,7 @@ const TablaVentasBase: React.FC<Props> = ({
                             }
                             className={`transition-all duration-200 cursor-pointer
                                         ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
-                                        hover:bg-[#016a57] hover:shadow-lg hover:text-white
+                                        hover:bg-[#025940] hover:shadow-lg hover:text-white
                                         border-l-4 border-transparent hover:border-green-400
                                     `}
                         >

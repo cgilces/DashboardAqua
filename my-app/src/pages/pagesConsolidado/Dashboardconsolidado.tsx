@@ -577,7 +577,7 @@ export default function Dashboardconsolidado() {
                       return (
                         <tr
                           key={c.canal}
-                          className={`${i % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}
+                          className={`${i % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition`}
                         >
                           <td className="px-4 py-3 font-bold" style={{ color: clr }}>
                             <div className="flex items-center gap-2">

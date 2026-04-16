@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { BsDownload } from "react-icons/bs";
@@ -12,25 +12,40 @@ const fmt = (n: number) =>
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-type Cliente = {
-  codigo_cliente: string | number;
-  nombre_cliente: string;
+// ── Tipos ─────────────────────────────────────────────────────────
+type Direccion = {
+  codigo_cliente:    string | number;
+  codigo_direccion:  string | null;
+  nombre_cliente:    string;
   direccion_entrega: string;
-  tipo_negocio: string;
-  telefono_cliente: string;
-  latitud_cliente: string;
-  longitud_cliente: string;
+  tipo_negocio:      string;
+  telefono_cliente:  string;
+  latitud_cliente:   string;
+  longitud_cliente:  string;
   cantidad_productos: number;
-  consumo_actual: string;
-  ultima_visita: string | null;
-  ultima_factura: string | null;
-  tuvo_consumo: "Sí" | "No";
-  vsMesAnterior: { monto_anterior: string; variacion_abs: string; variacion_porc: string };
+  consumo_actual:    string;
+  ultima_factura:    string | null;
+  tuvo_consumo:      "Sí" | "No";
+  vsMesAnterior:     { monto_anterior: string; variacion_abs: string; variacion_porc: string };
 };
 
-type Resumen = { totalClientes: number; totalDirecciones: number; clientesConConsumo: number; clientesSinConsumo: number };
+type ClienteAgrupado = {
+  codigo_cliente:   string | number;
+  nombre_cliente:   string;
+  tipo_negocio:     string;
+  telefono_cliente: string;
+  consumo_actual:   number;
+  consumo_anterior: number;
+  cantidad_productos: number;
+  variacion_abs:    number;
+  variacion_porc:   number | null;
+  ultima_factura:   string | null;
+  total_direcciones: number;
+  tuvo_consumo:     "Sí" | "No";
+};
 
 type Producto = { producto: string; unidades_vendidas: number; monto_usd: number };
+type Resumen  = { totalClientes: number; totalDirecciones: number; clientesConConsumo: number; clientesSinConsumo: number };
 
 const POR_PAGINA = 60;
 
@@ -38,115 +53,249 @@ const DetalleHieloOdooPage: React.FC = () => {
   const { anio, mes } = useParams<{ anio: string; mes: string }>();
   const navigate = useNavigate();
 
-  const [clientes,   setClientes]   = useState<Cliente[]>([]);
-  const [resumen,    setResumen]    = useState<Resumen | null>(null);
-  const [productos,  setProductos]  = useState<Producto[]>([]);
-  const [cargando,   setCargando]   = useState(false);
+  if (!anio || !mes) return <div className="text-white p-10">Parámetros inválidos.</div>;
+
+  // ── Estado principal ───────────────────────────────────────────
+  const [todasDirecciones, setTodasDirecciones] = useState<Direccion[]>([]);
+  const [resumen,          setResumen]           = useState<Resumen | null>(null);
+  const [productosGlobal,  setProductosGlobal]   = useState<Producto[]>([]);
+  const [cargando,         setCargando]          = useState(false);
+
+  // ── Navegación ────────────────────────────────────────────────
+  const [clienteSeleccionado, setClienteSeleccionado] = useState<string | null>(null);
+  const [clienteNombre,       setClienteNombre]       = useState<string>("");
+
+  // ── Expand productos por dirección ────────────────────────────
+  const [expandedDir,    setExpandedDir]    = useState<Set<string>>(new Set());
+  const [productosDirCache, setProductosDirCache] = useState<Map<string, Producto[] | undefined>>(new Map());
+
+  // ── Filtros / búsqueda ─────────────────────────────────────────
   const [busqueda,   setBusqueda]   = useState("");
   const [filtro,     setFiltro]     = useState<"Todos" | "Sí" | "No">("Todos");
   const [pagina,     setPagina]     = useState(1);
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({ key: "codigo_cliente", direction: "asc" });
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
+    key: "consumo_actual", direction: "desc",
+  });
 
-  if (!anio || !mes) return <div className="text-white p-10">Parámetros inválidos.</div>;
-
-  const requestSort = (key: string) => {
-    const dir = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
-    setSortConfig({ key, direction: dir });
-    setClientes(prev => [...prev].sort((a, b) => {
-      const av: any = key === "vsMesAnterior" ? Number((a as any).vsMesAnterior?.variacion_abs) || 0 : (a as any)[key];
-      const bv: any = key === "vsMesAnterior" ? Number((b as any).vsMesAnterior?.variacion_abs) || 0 : (b as any)[key];
-      const an = Number(String(av).replace(",", ".")), bn = Number(String(bv).replace(",", "."));
-      if (Number.isFinite(an) && Number.isFinite(bn)) return dir === "asc" ? an - bn : bn - an;
-      return dir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-    }));
-  };
-
-  const sa = (k: string) => sortConfig.key === k ? (sortConfig.direction === "asc" ? " ↑" : " ↓") : " ↕";
-
+  // ── Fetch datos ────────────────────────────────────────────────
   useEffect(() => {
     setCargando(true);
+    setClienteSeleccionado(null);
+    setExpandedDir(new Set());
+    setProductosDirCache(new Map());
     fetch(`${API_BASE_URL}/api/odoo/hielo-clientes?anio=${anio}&mes=${mes}`)
       .then(r => r.json())
       .then(data => {
-        let lista = data.clientes || [];
-        if (filtro !== "Todos") lista = lista.filter((c: Cliente) => c.tuvo_consumo === filtro);
-        setClientes(lista);
-        setResumen(data.resumen);
-        setProductos(data.productosVendidos || []);
+        setTodasDirecciones(data.clientes || []);
+        setResumen(data.resumen || null);
+        setProductosGlobal(data.productosVendidos || []);
         setPagina(1);
       })
       .catch(console.error)
       .finally(() => setCargando(false));
-  }, [anio, mes, filtro]);
+  }, [anio, mes]);
 
-  const filtrados = clientes.filter(c => {
+  // ── Agrupación por cliente ─────────────────────────────────────
+  const clientesAgrupados = useMemo((): ClienteAgrupado[] => {
+    const mapa: Record<string, ClienteAgrupado> = {};
+    todasDirecciones.forEach(d => {
+      const key = String(d.codigo_cliente);
+      if (!mapa[key]) {
+        mapa[key] = {
+          codigo_cliente:    d.codigo_cliente,
+          nombre_cliente:    d.nombre_cliente,
+          tipo_negocio:      d.tipo_negocio,
+          telefono_cliente:  d.telefono_cliente,
+          consumo_actual:    0,
+          consumo_anterior:  0,
+          cantidad_productos: 0,
+          variacion_abs:     0,
+          variacion_porc:    null,
+          ultima_factura:    null,
+          total_direcciones: 0,
+          tuvo_consumo:      "No",
+        };
+      }
+      const g = mapa[key];
+      g.consumo_actual    += Number(d.consumo_actual)               || 0;
+      g.consumo_anterior  += Number(d.vsMesAnterior?.monto_anterior) || 0;
+      g.cantidad_productos += Number(d.cantidad_productos)           || 0;
+      g.total_direcciones  += 1;
+      if (d.tuvo_consumo === "Sí") g.tuvo_consumo = "Sí";
+      if (d.ultima_factura && (!g.ultima_factura || d.ultima_factura > g.ultima_factura))
+        g.ultima_factura = d.ultima_factura;
+    });
+    return Object.values(mapa).map(g => ({
+      ...g,
+      variacion_abs:  g.consumo_actual - g.consumo_anterior,
+      variacion_porc: g.consumo_anterior > 0
+        ? Number(((g.consumo_actual - g.consumo_anterior) / g.consumo_anterior * 100).toFixed(1))
+        : null,
+    })).sort((a, b) => b.consumo_actual - a.consumo_actual);
+  }, [todasDirecciones]);
+
+  // ── Direcciones del cliente seleccionado ───────────────────────
+  const direccionesCliente = useMemo((): Direccion[] => {
+    if (!clienteSeleccionado) return [];
+    return todasDirecciones.filter(d => String(d.codigo_cliente) === clienteSeleccionado);
+  }, [todasDirecciones, clienteSeleccionado]);
+
+  // ── Toggle expand productos de una dirección ───────────────────
+  const toggleDir = async (d: Direccion) => {
+    const key = d.codigo_direccion || String(d.codigo_cliente);
+    setExpandedDir(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+    if (!productosDirCache.has(key)) {
+      setProductosDirCache(prev => new Map(prev).set(key, undefined));
+      try {
+        const params = new URLSearchParams({ anio, mes, customerCode: String(d.codigo_cliente) });
+        if (d.codigo_direccion) params.set("addressCode", d.codigo_direccion);
+        const res  = await fetch(`${API_BASE_URL}/api/odoo/hielo-productos-direccion?${params}`);
+        const json = await res.json();
+        setProductosDirCache(prev => new Map(prev).set(key, json.ok ? json.productos : []));
+      } catch {
+        setProductosDirCache(prev => new Map(prev).set(key, []));
+      }
+    }
+  };
+
+  // ── Sorting ────────────────────────────────────────────────────
+  const requestSort = (key: string) => {
+    const dir = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+    setSortConfig({ key, direction: dir });
+  };
+  const sa = (k: string) => sortConfig.key === k ? (sortConfig.direction === "asc" ? " ↑" : " ↓") : " ↕";
+
+  // ── Filtrado + paginación lista clientes ───────────────────────
+  const filtrados = useMemo(() => {
+    let lista = clientesAgrupados;
+    if (filtro !== "Todos") lista = lista.filter(c => c.tuvo_consumo === filtro);
     const q = busqueda.toLowerCase();
-    return !q || c.nombre_cliente?.toLowerCase().includes(q) || String(c.codigo_cliente).toLowerCase().includes(q);
-  });
+    if (q) lista = lista.filter(c =>
+      c.nombre_cliente?.toLowerCase().includes(q) || String(c.codigo_cliente).toLowerCase().includes(q)
+    );
+    // sort
+    return [...lista].sort((a, b) => {
+      const av: any = (a as any)[sortConfig.key] ?? 0;
+      const bv: any = (b as any)[sortConfig.key] ?? 0;
+      const an = Number(av), bn = Number(bv);
+      if (Number.isFinite(an) && Number.isFinite(bn))
+        return sortConfig.direction === "asc" ? an - bn : bn - an;
+      return sortConfig.direction === "asc"
+        ? String(av).localeCompare(String(bv))
+        : String(bv).localeCompare(String(av));
+    });
+  }, [clientesAgrupados, filtro, busqueda, sortConfig]);
+
   const totalPags = Math.ceil(filtrados.length / POR_PAGINA);
   const paginados = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
+  // ── Exportar ───────────────────────────────────────────────────
   const exportar = () => {
-    const datos = filtrados.map((c, i) => ({
-      "N°": i + 1, Código: c.codigo_cliente, Cliente: c.nombre_cliente,
-      "Cód. Dirección": (c as any).codigo_direccion || '',
-      Dirección: c.direccion_entrega, "Tipo Negocio": c.tipo_negocio,
-      Teléfono: c.telefono_cliente, Latitud: c.latitud_cliente, Longitud: c.longitud_cliente,
-      "Cant. Actual": c.cantidad_productos, "Consumo Actual ($)": Number(c.consumo_actual),
-      "VS Mes Ant": c.vsMesAnterior
-        ? `${Number(c.vsMesAnterior.variacion_abs) > 0 ? "+" : ""}${Number(c.vsMesAnterior.variacion_abs).toFixed(2)} (${c.vsMesAnterior.variacion_porc})`
-        : "",
-      "Última Factura": c.ultima_factura || "—", "Tuvo Consumo": c.tuvo_consumo,
-    }));
-    const ws = XLSX.utils.json_to_sheet(datos);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Hielo Odoo");
-    XLSX.writeFile(wb, `clientes_hielo_odoo_${anio}_${mes}.xlsx`);
+    if (clienteSeleccionado) {
+      const datos = direccionesCliente.map((d, i) => ({
+        "N°": i + 1,
+        Código: d.codigo_cliente,
+        "Cód. Dirección": d.codigo_direccion || "—",
+        Dirección: d.direccion_entrega,
+        "Tipo Negocio": d.tipo_negocio,
+        Teléfono: d.telefono_cliente,
+        "Cant. Productos": d.cantidad_productos,
+        "Consumo Actual ($)": Number(d.consumo_actual),
+        "Consumo Anterior ($)": Number(d.vsMesAnterior?.monto_anterior || 0),
+        "VS Mes Ant ($)": Number(d.vsMesAnterior?.variacion_abs || 0),
+        "Última Factura": d.ultima_factura || "—",
+        Estado: d.tuvo_consumo === "Sí" ? "Activo" : "Sin consumo",
+      }));
+      const ws = XLSX.utils.json_to_sheet(datos);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Direcciones");
+      XLSX.writeFile(wb, `hielo_${clienteNombre}_${anio}_${mes}.xlsx`);
+    } else {
+      const datos = filtrados.map((c, i) => ({
+        "N°": i + 1,
+        Código: c.codigo_cliente,
+        Cliente: c.nombre_cliente,
+        "Tipo Negocio": c.tipo_negocio,
+        Teléfono: c.telefono_cliente,
+        Direcciones: c.total_direcciones,
+        "Cant. Productos": c.cantidad_productos,
+        "Consumo Actual ($)": c.consumo_actual,
+        "VS Mes Ant ($)": c.variacion_abs,
+        "Última Factura": c.ultima_factura || "—",
+        Estado: c.tuvo_consumo === "Sí" ? "Activo" : "Sin consumo",
+      }));
+      const ws = XLSX.utils.json_to_sheet(datos);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Clientes Hielo");
+      XLSX.writeFile(wb, `clientes_hielo_odoo_${anio}_${mes}.xlsx`);
+    }
   };
 
+  // ── Paginación ─────────────────────────────────────────────────
   const Paginacion = () => totalPags > 1 ? (
     <div className="flex items-center justify-between px-4 py-3 border-t border-[#046C5E]/30 flex-wrap gap-2">
       <span className="text-xs text-gray-400">
         {(pagina - 1) * POR_PAGINA + 1}–{Math.min(pagina * POR_PAGINA, filtrados.length)} de {filtrados.length}
       </span>
       <div className="flex gap-1 flex-wrap">
-        <button disabled={pagina === 1} onClick={() => setPagina(1)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">«</button>
-        <button disabled={pagina === 1} onClick={() => setPagina(p => p - 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">‹ Ant</button>
+        <button disabled={pagina === 1} onClick={() => setPagina(1)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">«</button>
+        <button disabled={pagina === 1} onClick={() => setPagina(p => p - 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">‹ Ant</button>
         {(() => {
           const pages: any[] = [];
           if (totalPags <= 5) { for (let i = 1; i <= totalPags; i++) pages.push(i); }
           else {
-            pages.push(1);
-            if (pagina > 3) pages.push("...");
+            pages.push(1); if (pagina > 3) pages.push("...");
             for (let i = Math.max(2, pagina - 1); i <= Math.min(totalPags - 1, pagina + 1); i++) pages.push(i);
-            if (pagina < totalPags - 2) pages.push("...");
-            pages.push(totalPags);
+            if (pagina < totalPags - 2) pages.push("..."); pages.push(totalPags);
           }
           return pages.map((n, i) =>
-            n === "..." ? <span key={`d${i}`} className="px-1 py-1 text-xs text-gray-400">…</span> :
+            n === "..." ? <span key={`d${i}`} className="px-1 text-xs text-gray-400">…</span> :
             <button key={`p${i}`} onClick={() => setPagina(n)}
-              className={`px-3 py-1 text-xs rounded ${pagina === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#016a57]"}`}>{n}</button>
+              className={`px-3 py-1 text-xs rounded ${pagina === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#025940]"}`}>{n}</button>
           );
         })()}
-        <button disabled={pagina === totalPags} onClick={() => setPagina(p => p + 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">Sig ›</button>
-        <button disabled={pagina === totalPags} onClick={() => setPagina(totalPags)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">»</button>
+        <button disabled={pagina === totalPags} onClick={() => setPagina(p => p + 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">Sig ›</button>
+        <button disabled={pagina === totalPags} onClick={() => setPagina(totalPags)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">»</button>
       </div>
     </div>
   ) : null;
+
+  // ── KPIs filtrados ─────────────────────────────────────────────
+  const totalMonto   = filtrados.reduce((a, c) => a + c.consumo_actual, 0);
+  const totalAnt     = filtrados.reduce((a, c) => a + c.consumo_anterior, 0);
+  const conConsumo   = filtrados.filter(c => c.tuvo_consumo === "Sí").length;
 
   return (
     <DashboardLayout>
       <div className="main-content min-h-screen text-white px-4 md:px-8 py-4 md:py-6">
         <Header />
 
-        {/* Cabecera */}
+        {/* ── Cabecera ─────────────────────────────────────────── */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6 border-b border-[#046C5E]/50 pb-4">
           <div>
-            <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">
-              ← Volver
+            <button
+              onClick={() => {
+                if (clienteSeleccionado !== null) {
+                  setClienteSeleccionado(null); setClienteNombre(""); setBusqueda(""); setFiltro("Todos"); setPagina(1);
+                  setExpandedDir(new Set()); setProductosDirCache(new Map());
+                } else {
+                  navigate(-1);
+                }
+              }}
+              className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">
+              ← {clienteSeleccionado ? "Volver a clientes" : "Volver"}
             </button>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight">HIELO ODOO — Clientes</h1>
-            <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio}</p>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight">
+              {clienteSeleccionado ? clienteNombre : "HIELO ODOO — Clientes"}
+            </h1>
+            <p className="text-xs text-gray-400">
+              {MESES[Number(mes)]} {anio}
+              {clienteSeleccionado && " · Direcciones de entrega"}
+            </p>
           </div>
           <button onClick={exportar}
             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 transition-all self-start sm:self-auto">
@@ -154,14 +303,14 @@ const DetalleHieloOdooPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Resumen */}
-        {resumen && (
+        {/* ── KPIs ─────────────────────────────────────────────── */}
+        {!clienteSeleccionado && resumen && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
             {[
-              { label: "Clientes únicos",    value: resumen.totalClientes,       color: "text-white" },
-              { label: "Direcciones",         value: resumen.totalDirecciones,    color: "text-cyan-300" },
-              { label: "Con consumo",         value: resumen.clientesConConsumo,  color: "text-green-400" },
-              { label: "Sin consumo",         value: resumen.clientesSinConsumo,  color: "text-red-400"   },
+              { label: "Clientes únicos",  value: resumen.totalClientes,       color: "text-white" },
+              { label: "Direcciones",       value: resumen.totalDirecciones,    color: "text-cyan-300" },
+              { label: "Con consumo",       value: resumen.clientesConConsumo,  color: "text-green-400" },
+              { label: "Sin consumo",       value: resumen.clientesSinConsumo,  color: "text-red-400" },
             ].map(k => (
               <div key={k.label} className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-xl p-3 md:p-4 text-center">
                 <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">{k.label}</p>
@@ -171,10 +320,22 @@ const DetalleHieloOdooPage: React.FC = () => {
           </div>
         )}
 
-        {/* Productos Vendidos */}
-        {productos.length > 0 && (
-          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-cyan-300 px-4 py-3 border-b border-[#046C5E]/30">
+        {/* ── VS Mes anterior ───────────────────────────────────── */}
+        {!clienteSeleccionado && !cargando && totalAnt > 0 && (() => {
+          const varAbs = totalMonto - totalAnt;
+          return (
+            <div className={`flex items-center gap-3 mb-5 px-4 py-3 rounded-xl border text-sm font-semibold
+              ${varAbs >= 0 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-red-500/10 border-red-500/30 text-red-300"}`}>
+              <span>{varAbs >= 0 ? "▲" : "▼"}</span>
+              <span>VS mes anterior: {varAbs >= 0 ? "+" : ""}${fmt(Math.abs(varAbs))} &nbsp;·&nbsp; Mes anterior: ${fmt(totalAnt)}</span>
+            </div>
+          );
+        })()}
+
+        {/* ── Productos vendidos (solo en vista principal) ──────── */}
+        {!clienteSeleccionado && productosGlobal.length > 0 && (
+          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl overflow-hidden mb-6 shadow-xl">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-emerald-300/70 px-4 py-3 border-b border-[#046C5E]/30">
               Productos Vendidos
             </h2>
             <div className="overflow-x-auto">
@@ -183,21 +344,21 @@ const DetalleHieloOdooPage: React.FC = () => {
                   <tr className="bg-[#014434] text-[10px] uppercase text-green-300">
                     <th className="px-4 py-3 text-left">Producto</th>
                     <th className="px-4 py-3 text-right">Unidades</th>
-                    <th className="px-4 py-3 text-right">Dólares</th>
+                    <th className="px-4 py-3 text-right">Ventas</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {productos.map((p, idx) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
-                      <td className="px-4 py-2">{p.producto}</td>
-                      <td className="px-4 py-2 text-right text-cyan-400 font-semibold">{Number(p.unidades_vendidas).toLocaleString("es-EC")}</td>
-                      <td className="px-4 py-2 text-right text-blue-400 font-semibold">${fmt(Number(p.monto_usd))}</td>
+                  {productosGlobal.map((p, idx) => (
+                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition-colors`}>
+                      <td className="px-4 py-2 text-white/80">{p.producto}</td>
+                      <td className="px-4 py-2 text-right text-green-400 font-semibold tabular-nums">{Number(p.unidades_vendidas).toLocaleString("es-EC")}</td>
+                      <td className="px-4 py-2 text-right text-blue-400 font-semibold tabular-nums">${fmt(Number(p.monto_usd))}</td>
                     </tr>
                   ))}
                   <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
-                    <td className="px-4 py-3 text-green-300 uppercase text-xs">Total</td>
-                    <td className="px-4 py-3 text-right text-cyan-400">{productos.reduce((a, p) => a + Number(p.unidades_vendidas), 0).toLocaleString("es-EC")}</td>
-                    <td className="px-4 py-3 text-right text-blue-400">${fmt(productos.reduce((a, p) => a + Number(p.monto_usd), 0))}</td>
+                    <td className="px-4 py-3 text-emerald-300/70 uppercase text-[11px]">Total</td>
+                    <td className="px-4 py-3 text-right text-green-400 tabular-nums">{productosGlobal.reduce((a, p) => a + Number(p.unidades_vendidas), 0).toLocaleString("es-EC")}</td>
+                    <td className="px-4 py-3 text-right text-blue-400 tabular-nums">${fmt(productosGlobal.reduce((a, p) => a + Number(p.monto_usd), 0))}</td>
                   </tr>
                 </tbody>
               </table>
@@ -205,25 +366,28 @@ const DetalleHieloOdooPage: React.FC = () => {
           </div>
         )}
 
-        {/* Filtros */}
-        <div className="flex flex-wrap gap-3 mb-4">
-          <div className="relative flex-1 min-w-[180px]">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 0 5 11a6 6 0 0 0 12 0z"/>
-            </svg>
-            <input type="text" placeholder="Buscar cliente o código…" value={busqueda}
-              onChange={e => { setBusqueda(e.target.value); setPagina(1); }}
-              className="bg-[#012E24] border border-[#046C5E] rounded-lg px-3 py-2 pl-9 text-sm text-white placeholder-gray-500 w-full focus:outline-none focus:border-emerald-500/60"/>
+        {/* ── Filtros (solo en vista lista clientes) ─────────────── */}
+        {!clienteSeleccionado && (
+          <div className="flex flex-wrap gap-3 mb-4">
+            <div className="relative flex-1 min-w-[180px]">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 0 5 11a6 6 0 0 0 12 0z"/>
+              </svg>
+              <input type="text" placeholder="Buscar cliente o código…" value={busqueda}
+                onChange={e => { setBusqueda(e.target.value); setPagina(1); }}
+                className="bg-[#012E24] border border-[#046C5E] rounded-lg px-3 py-2 pl-9 text-sm text-white placeholder-gray-500 w-full focus:outline-none focus:border-emerald-500/60"/>
+            </div>
+            <select value={filtro} onChange={e => { setFiltro(e.target.value as any); setPagina(1); }}
+              className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium">
+              <option value="Todos">Todos</option>
+              <option value="Sí">Con consumo</option>
+              <option value="No">Sin consumo</option>
+            </select>
           </div>
-          <select value={filtro} onChange={e => { setFiltro(e.target.value as any); setPagina(1); }}
-            className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium">
-            <option value="Todos">Todos</option>
-            <option value="Sí">Con consumo</option>
-            <option value="No">Sin consumo</option>
-          </select>
-        </div>
+        )}
 
-        {/* Loading */}
+        {/* ── Loading ──────────────────────────────────────────── */}
         {cargando && (
           <div className="flex flex-col justify-center items-center py-32 gap-4">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400" />
@@ -231,72 +395,59 @@ const DetalleHieloOdooPage: React.FC = () => {
           </div>
         )}
 
-        {/* Tabla / Cards */}
-        {!cargando && (
-          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
+        {/* ══ VISTA: LISTA DE CLIENTES ════════════════════════════ */}
+        {!cargando && !clienteSeleccionado && (
+          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl overflow-hidden mb-6 shadow-xl">
 
-            {/* ── MOBILE: cards ── */}
-            <div className="md:hidden divide-y divide-[#046C5E]/20">
-              {paginados.length === 0
+            {/* MOBILE */}
+            <div className="md:hidden">
+              {filtrados.length === 0
                 ? <p className="text-center text-gray-400 py-12 text-sm">No se encontraron clientes.</p>
-                : paginados.map((c, idx) => {
-                    const sinConsumo = c.tuvo_consumo === "No";
-                    const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
-                    return (
-                      <div key={`${c.codigo_cliente}_${(c as any).codigo_direccion}`}
-                        className={`p-4 ${sinConsumo ? "bg-red-900/30 border-l-4 border-red-500/60" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
-                            <p className="text-[11px] text-gray-400 font-mono mt-0.5">
-                              {c.codigo_cliente}
-                              {(c as any).codigo_direccion && <span className="ml-2 text-cyan-500">Dir: {(c as any).codigo_direccion}</span>}
-                            </p>
-                          </div>
-                          <span className={`ml-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
-                            {sinConsumo ? "Sin consumo" : "Activo"}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-2">
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Consumo Actual</p>
-                            <p className="text-white font-bold">${fmt(Number(c.consumo_actual))}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">VS Mes Ant</p>
-                            <p className={`font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
-                              {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
-                              {c.vsMesAnterior?.variacion_porc && <span className="ml-1 opacity-70 text-[10px]">({c.vsMesAnterior.variacion_porc})</span>}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Cant. Actual</p>
-                            <p className="text-cyan-300 font-semibold">{c.cantidad_productos}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Tipo Negocio</p>
-                            <p className="text-gray-300 truncate">{c.tipo_negocio || "—"}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Teléfono</p>
-                            <p className="text-gray-300">{c.telefono_cliente || "—"}</p>
+                : <div className="space-y-3 p-3">
+                    {paginados.map(c => {
+                      const sinConsumo = c.tuvo_consumo === "No";
+                      return (
+                        <div key={String(c.codigo_cliente)}
+                          onClick={() => { setClienteSeleccionado(String(c.codigo_cliente)); setClienteNombre(c.nombre_cliente); setExpandedDir(new Set()); setProductosDirCache(new Map()); }}
+                          className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-xl overflow-hidden cursor-pointer hover:border-emerald-500/40 transition-colors">
+                          <div className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0 pr-2">
+                                <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
+                                <p className="text-[11px] text-white/40 font-mono mt-0.5">{c.codigo_cliente}</p>
+                              </div>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
+                                {sinConsumo ? "Sin consumo" : "Activo"}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">Consumo</p>
+                                <p className="text-sm font-bold text-blue-400">${fmt(c.consumo_actual)}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">VS Ant</p>
+                                <p className={`text-sm font-bold ${c.variacion_abs >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                  {c.variacion_abs >= 0 ? "+" : ""}${fmt(Math.abs(c.variacion_abs))}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">Direcc.</p>
+                                <p className="text-sm font-bold text-green-400">{c.total_direcciones}</p>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-emerald-400/60 mt-3 text-right">Ver direcciones →</p>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between mt-1">
-                          {c.direccion_entrega
-                            ? <p className="text-[11px] text-gray-500 truncate flex-1">📍 {c.direccion_entrega}</p>
-                            : <span />}
-                          <p className="text-[10px] text-gray-500 shrink-0 ml-2">
-                            {c.ultima_factura ? new Date(c.ultima_factura).toLocaleDateString("es-EC") : "—"}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
               }
             </div>
 
-            {/* ── DESKTOP: tabla ── */}
+            {/* DESKTOP */}
             <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -305,15 +456,12 @@ const DetalleHieloOdooPage: React.FC = () => {
                     {([
                       ["Código",         "codigo_cliente"],
                       ["Cliente",        "nombre_cliente"],
-                      ["Cód. Dir.",      "codigo_direccion"],
-                      ["Dirección",      "direccion_entrega"],
                       ["Tipo Negocio",   "tipo_negocio"],
                       ["Teléfono",       "telefono_cliente"],
-                      ["Latitud",        "latitud_cliente"],
-                      ["Longitud",       "longitud_cliente"],
-                      ["Cant. Actual",   "cantidad_productos"],
+                      ["Direcc.",        "total_direcciones"],
+                      ["Cant. Prod.",    "cantidad_productos"],
                       ["Consumo Actual", "consumo_actual"],
-                      ["VS Mes Ant",     "vsMesAnterior"],
+                      ["VS Mes Ant",     "variacion_abs"],
                       ["Últ. Factura",   "ultima_factura"],
                       ["Estado",         "tuvo_consumo"],
                     ] as [string,string][]).map(([label, key]) => (
@@ -326,35 +474,31 @@ const DetalleHieloOdooPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {paginados.length === 0
-                    ? <tr><td colSpan={15} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron clientes.</td></tr>
+                    ? <tr><td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron clientes.</td></tr>
                     : paginados.map((c, idx) => {
                         const sinConsumo = c.tuvo_consumo === "No";
-                        const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
                         return (
-                          <tr key={`${c.codigo_cliente}_${c.codigo_direccion}`}
-                            className={`${sinConsumo ? "bg-[rgba(220,38,38,0.5)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
-                            <td className="px-3 py-2 text-gray-400 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-gray-300">{c.codigo_cliente}</td>
+                          <tr key={String(c.codigo_cliente)}
+                            onClick={() => { setClienteSeleccionado(String(c.codigo_cliente)); setClienteNombre(c.nombre_cliente); setExpandedDir(new Set()); setProductosDirCache(new Map()); }}
+                            className={`cursor-pointer transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940]`}>
+                            <td className="px-3 py-2 text-white/30 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-white/40">{c.codigo_cliente}</td>
                             <td className="px-3 py-2 font-semibold text-white">{c.nombre_cliente}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-gray-400">{(c as any).codigo_direccion || '—'}</td>
-                            <td className="px-3 py-2 text-gray-300 max-w-[160px]">
-                              <span title={c.direccion_entrega} className="line-clamp-2 text-xs">{c.direccion_entrega || "—"}</span>
+                            <td className="px-3 py-2 text-white/50 text-xs">{c.tipo_negocio || "—"}</td>
+                            <td className="px-3 py-2 text-white/50 text-xs">{c.telefono_cliente || "—"}</td>
+                            <td className="px-3 py-2 text-center text-blue-300 font-semibold tabular-nums">{c.total_direcciones}</td>
+                            <td className="px-3 py-2 text-right text-green-400 font-semibold tabular-nums">{c.cantidad_productos.toLocaleString("es-EC")}</td>
+                            <td className="px-3 py-2 text-right font-bold text-white tabular-nums">${fmt(c.consumo_actual)}</td>
+                            <td className={`px-3 py-2 text-right font-bold tabular-nums ${c.variacion_abs >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                              {c.variacion_abs >= 0 ? "+" : ""}${fmt(Math.abs(c.variacion_abs))}
                             </td>
-                            <td className="px-3 py-2 text-gray-300 text-xs">{c.tipo_negocio || "—"}</td>
-                            <td className="px-3 py-2 text-gray-300 text-xs whitespace-nowrap">{c.telefono_cliente || "—"}</td>
-                            <td className="px-3 py-2 text-gray-400 text-xs">{c.latitud_cliente || "—"}</td>
-                            <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud_cliente || "—"}</td>
-                            <td className="px-3 py-2 text-right text-cyan-300 font-semibold">{c.cantidad_productos}</td>
-                            <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                            <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
-                              {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
-                              {c.vsMesAnterior?.variacion_porc && <span className="block text-[10px] opacity-70">{c.vsMesAnterior.variacion_porc}</span>}
-                            </td>
-                            <td className="px-3 py-2 text-right text-gray-400 text-xs whitespace-nowrap">
+                            <td className="px-3 py-2 text-right text-white/40 text-xs whitespace-nowrap">
                               {c.ultima_factura ? new Date(c.ultima_factura).toLocaleDateString("es-EC") : "—"}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
                                 {sinConsumo ? "Sin consumo" : "Activo"}
                               </span>
                             </td>
@@ -367,6 +511,256 @@ const DetalleHieloOdooPage: React.FC = () => {
             </div>
 
             <Paginacion />
+          </div>
+        )}
+
+        {/* ══ VISTA: DIRECCIONES DEL CLIENTE ══════════════════════ */}
+        {!cargando && clienteSeleccionado !== null && (
+          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl overflow-hidden mb-6 shadow-xl">
+
+            {/* MOBILE: cards de direcciones */}
+            <div className="md:hidden">
+              {direccionesCliente.length === 0
+                ? <p className="text-center text-gray-400 py-12 text-sm">Sin direcciones.</p>
+                : <div className="space-y-3 p-3">
+                    {direccionesCliente.map(d => {
+                      const key        = d.codigo_direccion || String(d.codigo_cliente);
+                      const isExpanded = expandedDir.has(key);
+                      const prods      = productosDirCache.get(key);
+                      const sinConsumo = d.tuvo_consumo === "No";
+                      const vsAnt      = Number(d.vsMesAnterior?.variacion_abs ?? 0);
+                      const dirLabel   = d.direccion_entrega || d.codigo_direccion || String(d.codigo_cliente);
+                      return (
+                        <div key={key}
+                          className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-xl overflow-hidden">
+                          <div className="p-4 cursor-pointer" onClick={() => toggleDir(d)}>
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className={`text-[10px] transition-transform duration-200 inline-block ${isExpanded ? "rotate-90" : ""} text-white/40`}>▶</span>
+                                  <p className="text-[10px] font-mono text-white/40">{d.codigo_direccion || "—"}</p>
+                                </div>
+                                <p className="text-sm font-medium text-white/80 truncate">{d.direccion_entrega || "Sin dirección"}</p>
+                              </div>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
+                                {sinConsumo ? "Sin consumo" : "Activa"}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">Consumo</p>
+                                <p className="text-sm font-bold text-blue-400">${fmt(Number(d.consumo_actual))}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">VS Ant</p>
+                                <p className={`text-sm font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                  {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">Unidades</p>
+                                <p className="text-sm font-bold text-green-400">{d.cantidad_productos}</p>
+                              </div>
+                            </div>
+                            {d.ultima_factura && (
+                              <div className="mt-2 text-right text-[10px] text-white/40">
+                                Últ. compra: {new Date(d.ultima_factura).toLocaleDateString("es-EC")}
+                              </div>
+                            )}
+                          </div>
+                          {isExpanded && (
+                            <div className="border-t border-[#046C5E]/30 bg-[#011f17]">
+                              <div className="flex items-center gap-3 px-5 py-2 border-b border-[#046C5E]/20">
+                                <span className="text-[10px] text-emerald-400/60 uppercase tracking-widest font-semibold">
+                                  Productos · {dirLabel}
+                                </span>
+                              </div>
+                              {prods === undefined
+                                ? <div className="flex justify-center py-4">
+                                    <div className="animate-spin h-5 w-5 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full"/>
+                                  </div>
+                                : prods.length === 0
+                                  ? <p className="text-center text-gray-500 italic py-4 text-xs">Sin productos</p>
+                                  : <div className="overflow-x-auto">
+                                      <table className="w-full text-xs">
+                                        <thead>
+                                          <tr className="bg-[#012920] text-emerald-400/70 uppercase tracking-wider">
+                                            <th className="px-5 py-2 text-left font-semibold">Producto</th>
+                                            <th className="px-3 py-2 text-right font-semibold">Und.</th>
+                                            <th className="px-4 py-2 text-right font-semibold">Ventas</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {prods.map((p, pi) => (
+                                            <tr key={pi} className={`border-t border-[#046C5E]/10 ${pi % 2 === 0 ? "bg-[#012920]" : "bg-[#013025]"}`}>
+                                              <td className="px-5 py-1.5 text-white/70">{p.producto || "—"}</td>
+                                              <td className="px-3 py-1.5 text-right text-green-400 font-bold tabular-nums">{Number(p.unidades_vendidas).toLocaleString("es-EC")}</td>
+                                              <td className="px-4 py-1.5 text-right text-blue-400 font-bold tabular-nums">${fmt(Number(p.monto_usd))}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                        <tfoot>
+                                          <tr className="border-t border-[#046C5E]/30 bg-[#012018] font-bold">
+                                            <td className="px-5 py-2 text-emerald-400/60 text-[11px] uppercase">{prods.length} producto{prods.length !== 1 ? "s" : ""}</td>
+                                            <td className="px-3 py-2 text-right text-green-400 tabular-nums">{prods.reduce((a,p)=>a+Number(p.unidades_vendidas),0).toLocaleString("es-EC")}</td>
+                                            <td className="px-4 py-2 text-right text-blue-400 tabular-nums">${fmt(prods.reduce((a,p)=>a+Number(p.monto_usd),0))}</td>
+                                          </tr>
+                                        </tfoot>
+                                      </table>
+                                    </div>
+                              }
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+              }
+            </div>
+
+            {/* DESKTOP: tabla con expand */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-[#014434] text-[10px] uppercase text-green-300 select-none">
+                    <th className="px-3 py-3 text-left w-10">N°</th>
+                    <th className="px-3 py-3 text-left">Cód. Dirección</th>
+                    <th className="px-3 py-3 text-left">Dirección</th>
+                    <th className="px-3 py-3 text-left">Tipo Negocio</th>
+                    <th className="px-3 py-3 text-left">Teléfono</th>
+                    <th className="px-3 py-3 text-right">Unidades</th>
+                    <th className="px-3 py-3 text-right">Consumo</th>
+                    <th className="px-3 py-3 text-right">VS Ant</th>
+                    <th className="px-3 py-3 text-right">Últ. Factura</th>
+                    <th className="px-3 py-3 text-center">Mapa</th>
+                    <th className="px-3 py-3 text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {direccionesCliente.length === 0
+                    ? <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">Sin direcciones.</td></tr>
+                    : direccionesCliente.map((d, idx) => {
+                        const key        = d.codigo_direccion || String(d.codigo_cliente);
+                        const isExpanded = expandedDir.has(key);
+                        const prods      = productosDirCache.get(key);
+                        const sinConsumo = d.tuvo_consumo === "No";
+                        const vsAnt      = Number(d.vsMesAnterior?.variacion_abs ?? 0);
+                        const rowBg      = idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]";
+                        const dirLabel   = d.direccion_entrega || d.codigo_direccion || String(d.codigo_cliente);
+                        const globalN    = idx + 1;
+                        return (
+                          <React.Fragment key={key}>
+                            <tr onClick={() => toggleDir(d)}
+                              className={`cursor-pointer transition-colors ${rowBg} hover:bg-[#025940] group`}>
+                              <td className="px-3 py-2 text-xs text-white/40 w-10">
+                                <span className="inline-flex items-center gap-1.5 select-none">
+                                  <span className={`text-[10px] text-emerald-400/60 transition-transform duration-200 inline-block ${isExpanded ? "rotate-90" : ""}`}>▶</span>
+                                  <span className="text-white/30">{globalN}</span>
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 font-mono text-xs text-white/40">{d.codigo_direccion || "—"}</td>
+                              <td className="px-3 py-2 text-white/80 max-w-[200px]">
+                                <span className="line-clamp-2 text-xs">{d.direccion_entrega || "Sin dirección"}</span>
+                              </td>
+                              <td className="px-3 py-2 text-white/50 text-xs">{d.tipo_negocio || "—"}</td>
+                              <td className="px-3 py-2 text-white/50 text-xs whitespace-nowrap">{d.telefono_cliente || "—"}</td>
+                              <td className="px-3 py-2 text-right text-green-400 font-semibold tabular-nums">{d.cantidad_productos.toLocaleString("es-EC")}</td>
+                              <td className="px-3 py-2 text-right font-bold text-white tabular-nums">${fmt(Number(d.consumo_actual))}</td>
+                              <td className={`px-3 py-2 text-right font-bold tabular-nums ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                              </td>
+                              <td className="px-3 py-2 text-right text-white/40 text-xs whitespace-nowrap">
+                                {d.ultima_factura ? new Date(d.ultima_factura).toLocaleDateString("es-EC") : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {d.latitud_cliente && d.latitud_cliente !== "—" && d.longitud_cliente && d.longitud_cliente !== "—"
+                                  ? <a href={`https://maps.google.com/?q=${d.latitud_cliente},${d.longitud_cliente}`}
+                                      target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                                      className="text-[10px] text-blue-400/70 hover:text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded">
+                                      📍
+                                    </a>
+                                  : <span className="text-white/20 text-xs">—</span>
+                                }
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold
+                                  ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
+                                  {sinConsumo ? "Sin consumo" : "Activa"}
+                                </span>
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={11} className="p-0 border-b border-[#046C5E]/20">
+                                  <div className="bg-[#011f17] border-l-2 border-emerald-500/40">
+                                    <div className="flex items-center gap-3 px-5 py-2 border-b border-[#046C5E]/20">
+                                      <span className="text-[10px] text-emerald-400/60 uppercase tracking-widest font-semibold">
+                                        Productos · {dirLabel}
+                                      </span>
+                                    </div>
+                                    {prods === undefined
+                                      ? <div className="flex justify-center py-4">
+                                          <div className="animate-spin h-5 w-5 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full"/>
+                                        </div>
+                                      : prods.length === 0
+                                        ? <p className="text-center text-gray-500 italic py-4 text-xs">Sin productos</p>
+                                        : <div className="overflow-x-auto">
+                                            <table className="w-full text-xs">
+                                              <thead>
+                                                <tr className="bg-[#012920] text-emerald-400/70 uppercase tracking-wider">
+                                                  <th className="px-5 py-2 text-left font-semibold">Producto</th>
+                                                  <th className="px-3 py-2 text-right font-semibold">Unidades</th>
+                                                  <th className="px-4 py-2 text-right font-semibold">Ventas</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {prods.map((p, pi) => (
+                                                  <tr key={pi} className={`border-t border-[#046C5E]/10 ${pi % 2 === 0 ? "bg-[#012920]" : "bg-[#013025]"}`}>
+                                                    <td className="px-5 py-1.5 text-white/70">{p.producto || "—"}</td>
+                                                    <td className="px-3 py-1.5 text-right text-green-400 font-bold tabular-nums">{Number(p.unidades_vendidas).toLocaleString("es-EC")}</td>
+                                                    <td className="px-4 py-1.5 text-right text-blue-400 font-bold tabular-nums">${fmt(Number(p.monto_usd))}</td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                              <tfoot>
+                                                <tr className="border-t border-[#046C5E]/30 bg-[#012018] font-bold">
+                                                  <td className="px-5 py-2 text-emerald-400/60 text-[11px] uppercase">{prods.length} producto{prods.length !== 1 ? "s" : ""}</td>
+                                                  <td className="px-3 py-2 text-right text-green-400 tabular-nums">{prods.reduce((a,p)=>a+Number(p.unidades_vendidas),0).toLocaleString("es-EC")}</td>
+                                                  <td className="px-4 py-2 text-right text-blue-400 tabular-nums">${fmt(prods.reduce((a,p)=>a+Number(p.monto_usd),0))}</td>
+                                                </tr>
+                                              </tfoot>
+                                            </table>
+                                          </div>
+                                    }
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })
+                  }
+                </tbody>
+                {direccionesCliente.length > 1 && (
+                  <tfoot>
+                    <tr className="bg-[#014434] border-t border-[#046C5E]/30 font-bold text-green-300 text-xs uppercase">
+                      <td colSpan={5} className="px-3 py-3">Total · {direccionesCliente.length} dirección{direccionesCliente.length !== 1 ? "es" : ""}</td>
+                      <td className="px-3 py-3 text-right text-green-400 tabular-nums">
+                        {direccionesCliente.reduce((a,d)=>a+Number(d.cantidad_productos),0).toLocaleString("es-EC")}
+                      </td>
+                      <td className="px-3 py-3 text-right text-white tabular-nums">
+                        ${fmt(direccionesCliente.reduce((a,d)=>a+Number(d.consumo_actual),0))}
+                      </td>
+                      <td colSpan={4}/>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
           </div>
         )}
       </div>

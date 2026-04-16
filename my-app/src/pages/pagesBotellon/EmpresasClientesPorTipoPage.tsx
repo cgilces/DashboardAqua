@@ -107,9 +107,9 @@ export default function EmpresasClientesPorTipoPage() {
       </span>
       <div className="flex gap-1 flex-wrap">
         <button disabled={pagina === 1} onClick={() => setPagina(1)}
-          className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">«</button>
+          className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">«</button>
         <button disabled={pagina === 1} onClick={() => setPagina(p => p - 1)}
-          className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">‹ Ant</button>
+          className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">‹ Ant</button>
         {(() => {
           const pages: any[] = [];
           if (totalPags <= 5) { for (let i = 1; i <= totalPags; i++) pages.push(i); }
@@ -121,13 +121,13 @@ export default function EmpresasClientesPorTipoPage() {
           return pages.map((n, i) =>
             n === "..." ? <span key={`d${i}`} className="px-1 text-xs text-gray-400">…</span> :
             <button key={`p${i}`} onClick={() => setPagina(n)}
-              className={`px-3 py-1 text-xs rounded ${pagina === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#016a57]"}`}>{n}</button>
+              className={`px-3 py-1 text-xs rounded ${pagina === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#025940]"}`}>{n}</button>
           );
         })()}
         <button disabled={pagina === totalPags} onClick={() => setPagina(p => p + 1)}
-          className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">Sig ›</button>
+          className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">Sig ›</button>
         <button disabled={pagina === totalPags} onClick={() => setPagina(totalPags)}
-          className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">»</button>
+          className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">»</button>
       </div>
     </div>
   ) : null;
@@ -209,50 +209,57 @@ export default function EmpresasClientesPorTipoPage() {
         )}
 
         {!cargando && (
-          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
-            <div className="md:hidden divide-y divide-[#046C5E]/20">
+          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl overflow-hidden mb-6 shadow-xl">
+            {/* MOBILE: cards */}
+            <div className="md:hidden">
               {paginados.length === 0
                 ? <p className="text-center text-gray-400 py-12 text-sm">No se encontraron clientes.</p>
-                : paginados.map((c, idx) => {
-                    const sinConsumo = Number(c.consumo_actual) === 0;
-                    const vsAnt = Number(c.consumo_actual) - Number(c.consumo_anterior);
-                    return (
-                      <div key={c.codigo_cliente}
-                        onClick={() => navigate(`/empresas-botellon/cliente/${encodeURIComponent(c.codigo_cliente)}/${anio}/${mes}`)}
-                        className={`p-4 cursor-pointer ${sinConsumo ? "bg-red-900/30 border-l-4 border-red-500/60" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
-                            <p className="text-[11px] text-gray-400 font-mono">{c.codigo_cliente}</p>
+                : <div className="space-y-3 p-3">
+                    {paginados.map((c) => {
+                      const sinConsumo = Number(c.consumo_actual) === 0;
+                      const vsAnt = Number(c.consumo_actual) - Number(c.consumo_anterior);
+                      return (
+                        <div key={c.codigo_cliente}
+                          onClick={() => navigate(`/empresas-botellon/cliente/${encodeURIComponent(c.codigo_cliente)}/${anio}/${mes}`)}
+                          className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-xl overflow-hidden cursor-pointer hover:border-emerald-500/40 transition-colors">
+                          <div className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0 pr-2">
+                                <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
+                                <p className="text-[11px] text-white/40 font-mono mt-0.5">{c.codigo_cliente}</p>
+                              </div>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
+                                {sinConsumo ? "Sin consumo" : "Activo"}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">Consumo</p>
+                                <p className="text-sm font-bold text-blue-400">${fmt(Number(c.consumo_actual))}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">VS Mes Ant</p>
+                                <p className={`text-sm font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                  {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">Sucursales</p>
+                                <p className="text-sm font-bold text-green-400">{Number(c.total_sucursales)}</p>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-emerald-400/60 mt-3 text-right">Ver sucursales →</p>
                           </div>
-                          <span className={`ml-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full
-                            ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
-                            {sinConsumo ? "Sin consumo" : "Activo"}
-                          </span>
                         </div>
-                        <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-xs">
-                          <div>
-                            <p className="text-[9px] text-gray-500 uppercase">Consumo</p>
-                            <p className="text-white font-bold">${fmt(Number(c.consumo_actual))}</p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-gray-500 uppercase">VS Mes Ant</p>
-                            <p className={`font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                              {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-gray-500 uppercase">Sucursales</p>
-                            <p className="text-blue-300 font-semibold">{Number(c.total_sucursales)}</p>
-                          </div>
-                        </div>
-                        <p className="text-[10px] text-emerald-400 mt-2 text-right">Ver sucursales →</p>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
               }
             </div>
 
+            {/* DESKTOP: tabla */}
             <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -285,32 +292,32 @@ export default function EmpresasClientesPorTipoPage() {
                         const vsAnt = Number(c.consumo_actual) - Number(c.consumo_anterior);
                         return (
                           <tr key={c.codigo_cliente}
-                            className={`${sinConsumo ? "bg-[rgba(220,38,38,0.5)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
-                            <td className="px-3 py-2 text-gray-400 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-gray-300">{c.codigo_cliente}</td>
+                            onClick={() => navigate(`/empresas-botellon/cliente/${encodeURIComponent(c.codigo_cliente)}/${anio}/${mes}`)}
+                            className={`cursor-pointer transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940]`}>
+                            <td className="px-3 py-2 text-white/30 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-white/40">{c.codigo_cliente}</td>
                             <td className="px-3 py-2 font-semibold text-white">{c.nombre_cliente}</td>
-                            <td className="px-3 py-2 text-gray-300 text-xs">{c.telefono || "—"}</td>
-                            <td className="px-3 py-2 text-center text-blue-300 font-semibold">{Number(c.total_sucursales)}</td>
-                            <td className="px-3 py-2 text-right text-blue-300 font-semibold">{Number(c.cantidad_actual).toLocaleString("es-EC")}</td>
-                            <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                            <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            <td className="px-3 py-2 text-white/50 text-xs">{c.telefono || "—"}</td>
+                            <td className="px-3 py-2 text-center text-blue-300 font-semibold tabular-nums">{Number(c.total_sucursales)}</td>
+                            <td className="px-3 py-2 text-right text-green-400 font-semibold tabular-nums">{Number(c.cantidad_actual).toLocaleString("es-EC")}</td>
+                            <td className="px-3 py-2 text-right font-bold text-white tabular-nums">${fmt(Number(c.consumo_actual))}</td>
+                            <td className={`px-3 py-2 text-right font-bold tabular-nums ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                               {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                             </td>
-                            <td className="px-3 py-2 text-right text-gray-400 text-xs whitespace-nowrap">
+                            <td className="px-3 py-2 text-right text-white/40 text-xs whitespace-nowrap">
                               {c.ultima_factura ? new Date(c.ultima_factura).toLocaleDateString("es-EC") : "—"}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full
-                                ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
                                 {sinConsumo ? "Sin consumo" : "Activo"}
                               </span>
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <button
-                                onClick={() => navigate(`/empresas-botellon/cliente/${encodeURIComponent(c.codigo_cliente)}/${anio}/${mes}`)}
-                                className="text-[10px] text-emerald-400 hover:text-white border border-emerald-400/30 hover:border-emerald-400 px-2 py-0.5 rounded transition">
-                                Ver sucursales →
-                              </button>
+                              <span className="text-[10px] text-emerald-400/60 border border-emerald-400/20 px-2 py-0.5 rounded">
+                                Ver →
+                              </span>
                             </td>
                           </tr>
                         );

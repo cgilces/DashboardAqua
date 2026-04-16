@@ -121,7 +121,7 @@ export default function ModalClientesNoVisitados({
                             {clientes.map((c, index) => (
                                 <tr
                                     key={`${c.codigo_cliente}-${index}`}
-                                    className="border-b border-[#046C5E]/40 hover:bg-[#016a57]"
+                                    className="border-b border-[#046C5E]/40 hover:bg-[#025940]"
                                 >
                                     <td className="px-3 py-2 text-gray-400">
                                         {index + 1}

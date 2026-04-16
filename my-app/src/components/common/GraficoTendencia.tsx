@@ -1,6 +1,6 @@
 // components/common/GraficoTendencia.tsx
 // Gráfico de tendencia — muestra los últimos 3 meses incluyendo el actual
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,

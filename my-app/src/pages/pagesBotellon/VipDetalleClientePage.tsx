@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
@@ -6,6 +6,17 @@ import { API_BASE_URL } from "../../config";
 
 const fmt = (n: number) =>
   n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Devuelve true sólo si lat/lng son numéricos válidos y distintos de 0. */
+const hasCoords = (lat?: string | number | null, lng?: string | number | null) => {
+  if (lat === null || lat === undefined || lat === "") return false;
+  if (lng === null || lng === undefined || lng === "") return false;
+  const nLat = Number(lat);
+  const nLng = Number(lng);
+  if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return false;
+  if (nLat === 0 || nLng === 0) return false;
+  return true;
+};
 
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -134,66 +145,69 @@ export default function VipDetalleClientePage() {
             </p>
 
             {/* MOBILE: cards */}
-            <div className="md:hidden space-y-3 mb-6">
+            <div className="md:hidden mb-6">
               {sucursales.length === 0
                 ? <p className="text-center text-gray-400 py-12 text-sm">No se encontraron sucursales.</p>
-                : sucursales.map((s, idx) => {
-                    const sinConsumo = Number(s.consumo_actual) === 0;
-                    const vsAnt = Number(s.consumo_actual) - Number(s.consumo_anterior);
-                    return (
-                      <div key={s.customer_address_code || idx}
-                        className={`rounded-xl p-4 border ${sinConsumo
-                          ? "bg-red-900/20 border-red-500/30"
-                          : "bg-gradient-to-br from-[#012E24] to-[#013d30] border-[#046C5E]/40"}`}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1 pr-2">
-                            <p className="font-semibold text-white text-sm leading-tight">{s.nombre_sucursal}</p>
-                            {s.direccion && s.direccion !== s.nombre_sucursal && (
-                              <p className="text-[10px] text-gray-400 mt-0.5">{s.direccion}</p>
-                            )}
-                            <p className="text-xs text-blue-400 font-mono mt-0.5">{s.codigo_sucursal}</p>
+                : <div className="space-y-3">
+                    {sucursales.map((s, idx) => {
+                      const sinConsumo = Number(s.consumo_actual) === 0;
+                      const vsAnt = Number(s.consumo_actual) - Number(s.consumo_anterior);
+                      return (
+                        <div key={s.customer_address_code || idx}
+                          className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-xl overflow-hidden">
+                          <div className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 pr-2">
+                                <p className="font-semibold text-white text-sm leading-tight">{s.nombre_sucursal}</p>
+                                {s.direccion && s.direccion !== s.nombre_sucursal && (
+                                  <p className="text-[10px] text-white/40 mt-0.5">{s.direccion}</p>
+                                )}
+                                <p className="text-[10px] text-white/30 font-mono mt-0.5">{s.codigo_sucursal}</p>
+                              </div>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
+                                {sinConsumo ? "Sin consumo" : "Activo"}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">Consumo</p>
+                                <p className="text-sm font-bold text-blue-400">${fmt(Number(s.consumo_actual))}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">Cant.</p>
+                                <p className="text-sm font-bold text-green-400">{Number(s.cantidad_actual)}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] text-white/40 uppercase">VS Ant</p>
+                                <p className={`text-sm font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                  {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-3 text-[10px] text-white/40 pt-2 border-t border-[#046C5E]/20 mt-1">
+                              {s.telefono && <span>{s.telefono}</span>}
+                              {hasCoords(s.latitud, s.longitud) ? (
+                                <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
+                                  target="_blank" rel="noreferrer"
+                                  className="text-blue-400/70 hover:text-blue-400" onClick={e => e.stopPropagation()}>
+                                  📍 Ver mapa
+                                </a>
+                              ) : (
+                                <span className="italic text-white/30">Sin información de mapa</span>
+                              )}
+                            </div>
                           </div>
-                          <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full
-                            ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
-                            {sinConsumo ? "Sin consumo" : "Activo"}
-                          </span>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 text-xs mb-2">
-                          <div>
-                            <p className="text-[9px] text-gray-500 uppercase">Consumo</p>
-                            <p className="text-white font-bold">${fmt(Number(s.consumo_actual))}</p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-gray-500 uppercase">Cant.</p>
-                            <p className="text-blue-300 font-semibold">{Number(s.cantidad_actual)}</p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-gray-500 uppercase">VS Ant</p>
-                            <p className={`font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                              {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
-                            </p>
-                          </div>
-                        </div>
-                        {(s.telefono || s.latitud) && (
-                          <div className="flex flex-wrap gap-3 text-[10px] text-gray-400 mt-1">
-                            {s.telefono && <span>📞 {s.telefono}</span>}
-                            {s.latitud && s.longitud && (
-                              <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
-                                target="_blank" rel="noreferrer"
-                                className="text-blue-400 hover:underline" onClick={e => e.stopPropagation()}>
-                                📍 Ver mapa
-                              </a>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
               }
             </div>
 
             {/* DESKTOP: tabla */}
-            <div className="hidden md:block bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
+            <div className="hidden md:block bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl overflow-hidden mb-6 shadow-xl">
               <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -218,7 +232,7 @@ export default function VipDetalleClientePage() {
                         const vsAnt = Number(s.consumo_actual) - Number(s.consumo_anterior);
                         return (
                           <tr key={s.customer_address_code || idx}
-                            className={`${sinConsumo ? "bg-[rgba(220,38,38,0.4)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                            className={`transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940]`}>
                             <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
                             <td className="px-3 py-2 text-white max-w-[300px]">
                               <p className="font-semibold text-sm leading-tight">{s.nombre_sucursal}</p>
@@ -244,18 +258,19 @@ export default function VipDetalleClientePage() {
                               {s.ultima_factura ? new Date(s.ultima_factura).toLocaleDateString("es-EC") : "—"}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              {s.latitud && s.longitud && s.latitud !== '0' && s.longitud !== '0'
+                              {hasCoords(s.latitud, s.longitud)
                                 ? <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
                                     target="_blank" rel="noreferrer"
-                                    className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded">
+                                    className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap">
                                     📍 Mapa
                                   </a>
-                                : <span className="text-gray-400 text-xs">—</span>
+                                : <span className="text-[10px] text-white/40 italic whitespace-nowrap">Sin información</span>
                               }
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full
-                                ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
                                 {sinConsumo ? "Sin consumo" : "Activo"}
                               </span>
                             </td>

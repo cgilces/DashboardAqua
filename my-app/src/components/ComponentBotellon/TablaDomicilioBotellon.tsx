@@ -69,7 +69,7 @@ const TablaDomicilioBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual
           <tbody>
             <tr
               onClick={() => navigate(`/domicilio-botellon/clientes/${anio}/${mes}`)}
-              className="bg-[#013d32] hover:bg-[#016a57] cursor-pointer transition-all duration-200
+              className="bg-[#013d32] hover:bg-[#025940] cursor-pointer transition-all duration-200
                          border-l-4 border-transparent hover:border-green-400 hover:shadow-lg"
             >
               <td className="px-4 py-3 font-bold text-blue-300">

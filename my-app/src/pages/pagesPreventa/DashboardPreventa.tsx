@@ -37,13 +37,20 @@ export default function DashboardPreventa() {
   const [cargando, setCargando] = useState(false);
   const [topClientesState, setTopClientesState] = useState<any[]>([]);
   const [COTTSACard,  setCOTTSACard]  = useState<any>(null);
-  const [odooCard,   setOdooCard]   = useState<any>(null);
   const [tendencia6Meses, setTendencia6Meses] = useState<any[]>([]);
+
+  // Mapa slug para canales ODOO (equipo_ventas → URL slug)
+  const SLUG_ODOO: Record<string, string> = {
+    Moderno:        "moderno",
+    Distribuidores: "distribuidores",
+    Quito:          "quito",
+    Empresas:       "empresas-odoo",
+    Domicilio:      "domicilio-odoo",
+  };
 
   useEffect(() => {
     if (mesSeleccionado && anioSeleccionado) {
       setCOTTSACard(null);
-      setOdooCard(null);
       obtenerDatos(parseInt(anioSeleccionado), parseInt(mesSeleccionado));
     }
   }, [mesSeleccionado, anioSeleccionado]);
@@ -75,8 +82,9 @@ export default function DashboardPreventa() {
   const resumenVentasPorCanal = datos?.resumenVentasPorCanal || {};
 
   const totalDescartable = useMemo(() => {
-    const canales = Object.values(datos?.resumenVentasPorCanal || {}) as any[];
-    if (canales.length === 0 && !COTTSACard && !odooCard) return null;
+    const canales  = Object.values(datos?.resumenVentasPorCanal || {}) as any[];
+    const odooData: any[] = datos?.ventasDescartableOdoo || [];
+    if (canales.length === 0 && !COTTSACard && odooData.length === 0) return null;
 
     let totalUnidades = 0, totalMonto = 0, totalMontoReal = 0, totalUnidadesAnterior = 0;
 
@@ -87,20 +95,18 @@ export default function DashboardPreventa() {
       totalUnidadesAnterior += Number(c.unidadesAnterior || 0);
     });
     if (COTTSACard) {
-      totalUnidades         += Number(COTTSACard.unidades         || 0);
-      totalMonto            += Number(COTTSACard.monto            || 0);
-      totalMontoReal        += Number(COTTSACard.montoReal ?? COTTSACard.monto ?? 0);
+      totalUnidades  += Number(COTTSACard.unidades  || 0);
+      totalMonto     += Number(COTTSACard.monto     || 0);
+      totalMontoReal += Number(COTTSACard.montoReal ?? COTTSACard.monto ?? 0);
       totalUnidadesAnterior += Number(COTTSACard.unidadesAnterior || 0);
     }
-    if (odooCard) {
-      totalUnidades         += Number(odooCard.unidades         || 0);
-      totalMonto            += Number(odooCard.monto            || 0);
-      totalMontoReal        += Number(odooCard.montoReal ?? odooCard.monto ?? 0);
-      totalUnidadesAnterior += Number(odooCard.unidadesAnterior || 0);
-    }
+    odooData.forEach((o: any) => {
+      totalUnidades  += Number(o.total_unidades || 0);
+      totalMonto     += Number(o.proyeccion ?? o.total_imponible ?? 0);
+      totalMontoReal += Number(o.total_imponible || 0);
+    });
 
-    // Mes anterior: usar tendencia6Meses como fuente de verdad — ya agrega
-    // TODOS los canales completos (TIENDAS, RURAL, DOMICILIO, VIP, MAYORISTA, COTTSA, ODOO)
+    // Mes anterior: usar tendencia6Meses como fuente de verdad
     const mesPrevNum  = Number(mesSeleccionado) > 1 ? Number(mesSeleccionado) - 1 : 12;
     const anioPrevNum = Number(mesSeleccionado) > 1 ? Number(anioSeleccionado)   : Number(anioSeleccionado) - 1;
     const puntoPrev   = tendencia6Meses.find((d: any) => d.mes === mesPrevNum && d.anio === anioPrevNum);
@@ -115,7 +121,7 @@ export default function DashboardPreventa() {
       totalUnidades, totalMonto, totalMontoReal, totalMesAnterior, totalVariacionAbs, totalVariacionPorc,
       totalUnidadesAnterior, totalVarAbsUnidades, totalVarPorcUnidades,
     };
-  }, [datos, COTTSACard, odooCard, tendencia6Meses, mesSeleccionado, anioSeleccionado]);
+  }, [datos, COTTSACard, tendencia6Meses, mesSeleccionado, anioSeleccionado]);
 
   const navigate = useNavigate();
   const [seccionActiva, setSeccionActiva] = useState<string | null>(null);
@@ -278,18 +284,27 @@ export default function DashboardPreventa() {
                   {[
                     ...Object.values(resumenVentasPorCanal).filter((c: any) => c.monto > 0 || c.unidades > 0),
                     ...(COTTSACard ? [COTTSACard] : []),
-                    ...(odooCard  ? [odooCard]  : []),
+                    ...(datos?.ventasDescartableOdoo || []).map((o: any) => ({
+                      canal:        `ODOO · ${o.canal}`,
+                      _slug:        SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
+                      monto:        Number(o.proyeccion ?? o.total_imponible ?? 0),
+                      montoReal:    Number(o.total_imponible ?? 0),
+                      mesAnterior:  Number(o.vsMesAnterior?.monto_anterior ?? 0),
+                      variacionAbs: Number(o.vsMesAnterior?.variacion_abs  ?? 0),
+                      variacionPorc: Number(o.vsMesAnterior?.variacion_porc ?? 0),
+                      unidades:     Number(o.total_unidades ?? 0),
+                      isOdooCanal:  true,
+                    })),
                   ].map((canal: any) => {
-                    const positivo = canal.variacionAbs >= 0;
-                    const esCOTTSA = canal.canal === "COTTSA - AGUA OK";
-                    const esOdoo  = canal.canal === "EMPRESA DESCARTABLE ODOO";
-                    const esClickable = true;
+                    const positivo   = canal.variacionAbs >= 0;
+                    const esCOTTSA   = canal.canal === "COTTSA - AGUA OK";
+                    const esOdooCanal = canal.isOdooCanal === true;
 
                     const handleCardClick = () => {
                       if (esCOTTSA)
                         navigate(`/COTTSA/clientes/${anioSeleccionado}/${mesSeleccionado}`);
-                      else if (esOdoo)
-                        navigate(`/descartable-odoo/clientes/${anioSeleccionado}/${mesSeleccionado}`);
+                      else if (esOdooCanal)
+                        navigate(`/descartable-canal/${canal._slug}/clientes/${anioSeleccionado}/${mesSeleccionado}`);
                       else if (canal.canal === "RURAL")
                         activarSeccion("seccion-ranking-rutas-r");
                       else if (["DOMICILIO", "MAYORISTA", "VIP"].includes(canal.canal))
@@ -310,7 +325,7 @@ export default function DashboardPreventa() {
                             {canal.canal}
                           </p>
                           <span className="text-[10px] text-gray-400 italic shrink-0 ml-1">
-                            {esCOTTSA || esOdoo ? "Ver clientes →" : "Ver tabla ↓"}
+                            {esCOTTSA || esOdooCanal ? "Ver clientes →" : "Ver tabla ↓"}
                           </span>
                         </div>
 
@@ -416,7 +431,6 @@ export default function DashboardPreventa() {
               <TablaDescartableOdoo
                 anio={anioSeleccionado}
                 mes={mesSeleccionado}
-                onTotalesLoaded={setOdooCard}
               />
             )}
 
@@ -433,6 +447,7 @@ export default function DashboardPreventa() {
                 >
                   <RankingDescartablePorCanal
                     data={datos.ventasDescartablePorCanal}
+                    odooData={datos.ventasDescartableOdoo}
                     anio={anioSeleccionado}
                     mes={mesSeleccionado}
                   />

@@ -125,7 +125,7 @@ export default function DetalleClientesEmpresasPage() {
                 </thead>
                 <tbody>
                   {productos.map((p, idx) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition-colors`}>
                       <td className="px-4 py-2">{p.producto}</td>
                       <td className="px-4 py-2 text-right text-green-400 font-semibold">
                         {Number(p.unidades_vendidas).toLocaleString("es-EC")}

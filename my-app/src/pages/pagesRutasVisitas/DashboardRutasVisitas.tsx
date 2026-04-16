@@ -437,7 +437,7 @@ export default function DashboardRutasVisitas() {
                     const vi = Number(f.visitas);
                     return (
                       <tr key={`${f.codigo_usuario}-${f.codigo_ruta}-${idx}`}
-                        className={`border-b border-[#046C5E]/20 hover:bg-[#016a57]/40 transition
+                        className={`border-b border-[#046C5E]/20 hover:bg-[#025940]/40 transition
                           ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
 
                         <td className="px-3 py-2 text-center text-gray-400 border-r border-[#046C5E]/20">{idx + 1}</td>
