@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../components/auth/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -95,6 +95,20 @@ const RankingDescartablePorCanal = ({
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const navigate = useNavigate();
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir(prev => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "canal" ? "asc" : "desc");
+    }
+  };
+
+  const sortIndicator = (key: string) =>
+    sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : " ↕";
 
   if (!data && !odooData) {
     return (
@@ -232,8 +246,21 @@ const RankingDescartablePorCanal = ({
   }
 
   // ── Lista unificada de canales (sin distinción de fuente) ────────────────
-  const canalesTodos: CanalAgregado[] = [...canalesPreventaFinal, ...canalesOdooFinal]
+  const canalesBase: CanalAgregado[] = [...canalesPreventaFinal, ...canalesOdooFinal]
     .sort((a, b) => b.dolares - a.dolares);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const canalesTodos = useMemo(() => {
+    if (!sortKey) return canalesBase;
+    return [...canalesBase].sort((a, b) => {
+      if (sortKey === "canal") {
+        return sortDir === "asc" ? a.canal.localeCompare(b.canal) : b.canal.localeCompare(a.canal);
+      }
+      const av = Number((a as any)[sortKey] ?? 0);
+      const bv = Number((b as any)[sortKey] ?? 0);
+      return sortDir === "asc" ? av - bv : bv - av;
+    });
+  }, [canalesBase, sortKey, sortDir]);
 
   // ── Totales ───────────────────────────────────────────────────────────────
   const totP = canalesPreventaFinal.reduce(
@@ -376,15 +403,29 @@ const RankingDescartablePorCanal = ({
       {/* TABLA */}
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+          <thead className="bg-[#014434] text-green-300 uppercase text-xs select-none">
             <tr>
               <th className="px-4 py-3 text-left w-10">N°</th>
-              <th className="px-4 py-3 text-left">Canal</th>
-              <th className="px-4 py-3 text-right">Unidades</th>
-              <th className="px-4 py-3 text-right">USD</th>
-              {isAdmin && <th className="px-4 py-3 text-right">Proyección</th>}
-              <th className="px-4 py-3 text-right">Variación $</th>
-              <th className="px-4 py-3 text-right">%</th>
+              <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("canal")}>
+                Canal<span className="ml-1 text-[#046C5E]">{sortIndicator("canal")}</span>
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("unidades")}>
+                Unidades<span className="ml-1 text-[#046C5E]">{sortIndicator("unidades")}</span>
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("dolares")}>
+                USD<span className="ml-1 text-[#046C5E]">{sortIndicator("dolares")}</span>
+              </th>
+              {isAdmin && (
+                <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("proyeccion")}>
+                  Proyección<span className="ml-1 text-[#046C5E]">{sortIndicator("proyeccion")}</span>
+                </th>
+              )}
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("variacion_abs")}>
+                Variación $<span className="ml-1 text-[#046C5E]">{sortIndicator("variacion_abs")}</span>
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("variacion_porc")}>
+                %<span className="ml-1 text-[#046C5E]">{sortIndicator("variacion_porc")}</span>
+              </th>
             </tr>
           </thead>
 

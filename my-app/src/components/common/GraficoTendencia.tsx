@@ -125,7 +125,17 @@ const NOMBRES_MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct"
 
 /* ── Componente principal ────────────────────────────────── */
 const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFiltro }) => {
-  if (!datos || datos.length === 0) return null;
+  /* ── Persistencia del estado expandido/colapsado (por subtítulo) ── */
+  const storageKey = `graficoTendencia:${subtitulo ?? "default"}:expanded`;
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(storageKey);
+      return v === null ? true : v === "1";
+    } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, expanded ? "1" : "0"); } catch {}
+  }, [expanded, storageKey]);
 
   const hoy = new Date();
   const mesActual  = hoy.getMonth() + 1;
@@ -175,58 +185,107 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
   const puntoActual     = datos3Meses.find(d => d.mes === mesActual && d.anio === anioActual);
   const tieneProyeccion = puntoActual && puntoActual.proyeccion != null && puntoActual.proyeccion !== puntoActual.dolares;
 
-  return (
-    <div className="bg-gradient-to-br from-[#011f1a] to-[#012E24] border border-[#046C5E]/30 rounded-2xl p-5 mb-6 shadow-xl overflow-hidden">
+  if (!datos || datos.length === 0) return null;
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-        <div>
-          <p className="text-sm font-semibold text-white tracking-wide">Evolución de Ventas</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">
-            Últimos 3 meses{subtitulo ? ` · ${subtitulo}` : ""}
-          </p>
+  return (
+    <div className="bg-gradient-to-br from-[#011f1a] to-[#012E24] border border-[#046C5E]/30 rounded-2xl mb-6 shadow-xl overflow-hidden">
+
+      {/* Header clickeable — siempre visible, alterna expandido/colapsado */}
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-[#046C5E]/10 transition-colors group"
+        aria-expanded={expanded}
+        aria-label={expanded ? "Ocultar gráfico" : "Mostrar gráfico"}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500/20 to-emerald-400/10 border border-emerald-400/20 flex items-center justify-center shrink-0">
+            <BsGraphUpArrow className="text-emerald-400" size={16} />
+          </div>
+          <div className="text-left min-w-0">
+            <p className="text-sm font-semibold text-white tracking-wide">Evolución de Ventas</p>
+            <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+              Últimos 3 meses{subtitulo ? ` · ${subtitulo}` : ""}
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap text-[10px]">
-          {tieneProyeccion && (
-            <div className="flex items-center gap-2 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-1.5">
-              <span className="text-yellow-300 font-bold text-xs">
-                Proy: {fmtDol(puntoActual!.proyeccion ?? 0)}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Mini KPI visible solo cuando está colapsado */}
+          {!expanded && puntoActual && (
+            <span className="hidden md:flex items-center gap-2 text-[11px] bg-[#010f0c]/50 border border-[#046C5E]/40 rounded-lg px-2.5 py-1">
+              {tieneProyeccion ? (
+                <>
+                  <span className="text-yellow-300 font-bold">
+                    {fmtDol(puntoActual.proyeccion ?? 0)}
+                  </span>
+                  <span className="text-gray-500 text-[10px] uppercase tracking-wider">proy</span>
+                </>
+              ) : (
+                <span className="text-emerald-300 font-bold">
+                  {fmtDol(puntoActual.dolares)}
+                </span>
+              )}
+            </span>
+          )}
+          <span className={`text-[10px] font-semibold uppercase tracking-wider hidden sm:inline transition-colors ${expanded ? 'text-emerald-400' : 'text-gray-500 group-hover:text-emerald-400'}`}>
+            {expanded ? "Ocultar" : "Mostrar"}
+          </span>
+          <span className={`w-7 h-7 rounded-lg border border-[#046C5E]/40 bg-[#010f0c]/40 flex items-center justify-center transition-all duration-300 group-hover:border-emerald-400/60 ${expanded ? 'rotate-180' : ''}`}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M3 4.5L6 7.5L9 4.5" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </div>
+      </button>
+
+      {/* Contenedor colapsable — transición suave via grid-rows */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-500 ease-in-out ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+      >
+        <div className="overflow-hidden">
+          <div className={`px-5 pb-5 border-t border-[#046C5E]/20 pt-4 transition-opacity duration-300 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
+
+            {/* Leyenda + KPI proyección */}
+            <div className="flex items-center justify-end gap-3 flex-wrap text-[10px] mb-4">
+              {tieneProyeccion && (
+                <div className="flex items-center gap-2 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-1.5 mr-auto">
+                  <span className="text-yellow-300 font-bold text-xs">
+                    Proy: {fmtDol(puntoActual!.proyeccion ?? 0)}
+                  </span>
+                  <span className="text-gray-500">·</span>
+                  <span className="text-gray-400">
+                    Real: {fmtDol(puntoActual!.dolares)}
+                  </span>
+                  <span className="text-gray-500">·</span>
+                  <span className="text-cyan-400 text-xs">
+                    {fmtUni(puntoActual!.unidades)}
+                  </span>
+                  <span className="text-gray-500">·</span>
+                  <span className="text-violet-400 text-xs font-bold">
+                    Acum: {fmtDol(puntoActual!.acumulado ?? 0)}
+                  </span>
+                </div>
+              )}
+              <span className="flex items-center gap-1.5 text-emerald-400">
+                <span className="w-3 h-0.5 bg-emerald-400 rounded-full inline-block" />
+                Real $
               </span>
-              <span className="text-gray-500">·</span>
-              <span className="text-gray-400">
-                Real: {fmtDol(puntoActual!.dolares)}
+              <span className="flex items-center gap-1.5 text-yellow-400">
+                <span className="w-3 h-0.5 border-t-2 border-dashed border-yellow-400 inline-block" />
+                Proyección
               </span>
-              <span className="text-gray-500">·</span>
-              <span className="text-cyan-400 text-xs">
-                {fmtUni(puntoActual!.unidades)}
+              <span className="flex items-center gap-1.5 text-cyan-400">
+                <span className="w-3 h-0.5 bg-cyan-400 rounded-full inline-block" />
+                Unidades
               </span>
-              <span className="text-gray-500">·</span>
-              <span className="text-violet-400 text-xs font-bold">
-                Acum: {fmtDol(puntoActual!.acumulado ?? 0)}
+              <span className="flex items-center gap-1.5 text-violet-400">
+                <span className="w-3 h-0.5 bg-violet-400 rounded-full inline-block" />
+                Acumulado
               </span>
             </div>
-          )}
-          <span className="flex items-center gap-1.5 text-emerald-400">
-            <span className="w-3 h-0.5 bg-emerald-400 rounded-full inline-block" />
-            Real $
-          </span>
-          <span className="flex items-center gap-1.5 text-yellow-400">
-            <span className="w-3 h-0.5 border-t-2 border-dashed border-yellow-400 inline-block" />
-            Proyección
-          </span>
-          <span className="flex items-center gap-1.5 text-cyan-400">
-            <span className="w-3 h-0.5 bg-cyan-400 rounded-full inline-block" />
-            Unidades
-          </span>
-          <span className="flex items-center gap-1.5 text-violet-400">
-            <span className="w-3 h-0.5 bg-violet-400 rounded-full inline-block" />
-            Acumulado
-          </span>
-        </div>
-      </div>
 
-      {/* Chart — solo los 3 meses */}
+            {/* Chart — solo los 3 meses */}
       <ResponsiveContainer width="100%" height={260}>
         <ComposedChart data={datos3Meses} margin={{ top: 16, right: 52, left: 0, bottom: 0 }}>
           <defs>
@@ -384,6 +443,9 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
         })}
       </div>
 
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

@@ -112,6 +112,71 @@ function formatNum(val, decimals = 2) {
 }
 
 /**
+ * Valida la calidad de los datos antes de generar un PDF.
+ * Evita producir reportes "vacíos" que son técnicamente filas pero sin información real.
+ *
+ * @param {Array<Object>} datos
+ * @returns {{ valido: boolean, razon: string, pctLleno: number }}
+ */
+function validarCalidadDatos(datos) {
+  if (!Array.isArray(datos) || datos.length === 0) {
+    return { valido: false, razon: "No hay registros que mostrar en el reporte.", pctLleno: 0 };
+  }
+
+  const claves = Object.keys(datos[0] || {});
+  if (claves.length === 0) {
+    return { valido: false, razon: "Los registros no contienen información.", pctLleno: 0 };
+  }
+
+  // Contar celdas realmente "pobladas" (no null, no "", no 0 para numéricas)
+  let totalCeldas = 0;
+  let celdasPobladas = 0;
+  datos.forEach((fila) => {
+    claves.forEach((k) => {
+      totalCeldas++;
+      const v = fila[k];
+      if (v == null) return;
+      if (typeof v === "string" && v.trim() === "") return;
+      // Valores 0 se cuentan como poblados (un KPI con 0 es un dato válido)
+      celdasPobladas++;
+    });
+  });
+
+  const pctLleno = totalCeldas > 0 ? (celdasPobladas / totalCeldas) * 100 : 0;
+
+  // Menos del 20% de celdas con datos: reporte casi vacío
+  if (pctLleno < 20) {
+    return {
+      valido: false,
+      razon: `El reporte resultante está prácticamente vacío (${pctLleno.toFixed(0)}% de campos con información). Puedes reformular la consulta con criterios más específicos.`,
+      pctLleno,
+    };
+  }
+
+  return { valido: true, razon: "", pctLleno };
+}
+
+/**
+ * Filtra claves/columnas que vienen con 100% de valores null o vacíos en todas las filas.
+ * Se usa en modo "generico" para no dibujar columnas fantasma.
+ *
+ * @param {Array<Object>} datos
+ * @returns {Array<string>} claves no vacías, en el orden original
+ */
+function filtrarClavesNoVacias(datos) {
+  if (!datos || datos.length === 0) return [];
+  const claves = Object.keys(datos[0]);
+  return claves.filter((k) => {
+    return datos.some((fila) => {
+      const v = fila[k];
+      if (v == null) return false;
+      if (typeof v === "string" && v.trim() === "") return false;
+      return true;
+    });
+  });
+}
+
+/**
  * Formatea una fecha a string legible en español (EC).
  * @param {*} val
  * @returns {string}
@@ -887,7 +952,10 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
 
   // ── Modo generico: columnas y extractor dinámicos ──
   if (tipoReporte === "generico" && datos.length > 0) {
-    const claves = Object.keys(datos[0]);
+    // Sólo incluir claves que tengan al menos UN valor no vacío en todo el dataset.
+    // Esto evita dibujar columnas fantasma llenas de "-" cuando el SQL devuelve
+    // campos que siempre vienen null (p.ej. fechas opcionales, contactos, etc.)
+    const claves = filtrarClavesNoVacias(datos);
     cfg = { ...cfg }; // clonar para no mutar el objeto original
 
     cfg.columnas = claves.map((k) =>
@@ -913,11 +981,15 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
         return String(v);
       });
 
-    const claveTotal = claves.find((k) => k.toLowerCase().includes("total"));
-    if (claveTotal) {
+    // Detectar la mejor columna para sumar: primero busca campos monetarios
+    // conocidos, luego cae a la primera que contenga "total" en el nombre.
+    const CAMPOS_MONTO = ["total_ventas", "monto_total", "total", "monto", "ventas", "valor", "saldo_total", "deuda_total"];
+    const claveMonto = claves.find((k) => CAMPOS_MONTO.includes(k.toLowerCase())) ||
+                       claves.find((k) => k.toLowerCase().includes("total") || k.toLowerCase().includes("monto"));
+    if (claveMonto) {
       cfg.totalesCalc = (filas) => ({
         "Total Registros": filas.length,
-        "Total ($)":       formatNum(sumaSegura(filas, claveTotal)),
+        "Total ($)":       formatNum(sumaSegura(filas, claveMonto)),
       });
     }
   }
@@ -955,4 +1027,10 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
   };
 }
 
-module.exports = { detectarTipoReporte, generarPDF, construirConfigReporte };
+module.exports = {
+  detectarTipoReporte,
+  generarPDF,
+  construirConfigReporte,
+  validarCalidadDatos,
+  filtrarClavesNoVacias,
+};

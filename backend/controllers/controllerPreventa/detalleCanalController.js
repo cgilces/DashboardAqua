@@ -147,10 +147,13 @@ const obtenerClientesCanal = async (req, res) => {
         )
         SELECT
           da.customer_code, da.customer_address_code,
+          dc.descripcion_direccion_cliente   AS descripcion_direccion,
           c.nombre_cliente,
           tn.descripcion                    AS tipo_negocio,
           dc.calle1_direccion_cliente        AS direccion_entrega,
           dc.telefono_direccion_cliente      AS telefono,
+          dc.latitud_direccion_cliente       AS latitud,
+          dc.longitud_direccion_cliente      AS longitud,
           COALESCE(ca.monto,    0)           AS consumo_actual,
           COALESCE(ca.unidades, 0)           AS unidades_actual,
           COALESCE(cp.monto,    0)           AS consumo_anterior,
@@ -160,6 +163,7 @@ const obtenerClientesCanal = async (req, res) => {
         LEFT JOIN clientes c              ON c.codigo_cliente           = da.customer_code
         LEFT JOIN tipos_negocio tn        ON tn.codigo                  = c.codigo_tipo_negocio
         LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente = da.customer_address_code
+                                          AND dc.codigo_cliente = da.customer_code
         LEFT JOIN consumo_actual   ca     ON ca.customer_code = da.customer_code AND ca.customer_address_code = da.customer_address_code
         LEFT JOIN consumo_anterior cp     ON cp.customer_code = da.customer_code AND cp.customer_address_code = da.customer_address_code
         LEFT JOIN ultima_compra    uc     ON uc.customer_code = da.customer_code AND uc.customer_address_code = da.customer_address_code
@@ -168,7 +172,7 @@ const obtenerClientesCanal = async (req, res) => {
 
       const sqlOdoo = `
         WITH clientes_canal AS (
-          SELECT DISTINCT o.customer_code
+          SELECT DISTINCT o.customer_code, o.customer_address_code
           FROM ordenes o
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
@@ -207,11 +211,14 @@ const obtenerClientesCanal = async (req, res) => {
           GROUP BY o.customer_code
         )
         SELECT
-          cc.customer_code, NULL AS customer_address_code,
+          cc.customer_code, cc.customer_address_code,
+          COALESCE(dc.descripcion_direccion_cliente, dc2.descripcion_direccion_cliente) AS descripcion_direccion,
           c.nombre_cliente,
           tn.descripcion                    AS tipo_negocio,
-          dc.calle1_direccion_cliente        AS direccion_entrega,
-          dc.telefono_direccion_cliente      AS telefono,
+          COALESCE(dc.calle1_direccion_cliente, dc2.calle1_direccion_cliente)   AS direccion_entrega,
+          COALESCE(dc.telefono_direccion_cliente, dc2.telefono_direccion_cliente) AS telefono,
+          COALESCE(dc.latitud_direccion_cliente, dc2.latitud_direccion_cliente)   AS latitud,
+          COALESCE(dc.longitud_direccion_cliente, dc2.longitud_direccion_cliente) AS longitud,
           COALESCE(ca.monto,    0)           AS consumo_actual,
           COALESCE(ca.unidades, 0)           AS unidades_actual,
           COALESCE(cp.monto,    0)           AS consumo_anterior,
@@ -220,11 +227,14 @@ const obtenerClientesCanal = async (req, res) => {
         FROM clientes_canal cc
         LEFT JOIN clientes c              ON c.codigo_cliente  = cc.customer_code
         LEFT JOIN tipos_negocio tn        ON tn.codigo         = c.codigo_tipo_negocio
+        LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente = cc.customer_address_code::text
+                                          AND dc.codigo_cliente = cc.customer_code
         LEFT JOIN (
           SELECT DISTINCT ON (codigo_cliente)
-            codigo_cliente, calle1_direccion_cliente, telefono_direccion_cliente
+            codigo_cliente, descripcion_direccion_cliente, calle1_direccion_cliente, telefono_direccion_cliente,
+            latitud_direccion_cliente, longitud_direccion_cliente
           FROM direcciones_clientes ORDER BY codigo_cliente
-        ) dc ON dc.codigo_cliente = cc.customer_code
+        ) dc2 ON dc2.codigo_cliente = cc.customer_code
         LEFT JOIN consumo_actual   ca     ON ca.customer_code = cc.customer_code
         LEFT JOIN consumo_anterior cp     ON cp.customer_code = cc.customer_code
         LEFT JOIN ultima_compra    uc     ON uc.customer_code = cc.customer_code
@@ -243,7 +253,7 @@ const obtenerClientesCanal = async (req, res) => {
 
       const sql = `
         WITH clientes_canal AS (
-          SELECT DISTINCT o.customer_code
+          SELECT DISTINCT o.customer_code, o.customer_address_code
           FROM ordenes o
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
@@ -288,10 +298,14 @@ const obtenerClientesCanal = async (req, res) => {
         )
         SELECT
           cc.customer_code,
+          cc.customer_address_code,
+          COALESCE(dc.descripcion_direccion_cliente, dc2.descripcion_direccion_cliente) AS descripcion_direccion,
           c.nombre_cliente,
           tn.descripcion                    AS tipo_negocio,
-          dc.calle1_direccion_cliente        AS direccion_entrega,
-          dc.telefono_direccion_cliente      AS telefono,
+          COALESCE(dc.calle1_direccion_cliente, dc2.calle1_direccion_cliente)   AS direccion_entrega,
+          COALESCE(dc.telefono_direccion_cliente, dc2.telefono_direccion_cliente) AS telefono,
+          COALESCE(dc.latitud_direccion_cliente, dc2.latitud_direccion_cliente)   AS latitud,
+          COALESCE(dc.longitud_direccion_cliente, dc2.longitud_direccion_cliente) AS longitud,
           COALESCE(ca.monto,    0)           AS consumo_actual,
           COALESCE(ca.unidades, 0)           AS unidades_actual,
           COALESCE(cp.monto,    0)           AS consumo_anterior,
@@ -299,14 +313,16 @@ const obtenerClientesCanal = async (req, res) => {
         FROM clientes_canal cc
         LEFT JOIN clientes c              ON c.codigo_cliente  = cc.customer_code
         LEFT JOIN tipos_negocio tn        ON tn.codigo         = c.codigo_tipo_negocio
+        LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente = cc.customer_address_code::text
+                                          AND dc.codigo_cliente = cc.customer_code
         LEFT JOIN (
           SELECT DISTINCT ON (codigo_cliente)
-            codigo_cliente,
-            calle1_direccion_cliente,
-            telefono_direccion_cliente
+            codigo_cliente, descripcion_direccion_cliente,
+            calle1_direccion_cliente, telefono_direccion_cliente,
+            latitud_direccion_cliente, longitud_direccion_cliente
           FROM direcciones_clientes
           ORDER BY codigo_cliente
-        ) dc ON dc.codigo_cliente = cc.customer_code
+        ) dc2 ON dc2.codigo_cliente = cc.customer_code
         LEFT JOIN consumo_actual   ca     ON ca.customer_code  = cc.customer_code
         LEFT JOIN consumo_anterior cp     ON cp.customer_code  = cc.customer_code
         LEFT JOIN ultima_compra    uc     ON uc.customer_code  = cc.customer_code
@@ -362,10 +378,13 @@ const obtenerClientesCanal = async (req, res) => {
         SELECT
           da.customer_code,
           da.customer_address_code,
+          dc.descripcion_direccion_cliente   AS descripcion_direccion,
           c.nombre_cliente,
           tn.descripcion                    AS tipo_negocio,
           dc.calle1_direccion_cliente        AS direccion_entrega,
           dc.telefono_direccion_cliente      AS telefono,
+          dc.latitud_direccion_cliente       AS latitud,
+          dc.longitud_direccion_cliente      AS longitud,
           COALESCE(ca.monto,    0)           AS consumo_actual,
           COALESCE(ca.unidades, 0)           AS unidades_actual,
           COALESCE(cp.monto,    0)           AS consumo_anterior,
@@ -374,6 +393,7 @@ const obtenerClientesCanal = async (req, res) => {
         LEFT JOIN clientes c           ON c.codigo_cliente           = da.customer_code
         LEFT JOIN tipos_negocio tn     ON tn.codigo                  = c.codigo_tipo_negocio
         LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente = da.customer_address_code
+                                          AND dc.codigo_cliente = da.customer_code
         LEFT JOIN consumo_actual   ca  ON ca.customer_code           = da.customer_code
                                       AND ca.customer_address_code   = da.customer_address_code
         LEFT JOIN consumo_anterior cp  ON cp.customer_code           = da.customer_code
@@ -391,7 +411,7 @@ const obtenerClientesCanal = async (req, res) => {
 
       const sql = `
         WITH clientes_canal AS (
-          SELECT DISTINCT o.customer_code
+          SELECT DISTINCT o.customer_code, o.customer_address_code
           FROM ordenes o
           WHERE o.type = 2
             AND o.status IN (2, 4, 5)
@@ -432,10 +452,14 @@ const obtenerClientesCanal = async (req, res) => {
         )
         SELECT
           cc.customer_code,
+          cc.customer_address_code,
+          COALESCE(dc.descripcion_direccion_cliente, dc2.descripcion_direccion_cliente) AS descripcion_direccion,
           c.nombre_cliente,
           tn.descripcion   AS tipo_negocio,
-          dc.calle1_direccion_cliente   AS direccion_entrega,
-          dc.telefono_direccion_cliente AS telefono,
+          COALESCE(dc.calle1_direccion_cliente, dc2.calle1_direccion_cliente)   AS direccion_entrega,
+          COALESCE(dc.telefono_direccion_cliente, dc2.telefono_direccion_cliente) AS telefono,
+          COALESCE(dc.latitud_direccion_cliente, dc2.latitud_direccion_cliente)   AS latitud,
+          COALESCE(dc.longitud_direccion_cliente, dc2.longitud_direccion_cliente) AS longitud,
           COALESCE(ca.monto,    0) AS consumo_actual,
           COALESCE(ca.unidades, 0) AS unidades_actual,
           COALESCE(cp.monto,    0) AS consumo_anterior,
@@ -443,14 +467,16 @@ const obtenerClientesCanal = async (req, res) => {
         FROM clientes_canal cc
         LEFT JOIN clientes c              ON c.codigo_cliente  = cc.customer_code
         LEFT JOIN tipos_negocio tn        ON tn.codigo         = c.codigo_tipo_negocio
+        LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente = cc.customer_address_code::text
+                                          AND dc.codigo_cliente = cc.customer_code
         LEFT JOIN (
           SELECT DISTINCT ON (codigo_cliente)
-            codigo_cliente,
-            calle1_direccion_cliente,
-            telefono_direccion_cliente
+            codigo_cliente, descripcion_direccion_cliente,
+            calle1_direccion_cliente, telefono_direccion_cliente,
+            latitud_direccion_cliente, longitud_direccion_cliente
           FROM direcciones_clientes
           ORDER BY codigo_cliente
-        ) dc ON dc.codigo_cliente = cc.customer_code
+        ) dc2 ON dc2.codigo_cliente = cc.customer_code
         LEFT JOIN consumo_actual   ca     ON ca.customer_code  = cc.customer_code
         LEFT JOIN consumo_anterior cp     ON cp.customer_code  = cc.customer_code
         LEFT JOIN ultima_compra    uc     ON uc.customer_code  = cc.customer_code
@@ -644,10 +670,16 @@ const obtenerProductosSucursal = async (req, res) => {
 
     let productos = [];
 
-    const esOdoo = fuente === "odoo" || !addrEsc;
+    // Determinar fuente de datos:
+    // - Canal ODOO puro (config.usaOdoo): ordenes con equipo_ventas
+    // - Canal combinado (config.usaCombinado): depende del param fuente
+    // - Canal EMPRESAS (config.usaOrdenes): ordenes con seller_nombre
+    // - Resto: facturas
+    const esOdoo     = config.usaOdoo || fuente === "odoo";
+    const esEmpresas = !!config.usaOrdenes;
 
     if (esOdoo) {
-      // Para ODOO: buscar por customer_code en ordenes con equipo_ventas
+      // ODOO: buscar por customer_code en ordenes con equipo_ventas
       const equipoVentas = (config.equipoOdoo || config.equipoVentas || "").replace(/'/g, "''");
       const sql = `
         SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
@@ -665,8 +697,26 @@ const obtenerProductosSucursal = async (req, res) => {
         ORDER BY unidades_vendidas DESC
       `;
       productos = await db.query(sql, { type: QueryTypes.SELECT });
+    } else if (esEmpresas) {
+      // EMPRESAS: buscar en ordenes con seller_nombre
+      const rutasEsc = RUTAS_EMPRESAS.map(r => `'${r.replace(/'/g, "''")}'`).join(", ");
+      const sql = `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.type = 2 AND o.status IN (2, 4, 5)
+          AND o.seller_nombre IN (${rutasEsc})
+          AND o.customer_code  = '${codEsc}'
+          AND dd.codigo_categoria = '7'
+          AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+        ORDER BY unidades_vendidas DESC
+      `;
+      productos = await db.query(sql, { type: QueryTypes.SELECT });
     } else {
-      // Para Mobilvendor: buscar por customer_code + customer_address_code en facturas
+      // Mobilvendor: buscar por customer_code + customer_address_code en facturas
       const filtroCanal = config.filtroMobil || config.filtro || "1=1";
       const sql = `
         SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,

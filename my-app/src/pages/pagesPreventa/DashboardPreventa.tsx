@@ -12,7 +12,7 @@ import { Header } from "../../components/common/Header";
 import { useNavigate } from "react-router-dom";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import RankingDescartablePorCanal from "../../components/ComponentPreventa/RankingDescartablePorCanal";
-import TablaDescartableOdoo from "../../components/ComponentPreventa/TablaDescartableOdoo";
+
 import { API_BASE_URL } from '../../config';
 import TablaCOTTSA from "../../components/ComponentPreventa/TablaCOTTSA";
 
@@ -423,14 +423,6 @@ export default function DashboardPreventa() {
                 anio={anioSeleccionado}
                 mes={mesSeleccionado}
                 onTotalesLoaded={setCOTTSACard}
-              />
-            )}
-
-            {/* ── Tabla rutas Odoo descartable — solo visible si no es VENDEDOR ── */}
-            {puedeVerOdoo && (
-              <TablaDescartableOdoo
-                anio={anioSeleccionado}
-                mes={mesSeleccionado}
               />
             )}
 

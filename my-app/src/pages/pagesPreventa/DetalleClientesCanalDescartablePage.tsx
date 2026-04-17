@@ -12,6 +12,18 @@ const fmt = (n: number) =>
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
+const getDireccionLabel = (desc?: string | null, calle?: string | null) => {
+  if (desc && desc.trim() !== "" && desc.toLowerCase() !== "delivery") return desc;
+  return calle || "—";
+};
+
+const hasCoords = (lat?: string | number | null, lng?: string | number | null) => {
+  if (lat == null || lat === "") return false;
+  if (lng == null || lng === "") return false;
+  const nLat = Number(lat), nLng = Number(lng);
+  return Number.isFinite(nLat) && Number.isFinite(nLng) && nLat !== 0 && nLng !== 0;
+};
+
 const CANAL_LABELS: Record<string, string> = {
   domicilio:        "Domicilio",
   vip:              "VIP",
@@ -27,6 +39,7 @@ const CANAL_LABELS: Record<string, string> = {
 interface Cliente {
   customer_code: string;
   customer_address_code: string | null;
+  descripcion_direccion: string | null;
   nombre_cliente: string;
   direccion_entrega: string;
   tipo_negocio: string;
@@ -37,6 +50,8 @@ interface Cliente {
   variacion_abs: number;
   variacion_porc: number | null;
   ultima_compra: string | null;
+  latitud?: string | number | null;
+  longitud?: string | number | null;
   rotando: boolean;
   fuente?: string | null;
 }
@@ -124,8 +139,11 @@ export default function DetalleClientesCanalDescartablePage() {
   const requestSort = (key: string) => {
     const dir = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
     setSortConfig({ key, direction: dir });
-    setClientes(prev => [...prev].sort((a, b) => {
-      // Claves virtuales
+  };
+
+  const applySortFn = <T,>(arr: T[]): T[] => {
+    const { key, direction: dir } = sortConfig;
+    return [...arr].sort((a, b) => {
       if (key === "_estado") {
         const av = Number((a as any).consumo_actual) > 0 ? 1 : 0;
         const bv = Number((b as any).consumo_actual) > 0 ? 1 : 0;
@@ -142,7 +160,7 @@ export default function DetalleClientesCanalDescartablePage() {
             bn = Number(String(bv ?? "").replace(",","."));
       if (Number.isFinite(an) && Number.isFinite(bn)) return dir === "asc" ? an - bn : bn - an;
       return dir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-    }));
+    });
   };
 
   const sa = (k: string) => sortConfig.key === k ? (sortConfig.direction === "asc" ? " ↑" : " ↓") : " ↕";
@@ -166,15 +184,14 @@ export default function DetalleClientesCanalDescartablePage() {
   }, [canal, anio, mes]);
 
   // ── Toggle expand productos de sucursal ──────────────────────────────────
-  const toggleSucursal = async (s: Cliente) => {
-    const key = s.customer_address_code || s.customer_code;
+  const toggleSucursal = async (s: Cliente, rowKey: string) => {
     setExpandedSuc(prev => {
       const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
+      next.has(rowKey) ? next.delete(rowKey) : next.add(rowKey);
       return next;
     });
-    if (!productosSuc.has(key)) {
-      setProductosSuc(prev => new Map(prev).set(key, undefined as any)); // spinner
+    if (!productosSuc.has(rowKey)) {
+      setProductosSuc(prev => new Map(prev).set(rowKey, undefined as any)); // spinner
       try {
         const params = new URLSearchParams({ customerCode: s.customer_code });
         if (s.customer_address_code) params.set("addressCode", s.customer_address_code);
@@ -182,9 +199,9 @@ export default function DetalleClientesCanalDescartablePage() {
         const url = `${API_BASE_URL}/api/ventas/productos-sucursal/${canal}/${anio}/${mes}?${params}`;
         const res  = await fetch(url);
         const json = await res.json();
-        setProductosSuc(prev => new Map(prev).set(key, json.ok ? json.productos : []));
+        setProductosSuc(prev => new Map(prev).set(rowKey, json.ok ? json.productos : []));
       } catch {
-        setProductosSuc(prev => new Map(prev).set(key, []));
+        setProductosSuc(prev => new Map(prev).set(rowKey, []));
       }
     }
   };
@@ -238,21 +255,21 @@ export default function DetalleClientesCanalDescartablePage() {
       if (c.ultima_compra && (!g.ultima_compra || c.ultima_compra > g.ultima_compra))
         g.ultima_compra = c.ultima_compra;
     });
-    return Object.values(mapa).map(g => ({
+    const result = Object.values(mapa).map(g => ({
       ...g,
       variacion_abs:  g.consumo_actual - g.consumo_anterior,
       variacion_porc: g.consumo_anterior > 0
         ? Number(((g.consumo_actual - g.consumo_anterior) / g.consumo_anterior * 100).toFixed(1))
         : null,
-    })).sort((a, b) => b.consumo_actual - a.consumo_actual);
-  }, [clientesVista]);
+    }));
+    return applySortFn(result);
+  }, [clientesVista, sortConfig]);
 
   // ── Sucursales del cliente seleccionado ──────────────────────────────────
   const sucursalesVista = useMemo(() => {
     if (!clienteSeleccionado) return [] as Cliente[];
-    return clientes.filter(c => c.customer_code === clienteSeleccionado)
-      .sort((a, b) => b.consumo_actual - a.consumo_actual);
-  }, [clientes, clienteSeleccionado]);
+    return applySortFn(clientes.filter(c => c.customer_code === clienteSeleccionado));
+  }, [clientes, clienteSeleccionado, sortConfig]);
 
   // ── Filtrado y paginación ─────────────────────────────────────────────────
   // Vista sucursales (cliente seleccionado)
@@ -281,7 +298,7 @@ export default function DetalleClientesCanalDescartablePage() {
           "Dirección Código": c.customer_address_code || "—",
           Cliente: c.nombre_cliente,
           "Tipo Negocio": c.tipo_negocio,
-          Dirección: c.direccion_entrega,
+          Dirección: getDireccionLabel(c.descripcion_direccion, c.direccion_entrega),
           Teléfono: c.telefono,
           Unidades: c.unidades_actual,
           "Consumo Actual ($)": c.consumo_actual,
@@ -679,25 +696,25 @@ export default function DetalleClientesCanalDescartablePage() {
                         const sucItems = paginados as Cliente[];
                         return (
                           <div className="space-y-3 p-3">
-                            {sucItems.map((s) => {
-                              const key        = s.customer_address_code || s.customer_code;
-                              const isExpanded = expandedSuc.has(key);
-                              const prods      = productosSuc.get(key);
+                            {sucItems.map((s, idx) => {
+                              const rowKey     = `${s.customer_code}::${s.customer_address_code ?? ''}::${(pagina-1)*POR_PAGINA+idx}`;
+                              const isExpanded = expandedSuc.has(rowKey);
+                              const prods      = productosSuc.get(rowKey);
                               const sinConsumo = s.consumo_actual === 0;
-                              const dirLabel   = s.direccion_entrega || s.customer_address_code || s.customer_code;
+                              const dirLabel   = getDireccionLabel(s.descripcion_direccion, s.direccion_entrega) || s.customer_address_code || s.customer_code;
                               return (
-                                <div key={key}
+                                <div key={rowKey}
                                   className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-xl overflow-hidden">
                                   {/* Cabecera — clicable */}
-                                  <div className="p-4 cursor-pointer" onClick={() => toggleSucursal(s)}>
+                                  <div className="p-4 cursor-pointer" onClick={() => toggleSucursal(s, rowKey)}>
                                     <div className="flex items-start justify-between mb-2">
                                       <div className="flex-1 min-w-0 pr-2">
                                         <div className="flex items-center gap-2 mb-0.5">
                                           <span className={`text-[10px] transition-transform duration-200 inline-block ${isExpanded ? "rotate-90" : ""} text-white/40`}>▶</span>
-                                          <p className="text-[10px] font-mono text-white/40">{s.customer_address_code || "—"}</p>
+                                          <p className="text-[10px] font-mono text-white/40">{s.descripcion_direccion || s.customer_address_code || "—"}</p>
                                         </div>
                                         <p className="text-sm font-medium text-white/80 truncate">
-                                          {s.direccion_entrega || "Sin dirección"}
+                                          {getDireccionLabel(s.descripcion_direccion, s.direccion_entrega)}
                                         </p>
                                       </div>
                                       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
@@ -722,11 +739,19 @@ export default function DetalleClientesCanalDescartablePage() {
                                         <p className="text-sm font-bold text-green-400">{s.unidades_actual.toLocaleString("es-EC")}</p>
                                       </div>
                                     </div>
-                                    {s.ultima_compra && (
-                                      <div className="mt-2 text-right text-[10px] text-white/40">
-                                        Últ. compra: {new Date(s.ultima_compra).toLocaleDateString("es-EC")}
-                                      </div>
-                                    )}
+                                    <div className="mt-2 flex items-center justify-between text-[10px] text-white/40">
+                                      {s.ultima_compra
+                                        ? <span>Últ. compra: {new Date(s.ultima_compra).toLocaleDateString("es-EC")}</span>
+                                        : <span/>}
+                                      {hasCoords(s.latitud, s.longitud) ? (
+                                        <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
+                                          target="_blank" rel="noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap shrink-0">
+                                          Mapa
+                                        </a>
+                                      ) : null}
+                                    </div>
                                   </div>
                                   {/* Productos expandidos */}
                                   {isExpanded && (
@@ -787,7 +812,14 @@ export default function DetalleClientesCanalDescartablePage() {
                             className={`p-4 cursor-pointer ${sinConsumo ? "bg-red-900/30 border-l-4 border-red-500/60" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1 min-w-0">
-                                <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
+                                <p className="font-bold text-white text-sm truncate">
+                                  {c.nombre_cliente}
+                                  {c.total_sucursales > 0 && (
+                                    <span className="ml-2 text-gray-400 text-xs font-normal">
+                                      {c.total_sucursales} suc.
+                                    </span>
+                                  )}
+                                </p>
                                 <p className="text-[11px] text-gray-400 font-mono">{c.customer_code}</p>
                               </div>
                               <div className="flex flex-col items-end gap-1 ml-2 shrink-0">
@@ -801,7 +833,7 @@ export default function DetalleClientesCanalDescartablePage() {
                                 )}
                               </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-xs">
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                               <div>
                                 <p className="text-[9px] text-gray-500 uppercase">Consumo</p>
                                 <p className="text-white font-bold">${fmt(c.consumo_actual)}</p>
@@ -811,10 +843,6 @@ export default function DetalleClientesCanalDescartablePage() {
                                 <p className={`font-bold ${c.variacion_abs >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                                   {c.variacion_abs >= 0 ? "+" : ""}${fmt(Math.abs(c.variacion_abs))}
                                 </p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] text-gray-500 uppercase">Sucursales</p>
-                                <p className="text-blue-300 font-semibold">{c.total_sucursales}</p>
                               </div>
                             </div>
                             <p className="text-[10px] text-emerald-400 mt-2 text-right">Ver sucursales →</p>
@@ -832,7 +860,8 @@ export default function DetalleClientesCanalDescartablePage() {
                       <th className="px-3 py-3 text-center">N°</th>
                       {clienteSeleccionado !== null
                         // Columnas sucursales
-                        ? ([
+                        ? (<>
+                            {([
                             ["Dirección Cód.", "customer_address_code", "left"],
                             ["Dirección",      "direccion_entrega",     "left"],
                             ["Teléfono",       "telefono",              "center"],
@@ -848,14 +877,15 @@ export default function DetalleClientesCanalDescartablePage() {
                               className={`px-3 py-3 text-${align} cursor-pointer hover:text-white transition-colors whitespace-nowrap`}>
                               {label}<span className="ml-1 text-[#046C5E]">{sa(key)}</span>
                             </th>
-                          ))
+                          ))}
+                            <th className="px-3 py-3 text-center whitespace-nowrap">Mapa</th>
+                          </>)
                         // Columnas lista agrupada
                         : ([
                             ["Código",         "customer_code",       "left"],
                             ["Cliente",        "nombre_cliente",      "left"],
                             ["Tipo Negocio",   "tipo_negocio",        "left"],
                             ["Teléfono",       "telefono",            "center"],
-                            ["Sucursales",     "total_sucursales",    "center"],
                             ["Unidades",       "unidades_actual",     "right"],
                             ["Consumo Actual", "consumo_actual",      "right"],
                             ["Mes Anterior",   "consumo_anterior",    "right"],
@@ -876,21 +906,21 @@ export default function DetalleClientesCanalDescartablePage() {
                   </thead>
                   <tbody>
                     {paginados.length === 0
-                      ? <tr><td colSpan={clienteSeleccionado !== null ? 11 : (esVip ? 15 : 14)} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron resultados.</td></tr>
+                      ? <tr><td colSpan={clienteSeleccionado !== null ? 13 : (esVip ? 14 : 13)} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron resultados.</td></tr>
                       : clienteSeleccionado !== null
                         // Filas sucursales
                         ? (paginados as Cliente[]).map((s, idx) => {
-                            const key        = s.customer_address_code || s.customer_code;
-                            const isExpanded = expandedSuc.has(key);
-                            const prods      = productosSuc.get(key);
+                            const globalN    = (pagina-1)*POR_PAGINA+idx+1;
+                            const rowKey     = `${s.customer_code}::${s.customer_address_code ?? ''}::${globalN-1}`;
+                            const isExpanded = expandedSuc.has(rowKey);
+                            const prods      = productosSuc.get(rowKey);
                             const sinConsumo = s.consumo_actual === 0;
                             const rowBg      = sinConsumo ? "bg-[rgba(220,38,38,0.5)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]";
-                            const globalN    = (pagina-1)*POR_PAGINA+idx+1;
-                            const dirLabel   = s.direccion_entrega || s.customer_address_code || "—";
+                            const dirLabel   = getDireccionLabel(s.descripcion_direccion, s.direccion_entrega);
                             return (
-                              <React.Fragment key={key}>
+                              <React.Fragment key={rowKey}>
                                 {/* Fila principal */}
-                                <tr onClick={() => toggleSucursal(s)}
+                                <tr onClick={() => toggleSucursal(s, rowKey)}
                                   className={`cursor-pointer transition-colors ${rowBg} hover:bg-[#025940] group`}>
                                   {/* # con flecha ▶ */}
                                   <td className="px-3 py-2 text-center text-xs text-white/40 w-10">
@@ -899,7 +929,7 @@ export default function DetalleClientesCanalDescartablePage() {
                                       <span className="text-white/30">{globalN}</span>
                                     </span>
                                   </td>
-                                  <td className="px-3 py-2 text-left font-mono text-xs text-white/50">{s.customer_address_code || "—"}</td>
+                                  <td className="px-3 py-2 text-left font-mono text-xs text-white/50">{s.descripcion_direccion || s.customer_address_code || "—"}</td>
                                   <td className="px-3 py-2 text-left text-xs text-white/80 max-w-[220px]">
                                     <span className="truncate block" title={dirLabel}>{dirLabel}</span>
                                   </td>
@@ -925,11 +955,21 @@ export default function DetalleClientesCanalDescartablePage() {
                                       {sinConsumo ? "Sin consumo" : "Activa"}
                                     </span>
                                   </td>
+                                  <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                    {hasCoords(s.latitud, s.longitud)
+                                      ? <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
+                                          target="_blank" rel="noreferrer"
+                                          className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap">
+                                          Mapa
+                                        </a>
+                                      : <span className="text-[10px] text-white/40 italic whitespace-nowrap">—</span>
+                                    }
+                                  </td>
                                 </tr>
                                 {/* Fila expandida — productos */}
                                 {isExpanded && (
                                   <tr>
-                                    <td colSpan={11} className="p-0 border-b border-[#046C5E]/20">
+                                    <td colSpan={12} className="p-0 border-b border-[#046C5E]/20">
                                       <div className="bg-[#011f17] border-l-2 border-emerald-500/40">
                                         <div className="flex items-center gap-3 px-5 py-2 border-b border-[#046C5E]/20">
                                           <span className="text-[10px] text-emerald-400/60 uppercase tracking-widest font-semibold">
@@ -992,14 +1032,16 @@ export default function DetalleClientesCanalDescartablePage() {
                                 className={`cursor-pointer ${sinConsumo ? "bg-[rgba(220,38,38,0.5)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition`}>
                                 <td className="px-3 py-2 text-center text-gray-400 text-xs">{(pagina-1)*POR_PAGINA+idx+1}</td>
                                 <td className="px-3 py-2 text-left font-mono text-xs text-gray-300">{c.customer_code}</td>
-                                <td className="px-3 py-2 text-left font-semibold text-white">{c.nombre_cliente}</td>
+                                <td className="px-3 py-2 text-left font-semibold text-white">
+                                  {c.nombre_cliente}
+                                  {c.total_sucursales > 0 && (
+                                    <span className="ml-2 text-gray-400 text-xs font-normal">
+                                      {c.total_sucursales} {c.total_sucursales === 1 ? "suc." : "suc."}
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="px-3 py-2 text-left text-gray-300 text-xs">{c.tipo_negocio || "—"}</td>
                                 <td className="px-3 py-2 text-center text-gray-300 text-xs whitespace-nowrap">{c.telefono || "—"}</td>
-                                <td className="px-3 py-2 text-center">
-                                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                                    {c.total_sucursales}
-                                  </span>
-                                </td>
                                 <td className="px-3 py-2 text-right text-blue-300 font-semibold">{Number(c.unidades_actual).toLocaleString("es-EC")}</td>
                                 <td className="px-3 py-2 text-right font-bold text-white">${fmt(c.consumo_actual)}</td>
                                 <td className="px-3 py-2 text-right text-gray-400">${fmt(c.consumo_anterior)}</td>
