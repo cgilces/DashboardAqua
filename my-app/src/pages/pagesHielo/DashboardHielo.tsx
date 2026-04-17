@@ -66,7 +66,7 @@ const DashboardHielo: React.FC = () => {
         );
         if (!response.ok) throw new Error("Error al obtener los datos");
         const data = await response.json();
-        console.log("📊 Fetch Response Hielo:", data);
+        console.log(" Fetch Response Hielo:", data);
 
         const resumenActual = data?.kpisGenerales?.resumenActual;
         if (resumenActual?.kpisGenerales) {

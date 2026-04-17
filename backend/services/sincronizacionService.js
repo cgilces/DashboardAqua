@@ -542,6 +542,9 @@ async function syncDocumento(doc, code, transaction) {
     await Factura.upsert(
       {
         ...basePayload,
+        origen_sistema      : "MOBILVENDOR",
+        company_id         : COMPANY_ID,
+        descripcion_company : COMPANY_DESC, 
         customer_address_code:
           doc.customer_address_code   ||
           doc.customer_address_code_2 ||
@@ -561,8 +564,10 @@ async function syncDocumento(doc, code, transaction) {
       { 
         ...basePayload,
         origen_sistema: "MOBILVENDOR",
+        campania_id         : COMPANY_ID,        // → 1
+        descripcion_company : COMPANY_DESC,      // → "GRUPOAQUA S.A."
 
-        // 🔥 NUEVOS CAMPOS
+        //  NUEVOS CAMPOS
         codigo_subcanal: doc.subchannel_code || null,
         codigo_tipo_negocio: doc.business_type_code || null
       },

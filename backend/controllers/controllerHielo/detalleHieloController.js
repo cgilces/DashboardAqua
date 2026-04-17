@@ -123,7 +123,7 @@ const obtenerDetalleRuta = async (req, res) => {
               cv.codigo_tipo_negocio,
               tn.descripcion AS tipo_negocio,
               dc.codigo_direccion_cliente,
-              dc.calle1_direccion_cliente AS direccion_cliente,
+              dc.descripcion_direccion_cliente AS direccion_cliente,
               dc.telefono_direccion_cliente,
               dc.latitud_direccion_cliente,
               dc.longitud_direccion_cliente,
@@ -151,12 +151,10 @@ const obtenerDetalleRuta = async (req, res) => {
     // console.log("👥 Total clientes:", clientesRuta.length);
 
 
-
-
     // ============================================================
     // 2) CONSULTAR CLIENTES CON CONSUMO EN EL MES
     // ============================================================
-    // console.log("📊 [detalleHielo] Consultando clientes con consumo...");
+    // console.log(" [detalleHielo] Consultando clientes con consumo...");
     // Consulta SQL para obtener los clientes con consumo en el mes
     const clientesConConsumoSQL = `
   SELECT DISTINCT o.customer_code
@@ -183,7 +181,7 @@ const obtenerDetalleRuta = async (req, res) => {
     });
 
     // Depuración: verificar cuántos registros fueron devueltos por la consulta
-    console.log("📊 [detalleHielo] Clientes con consumo (resultado de consulta):", clientesConConsumoRows);
+    console.log(" [detalleHielo] Clientes con consumo (resultado de consulta):", clientesConConsumoRows);
 
     // Acceder correctamente al `customer_code` de cada registro dentro del array
     const clientesConConsumo = new Set(
@@ -191,7 +189,7 @@ const obtenerDetalleRuta = async (req, res) => {
     );
 
     // Depuración: verificar la cantidad de clientes únicos con consumo
-    console.log("📊 [detalleHielo] Clientes con consumo (cantidad única):", clientesConConsumo.size);
+    console.log(" [detalleHielo] Clientes con consumo (cantidad única):", clientesConConsumo.size);
     // ============================================================
     // 3) CONSULTAR CONSUMO ACTUAL Y ANTERIOR
     // ============================================================
@@ -225,7 +223,7 @@ const obtenerDetalleRuta = async (req, res) => {
       type: db.QueryTypes.SELECT,
     });
 
-    // console.log("📊 [detalleHielo] Datos de consumo obtenidos:", clientesConsumoData);
+    // console.log(" [detalleHielo] Datos de consumo obtenidos:", clientesConsumoData);
 
 
 
@@ -476,21 +474,21 @@ const obtenerDetalleRuta = async (req, res) => {
       return {
         codigo_cliente: cliente.codigo_cliente,
         nombre_cliente: cliente.nombre_cliente,
-        direccion_entrega: cliente.direccion_cliente,
+        descripcion_direccion_cliente: cliente.direccion_cliente, // Aseguramos que este campo sea el correcto
+        direccion_entrega: cliente.direccion_cliente, // Alias para compatibilidad, pero el frontend debe usar descripcion_direccion_cliente
         codigo_tipo_negocio: cliente.codigo_tipo_negocio || null,
         tipo_negocio: cliente.tipo_negocio || "SIN CLASIFICAR",
-        telefono_cliente: cliente.telefono_direccion_cliente, // Nuevo campo
-        latitud_cliente: cliente.latitud_direccion_cliente,  // Nuevo campo
-        longitud_cliente: cliente.longitud_direccion_cliente,  // Nuevo campo
+        telefono_cliente: cliente.telefono_direccion_cliente,
+        latitud_cliente: cliente.latitud_direccion_cliente,
+        longitud_cliente: cliente.longitud_direccion_cliente,
         ultima_visita: formatFecha(mapUltimaVisita.get(cliente.codigo_cliente)),
         ultima_factura: formatFecha(mapUltimaFactura.get(cliente.codigo_cliente)),
         consumo_actual: consumoActual.toFixed(2),
         tuvo_consumo: clientesConConsumo.has(cliente.codigo_cliente) ? 'Sí' : 'No',
-        cantidad_productos: cantidadProductosVendidos,  // Agregar cantidad de productos vendidos
+        cantidad_productos: cantidadProductosVendidos,
         max_consumo: maxData.monto.toFixed(2),
         mes_max_consumo: mesNumero !== null ? mesNumero + 1 : null,
         mes_max_consumo_nombre: mesNombre,
-
         vsMesAnterior: {
           monto_anterior: consumoAnterior.toFixed(2),
           variacion_abs: variacionAbs.toFixed(2),
