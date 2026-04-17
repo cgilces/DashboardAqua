@@ -9,6 +9,14 @@ import { API_BASE_URL } from "../../config";
 const fmt = (n: number) =>
   n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Formatea "YYYY-MM-DD" a "D/M/YYYY" sin crear Date (evita shift por timezone)
+const fmtFecha = (s: string | null | undefined): string => {
+  if (!s) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return s;
+  return `${parseInt(m[3], 10)}/${parseInt(m[2], 10)}/${m[1]}`;
+};
+
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
@@ -17,7 +25,10 @@ type Direccion = {
   codigo_cliente:    string | number;
   codigo_direccion:  string | null;
   nombre_cliente:    string;
+  identificacion_cliente?: string | null;
+  tipo_identificacion_cliente?: string | null;
   direccion_entrega: string;
+  descripcion_direccion_cliente?: string;
   tipo_negocio:      string;
   telefono_cliente:  string;
   latitud_cliente:   string;
@@ -32,6 +43,8 @@ type Direccion = {
 type ClienteAgrupado = {
   codigo_cliente:   string | number;
   nombre_cliente:   string;
+  identificacion_cliente?: string | null;
+  tipo_identificacion_cliente?: string | null;
   tipo_negocio:     string;
   telefono_cliente: string;
   consumo_actual:   number;
@@ -64,6 +77,7 @@ const DetalleHieloOdooPage: React.FC = () => {
   // ── Navegación ────────────────────────────────────────────────
   const [clienteSeleccionado, setClienteSeleccionado] = useState<string | null>(null);
   const [clienteNombre,       setClienteNombre]       = useState<string>("");
+  const [clienteIdentificacion, setClienteIdentificacion] = useState<string>("");
 
   // ── Expand productos por dirección ────────────────────────────
   const [expandedDir,    setExpandedDir]    = useState<Set<string>>(new Set());
@@ -71,9 +85,13 @@ const DetalleHieloOdooPage: React.FC = () => {
 
   // ── Filtros / búsqueda ─────────────────────────────────────────
   const [busqueda,   setBusqueda]   = useState("");
+  const [busquedaDir, setBusquedaDir] = useState("");
   const [filtro,     setFiltro]     = useState<"Todos" | "Sí" | "No">("Todos");
   const [pagina,     setPagina]     = useState(1);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
+    key: "consumo_actual", direction: "desc",
+  });
+  const [sortDirConfig, setSortDirConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
     key: "consumo_actual", direction: "desc",
   });
 
@@ -86,7 +104,12 @@ const DetalleHieloOdooPage: React.FC = () => {
     fetch(`${API_BASE_URL}/api/odoo/hielo-clientes?anio=${anio}&mes=${mes}`)
       .then(r => r.json())
       .then(data => {
-        setTodasDirecciones(data.clientes || []);
+        // Mapear para asegurar que descripcion_direccion_cliente esté presente
+        const direcciones = (data.clientes || []).map((d: any) => ({
+          ...d,
+          descripcion_direccion_cliente: d.descripcion_direccion_cliente ?? d.direccion_entrega
+        }));
+        setTodasDirecciones(direcciones);
         setResumen(data.resumen || null);
         setProductosGlobal(data.productosVendidos || []);
         setPagina(1);
@@ -104,6 +127,8 @@ const DetalleHieloOdooPage: React.FC = () => {
         mapa[key] = {
           codigo_cliente:    d.codigo_cliente,
           nombre_cliente:    d.nombre_cliente,
+          identificacion_cliente: d.identificacion_cliente || null,
+          tipo_identificacion_cliente: d.tipo_identificacion_cliente || null,
           tipo_negocio:      d.tipo_negocio,
           telefono_cliente:  d.telefono_cliente,
           consumo_actual:    0,
@@ -137,8 +162,37 @@ const DetalleHieloOdooPage: React.FC = () => {
   // ── Direcciones del cliente seleccionado ───────────────────────
   const direccionesCliente = useMemo((): Direccion[] => {
     if (!clienteSeleccionado) return [];
-    return todasDirecciones.filter(d => String(d.codigo_cliente) === clienteSeleccionado);
-  }, [todasDirecciones, clienteSeleccionado]);
+    let lista = todasDirecciones.filter(d => String(d.codigo_cliente) === clienteSeleccionado);
+    const q = busquedaDir.trim().toLowerCase();
+    if (q) {
+      lista = lista.filter(d => {
+        const desc = (d.descripcion_direccion_cliente || d.direccion_entrega || "").toLowerCase();
+        const cod  = String(d.codigo_direccion || "").toLowerCase();
+        return desc.includes(q) || cod.includes(q);
+      });
+    }
+    const { key, direction } = sortDirConfig;
+    const getVal = (x: Direccion): any => {
+      if (key === "variacion_abs")                 return Number(x.vsMesAnterior?.variacion_abs) || 0;
+      if (key === "descripcion_direccion_cliente") return x.descripcion_direccion_cliente || x.direccion_entrega || "";
+      return (x as any)[key] ?? "";
+    };
+    return [...lista].sort((a, b) => {
+      const av = getVal(a), bv = getVal(b);
+      const an = Number(av), bn = Number(bv);
+      const esNum = av !== "" && bv !== "" && Number.isFinite(an) && Number.isFinite(bn);
+      if (esNum) return direction === "asc" ? an - bn : bn - an;
+      return direction === "asc"
+        ? String(av).localeCompare(String(bv))
+        : String(bv).localeCompare(String(av));
+    });
+  }, [todasDirecciones, clienteSeleccionado, busquedaDir, sortDirConfig]);
+
+  const requestSortDir = (key: string) => {
+    const dir = sortDirConfig.key === key && sortDirConfig.direction === "desc" ? "asc" : "desc";
+    setSortDirConfig({ key, direction: dir });
+  };
+  const saDir = (k: string) => sortDirConfig.key === k ? (sortDirConfig.direction === "asc" ? " ↑" : " ↓") : " ↕";
 
   // ── Toggle expand productos de una dirección ───────────────────
   const toggleDir = async (d: Direccion) => {
@@ -280,7 +334,7 @@ const DetalleHieloOdooPage: React.FC = () => {
             <button
               onClick={() => {
                 if (clienteSeleccionado !== null) {
-                  setClienteSeleccionado(null); setClienteNombre(""); setBusqueda(""); setFiltro("Todos"); setPagina(1);
+                  setClienteSeleccionado(null); setClienteNombre(""); setClienteIdentificacion(""); setBusqueda(""); setBusquedaDir(""); setFiltro("Todos"); setPagina(1);
                   setExpandedDir(new Set()); setProductosDirCache(new Map());
                 } else {
                   navigate(-1);
@@ -289,9 +343,19 @@ const DetalleHieloOdooPage: React.FC = () => {
               className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">
               ← {clienteSeleccionado ? "Volver a clientes" : "Volver"}
             </button>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-              {clienteSeleccionado ? clienteNombre : "HIELO ODOO — Clientes"}
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-5 flex-wrap">
+              <span>{clienteSeleccionado ? clienteNombre : "HIELO ODOO — Clientes"}</span>
+              {clienteSeleccionado && (
+                <span className="inline-flex items-center px-4 py-1.5 rounded-full text-base md:text-lg font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 whitespace-nowrap tracking-wide">
+                  Hielo
+                </span>
+              )}
             </h1>
+            {clienteSeleccionado && clienteIdentificacion && (
+              <p className="text-xs text-emerald-300/80 mt-0.5">
+                Identificacion: <span className="text-sm font-mono text-white">{clienteIdentificacion}</span>
+              </p>
+            )}
             <p className="text-xs text-gray-400">
               {MESES[Number(mes)]} {anio}
               {clienteSeleccionado && " · Direcciones de entrega"}
@@ -408,12 +472,19 @@ const DetalleHieloOdooPage: React.FC = () => {
                       const sinConsumo = c.tuvo_consumo === "No";
                       return (
                         <div key={String(c.codigo_cliente)}
-                          onClick={() => { setClienteSeleccionado(String(c.codigo_cliente)); setClienteNombre(c.nombre_cliente); setExpandedDir(new Set()); setProductosDirCache(new Map()); }}
+                          onClick={() => { setClienteSeleccionado(String(c.codigo_cliente)); setClienteNombre(c.nombre_cliente); setClienteIdentificacion(c.identificacion_cliente || ""); setBusquedaDir(""); setExpandedDir(new Set()); setProductosDirCache(new Map()); }}
                           className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-xl overflow-hidden cursor-pointer hover:border-emerald-500/40 transition-colors">
                           <div className="p-4">
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex-1 min-w-0 pr-2">
-                                <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
+                                  {c.total_direcciones > 1 && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+                                      {c.total_direcciones} suc.
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[11px] text-white/40 font-mono mt-0.5">{c.codigo_cliente}</p>
                               </div>
                               <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
@@ -422,7 +493,7 @@ const DetalleHieloOdooPage: React.FC = () => {
                                 {sinConsumo ? "Sin consumo" : "Activo"}
                               </span>
                             </div>
-                            <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="grid grid-cols-2 gap-2 text-center">
                               <div>
                                 <p className="text-[9px] text-white/40 uppercase">Consumo</p>
                                 <p className="text-sm font-bold text-blue-400">${fmt(c.consumo_actual)}</p>
@@ -432,10 +503,6 @@ const DetalleHieloOdooPage: React.FC = () => {
                                 <p className={`text-sm font-bold ${c.variacion_abs >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                                   {c.variacion_abs >= 0 ? "+" : ""}${fmt(Math.abs(c.variacion_abs))}
                                 </p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] text-white/40 uppercase">Direcc.</p>
-                                <p className="text-sm font-bold text-green-400">{c.total_direcciones}</p>
                               </div>
                             </div>
                             <p className="text-[10px] text-emerald-400/60 mt-3 text-right">Ver direcciones →</p>
@@ -451,14 +518,13 @@ const DetalleHieloOdooPage: React.FC = () => {
             <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="bg-[#014434] text-[10px] uppercase text-green-300 select-none">
+                  <tr className="bg-[#014434] text-[10px] uppercase text-green-300 select-none align-middle">
                     <th className="px-3 py-3 text-left">N°</th>
                     {([
                       ["Código",         "codigo_cliente"],
                       ["Cliente",        "nombre_cliente"],
                       ["Tipo Negocio",   "tipo_negocio"],
                       ["Teléfono",       "telefono_cliente"],
-                      ["Direcc.",        "total_direcciones"],
                       ["Cant. Prod.",    "cantidad_productos"],
                       ["Consumo Actual", "consumo_actual"],
                       ["VS Mes Ant",     "variacion_abs"],
@@ -466,7 +532,7 @@ const DetalleHieloOdooPage: React.FC = () => {
                       ["Estado",         "tuvo_consumo"],
                     ] as [string,string][]).map(([label, key]) => (
                       <th key={key} onClick={() => requestSort(key)}
-                        className="px-3 py-3 text-left cursor-pointer hover:text-white transition-colors whitespace-nowrap">
+                        className={`px-3 py-3 cursor-pointer hover:text-white transition-colors whitespace-nowrap ${key === "cantidad_productos" || key === "consumo_actual" || key === "variacion_abs" || key === "ultima_factura" ? "text-right" : key === "tuvo_consumo" ? "text-center" : "text-left"}`}>
                         {label}<span className="ml-1 text-[#046C5E]">{sa(key)}</span>
                       </th>
                     ))}
@@ -474,26 +540,34 @@ const DetalleHieloOdooPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {paginados.length === 0
-                    ? <tr><td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron clientes.</td></tr>
+                    ? <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron clientes.</td></tr>
                     : paginados.map((c, idx) => {
                         const sinConsumo = c.tuvo_consumo === "No";
                         return (
                           <tr key={String(c.codigo_cliente)}
-                            onClick={() => { setClienteSeleccionado(String(c.codigo_cliente)); setClienteNombre(c.nombre_cliente); setExpandedDir(new Set()); setProductosDirCache(new Map()); }}
-                            className={`cursor-pointer transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940]`}>
+                            onClick={() => { setClienteSeleccionado(String(c.codigo_cliente)); setClienteNombre(c.nombre_cliente); setClienteIdentificacion(c.identificacion_cliente || ""); setBusquedaDir(""); setExpandedDir(new Set()); setProductosDirCache(new Map()); }}
+                            className={`cursor-pointer transition-colors align-middle ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940]`}>
                             <td className="px-3 py-2 text-white/30 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
                             <td className="px-3 py-2 font-mono text-xs text-white/40">{c.codigo_cliente}</td>
-                            <td className="px-3 py-2 font-semibold text-white">{c.nombre_cliente}</td>
+                            <td className="px-3 py-2 font-semibold text-white">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span>{c.nombre_cliente}</span>
+                                {c.total_direcciones > 1 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+                                    {c.total_direcciones} suc.
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-3 py-2 text-white/50 text-xs">{c.tipo_negocio || "—"}</td>
                             <td className="px-3 py-2 text-white/50 text-xs">{c.telefono_cliente || "—"}</td>
-                            <td className="px-3 py-2 text-center text-blue-300 font-semibold tabular-nums">{c.total_direcciones}</td>
                             <td className="px-3 py-2 text-right text-green-400 font-semibold tabular-nums">{c.cantidad_productos.toLocaleString("es-EC")}</td>
                             <td className="px-3 py-2 text-right font-bold text-white tabular-nums">${fmt(c.consumo_actual)}</td>
                             <td className={`px-3 py-2 text-right font-bold tabular-nums ${c.variacion_abs >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                               {c.variacion_abs >= 0 ? "+" : ""}${fmt(Math.abs(c.variacion_abs))}
                             </td>
                             <td className="px-3 py-2 text-right text-white/40 text-xs whitespace-nowrap">
-                              {c.ultima_factura ? new Date(c.ultima_factura).toLocaleDateString("es-EC") : "—"}
+                              {fmtFecha(c.ultima_factura)}
                             </td>
                             <td className="px-3 py-2 text-center">
                               <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold
@@ -516,6 +590,18 @@ const DetalleHieloOdooPage: React.FC = () => {
 
         {/* ══ VISTA: DIRECCIONES DEL CLIENTE ══════════════════════ */}
         {!cargando && clienteSeleccionado !== null && (
+          <>
+          <div className="flex flex-wrap gap-3 mb-4">
+            <div className="relative flex-1 min-w-[180px]">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 0 5 11a6 6 0 0 0 12 0z"/>
+              </svg>
+              <input type="text" placeholder="Buscar dirección de sucursal…" value={busquedaDir}
+                onChange={e => setBusquedaDir(e.target.value)}
+                className="bg-[#012E24] border border-[#046C5E] rounded-lg px-3 py-2 pl-9 text-sm text-white placeholder-gray-500 w-full focus:outline-none focus:border-emerald-500/60"/>
+            </div>
+          </div>
           <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl overflow-hidden mb-6 shadow-xl">
 
             {/* MOBILE: cards de direcciones */}
@@ -540,7 +626,7 @@ const DetalleHieloOdooPage: React.FC = () => {
                                   <span className={`text-[10px] transition-transform duration-200 inline-block ${isExpanded ? "rotate-90" : ""} text-white/40`}>▶</span>
                                   <p className="text-[10px] font-mono text-white/40">{d.codigo_direccion || "—"}</p>
                                 </div>
-                                <p className="text-sm font-medium text-white/80 truncate">{d.direccion_entrega || "Sin dirección"}</p>
+                                <p className="text-sm font-medium text-white/80 truncate">{(d.descripcion_direccion_cliente || d.direccion_entrega) || "Sin dirección"}</p>
                               </div>
                               <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
                                 ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
@@ -566,7 +652,7 @@ const DetalleHieloOdooPage: React.FC = () => {
                             </div>
                             {d.ultima_factura && (
                               <div className="mt-2 text-right text-[10px] text-white/40">
-                                Últ. compra: {new Date(d.ultima_factura).toLocaleDateString("es-EC")}
+                                Últ. compra: {fmtFecha(d.ultima_factura)}
                               </div>
                             )}
                           </div>
@@ -626,16 +712,26 @@ const DetalleHieloOdooPage: React.FC = () => {
                 <thead>
                   <tr className="bg-[#014434] text-[10px] uppercase text-green-300 select-none">
                     <th className="px-3 py-3 text-left w-10">N°</th>
-                    <th className="px-3 py-3 text-left">Cód. Dirección</th>
-                    <th className="px-3 py-3 text-left">Dirección</th>
-                    <th className="px-3 py-3 text-left">Tipo Negocio</th>
-                    <th className="px-3 py-3 text-left">Teléfono</th>
-                    <th className="px-3 py-3 text-right">Unidades</th>
-                    <th className="px-3 py-3 text-right">Consumo</th>
-                    <th className="px-3 py-3 text-right">VS Ant</th>
-                    <th className="px-3 py-3 text-right">Últ. Factura</th>
+                    {([
+                      ["Cód. Dirección", "codigo_direccion",              "text-left"],
+                      ["Dirección",      "descripcion_direccion_cliente", "text-left"],
+                      ["Tipo Negocio",   "tipo_negocio",                  "text-left"],
+                      ["Teléfono",       "telefono_cliente",              "text-left"],
+                      ["Unidades",       "cantidad_productos",            "text-right"],
+                      ["Consumo",        "consumo_actual",                "text-right"],
+                      ["VS Ant",         "variacion_abs",                 "text-right"],
+                      ["Últ. Factura",   "ultima_factura",                "text-right"],
+                    ] as [string, string, string][]).map(([label, key, align]) => (
+                      <th key={key} onClick={() => requestSortDir(key)}
+                        className={`px-3 py-3 cursor-pointer hover:text-white transition-colors whitespace-nowrap ${align}`}>
+                        {label}<span className="ml-1 text-[#046C5E]">{saDir(key)}</span>
+                      </th>
+                    ))}
                     <th className="px-3 py-3 text-center">Mapa</th>
-                    <th className="px-3 py-3 text-center">Estado</th>
+                    <th onClick={() => requestSortDir("tuvo_consumo")}
+                      className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors whitespace-nowrap">
+                      Estado<span className="ml-1 text-[#046C5E]">{saDir("tuvo_consumo")}</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -662,7 +758,7 @@ const DetalleHieloOdooPage: React.FC = () => {
                               </td>
                               <td className="px-3 py-2 font-mono text-xs text-white/40">{d.codigo_direccion || "—"}</td>
                               <td className="px-3 py-2 text-white/80 max-w-[200px]">
-                                <span className="line-clamp-2 text-xs">{d.direccion_entrega || "Sin dirección"}</span>
+                                <span className="line-clamp-2 text-xs">{(d.descripcion_direccion_cliente || d.direccion_entrega) || "Sin dirección"}</span>
                               </td>
                               <td className="px-3 py-2 text-white/50 text-xs">{d.tipo_negocio || "—"}</td>
                               <td className="px-3 py-2 text-white/50 text-xs whitespace-nowrap">{d.telefono_cliente || "—"}</td>
@@ -672,7 +768,7 @@ const DetalleHieloOdooPage: React.FC = () => {
                                 {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                               </td>
                               <td className="px-3 py-2 text-right text-white/40 text-xs whitespace-nowrap">
-                                {d.ultima_factura ? new Date(d.ultima_factura).toLocaleDateString("es-EC") : "—"}
+                                {fmtFecha(d.ultima_factura)}
                               </td>
                               <td className="px-3 py-2 text-center">
                                 {d.latitud_cliente && d.latitud_cliente !== "—" && d.longitud_cliente && d.longitud_cliente !== "—"
@@ -681,7 +777,7 @@ const DetalleHieloOdooPage: React.FC = () => {
                                       className="text-[10px] text-blue-400/70 hover:text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded">
                                       📍
                                     </a>
-                                  : <span className="text-white/20 text-xs">—</span>
+                                  : <span className="text-white/40 text-[10px] italic whitespace-nowrap">Sin información</span>
                                 }
                               </td>
                               <td className="px-3 py-2 text-center">
@@ -762,6 +858,7 @@ const DetalleHieloOdooPage: React.FC = () => {
             </div>
 
           </div>
+          </>
         )}
       </div>
     </DashboardLayout>

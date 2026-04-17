@@ -248,7 +248,7 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
           replacements: {
             codigo_cliente: String(cliente.id),
             codigo_dir: String(d.id),
-            descripcion: d.type || d.name || null,
+            descripcion: [d.name].filter(Boolean).join(', ') || null,
             calle1: d.street || null,
             calle2: d.street2 || null,
             zip: d.zip ? String(d.zip).substring(0, 50) : null,
@@ -564,34 +564,59 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
       const tipoDocNombre = Array.isArray(factura.l10n_latam_document_type_id)
         ? factura.l10n_latam_document_type_id[1] : null;
 
+
+
+      // Obtener dirección correctamente (IMPORTANTE)
+      const direccion = factura.partner_shipping_id?.[0]
+        ? String(factura.partner_shipping_id[0])
+        : null;
+
       await Factura.upsert({
         code: factura.name,
         origen_sistema: "ODOO",
         type: tipoDocId,
         status: statusNum,
+
         estado_pago: factura.payment_state || null,
+
         fecha_creacion: factura.invoice_date || null,
         fecha_vencimiento: factura.invoice_date_due || null,
         fecha_autorizacion: factura.l10n_ec_authorization_date || null,
         fecha_entrega: factura.invoice_date_due || null,
-        customer_code: factura.partner_id?.[0] ? String(factura.partner_id[0]) : null,
-        customer_address_code: factura.partner_shipping_id?.[0] ? String(factura.partner_shipping_id[0]) : null,
-        seller_code: factura.invoice_user_id?.[0] ? String(factura.invoice_user_id[0]) : null,
+
+        customer_code: factura.partner_id?.[0]
+          ? String(factura.partner_id[0])
+          : null,
+
+        // ✅ AQUÍ USAS direccion correctamente
+        customer_address_code: direccion,
+
+        seller_code: factura.invoice_user_id?.[0]
+          ? String(factura.invoice_user_id[0])
+          : null,
+
         route_code: cliente?.x_studio_ruta || null,
+
         total: toNumber(factura.amount_total),
         subtotal: toNumber(factura.amount_untaxed),
         iva: toNumber(factura.amount_tax),
         saldo_pendiente: toNumber(factura.amount_residual),
+
         discount: 0,
+
         tipo_documento: tipoDocNombre || null,
         auth_code: factura.l10n_ec_authorization_number || null,
+
         moneda: factura.currency_id?.[1] || "USD",
+
         reversed_entry_id: Array.isArray(factura.reversed_entry_id)
           ? factura.reversed_entry_id[0]
           : (factura.reversed_entry_id || null),
+
         company_id: Array.isArray(factura.company_id)
           ? factura.company_id[0]
           : (factura.company_id || null),
+
         notes: factura.narration || null,
 
         // Clasificación cliente
@@ -600,7 +625,10 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
 
       }, { transaction: t });
 
+      // líneas
       const lineas = lineasMap[factura.id] || [];
+
+
 
       await DetalleDocumento.destroy({
         where: { documento_code: factura.name },

@@ -303,18 +303,17 @@ const obtenerClientesHieloOdoo = async (req, res) => {
     const inicioAnio = `${anioNum}-01-01 00:00:00`;
     const finAnio    = `${anioNum + 1}-01-01 00:00:00`;
 
-    const placeholders = RUTAS_ODOO.map((_, i) => `:ruta${i}`).join(', ');
-    const rutaBindings = {};
-    RUTAS_ODOO.forEach((r, i) => { rutaBindings[`ruta${i}`] = r; });
-
-    const R = { ...rutaBindings, inicio, fin, antInicio, antFin, inicioAnio, finAnio };
+    const R = { inicio, fin, antInicio, antFin, inicioAnio, finAnio };
 
     // ── Filtros base reutilizables ─────────────────────────────────────────────
-    const mvWhere  = `(seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3')) AND status IN ('2','4','5')`;
-    const odooWhere= `type = 2 AND status IN (2,4,5) AND seller_nombre IN (${placeholders})`;
+    // MobilVendor: facturas con seller_code H% / 10 / h3, fecha por fecha_entrega
+    // Odoo:        facturas con origen_sistema='ODOO', fecha por fecha_creacion
+    //              (fecha_entrega en Odoo guarda invoice_date_due, no delivery real)
+    const mvWhere   = `(seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3')) AND status IN ('2','4','5')`;
+    const odooWhere = `origen_sistema = 'ODOO' AND status IN ('2','4','5')`;
 
-    // NOTA: customer_address_code es VARCHAR en facturas e INTEGER en ordenes
-    // → se castea a TEXT en todos los UNION para compatibilidad de tipos
+    // NOTA: customer_address_code es VARCHAR en facturas → se castea a TEXT
+    // para mantener compatibilidad con el resto del código.
 
     // ── 1. Un row por (customer_code, customer_address_code) del año ──────────
     const clientesSQL = `
@@ -322,8 +321,11 @@ const obtenerClientesHieloOdoo = async (req, res) => {
         src.customer_code,
         src.customer_address_code,
         c.nombre_cliente,
+        c.identificacion_cliente,
+        c.tipo_identificacion_cliente,
         tn.descripcion                                              AS tipo_negocio,
         COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente) AS direccion_entrega,
+        dc.descripcion_direccion_cliente                          AS descripcion_direccion_cliente,
         COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente)AS telefono_cliente,
         dc.latitud_direccion_cliente                               AS latitud_cliente,
         dc.longitud_direccion_cliente                              AS longitud_cliente
@@ -335,12 +337,12 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
         UNION
 
-        SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code
-        FROM ordenes o
-        JOIN detalle_documento dd ON dd.documento_code = o.code
+        SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE ${odooWhere}
           AND dd.codigo_categoria = '28'
-          AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
+          AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
       ) src
       LEFT JOIN clientes c              ON c.codigo_cliente = src.customer_code
       LEFT JOIN tipos_negocio tn        ON tn.codigo = c.codigo_tipo_negocio
@@ -363,10 +365,10 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
         UNION ALL
 
-        SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
-               o.fecha_creacion AS fecha, dd.total, dd.cantidad
-        FROM ordenes o
-        JOIN detalle_documento dd ON dd.documento_code = o.code
+        SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
+               f.fecha_creacion AS fecha, dd.total, dd.cantidad
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE ${odooWhere} AND dd.codigo_categoria = '28'
       ) comb
       GROUP BY customer_code, customer_address_code
@@ -387,12 +389,12 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
           UNION ALL
 
-          SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
-                 o.fecha_creacion AS fecha, dd.total
-          FROM ordenes o
-          JOIN detalle_documento dd ON dd.documento_code = o.code
+          SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
+                 f.fecha_creacion AS fecha, dd.total
+          FROM facturas f
+          JOIN detalle_documento dd ON dd.documento_code = f.code
           WHERE ${odooWhere} AND dd.codigo_categoria = '28'
-            AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
+            AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
         ) comb
         GROUP BY customer_code, customer_address_code, DATE_TRUNC('month', fecha)
       )
@@ -414,7 +416,7 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
         SELECT customer_code, customer_address_code::TEXT AS customer_address_code,
                fecha_creacion AS fecha
-        FROM ordenes WHERE ${odooWhere}
+        FROM facturas WHERE ${odooWhere}
       ) comb
       GROUP BY customer_code, customer_address_code
     `;
@@ -433,10 +435,10 @@ const obtenerClientesHieloOdoo = async (req, res) => {
         UNION ALL
 
         SELECT dd.descripcion, dd.cantidad, dd.total
-        FROM ordenes o
-        JOIN detalle_documento dd ON dd.documento_code = o.code
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE ${odooWhere} AND dd.codigo_categoria = '28'
-          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
       ) comb
       GROUP BY descripcion
       ORDER BY unidades_vendidas DESC
@@ -485,7 +487,10 @@ const obtenerClientesHieloOdoo = async (req, res) => {
         codigo_cliente:         c.customer_code,
         codigo_direccion:       c.customer_address_code || null,
         nombre_cliente:         c.nombre_cliente,
+        identificacion_cliente: c.identificacion_cliente || null,
+        tipo_identificacion_cliente: c.tipo_identificacion_cliente || null,
         direccion_entrega:      c.direccion_entrega,
+        descripcion_direccion_cliente: c.descripcion_direccion_cliente,
         tipo_negocio:           c.tipo_negocio || 'SIN CLASIFICAR',
         telefono_cliente:       c.telefono_cliente || '—',
         latitud_cliente:        c.latitud_cliente  || '—',
