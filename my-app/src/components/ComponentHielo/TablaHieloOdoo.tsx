@@ -110,7 +110,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
     if (!datos) return;
     try {
       const row = {
-        "Canal"          : "HIELO — RUTAS EMPRESA (ODOO)",
+        "Canal"          : "HIELO — VENTAS EMPRESA",
         "Unidades"       : fmtInt(totales.unidades),
         "Dólares $"      : fmt(totales.dolares),
         "Proyección $"   : fmt(totales.proyeccion_dolares),
@@ -121,7 +121,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
         "Órdenes"        : totales.cant_ordenes,
       };
       const ws = XLSX.utils.json_to_sheet([]);
-      XLSX.utils.sheet_add_aoa(ws, [[`HIELO ODOO — VENTAS - ${mes}/${anio}`], []], { origin: "A1" });
+      XLSX.utils.sheet_add_aoa(ws, [[`HIELO — VENTAS EMPRESA - ${mes}/${anio}`], []], { origin: "A1" });
       XLSX.utils.sheet_add_json(ws, [row], { origin: "A3" });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "HieloOdoo");
@@ -137,7 +137,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
       {/* ── Encabezado con KPIs ──────────────────────────────── */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
         <h2 className="text-lg md:text-xl font-bold text-cyan-300">
-          HIELO — RUTAS EMPRESA (ODOO)
+          HIELO — VENTAS EMPRESA
         </h2>
 
         <div className="flex gap-3 flex-wrap items-center">
@@ -203,7 +203,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
             onClick={() => navigate(`/hielo-odoo/clientes/${anio}/${mes}`)}
           >
             <td className="px-4 py-3 font-bold text-cyan-300">
-              HIELO EMPRESA — ODOO
+              HIELO EMPRESA
               <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
             </td>
 
