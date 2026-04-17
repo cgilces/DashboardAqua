@@ -1,5 +1,5 @@
 require("dotenv").config();
-const fs   = require("fs");
+const fs = require("fs");
 const path = require("path");
 const sequelize = require("../../db");
 
@@ -26,9 +26,9 @@ const toNumber = (val) => {
 
 const logErrorsToFile = (errores, filename = "errores_odoo.txt") => {
   const logFilePath = path.join(__dirname, filename);
-  const timestamp   = new Date().toISOString();
-  const separator   = "─".repeat(60);
-  const content     = errores
+  const timestamp = new Date().toISOString();
+  const separator = "─".repeat(60);
+  const content = errores
     .map(({ doc, error }) =>
       `\n${separator}\n[${timestamp}] Doc: ${doc}\n${JSON.stringify(error, null, 2)}`
     )
@@ -184,40 +184,40 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
   ]);
 
   for (const cliente of Object.values(clientesMap)) {
-    const idCompany          = Array.isArray(cliente.company_id) ? cliente.company_id[0] : null;
+    const idCompany = Array.isArray(cliente.company_id) ? cliente.company_id[0] : null;
     const descripcionCompany = Array.isArray(cliente.company_id) ? cliente.company_id[1] : null;
-    const docDelCliente      = docs.find((o) => o.partner_id?.[0] === cliente.id);
+    const docDelCliente = docs.find((o) => o.partner_id?.[0] === cliente.id);
 
     await Clientes.upsert({
-      codigo_cliente              : String(cliente.id),
-      company_id                  : idCompany,
-      descripcion_company         : descripcionCompany,
-      identificacion_cliente      : cliente.vat              || null,
-      nombre_cliente              : cliente.name             || null,
-      nombre_comercial_cliente    : cliente.name             || null,
-      email_cliente               : cliente.email ? String(cliente.email).substring(0, 500) : null,
-      telefono_cliente            : cliente.phone || cliente.mobile || null,
-      contacto_cliente            : cliente.name             || null,
-      direccion_cliente           : cliente.street           || null,
-      latitud_cliente             : toNumber(cliente.partner_latitude)  || null,
-      longitud_cliente            : toNumber(cliente.partner_longitude) || null,
-      ciudad_cliente              : cliente.city             || null,
-      pais_cliente                : cliente.country_id?.[1]  || null,
-      industria_cliente           : cliente.industry_id?.[1] || null,
-      condicion_pago_cliente      : cliente.property_payment_term_id?.[1] || null,
-      tiene_credito_cliente       : !!cliente.property_payment_term_id,
-      mobilvendor_id_cliente      : cliente.mobilvendor_id && cliente.mobilvendor_id !== false
+      codigo_cliente: String(cliente.id),
+      company_id: idCompany,
+      descripcion_company: descripcionCompany,
+      identificacion_cliente: cliente.vat || null,
+      nombre_cliente: cliente.name || null,
+      nombre_comercial_cliente: cliente.name || null,
+      email_cliente: cliente.email ? String(cliente.email).substring(0, 500) : null,
+      telefono_cliente: cliente.phone || cliente.mobile || null,
+      contacto_cliente: cliente.name || null,
+      direccion_cliente: cliente.street || null,
+      latitud_cliente: toNumber(cliente.partner_latitude) || null,
+      longitud_cliente: toNumber(cliente.partner_longitude) || null,
+      ciudad_cliente: cliente.city || null,
+      pais_cliente: cliente.country_id?.[1] || null,
+      industria_cliente: cliente.industry_id?.[1] || null,
+      condicion_pago_cliente: cliente.property_payment_term_id?.[1] || null,
+      tiene_credito_cliente: !!cliente.property_payment_term_id,
+      mobilvendor_id_cliente: cliente.mobilvendor_id && cliente.mobilvendor_id !== false
         ? String(cliente.mobilvendor_id) : null,
-      codigo_moneda_cliente       : "USD",
-      descuento_cliente           : 0,
-      saldo_cliente               : 0,
-      tiene_documentos_cliente    : false,
-      estado_proceso_cliente      : 0,
+      codigo_moneda_cliente: "USD",
+      descuento_cliente: 0,
+      saldo_cliente: 0,
+      tiene_documentos_cliente: false,
+      estado_proceso_cliente: 0,
       codigo_usuario_asignado_cliente: docDelCliente?.user_id?.[0]
         ? String(docDelCliente.user_id[0]) : null,
-      estado_cliente              : 1,
-      fecha_creacion_cliente      : new Date(),
-      fecha_actualizacion_cliente : new Date(),
+      estado_cliente: 1,
+      fecha_creacion_cliente: new Date(),
+      fecha_actualizacion_cliente: new Date(),
     }, { conflictFields: ["codigo_cliente"] });
 
     for (const d of (direccionesMap[cliente.id] || [])) {
@@ -247,13 +247,13 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
         {
           replacements: {
             codigo_cliente: String(cliente.id),
-            codigo_dir    : String(d.id),
-            descripcion   : d.type || d.name || null,
-            calle1        : d.street  || null,
-            calle2        : d.street2 || null,
-            zip           : d.zip ? String(d.zip).substring(0, 50) : null,
-            telefono      : d.phone || d.mobile || null,
-            email         : d.email || null,
+            codigo_dir: String(d.id),
+            descripcion: d.type || d.name || null,
+            calle1: d.street || null,
+            calle2: d.street2 || null,
+            zip: d.zip ? String(d.zip).substring(0, 50) : null,
+            telefono: d.phone || d.mobile || null,
+            email: d.email || null,
           },
           type: sequelize.QueryTypes.INSERT,
         }
@@ -274,27 +274,27 @@ const upsertProductosBatch = async (productosMap, contadores) => {
 
   await Producto.bulkCreate(
     productos.map((p) => ({
-      codigo_producto        : String(p.id),
-      nombre_producto        : p.name || "SIN NOMBRE",
-      nombre_alterno         : p.name || null,
-      codigo_barras          : p.barcode          || null,
-      codigo_interno         : p.default_code     || null,
-      codigo_categoria       : p.categ_id?.[0] ? String(p.categ_id[0]) : null,
-      categoria_producto     : p.categ_id?.[1]    || null,
-      codigo_unidad_medida   : p.uom_id?.[1]      || null,
-      unidad_medida          : p.uom_id?.[1]      || null,
-      unidad_medida_compra   : p.uom_po_id?.[1]   || null,
-      tipo_producto          : p.type             || null,
-      codigo_tipo_inventario : p.type             || null,
-      costo                  : toNumber(p.standard_price),
-      ultimo_costo           : toNumber(p.standard_price),
-      precio                 : toNumber(p.list_price),
-      peso                   : toNumber(p.weight),
-      volumen                : toNumber(p.volume),
-      descripcion_venta      : p.description_sale || null,
-      activo                 : p.active !== false,
-      estado                 : p.active !== false ? 1 : 0,
-      origen_sistema         : "ODOO",
+      codigo_producto: String(p.id),
+      nombre_producto: p.name || "SIN NOMBRE",
+      nombre_alterno: p.name || null,
+      codigo_barras: p.barcode || null,
+      codigo_interno: p.default_code || null,
+      codigo_categoria: p.categ_id?.[0] ? String(p.categ_id[0]) : null,
+      categoria_producto: p.categ_id?.[1] || null,
+      codigo_unidad_medida: p.uom_id?.[1] || null,
+      unidad_medida: p.uom_id?.[1] || null,
+      unidad_medida_compra: p.uom_po_id?.[1] || null,
+      tipo_producto: p.type || null,
+      codigo_tipo_inventario: p.type || null,
+      costo: toNumber(p.standard_price),
+      ultimo_costo: toNumber(p.standard_price),
+      precio: toNumber(p.list_price),
+      peso: toNumber(p.weight),
+      volumen: toNumber(p.volume),
+      descripcion_venta: p.description_sale || null,
+      activo: p.active !== false,
+      estado: p.active !== false ? 1 : 0,
+      origen_sistema: "ODOO",
     })),
     {
       updateOnDuplicate: [
@@ -320,16 +320,16 @@ const upsertProductosBatch = async (productosMap, contadores) => {
 // ========================================================
 const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
   const clienteIds = [...new Set(pedidos.map((o) => o.partner_id?.[0]).filter(Boolean))];
-  const ordenIds   = pedidos.map((o) => o.id);
+  const ordenIds = pedidos.map((o) => o.id);
 
   // 1. Clientes (secuencial)
   const { clientesMap, totalClientes } = await upsertClientesYDirecciones(uid, clienteIds, pedidos);
   contadores.clientes += totalClientes;
 
   // 2. Fetch lineas + productos
-  const lineasMap    = await fetchLineasPedidosBatch(uid, ordenIds);
-  const todasLineas  = Object.values(lineasMap).flat();
-  const productoIds  = [...new Set(todasLineas.map((l) => l.product_id?.[0]).filter(Boolean))];
+  const lineasMap = await fetchLineasPedidosBatch(uid, ordenIds);
+  const todasLineas = Object.values(lineasMap).flat();
+  const productoIds = [...new Set(todasLineas.map((l) => l.product_id?.[0]).filter(Boolean))];
   const productosMap = await fetchProductosBatch(uid, productoIds);
 
   // 3. Productos (secuencial — un solo bulkCreate para todo el chunk)
@@ -351,56 +351,56 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
   await Promise.all(pedidos.map(async (orden) => {
     const t = await sequelize.transaction();
     try {
-      const cliente            = clientesMap[orden.partner_id?.[0]] || null;
-      const clienteLocal       = clientesLocalesMapPedidos[String(orden.partner_id?.[0] ?? '')] || null;
-      const idCompany          = Array.isArray(cliente?.company_id) ? cliente.company_id[0] : null;
+      const cliente = clientesMap[orden.partner_id?.[0]] || null;
+      const clienteLocal = clientesLocalesMapPedidos[String(orden.partner_id?.[0] ?? '')] || null;
+      const idCompany = Array.isArray(cliente?.company_id) ? cliente.company_id[0] : null;
       const descripcionCompany = Array.isArray(cliente?.company_id) ? cliente.company_id[1] : null;
 
       const statusNum =
-        orden.state === "sale" || orden.state === "done"    ? 2
-        : orden.state === "draft" || orden.state === "sent" ? 1
-        : orden.state === "cancel"                          ? 0
-        : null;
+        orden.state === "sale" || orden.state === "done" ? 2
+          : orden.state === "draft" || orden.state === "sent" ? 1
+            : orden.state === "cancel" ? 0
+              : null;
 
       await Orden.upsert({
-        code              : orden.name,
-        origen_sistema    : "ODOO",
-        type              : 2,
-        status            : statusNum,
-        estado_odoo       : orden.state            || null,
-        estado_facturacion: orden.invoice_status   || null,
-        estado_entrega    : orden.delivery_status  || null,
-        fecha_creacion    : orden.date_order       || null,
-        fecha_validez     : orden.validity_date    || null,
-        fecha_compromiso  : orden.commitment_date  || null,
-        fecha_entrega     : orden.effective_date   || null,
-        campania_id       : idCompany,
+        code: orden.name,
+        origen_sistema: "ODOO",
+        type: 2,
+        status: statusNum,
+        estado_odoo: orden.state || null,
+        estado_facturacion: orden.invoice_status || null,
+        estado_entrega: orden.delivery_status || null,
+        fecha_creacion: orden.date_order || null,
+        fecha_validez: orden.validity_date || null,
+        fecha_compromiso: orden.commitment_date || null,
+        fecha_entrega: orden.effective_date || null,
+        campania_id: idCompany,
         descripcion_company: descripcionCompany,
-        customer_code     : orden.partner_id?.[0]  ? String(orden.partner_id[0])  : null,
-        customer_nombre   : orden.partner_id?.[1]  || null,
-        seller_code       : orden.user_id?.[0]     ? String(orden.user_id[0])      : null,
-        seller_nombre     : orden.user_id?.[1]     || null,
-        equipo_ventas     : orden.team_id?.[1]     || null,
+        customer_code: orden.partner_id?.[0] ? String(orden.partner_id[0]) : null,
+        customer_nombre: orden.partner_id?.[1] || null,
+        seller_code: orden.user_id?.[0] ? String(orden.user_id[0]) : null,
+        seller_nombre: orden.user_id?.[1] || null,
+        equipo_ventas: orden.team_id?.[1] || null,
         customer_address_code: orden.partner_shipping_id?.[0] || null,
-        route_code        : cliente?.x_studio_ruta  || null,
-        moneda            : orden.currency_id?.[1]  || "USD",
-        tasa_cambio       : orden.currency_rate      || 1,
-        total             : toNumber(orden.amount_total),
-        subtotal          : toNumber(orden.amount_untaxed),
-        iva               : toNumber(orden.amount_tax),
-        discount          : 0,
-        monto_no_pagado   : toNumber(orden.amount_unpaid),
-        almacen_id        : orden.warehouse_id?.[0]  || null,
-        transportista_id  : orden.carrier_id?.[0]    || null,
-        politica_entrega  : orden.picking_policy     || null,
-        payment_term_id   : orden.payment_term_id?.[0] || null,
+        route_code: cliente?.x_studio_ruta || null,
+        moneda: orden.currency_id?.[1] || "USD",
+        tasa_cambio: orden.currency_rate || 1,
+        total: toNumber(orden.amount_total),
+        subtotal: toNumber(orden.amount_untaxed),
+        iva: toNumber(orden.amount_tax),
+        discount: 0,
+        monto_no_pagado: toNumber(orden.amount_unpaid),
+        almacen_id: orden.warehouse_id?.[0] || null,
+        transportista_id: orden.carrier_id?.[0] || null,
+        politica_entrega: orden.picking_policy || null,
+        payment_term_id: orden.payment_term_id?.[0] || null,
         payment_term_nombre: orden.payment_term_id?.[1] || null,
-        source_document   : orden.client_order_ref   || null,
-        mobilvendor_id    : orden.mobilvendor_id     || null,
-        notes             : orden.note               || null,
+        source_document: orden.client_order_ref || null,
+        mobilvendor_id: orden.mobilvendor_id || null,
+        notes: orden.note || null,
         // Clasificación del cliente tomada de la tabla clientes local
         codigo_tipo_negocio: clienteLocal?.codigo_tipo_negocio || null,
-        codigo_subcanal    : clienteLocal?.codigo_subcanal      || null,
+        codigo_subcanal: clienteLocal?.codigo_subcanal || null,
       }, { transaction: t });
 
       const lineas = lineasMap[orden.id] || [];
@@ -409,44 +409,44 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
       if (lineas.length) {
         await DetalleDocumento.bulkCreate(
           lineas.map((linea) => {
-            const producto      = productosMap[linea.product_id?.[0]];
+            const producto = productosMap[linea.product_id?.[0]];
             const costoUnitario = toNumber(producto?.standard_price);
-            const cantidad      = toNumber(linea.product_uom_qty);
-            const precio        = toNumber(linea.price_unit);
-            const subtotal      = toNumber(linea.price_subtotal);
-            const margen        = (precio - costoUnitario) * cantidad;
+            const cantidad = toNumber(linea.product_uom_qty);
+            const precio = toNumber(linea.price_unit);
+            const subtotal = toNumber(linea.price_subtotal);
+            const margen = (precio - costoUnitario) * cantidad;
             return {
-              documento_code              : orden.name,
-              codigo_producto             : linea.product_id?.[0] ? String(linea.product_id[0]) : "SIN-CODIGO",
-              descripcion                 : linea.name || "",
-              producto_nombre             : producto?.name          || linea.name || null,
-              producto_categoria          : producto?.categ_id?.[1] || null,
-              producto_codigo_interno     : producto?.default_code  || null,
+              documento_code: orden.name,
+              codigo_producto: linea.product_id?.[0] ? String(linea.product_id[0]) : "SIN-CODIGO",
+              descripcion: linea.name || "",
+              producto_nombre: producto?.name || linea.name || null,
+              producto_categoria: producto?.categ_id?.[1] || null,
+              producto_codigo_interno: producto?.default_code || null,
               cantidad,
-              cantidad_entregada          : toNumber(linea.qty_delivered),
-              cantidad_facturada          : toNumber(linea.qty_invoiced),
-              cantidad_pendiente_entregar : Math.max(0, cantidad - toNumber(linea.qty_delivered)),
-              cantidad_pendiente_facturar : Math.max(0, cantidad - toNumber(linea.qty_invoiced)),
+              cantidad_entregada: toNumber(linea.qty_delivered),
+              cantidad_facturada: toNumber(linea.qty_invoiced),
+              cantidad_pendiente_entregar: Math.max(0, cantidad - toNumber(linea.qty_delivered)),
+              cantidad_pendiente_facturar: Math.max(0, cantidad - toNumber(linea.qty_invoiced)),
               precio,
-              descuento_linea             : toNumber(linea.discount),
+              descuento_linea: toNumber(linea.discount),
               subtotal,
-              total                       : toNumber(linea.price_total),
-              iva                         : toNumber(linea.price_tax),
-              precio_sin_impuesto         : precio,
-              precio_con_impuesto         : cantidad > 0 ? toNumber(linea.price_total) / cantidad : precio,
-              impuesto_linea              : toNumber(linea.price_tax),
-              margen_linea                : margen,
-              margen_porcentaje_linea     : subtotal > 0 ? (margen / subtotal) * 100 : 0,
-              unit_alias                  : linea.product_uom?.[1]  || null,
-              unidad_medida               : linea.product_uom?.[1]  || null,
-              barcode                     : producto?.barcode        || null,
-              secuencia                   : linea.sequence           || 0,
-              codigo_categoria            : producto?.categ_id?.[0] ? String(producto.categ_id[0]) : null,
-              descripcion_categoria       : producto?.categ_id?.[1] || null,
-              estado_facturacion_linea    : linea.invoice_status     || null,
-              estado_odoo_linea           : linea.state              || null,
-              es_anticipo                 : linea.is_downpayment     || false,
-              es_envio                    : linea.is_delivery        || false,
+              total: toNumber(linea.price_total),
+              iva: toNumber(linea.price_tax),
+              precio_sin_impuesto: precio,
+              precio_con_impuesto: cantidad > 0 ? toNumber(linea.price_total) / cantidad : precio,
+              impuesto_linea: toNumber(linea.price_tax),
+              margen_linea: margen,
+              margen_porcentaje_linea: subtotal > 0 ? (margen / subtotal) * 100 : 0,
+              unit_alias: linea.product_uom?.[1] || null,
+              unidad_medida: linea.product_uom?.[1] || null,
+              barcode: producto?.barcode || null,
+              secuencia: linea.sequence || 0,
+              codigo_categoria: producto?.categ_id?.[0] ? String(producto.categ_id[0]) : null,
+              descripcion_categoria: producto?.categ_id?.[1] || null,
+              estado_facturacion_linea: linea.invoice_status || null,
+              estado_odoo_linea: linea.state || null,
+              es_anticipo: linea.is_downpayment || false,
+              es_envio: linea.is_delivery || false,
             };
           }),
           { ignoreDuplicates: true, transaction: t }
@@ -470,17 +470,27 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
 // Mismo patrón: clientes → productos → Promise.all facturas
 // ========================================================
 const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
-  const clienteIds = [...new Set(facturas.map((f) => f.partner_id?.[0]).filter(Boolean))];
+  const clienteIds = [...new Set(
+    facturas.flatMap(f => [
+      f.partner_id?.[0],
+      f.partner_shipping_id?.[0]
+    ]).filter(Boolean)
+  )];
   const facturaIds = facturas.map((f) => f.id);
 
   // 1. Clientes (secuencial)
   const { clientesMap, totalClientes } = await upsertClientesYDirecciones(uid, clienteIds, facturas);
+  const clientesFaltantes = clienteIds.filter(id => !clientesMap[id]);
+
+  if (clientesFaltantes.length) {
+    console.warn("⚠️ Clientes NO encontrados en Odoo:", clientesFaltantes);
+  }
   contadores.clientes += totalClientes;
 
   // 2. Fetch líneas + productos
-  const lineasMap    = await fetchLineasFacturasBatch(uid, facturaIds);
-  const todasLineas  = Object.values(lineasMap).flat();
-  const productoIds  = [...new Set(todasLineas.map((l) => l.product_id?.[0]).filter(Boolean))];
+  const lineasMap = await fetchLineasFacturasBatch(uid, facturaIds);
+  const todasLineas = Object.values(lineasMap).flat();
+  const productoIds = [...new Set(todasLineas.map((l) => l.product_id?.[0]).filter(Boolean))];
   const productosMap = await fetchProductosBatch(uid, productoIds);
 
   // 3. Productos (secuencial — un solo bulkCreate para todo el chunk)
@@ -502,95 +512,145 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
   await Promise.all(facturas.map(async (factura) => {
     const t = await sequelize.transaction();
     try {
-      const cliente       = clientesMap[factura.partner_id?.[0]] || null;
-      const clienteLocal  = clientesLocalesMap[String(factura.partner_id?.[0] ?? '')] || null;
-      const statusNum     =
-        factura.state === "posted"   ? 2
-        : factura.state === "draft"  ? 1
-        : factura.state === "cancel" ? 0
-        : null;
-      const tipoDocId     = Array.isArray(factura.l10n_latam_document_type_id)
+      let cliente = clientesMap[factura.partner_id?.[0]] || null;
+
+      // 🚨 SI NO EXISTE EN ODOO → CREAR CLIENTE DESDE FACTURA
+      if (!cliente && factura.partner_id?.[0]) {
+        console.warn(`⚠️ Cliente no encontrado en Odoo → creando: ${factura.partner_id[0]}`);
+
+        await Clientes.upsert({
+          codigo_cliente: String(factura.partner_id[0]),
+          nombre_cliente: factura.partner_id?.[1] || "SIN NOMBRE",
+          nombre_comercial_cliente: factura.partner_id?.[1] || "SIN NOMBRE",
+          identificacion_cliente: null,
+          email_cliente: null,
+          telefono_cliente: null,
+          direccion_cliente: null,
+          ciudad_cliente: null,
+          pais_cliente: null,
+          industria_cliente: null,
+          condicion_pago_cliente: null,
+          tiene_credito_cliente: false,
+          codigo_moneda_cliente: "USD",
+          descuento_cliente: 0,
+          saldo_cliente: 0,
+          tiene_documentos_cliente: true,
+          estado_proceso_cliente: 0,
+          estado_cliente: 1,
+          origen_sistema: "ODOO_FACTURA",
+          fecha_creacion_cliente: new Date(),
+          fecha_actualizacion_cliente: new Date(),
+        }, { transaction: t });
+
+        // Simular cliente mínimo para continuar flujo
+        cliente = {
+          id: factura.partner_id[0],
+          name: factura.partner_id[1],
+          x_studio_ruta: null
+        };
+      }
+
+      const clienteLocal = clientesLocalesMap[String(factura.partner_id?.[0] ?? '')] || null;
+
+      const statusNum =
+        factura.state === "posted" ? 2
+          : factura.state === "draft" ? 1
+            : factura.state === "cancel" ? 0
+              : null;
+
+      const tipoDocId = Array.isArray(factura.l10n_latam_document_type_id)
         ? factura.l10n_latam_document_type_id[0] : null;
+
       const tipoDocNombre = Array.isArray(factura.l10n_latam_document_type_id)
         ? factura.l10n_latam_document_type_id[1] : null;
 
       await Factura.upsert({
-        code              : factura.name,
-        origen_sistema    : "ODOO",
-        type              : tipoDocId,
-        status            : statusNum,
-        estado_pago       : factura.payment_state               || null,
-        fecha_creacion    : factura.invoice_date                || null,
-        fecha_vencimiento : factura.invoice_date_due            || null,
-        fecha_autorizacion: factura.l10n_ec_authorization_date  || null,
-        fecha_entrega     : factura.invoice_date_due            || null,
-        customer_code     : factura.partner_id?.[0]     ? String(factura.partner_id[0])         : null,
+        code: factura.name,
+        origen_sistema: "ODOO",
+        type: tipoDocId,
+        status: statusNum,
+        estado_pago: factura.payment_state || null,
+        fecha_creacion: factura.invoice_date || null,
+        fecha_vencimiento: factura.invoice_date_due || null,
+        fecha_autorizacion: factura.l10n_ec_authorization_date || null,
+        fecha_entrega: factura.invoice_date_due || null,
+        customer_code: factura.partner_id?.[0] ? String(factura.partner_id[0]) : null,
         customer_address_code: factura.partner_shipping_id?.[0] ? String(factura.partner_shipping_id[0]) : null,
-        seller_code       : factura.invoice_user_id?.[0] ? String(factura.invoice_user_id[0])   : null,
-        route_code        : cliente?.x_studio_ruta              || null,
-        total             : toNumber(factura.amount_total),
-        subtotal          : toNumber(factura.amount_untaxed),
-        iva               : toNumber(factura.amount_tax),
-        saldo_pendiente   : toNumber(factura.amount_residual),
-        discount          : 0,
-        tipo_documento    : tipoDocNombre                       || null,
-        auth_code         : factura.l10n_ec_authorization_number || null,
-        moneda            : factura.currency_id?.[1]            || "USD",
-        reversed_entry_id : Array.isArray(factura.reversed_entry_id)
-          ? factura.reversed_entry_id[0] : (factura.reversed_entry_id || null),
-        company_id        : Array.isArray(factura.company_id)
-          ? factura.company_id[0] : (factura.company_id || null),
-        notes             : factura.narration                   || null,
-        // Clasificación del cliente tomada de la tabla clientes local
-        codigo_tipo_negocio: clienteLocal?.codigo_tipo_negocio  || null,
-        codigo_subcanal    : clienteLocal?.codigo_subcanal       || null,
+        seller_code: factura.invoice_user_id?.[0] ? String(factura.invoice_user_id[0]) : null,
+        route_code: cliente?.x_studio_ruta || null,
+        total: toNumber(factura.amount_total),
+        subtotal: toNumber(factura.amount_untaxed),
+        iva: toNumber(factura.amount_tax),
+        saldo_pendiente: toNumber(factura.amount_residual),
+        discount: 0,
+        tipo_documento: tipoDocNombre || null,
+        auth_code: factura.l10n_ec_authorization_number || null,
+        moneda: factura.currency_id?.[1] || "USD",
+        reversed_entry_id: Array.isArray(factura.reversed_entry_id)
+          ? factura.reversed_entry_id[0]
+          : (factura.reversed_entry_id || null),
+        company_id: Array.isArray(factura.company_id)
+          ? factura.company_id[0]
+          : (factura.company_id || null),
+        notes: factura.narration || null,
+
+        // Clasificación cliente
+        codigo_tipo_negocio: clienteLocal?.codigo_tipo_negocio || null,
+        codigo_subcanal: clienteLocal?.codigo_subcanal || null,
+
       }, { transaction: t });
 
       const lineas = lineasMap[factura.id] || [];
-      await DetalleDocumento.destroy({ where: { documento_code: factura.name }, transaction: t });
+
+      await DetalleDocumento.destroy({
+        where: { documento_code: factura.name },
+        transaction: t
+      });
 
       if (lineas.length) {
         await DetalleDocumento.bulkCreate(
           lineas.map((linea) => {
-            const producto  = productosMap[linea.product_id?.[0]];
-            const cantidad  = toNumber(linea.quantity);
-            const precio    = toNumber(linea.price_unit);
-            const subtotal  = toNumber(linea.price_subtotal);
-            const total     = toNumber(linea.price_total);
-            const iva       = total - subtotal;
+            const producto = productosMap[linea.product_id?.[0]];
+            const cantidad = toNumber(linea.quantity);
+            const precio = toNumber(linea.price_unit);
+            const subtotal = toNumber(linea.price_subtotal);
+            const total = toNumber(linea.price_total);
+            const iva = total - subtotal;
+
             return {
-              documento_code              : factura.name,
-              codigo_producto             : linea.product_id?.[0] ? String(linea.product_id[0]) : "SIN-CODIGO",
-              descripcion                 : linea.name || "",
-              producto_nombre             : producto?.name          || linea.name || null,
-              producto_categoria          : producto?.categ_id?.[1] || null,
-              producto_codigo_interno     : producto?.default_code  || null,
+              documento_code: factura.name,
+              codigo_producto: linea.product_id?.[0] ? String(linea.product_id[0]) : "SIN-CODIGO",
+              descripcion: linea.name || "",
+              producto_nombre: producto?.name || linea.name || null,
+              producto_categoria: producto?.categ_id?.[1] || null,
+              producto_codigo_interno: producto?.default_code || null,
               cantidad,
-              cantidad_entregada          : cantidad,
-              cantidad_facturada          : cantidad,
-              cantidad_pendiente_entregar : 0,
-              cantidad_pendiente_facturar : 0,
+              cantidad_entregada: cantidad,
+              cantidad_facturada: cantidad,
+              cantidad_pendiente_entregar: 0,
+              cantidad_pendiente_facturar: 0,
               precio,
-              descuento_linea             : toNumber(linea.discount_percentage ?? linea.discount ?? 0),
+              descuento_linea: toNumber(linea.discount_percentage ?? linea.discount ?? 0),
               subtotal,
               total,
               iva,
-              precio_sin_impuesto         : precio,
-              precio_con_impuesto         : cantidad > 0 ? total / cantidad : precio,
-              impuesto_linea              : iva,
-              margen_linea                : 0,
-              margen_porcentaje_linea     : 0,
-              unit_alias                  : linea.product_uom_id?.[1] || null,
-              unidad_medida               : linea.product_uom_id?.[1] || null,
-              barcode                     : producto?.barcode          || null,
-              codigo_categoria            : producto?.categ_id?.[0] ? String(producto.categ_id[0]) : null,
-              descripcion_categoria       : producto?.categ_id?.[1]   || null,
-              es_anticipo                 : linea.is_downpayment || false,
-              es_envio                    : false,
+              precio_sin_impuesto: precio,
+              precio_con_impuesto: cantidad > 0 ? total / cantidad : precio,
+              impuesto_linea: iva,
+              margen_linea: 0,
+              margen_porcentaje_linea: 0,
+              unit_alias: linea.product_uom_id?.[1] || null,
+              unidad_medida: linea.product_uom_id?.[1] || null,
+              barcode: producto?.barcode || null,
+              codigo_categoria: producto?.categ_id?.[0] ? String(producto.categ_id[0]) : null,
+              descripcion_categoria: producto?.categ_id?.[1] || null,
+              es_anticipo: linea.is_downpayment || false,
+              es_envio: false,
             };
           }),
           { ignoreDuplicates: true, transaction: t }
         );
+
         contadores.detalles += lineas.length;
       }
 
@@ -615,15 +675,15 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
   console.log("==================================================\n");
 
   const syncRow = await SincronizacionVenta.create({
-    desde_date     : startDate,
-    hasta_date     : endDate,
-    estado         : "EN_PROCESO",
+    desde_date: startDate,
+    hasta_date: endDate,
+    estado: "EN_PROCESO",
     total_registros: 0,
-    mensaje        : null,
+    mensaje: null,
   });
 
-  const idSync     = syncRow.id_sync;
-  const errores    = [];
+  const idSync = syncRow.id_sync;
+  const errores = [];
   const contadores = { clientes: 0, productos: 0, detalles: 0 };
 
   try {
@@ -694,9 +754,9 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
     const totalErrores = errores.length;
     await SincronizacionVenta.update(
       {
-        estado         : totalErrores ? "CON_ERRORES" : "COMPLETADO",
+        estado: totalErrores ? "CON_ERRORES" : "COMPLETADO",
         total_registros: pedidos.length + facturas.length,
-        mensaje        : `Pedidos:${pedidos.length} Facturas:${facturas.length} Clientes:${contadores.clientes} Productos:${contadores.productos} Detalles:${contadores.detalles} Errores:${totalErrores}`,
+        mensaje: `Pedidos:${pedidos.length} Facturas:${facturas.length} Clientes:${contadores.clientes} Productos:${contadores.productos} Detalles:${contadores.detalles} Errores:${totalErrores}`,
       },
       { where: { id_sync: idSync } }
     );
@@ -714,11 +774,11 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
     console.log("====================================\n");
 
     return {
-      totalPedidos  : pedidos.length,
-      totalFacturas : facturas.length,
-      totalClientes : contadores.clientes,
+      totalPedidos: pedidos.length,
+      totalFacturas: facturas.length,
+      totalClientes: contadores.clientes,
       totalProductos: contadores.productos,
-      totalDetalles : contadores.detalles,
+      totalDetalles: contadores.detalles,
       errores,
     };
 

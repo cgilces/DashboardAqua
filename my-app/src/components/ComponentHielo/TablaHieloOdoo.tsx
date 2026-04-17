@@ -199,7 +199,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
 
         <tbody>
           <tr
-            className="bg-[#013d32] border-l-4 border-transparent cursor-pointer hover:bg-[#016a57] transition"
+            className="bg-[#013d32] border-l-4 border-transparent cursor-pointer hover:bg-[#025940] transition"
             onClick={() => navigate(`/hielo-odoo/clientes/${anio}/${mes}`)}
           >
             <td className="px-4 py-3 font-bold text-cyan-300">

@@ -236,7 +236,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                   monto:                      totales.dolares,
                 },
               })}
-              className="bg-[#013d32] cursor-pointer hover:bg-[#016a57] border-l-4 border-transparent hover:border-green-400 transition-all duration-200"
+              className="bg-[#013d32] cursor-pointer hover:bg-[#025940] border-l-4 border-transparent hover:border-green-400 transition-all duration-200"
             >
               <td className="px-4 py-3 font-bold text-blue-300">
                 COTTSA — AGUA OK

@@ -488,7 +488,7 @@ export default function DashboardGerencia() {
                           ? <tr><td colSpan={8} className="text-center py-12 text-gray-400">Sin cartera pendiente.</td></tr>
                           : cobranza.detalle.map((r,i)=>(
                             <tr key={r.codigo_cliente||i}
-                              className={`${r.estado==="CRITICO"?"bg-red-900/20":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                              className={`${r.estado==="CRITICO"?"bg-red-900/20":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#025940] transition`}>
                               <td className="px-3 py-2 text-gray-400 text-xs">{i+1}</td>
                               <td className="px-3 py-2"><p className="font-semibold text-white">{r.nombre_cliente}</p><p className="text-[10px] text-blue-400 font-mono">{r.codigo_cliente}</p></td>
                               <td className="px-3 py-2 text-center text-gray-300 text-xs">{r.telefono_cliente||"—"}</td>
@@ -552,7 +552,7 @@ export default function DashboardGerencia() {
                           ? <tr><td colSpan={8} className="text-center py-12 text-gray-400">Sin datos de vendedores.</td></tr>
                           : vendedores.map((v,i)=>(
                             <tr key={v.codigo_vendedor||i}
-                              className={`${i===0?"bg-amber-900/20 border-l-2 border-amber-500":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                              className={`${i===0?"bg-amber-900/20 border-l-2 border-amber-500":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#025940] transition`}>
                               <td className="px-3 py-2"><Medalla pos={i}/></td>
                               <td className="px-3 py-2"><p className="font-semibold text-white">{v.nombre_vendedor}</p><p className="text-[10px] text-blue-400 font-mono">{v.codigo_vendedor}</p></td>
                               <td className="px-3 py-2 text-right text-white">{fmtI(v.clientes_visitados)}</td>
@@ -613,7 +613,7 @@ export default function DashboardGerencia() {
                           ? <tr><td colSpan={8} className="text-center py-12 text-gray-400">Sin datos.</td></tr>
                           : ranking.map((c,i)=>(
                             <tr key={c.customer_code||i}
-                              className={`${i===0?"bg-amber-900/20 border-l-2 border-amber-500":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                              className={`${i===0?"bg-amber-900/20 border-l-2 border-amber-500":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#025940] transition`}>
                               <td className="px-3 py-2"><Medalla pos={i}/></td>
                               <td className="px-3 py-2"><p className="font-semibold text-white">{c.nombre_cliente}</p><p className="text-[10px] text-blue-400 font-mono">{c.customer_code}</p>{c.telefono_cliente&&<p className="text-[10px] text-gray-400">{c.telefono_cliente}</p>}</td>
                               <td className="px-3 py-2"><span className="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full">{c.tipo_negocio}</span></td>
@@ -662,7 +662,7 @@ export default function DashboardGerencia() {
                           ? <tr><td colSpan={9} className="text-center py-12 text-gray-400">No hay clientes en riesgo.</td></tr>
                           : riesgo.clientes.map((c,i)=>(
                             <tr key={c.codigo_cliente||i}
-                              className={`${c.estado==="PERDIDO"?"bg-red-900/20":c.estado==="RIESGO"?"bg-amber-900/10":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                              className={`${c.estado==="PERDIDO"?"bg-red-900/20":c.estado==="RIESGO"?"bg-amber-900/10":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#025940] transition`}>
                               <td className="px-3 py-2 text-gray-400 text-xs">{i+1}</td>
                               <td className="px-3 py-2"><p className="font-semibold text-white">{c.nombre_cliente}</p><p className="text-[10px] text-blue-400 font-mono">{c.codigo_cliente}</p>{c.telefono_cliente&&<p className="text-[10px] text-gray-400">{c.telefono_cliente}</p>}</td>
                               <td className="px-3 py-2 text-gray-300 text-xs">{c.vendedor||"—"}</td>
@@ -727,7 +727,7 @@ export default function DashboardGerencia() {
                           ? <tr><td colSpan={9} className="text-center py-12 text-gray-400">Sin datos de productos.</td></tr>
                           : productos.map((p,i)=>(
                             <tr key={p.codigo_producto||i}
-                              className={`${i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                              className={`${i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#025940] transition`}>
                               <td className="px-3 py-2 text-gray-400 text-xs">{i+1}</td>
                               <td className="px-3 py-2"><p className="font-semibold text-white max-w-[200px] truncate">{p.producto}</p><p className="text-[10px] text-blue-400 font-mono">{p.codigo_producto}</p></td>
                               <td className="px-3 py-2"><span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">{p.categoria}</span></td>

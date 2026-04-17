@@ -302,7 +302,7 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
                 key={r.ruta}
                 className={`transition-all duration-200
                   ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
-                  hover:bg-[#016a57] border-l-4 border-transparent hover:border-green-400
+                  hover:bg-[#025940] border-l-4 border-transparent hover:border-green-400
                 `}
               >
                 <td className="px-4 py-2 text-gray-400 text-xs">{idx + 1}</td>

@@ -2,7 +2,7 @@
 const { generarSQL }                           = require("../../services/chatbotservicio/openai.service");
 const { ejecutarSQL }                          = require("../../services/chatbotservicio/query.service");
 const { validarSQL, aplicarLimite }            = require("../../utils/sqlValidator");
-const { detectarTipoReporte, generarPDF, construirConfigReporte } = require("../../services/chatbotservicio/reporte.service");
+const { detectarTipoReporte, generarPDF, construirConfigReporte, validarCalidadDatos } = require("../../services/chatbotservicio/reporte.service");
 const { registrar: registrarAuditoria }        = require("../../services/chatbotservicio/auditoria.service");
 const { construirResumenEstadistico }          = require("../../services/chatbotservicio/respuesta.service");
 
@@ -828,7 +828,21 @@ async function chatHandler(req, res) {
         return res.json({ respuesta });
       }
 
-      const tipoReporte = detectarTipoReporte(preguntaFinal) || detectarTipoReporte(mensaje) || "generico";
+      // ── Validación de calidad: evitar generar PDFs con filas casi vacías ──
+      // Excepción: tipo KPI siempre es UNA fila con valores (posiblemente 0) válidos.
+      const tipoPreliminar = detectarTipoReporte(preguntaFinal) || detectarTipoReporte(mensaje) || "generico";
+      if (tipoPreliminar !== "kpi_dia") {
+        const calidad = validarCalidadDatos(datos);
+        if (!calidad.valido) {
+          console.log(`⚠️  Reporte bloqueado por baja calidad de datos: ${calidad.razon} (${calidad.pctLleno.toFixed(1)}% poblado)`);
+          const respuesta = `${calidad.razon} ¿Quieres que intente con otro criterio (otra fecha, cliente o ruta)?`;
+          agregarAlHistorial(usuario, "user", mensaje);
+          agregarAlHistorial(usuario, "assistant", respuesta);
+          return res.json({ respuesta });
+        }
+      }
+
+      const tipoReporte = tipoPreliminar;
       console.log(`📄 PDF tipo: ${tipoReporte} — ${datos.length} registros (origen: ${origenDatos})`);
 
       // ── Transformación especial para KPI: una fila horizontal → filas indicador/valor

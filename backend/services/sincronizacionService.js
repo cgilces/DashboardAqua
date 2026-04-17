@@ -135,19 +135,19 @@ class SyncProgress {
 
   updatePage(page, totalPages) {
     if (!this._s) return;
-    this._s.page    = page;
-    this._s.total   = totalPages;
-    this._s.percent = totalPages
-      ? Math.round((page / totalPages) * 100)
-      : 0;
+    // MobilVendor ocupa del 5% al 70% del progreso total
+    if (totalPages) {
+      this._s.percent = 5 + Math.round((page / totalPages) * 65);
+    }
   }
 
   finish(error = null) {
     if (!this._s) return;
-    this._s.running    = false;
-    this._s.percent    = error ? this._s.percent : 100;
-    this._s.error      = error ?? null;
-    this._s.finishedAt = new Date();
+    // No marcar running=false ni finishedAt aquí.
+    // El controller se encarga cuando TODOS los procesos terminan.
+    if (error) {
+      this._s.error = error;
+    }
   }
 }
 
@@ -332,18 +332,18 @@ async function syncDireccionCliente(doc, customerCode, transaction) {
       )
       ON CONFLICT (codigo_cliente, codigo_direccion_cliente)
       DO UPDATE SET
-        descripcion_direccion_cliente         = EXCLUDED.descripcion_direccion_cliente,
-        calle1_direccion_cliente              = EXCLUDED.calle1_direccion_cliente,
-        bloque_direccion_cliente              = EXCLUDED.bloque_direccion_cliente,
-        calle2_direccion_cliente              = EXCLUDED.calle2_direccion_cliente,
-        referencia_direccion_cliente          = EXCLUDED.referencia_direccion_cliente,
-        codigo_postal_direccion_cliente       = EXCLUDED.codigo_postal_direccion_cliente,
-        telefono_direccion_cliente            = EXCLUDED.telefono_direccion_cliente,
-        fax_direccion_cliente                 = EXCLUDED.fax_direccion_cliente,
-        email_direccion_cliente               = EXCLUDED.email_direccion_cliente,
-        latitud_direccion_cliente             = EXCLUDED.latitud_direccion_cliente,
-        longitud_direccion_cliente            = EXCLUDED.longitud_direccion_cliente,
-        fecha_ultima_visita_direccion_cliente = EXCLUDED.fecha_ultima_visita_direccion_cliente,
+        descripcion_direccion_cliente         = COALESCE(EXCLUDED.descripcion_direccion_cliente, direcciones_clientes.descripcion_direccion_cliente),
+        calle1_direccion_cliente              = COALESCE(EXCLUDED.calle1_direccion_cliente, direcciones_clientes.calle1_direccion_cliente),
+        bloque_direccion_cliente              = COALESCE(EXCLUDED.bloque_direccion_cliente, direcciones_clientes.bloque_direccion_cliente),
+        calle2_direccion_cliente              = COALESCE(EXCLUDED.calle2_direccion_cliente, direcciones_clientes.calle2_direccion_cliente),
+        referencia_direccion_cliente          = COALESCE(EXCLUDED.referencia_direccion_cliente, direcciones_clientes.referencia_direccion_cliente),
+        codigo_postal_direccion_cliente       = COALESCE(EXCLUDED.codigo_postal_direccion_cliente, direcciones_clientes.codigo_postal_direccion_cliente),
+        telefono_direccion_cliente            = COALESCE(EXCLUDED.telefono_direccion_cliente, direcciones_clientes.telefono_direccion_cliente),
+        fax_direccion_cliente                 = COALESCE(EXCLUDED.fax_direccion_cliente, direcciones_clientes.fax_direccion_cliente),
+        email_direccion_cliente               = COALESCE(EXCLUDED.email_direccion_cliente, direcciones_clientes.email_direccion_cliente),
+        latitud_direccion_cliente             = COALESCE(EXCLUDED.latitud_direccion_cliente, direcciones_clientes.latitud_direccion_cliente),
+        longitud_direccion_cliente            = COALESCE(EXCLUDED.longitud_direccion_cliente, direcciones_clientes.longitud_direccion_cliente),
+        fecha_ultima_visita_direccion_cliente = COALESCE(EXCLUDED.fecha_ultima_visita_direccion_cliente, direcciones_clientes.fecha_ultima_visita_direccion_cliente),
         estado_direccion_cliente              = EXCLUDED.estado_direccion_cliente,
         estado_ubicacion_direccion_cliente    = EXCLUDED.estado_ubicacion_direccion_cliente,
         fecha_actualizacion_direccion_cliente = EXCLUDED.fecha_actualizacion_direccion_cliente`,
@@ -351,15 +351,16 @@ async function syncDireccionCliente(doc, customerCode, transaction) {
       replacements: {
         codigo_cliente          : String(customerCode),
         codigo_direccion_cliente: String(codigoDireccion),
-        descripcion             : doc.address_description || null,
-        calle1                  : doc.street1             || null,
-        bloque                  : doc.block               || null,
-        calle2                  : doc.street2             || null,
-        referencia              : doc.reference           || null,
+        descripcion             : (doc.address_description && doc.address_description !== "delivery" && doc.address_description !== "other")
+                                    ? doc.address_description : null,
+        calle1                  : doc.street1              || null,
+        bloque                  : doc.block                || null,
+        calle2                  : doc.street2              || null,
+        referencia              : doc.reference            || null,
         zip                     : zipcode,
-        telefono                : doc.phone               || null,
-        fax                     : doc.fax                 || null,
-        email                   : doc.email               || null,
+        telefono                : doc.phone                || null,
+        fax                     : doc.fax                  || null,
+        email                   : doc.email                || null,
         latitud                 : sanitizeCoordinate(doc.address_lat, "lat"),
         longitud                : sanitizeCoordinate(doc.address_lon, "lon"),
         fecha_ultima_visita     : parseUnixToEcuador(doc.last_visit_date) || null,
@@ -373,6 +374,136 @@ async function syncDireccionCliente(doc, customerCode, transaction) {
     }
   );
 }
+
+// ================================================================
+// SINCRONIZACIÓN DE DIRECCIONES DESDE customer_addresses
+// ================================================================
+/**
+ * Consulta directamente el endpoint customer_addresses de MobilVendor
+ * para obtener descripción, latitud y longitud correctas.
+ */
+const sincronizarDirecciones = async (syncState = null) => {
+  console.log("\n====================================");
+  console.log("🚀 SINCRONIZACIÓN DE DIRECCIONES (customer_addresses)");
+  console.log("====================================\n");
+
+  const progress = new SyncProgress(syncState);
+  progress.start("direcciones", "completo");
+
+  try {
+    const session_id = await obtenerSesionActual();
+    if (!session_id) throw new Error("No hay sesión activa con MobilVendor.");
+    console.log(`🔐 Sesión MobilVendor OK: ${session_id}`);
+
+    let totalPages  = 1;
+    let currentPage = 1;
+    let totalProcessed = 0;
+    let totalErrors    = 0;
+
+    while (currentPage <= totalPages) {
+      console.log(`\n📦 PÁGINA ${currentPage} / ${totalPages}`);
+      progress.updatePage(currentPage, totalPages);
+
+      const { data } = await axios.post(
+        API_URL,
+        {
+          session_id,
+          action: "get",
+          schema: "customer_addresses",
+          page  : currentPage,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: 120_000,
+        }
+      );
+
+      const records = data.records || [];
+      totalPages    = data.pages   || totalPages;
+
+      console.log(`   → Registros: ${records.length} | Páginas: ${totalPages}`);
+
+      if (!records.length) {
+        console.log("🏁 Sin más registros — finalizando.");
+        break;
+      }
+
+      for (const addr of records) {
+        const customerCode    = addr.customer_code || null;
+        const codigoDireccion = addr.code          || null;
+
+        if (!customerCode || !codigoDireccion) continue;
+
+        const zipcode = addr.zipcode
+          ? String(addr.zipcode).substring(0, 20)
+          : null;
+
+        try {
+          const [, rowCount] = await sequelize.query(
+            `UPDATE direcciones_clientes SET
+                descripcion_direccion_cliente         = :descripcion,
+                calle1_direccion_cliente              = COALESCE(:calle1, calle1_direccion_cliente),
+                bloque_direccion_cliente              = COALESCE(:bloque, bloque_direccion_cliente),
+                calle2_direccion_cliente              = COALESCE(:calle2, calle2_direccion_cliente),
+                referencia_direccion_cliente          = COALESCE(:referencia, referencia_direccion_cliente),
+                codigo_postal_direccion_cliente       = COALESCE(:zip, codigo_postal_direccion_cliente),
+                telefono_direccion_cliente            = COALESCE(:telefono, telefono_direccion_cliente),
+                fax_direccion_cliente                 = COALESCE(:fax, fax_direccion_cliente),
+                email_direccion_cliente               = COALESCE(:email, email_direccion_cliente),
+                latitud_direccion_cliente             = COALESCE(:latitud, latitud_direccion_cliente),
+                longitud_direccion_cliente            = COALESCE(:longitud, longitud_direccion_cliente),
+                fecha_ultima_visita_direccion_cliente = COALESCE(:fecha_ultima_visita, fecha_ultima_visita_direccion_cliente),
+                fecha_actualizacion_direccion_cliente = :fecha_actualizacion
+              WHERE codigo_cliente = :codigo_cliente
+                AND codigo_direccion_cliente = :codigo_direccion_cliente`,
+            {
+              replacements: {
+                codigo_cliente          : String(customerCode),
+                codigo_direccion_cliente: String(codigoDireccion),
+                descripcion             : addr.description        || null,
+                calle1                  : addr.street1            || null,
+                bloque                  : addr.block              || null,
+                calle2                  : addr.street2            || null,
+                referencia              : addr.reference          || null,
+                zip                     : zipcode,
+                telefono                : addr.phone              || null,
+                fax                     : addr.fax                || null,
+                email                   : addr.email              || null,
+                latitud                 : sanitizeCoordinate(addr.lat, "lat"),
+                longitud                : sanitizeCoordinate(addr.lon, "lon"),
+                fecha_ultima_visita     : parseUnixToEcuador(addr.last_visit_date) || null,
+                fecha_actualizacion     : parseUnixToEcuador(addr.u) || new Date(),
+              },
+              type: sequelize.QueryTypes.UPDATE,
+            }
+          );
+          if (rowCount > 0) totalProcessed++;
+        } catch (err) {
+          totalErrors++;
+          if (totalErrors <= 5) {
+            console.error(`❌ Error dirección ${codigoDireccion} (cliente ${customerCode}): ${err.message}`);
+          }
+        }
+      }
+
+      currentPage++;
+    }
+
+    console.log("\n====================================");
+    console.log("✅ SINCRONIZACIÓN DE DIRECCIONES COMPLETA");
+    console.log(`   → Procesadas : ${totalProcessed}`);
+    console.log(`   → Errores    : ${totalErrors}`);
+    console.log("====================================\n");
+
+    progress.finish();
+    return { totalProcessed, totalErrors };
+
+  } catch (err) {
+    console.error("\n❌ ERROR SINCRONIZACIÓN DIRECCIONES:", err.message);
+    progress.finish(err.message);
+    throw err;
+  }
+};
 
 async function syncDocumento(doc, code, transaction) {
   const type   = Number(doc.type);
@@ -737,4 +868,4 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
 // ================================================================
 // EXPORTS
 // ================================================================
-module.exports = { sincronizarVentasRango };
+module.exports = { sincronizarVentasRango, sincronizarDirecciones };

@@ -30,9 +30,35 @@ const MSG_BIENVENIDA: Mensaje = {
   timestamp: new Date().toISOString(),
 };
 
-const SUGERENCIAS = [
-  "Ventas de hoy", "Reporte ventas mes", "Top productos",
-  "Reporte por vendedor", "Top clientes", "Reporte visitas",
+// Placeholders rotativos para el input (mantiene el chat "vivo")
+const PLACEHOLDERS = [
+  "Pregúntame: ventas de hoy...",
+  "Solicita: reporte del mes...",
+  "Consulta: top 10 clientes...",
+  "Pide: cartera vencida en PDF...",
+  "Analiza: rutas menos rentables...",
+];
+
+// Sugerencias agrupadas por categoría para mejor descubrimiento
+const SUGERENCIAS_POR_CATEGORIA: { nombre: string; icono: string; color: string; items: string[] }[] = [
+  {
+    nombre: "Consultas rápidas",
+    icono: "⚡",
+    color: "emerald",
+    items: ["Ventas de hoy", "Top productos del mes", "Top clientes", "Clientes sin comprar"],
+  },
+  {
+    nombre: "Reportes PDF",
+    icono: "📄",
+    color: "amber",
+    items: ["Reporte ventas del mes", "Reporte por vendedor", "Reporte cartera vencida", "Cumplimiento de metas"],
+  },
+  {
+    nombre: "Análisis",
+    icono: "📊",
+    color: "cyan",
+    items: ["Efectividad de visitas", "Cobertura de rutas", "Margen por vendedor", "Comparativo mes anterior"],
+  },
 ];
 
 // ═══════════════════════════════════════════════════
@@ -238,6 +264,7 @@ const ChatFlotante: React.FC = () => {
   const [cargando,    setCargando]    = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [copiado,     setCopiado]     = useState<number | null>(null);
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
 
   const mensajesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLInputElement>(null);
@@ -255,6 +282,15 @@ const ChatFlotante: React.FC = () => {
   useEffect(() => {
     mensajesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensajes, cargando]);
+
+  // Rotación del placeholder solo cuando el chat está abierto y vacío
+  useEffect(() => {
+    if (!abierto || input.length > 0) return;
+    const id = setInterval(() => {
+      setPlaceholderIdx(i => (i + 1) % PLACEHOLDERS.length);
+    }, 3500);
+    return () => clearInterval(id);
+  }, [abierto, input.length]);
 
   const copiarMensaje = useCallback((texto: string, idx: number) => {
     navigator.clipboard.writeText(texto).then(() => {
@@ -374,30 +410,35 @@ const ChatFlotante: React.FC = () => {
 
       {/* ── VENTANA CHAT ── */}
       {abierto && (
-        <div className="chat-window fixed bottom-24 right-6 w-[340px] sm:w-[400px] h-[570px] bg-[#0d2b22] border border-[#1a4a3a] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] flex flex-col overflow-hidden z-50">
+        <div className="chat-window fixed bottom-24 right-6 w-[calc(100vw-32px)] sm:w-[420px] h-[640px] max-h-[calc(100vh-120px)] bg-gradient-to-b from-[#0d2b22] to-[#081a14] border border-[#1a4a3a] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] flex flex-col overflow-hidden z-50 backdrop-blur-sm">
 
           {/* HEADER */}
-          <div className="bg-gradient-to-r from-[#014434] to-[#025f4b] px-4 py-3 flex items-center justify-between border-b border-[#1a4a3a] flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-[#D2B858] flex items-center justify-center shadow-md flex-shrink-0">
+          <div className="relative bg-gradient-to-r from-[#014434] via-[#025f4b] to-[#014434] px-4 py-3.5 flex items-center justify-between border-b border-[#1a4a3a] flex-shrink-0 overflow-hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_50%,rgba(210,184,88,0.15),transparent_50%)] pointer-events-none"/>
+            <div className="relative flex items-center gap-3">
+              <div className="relative w-10 h-10 rounded-full bg-gradient-to-br from-[#D2B858] to-[#9a7c28] flex items-center justify-center shadow-[0_4px_14px_rgba(210,184,88,0.45)] flex-shrink-0">
                 <BotIcon/>
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#014434] animate-pulse"/>
               </div>
               <div>
-                <p className="text-white font-semibold text-sm leading-tight">Asistente Aqua</p>
+                <p className="text-white font-semibold text-sm leading-tight flex items-center gap-1.5">
+                  Asistente Aqua
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#D2B858]/20 text-[#D2B858] font-bold tracking-wide">AI</span>
+                </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/>
-                  <span className="text-emerald-300 text-[11px]">Consultas · Reportes PDF</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
+                  <span className="text-emerald-300/90 text-[11px]">Consultas · Reportes PDF</span>
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="relative flex items-center gap-1">
               {isAdmin && (
                 <button onClick={limpiarChat} title="Limpiar conversación"
                   className="text-gray-400 hover:text-amber-400 transition p-1.5 rounded-md hover:bg-white/10">
                   <TrashIcon/>
                 </button>
               )}
-              <button onClick={() => setAbierto(false)}
+              <button onClick={() => setAbierto(false)} title="Cerrar"
                 className="text-gray-400 hover:text-white transition p-1.5 rounded-md hover:bg-white/10">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                   fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -439,40 +480,68 @@ const ChatFlotante: React.FC = () => {
             <div ref={mensajesEndRef}/>
           </div>
 
-          {/* SUGERENCIAS — solo admin */}
+          {/* SUGERENCIAS — agrupadas por categoría (solo admin) */}
           {isAdmin && mostrarSugerencias && (
-            <div className="px-3 pb-2 flex-shrink-0">
-              <p className="text-[10px] text-gray-500 mb-1.5 px-1">Prueba con:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {SUGERENCIAS.map(s => (
-                  <button key={s} onClick={() => enviarMensaje(s)}
-                    className="px-2.5 py-1 text-[10px] text-emerald-300 border border-emerald-700/60 rounded-full bg-emerald-900/30 hover:bg-emerald-800/50 transition whitespace-nowrap">
-                    {s}
-                  </button>
-                ))}
+            <div className="px-3 pb-2 flex-shrink-0 border-t border-[#1a4a3a]/60 bg-[#081a14]/40 max-h-[210px] overflow-y-auto">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold pt-2 pb-1 px-1 sticky top-0 bg-[#081a14]/90 backdrop-blur-sm">
+                💡 Prueba con estas consultas
+              </p>
+              <div className="space-y-2 pb-1">
+                {SUGERENCIAS_POR_CATEGORIA.map(cat => {
+                  const palette: Record<string, { text: string; border: string; bg: string; hover: string; chip: string }> = {
+                    emerald: { text: "text-emerald-300", border: "border-emerald-700/50", bg: "bg-emerald-900/25", hover: "hover:bg-emerald-800/45", chip: "text-emerald-400" },
+                    amber:   { text: "text-amber-200",   border: "border-amber-700/50",   bg: "bg-amber-900/20",   hover: "hover:bg-amber-800/40",   chip: "text-amber-400"   },
+                    cyan:    { text: "text-cyan-200",    border: "border-cyan-700/50",    bg: "bg-cyan-900/20",    hover: "hover:bg-cyan-800/40",    chip: "text-cyan-400"    },
+                  };
+                  const p = palette[cat.color] || palette.emerald;
+                  return (
+                    <div key={cat.nombre}>
+                      <div className={`flex items-center gap-1.5 mb-1 px-1 ${p.chip}`}>
+                        <span className="text-[11px]">{cat.icono}</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide">{cat.nombre}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {cat.items.map(s => (
+                          <button key={s} onClick={() => enviarMensaje(s)}
+                            className={`px-2.5 py-1 text-[10px] font-medium rounded-full border transition-all active:scale-95 whitespace-nowrap ${p.text} ${p.border} ${p.bg} ${p.hover}`}>
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* INPUT */}
-          <div className="px-3 pb-3 pt-2 border-t border-[#1a4a3a] flex-shrink-0">
+          <div className="px-3 pb-3 pt-2.5 border-t border-[#1a4a3a] flex-shrink-0 bg-[#081a14]/60">
             {isAdmin ? (
               <>
-                <div className="flex items-center gap-2 bg-[#0a1f18] border border-[#1a4a3a] rounded-xl px-3 py-2">
+                <div className="flex items-center gap-2 bg-[#0a1f18] border border-[#1a4a3a] rounded-xl px-3 py-2 focus-within:border-emerald-500/60 focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.12)] transition-all">
                   <input ref={inputRef} type="text"
-                    placeholder="Escribe una consulta o corrección..."
+                    placeholder={cargando ? "Procesando tu consulta..." : PLACEHOLDERS[placeholderIdx]}
                     value={input} onChange={e => setInput(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && !e.shiftKey && enviarMensaje()}
                     disabled={cargando} maxLength={500}
                     className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 focus:outline-none disabled:opacity-50"/>
                   <button onClick={() => enviarMensaje()} disabled={cargando || !input.trim()}
-                    className="w-8 h-8 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 flex items-center justify-center text-white transition-all hover:scale-105 active:scale-95">
-                    <SendIcon/>
+                    title="Enviar (Enter)"
+                    className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition-all hover:scale-105 active:scale-95 shadow-[0_2px_8px_rgba(16,185,129,0.35)] disabled:shadow-none">
+                    {cargando
+                      ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin"/>
+                      : <SendIcon/>}
                   </button>
                 </div>
-                {input.length > 400 && (
-                  <p className="text-[10px] text-right mt-1 pr-1 text-amber-400">{500 - input.length} caracteres restantes</p>
-                )}
+                <div className="flex items-center justify-between mt-1 px-1">
+                  <p className="text-[9px] text-gray-600">
+                    <kbd className="px-1 py-0.5 bg-[#1a3d30] rounded border border-[#2a5a45] text-gray-400">Enter</kbd> para enviar
+                  </p>
+                  {input.length > 400 && (
+                    <p className="text-[10px] text-amber-400">{500 - input.length} restantes</p>
+                  )}
+                </div>
               </>
             ) : (
               /* Mensaje de solo lectura para no-admins */

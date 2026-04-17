@@ -45,6 +45,7 @@ import ChatGlobal from "./components/elements/ChatGlobal";
 
 import "./index.css";
 import DashboardClientes from "./pages/pagesClientesGeneral/DashboardClientes";
+import EmpresaDetalle from "./pages/pagesClientesGeneral/EmpresaDetalle";
 import CreacionUsuario from "./pages/pageCreacionUsuario/CreacionUsuario";
 
 
@@ -176,6 +177,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/dashboard/clientes"
               element={<DashboardClientes />}
+            />
+            <Route
+              path="/dashboard/empresa/:ruc"
+              element={<EmpresaDetalle />}
             />
 
              {/* Clientes */}

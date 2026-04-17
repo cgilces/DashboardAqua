@@ -525,4 +525,82 @@ const obtenerClientesHieloOdoo = async (req, res) => {
   }
 };
 
-module.exports = { obtenerVentasHielo, obtenerClientesHieloOdoo };
+// ================================================================
+// ENDPOINT PRODUCTOS POR DIRECCIÓN — HIELO
+// GET /api/odoo/hielo-productos-direccion?anio=YYYY&mes=MM&customerCode=X&addressCode=Y
+// ================================================================
+const obtenerProductosClienteHielo = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    const { customerCode, addressCode } = req.query;
+
+    if (!anio || !mes || !customerCode)
+      return res.status(400).json({ ok: false, error: 'Faltan parámetros' });
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes, 10);
+    if (isNaN(anioNum) || isNaN(mesNum))
+      return res.status(400).json({ ok: false, error: 'Parámetros inválidos' });
+
+    const inicio = getFechaInicioMes(anioNum, mesNum);
+    const fin    = getFechaFinQuery(anioNum, mesNum);
+
+    const placeholders = RUTAS_ODOO.map((_, i) => `:ruta${i}`).join(', ');
+    const rutaBindings = {};
+    RUTAS_ODOO.forEach((r, i) => { rutaBindings[`ruta${i}`] = r; });
+
+    const mvWhere   = `(f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3')) AND f.status IN ('2','4','5')`;
+    const odooWhere = `o.type = 2 AND o.status IN (2,4,5) AND o.seller_nombre IN (${placeholders})`;
+
+    const addrFilterMV   = addressCode ? `AND f.customer_address_code::TEXT = :addressCode` : '';
+    const addrFilterOdoo = addressCode ? `AND o.customer_address_code::TEXT = :addressCode` : '';
+
+    const sql = `
+      SELECT descripcion AS producto,
+             SUM(cantidad) AS unidades_vendidas,
+             SUM(total)    AS monto_usd
+      FROM (
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE ${mvWhere}
+          AND f.customer_code = :customerCode
+          ${addrFilterMV}
+          AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+
+        UNION ALL
+
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE ${odooWhere}
+          AND dd.codigo_categoria = '28'
+          AND o.customer_code = :customerCode
+          ${addrFilterOdoo}
+          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+      ) comb
+      GROUP BY descripcion
+      ORDER BY unidades_vendidas DESC
+    `;
+
+    const replacements = {
+      ...rutaBindings,
+      customerCode,
+      addressCode: addressCode || null,
+      inicio,
+      fin,
+    };
+
+    const productos = await sequelize.query(sql, {
+      replacements,
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    return res.json({ ok: true, productos });
+  } catch (error) {
+    console.error('❌ ERROR productos cliente hielo:', error);
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
+module.exports = { obtenerVentasHielo, obtenerClientesHieloOdoo, obtenerProductosClienteHielo };

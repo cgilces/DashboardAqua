@@ -110,8 +110,8 @@ const DetalleClientesCafePage: React.FC = () => {
         {(pagina - 1) * POR_PAGINA + 1}–{Math.min(pagina * POR_PAGINA, filtrados.length)} de {filtrados.length}
       </span>
       <div className="flex gap-1 flex-wrap">
-        <button disabled={pagina === 1} onClick={() => setPagina(1)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">«</button>
-        <button disabled={pagina === 1} onClick={() => setPagina(p => p - 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">‹ Ant</button>
+        <button disabled={pagina === 1} onClick={() => setPagina(1)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">«</button>
+        <button disabled={pagina === 1} onClick={() => setPagina(p => p - 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">‹ Ant</button>
         {(() => {
           const pages: any[] = [];
           if (totalPags <= 5) { for (let i = 1; i <= totalPags; i++) pages.push(i); }
@@ -125,11 +125,11 @@ const DetalleClientesCafePage: React.FC = () => {
           return pages.map((n, i) =>
             n === "..." ? <span key={`d${i}`} className="px-1 py-1 text-xs text-gray-400">…</span> :
             <button key={`p${i}`} onClick={() => setPagina(n)}
-              className={`px-3 py-1 text-xs rounded ${pagina === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#016a57]"}`}>{n}</button>
+              className={`px-3 py-1 text-xs rounded ${pagina === n ? "bg-emerald-600 font-bold" : "bg-[#014434] hover:bg-[#025940]"}`}>{n}</button>
           );
         })()}
-        <button disabled={pagina === totalPags} onClick={() => setPagina(p => p + 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">Sig ›</button>
-        <button disabled={pagina === totalPags} onClick={() => setPagina(totalPags)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#016a57]">»</button>
+        <button disabled={pagina === totalPags} onClick={() => setPagina(p => p + 1)} className="px-3 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">Sig ›</button>
+        <button disabled={pagina === totalPags} onClick={() => setPagina(totalPags)} className="px-2 py-1 text-xs rounded bg-[#014434] disabled:opacity-30 hover:bg-[#025940]">»</button>
       </div>
     </div>
   ) : null;
@@ -188,7 +188,7 @@ const DetalleClientesCafePage: React.FC = () => {
                 </thead>
                 <tbody>
                   {productos.map((p, idx) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
+                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition-colors`}>
                       <td className="px-4 py-2">{p.producto}</td>
                       <td className="px-4 py-2 text-right text-cyan-400 font-semibold">{Number(p.unidades_vendidas).toLocaleString("es-EC")}</td>
                       <td className="px-4 py-2 text-right text-blue-400 font-semibold">${fmt(Number(p.monto_usd))}</td>
@@ -233,66 +233,65 @@ const DetalleClientesCafePage: React.FC = () => {
 
         {/* Tabla / Cards */}
         {!cargando && (
-          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
+          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl overflow-hidden mb-6 shadow-xl">
 
             {/* MOBILE: cards */}
-            <div className="md:hidden divide-y divide-[#046C5E]/20">
+            <div className="md:hidden">
               {paginados.length === 0
                 ? <p className="text-center text-gray-400 py-12 text-sm">No se encontraron clientes.</p>
-                : paginados.map((c, idx) => {
-                    const sinConsumo = c.tuvo_consumo === "No";
-                    const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
-                    return (
-                      <div key={`${c.codigo_cliente}_${c.codigo_direccion}`}
-                        className={`p-4 ${sinConsumo ? "bg-red-900/30 border-l-4 border-red-500/60" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
-                            <p className="text-[11px] text-gray-400 font-mono mt-0.5">
-                              {c.codigo_cliente}
-                              {c.codigo_direccion && <span className="ml-2 text-cyan-500">Dir: {c.codigo_direccion}</span>}
-                            </p>
+                : <div className="space-y-3 p-3">
+                    {paginados.map((c) => {
+                      const sinConsumo = c.tuvo_consumo === "No";
+                      const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
+                      return (
+                        <div key={`${c.codigo_cliente}_${c.codigo_direccion}`}
+                          className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-xl overflow-hidden">
+                          <div className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0 pr-2">
+                                <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
+                                <p className="text-[11px] text-white/40 font-mono mt-0.5">
+                                  {c.codigo_cliente}
+                                  {c.codigo_direccion && <span className="ml-2 text-cyan-500/70">· {c.codigo_direccion}</span>}
+                                </p>
+                              </div>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
+                                {sinConsumo ? "Sin consumo" : "Activo"}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 mb-3">
+                              <div className="text-center">
+                                <p className="text-[9px] text-white/40 uppercase">Consumo</p>
+                                <p className="text-sm font-bold text-blue-400">${fmt(Number(c.consumo_actual))}</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-[9px] text-white/40 uppercase">VS Mes Ant</p>
+                                <p className={`text-sm font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                  {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                                </p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-[9px] text-white/40 uppercase">Cant.</p>
+                                <p className="text-sm font-bold text-green-400">{c.cantidad_productos}</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-[9px] text-white/40 uppercase">Tipo</p>
+                                <p className="text-xs text-white/60 truncate">{c.tipo_negocio || "—"}</p>
+                              </div>
+                            </div>
+                            <div className="flex justify-between text-[10px] text-white/40 pt-2 border-t border-[#046C5E]/20">
+                              <span className="truncate flex-1">{c.direccion_entrega || c.telefono_cliente || "—"}</span>
+                              <span className="shrink-0 ml-2">
+                                {c.ultima_factura ? new Date(c.ultima_factura).toLocaleDateString("es-EC") : "—"}
+                              </span>
+                            </div>
                           </div>
-                          <span className={`ml-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
-                            {sinConsumo ? "Sin consumo" : "Activo"}
-                          </span>
                         </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-2">
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Consumo Actual</p>
-                            <p className="text-white font-bold">${fmt(Number(c.consumo_actual))}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">VS Mes Ant</p>
-                            <p className={`font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
-                              {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
-                              {c.vsMesAnterior?.variacion_porc && <span className="ml-1 opacity-70 text-[10px]">({c.vsMesAnterior.variacion_porc})</span>}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Cant. Actual</p>
-                            <p className="text-cyan-300 font-semibold">{c.cantidad_productos}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Tipo Negocio</p>
-                            <p className="text-gray-300 truncate">{c.tipo_negocio || "—"}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">Teléfono</p>
-                            <p className="text-gray-300">{c.telefono_cliente || "—"}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between mt-1">
-                          {c.direccion_entrega
-                            ? <p className="text-[11px] text-gray-500 truncate flex-1">📍 {c.direccion_entrega}</p>
-                            : <span />}
-                          <p className="text-[10px] text-gray-500 shrink-0 ml-2">
-                            {c.ultima_factura ? new Date(c.ultima_factura).toLocaleDateString("es-EC") : "—"}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
               }
             </div>
 
@@ -332,29 +331,31 @@ const DetalleClientesCafePage: React.FC = () => {
                         const vsAnt = Number(c.vsMesAnterior?.variacion_abs ?? 0);
                         return (
                           <tr key={`${c.codigo_cliente}_${c.codigo_direccion}`}
-                            className={`${sinConsumo ? "bg-[rgba(220,38,38,0.5)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#016a57] transition`}>
-                            <td className="px-3 py-2 text-gray-400 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-gray-300">{c.codigo_cliente}</td>
+                            className={`transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940]`}>
+                            <td className="px-3 py-2 text-white/30 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-white/40">{c.codigo_cliente}</td>
                             <td className="px-3 py-2 font-semibold text-white">{c.nombre_cliente}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-gray-400">{c.codigo_direccion || "—"}</td>
-                            <td className="px-3 py-2 text-gray-300 max-w-[160px]">
+                            <td className="px-3 py-2 font-mono text-xs text-white/30">{c.codigo_direccion || "—"}</td>
+                            <td className="px-3 py-2 text-white/50 max-w-[160px]">
                               <span title={c.direccion_entrega} className="line-clamp-2 text-xs">{c.direccion_entrega || "—"}</span>
                             </td>
-                            <td className="px-3 py-2 text-gray-300 text-xs">{c.tipo_negocio || "—"}</td>
-                            <td className="px-3 py-2 text-gray-300 text-xs whitespace-nowrap">{c.telefono_cliente || "—"}</td>
-                            <td className="px-3 py-2 text-gray-400 text-xs">{c.latitud_cliente || "—"}</td>
-                            <td className="px-3 py-2 text-gray-400 text-xs">{c.longitud_cliente || "—"}</td>
-                            <td className="px-3 py-2 text-right text-cyan-300 font-semibold">{c.cantidad_productos}</td>
-                            <td className="px-3 py-2 text-right font-bold text-white">${fmt(Number(c.consumo_actual))}</td>
-                            <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            <td className="px-3 py-2 text-white/50 text-xs">{c.tipo_negocio || "—"}</td>
+                            <td className="px-3 py-2 text-white/50 text-xs whitespace-nowrap">{c.telefono_cliente || "—"}</td>
+                            <td className="px-3 py-2 text-white/30 text-xs">{c.latitud_cliente || "—"}</td>
+                            <td className="px-3 py-2 text-white/30 text-xs">{c.longitud_cliente || "—"}</td>
+                            <td className="px-3 py-2 text-right text-green-400 font-semibold tabular-nums">{c.cantidad_productos}</td>
+                            <td className="px-3 py-2 text-right font-bold text-white tabular-nums">${fmt(Number(c.consumo_actual))}</td>
+                            <td className={`px-3 py-2 text-right font-bold tabular-nums ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                               {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
                               {c.vsMesAnterior?.variacion_porc && <span className="block text-[10px] opacity-70">{c.vsMesAnterior.variacion_porc}</span>}
                             </td>
-                            <td className="px-3 py-2 text-right text-gray-400 text-xs whitespace-nowrap">
+                            <td className="px-3 py-2 text-right text-white/40 text-xs whitespace-nowrap">
                               {c.ultima_factura ? new Date(c.ultima_factura).toLocaleDateString("es-EC") : "—"}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sinConsumo ? "bg-red-500/30 text-red-300" : "bg-green-500/30 text-green-300"}`}>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold
+                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
                                 {sinConsumo ? "Sin consumo" : "Activo"}
                               </span>
                             </td>

@@ -306,14 +306,16 @@ const obtenerVentaPorProducto = async (anioNum, mesNum) => {
 // ================================================================
 const obtenerVentasDescartablePorCanal = async (fechaInicio, fechaFin) => {
   const sql = `
-    SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares, 'FACTURA' AS origen
+    SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
+           COUNT(DISTINCT o.customer_code) AS clientes, 'FACTURA' AS origen
     FROM facturas o JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE (o.seller_code ILIKE 'A%' OR o.seller_code ILIKE 'V%' OR o.seller_code ILIKE 'M%')
       AND dd.codigo_categoria='7' AND o.status IN('2','4','5')
       AND COALESCE(o.fecha_entrega, o.fecha_creacion)>='${fechaInicio}' AND COALESCE(o.fecha_entrega, o.fecha_creacion)<'${fechaFin}'
     GROUP BY o.seller_code
     UNION ALL
-    SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares, 'ORDEN' AS origen
+    SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
+           COUNT(DISTINCT o.customer_code) AS clientes, 'ORDEN' AS origen
     FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.seller_code ILIKE 'M%' AND dd.codigo_categoria='7' AND o.status IN('2','4','5')
       AND COALESCE(o.fecha_entrega, o.fecha_creacion)>='${fechaInicio}' AND COALESCE(o.fecha_entrega, o.fecha_creacion)<'${fechaFin}'
@@ -360,6 +362,31 @@ const MetasHistoricasDescartablePorCanal = async () => {
   const mapa = {};
   filas.forEach(f => { mapa[f.seller_code] = { meta_historica: Number(f.meta_historica), mes_mayor_consumo: f.mes_mayor_consumo }; });
   return mapa;
+};
+
+// ================================================================
+// ODOO descartable agrupado por equipo_ventas
+// ================================================================
+const obtenerOdooDescartablePorCanal = async (fechaInicio, fechaFin) => {
+  const sql = `
+    SELECT
+      COALESCE(o.equipo_ventas, 'SIN EQUIPO')   AS canal,
+      ROUND(SUM(dd.total)::NUMERIC, 2)             AS total_imponible,
+      COALESCE(SUM(dd.cantidad), 0)::bigint        AS total_unidades,
+      COUNT(DISTINCT o.code)                       AS rotacion,
+      COUNT(DISTINCT o.customer_code)              AS clientes
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.origen_sistema = 'ODOO'
+      AND o.type    = 2
+      AND o.status  = 2
+      AND o.fecha_creacion >= '${fechaInicio}'
+      AND o.fecha_creacion  < '${fechaFin}'
+      AND UPPER(dd.descripcion_categoria) = 'DESCARTABLE'
+    GROUP BY o.equipo_ventas
+    ORDER BY total_imponible DESC
+  `;
+  return await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
 };
 
 const obtenerVentasDescartablePorCanalMesAnterior = async (fechaInicio, fechaFin) => {
@@ -429,6 +456,7 @@ const calcularVentasDescartableConComparativa = async (anioNum, mesNum) => {
 
     metasProyectadas[preventa] = {
       ...venta,
+      clientes:   Number(venta.clientes) || 0,
       meta: metaHistorica,
       proyeccion: Number(proyeccion.toFixed(2)),
       vsMesAnterior: {
@@ -1072,12 +1100,47 @@ const obtenerDatosDashboard = async (req, res) => {
 
     const tendencia6Meses = await tendencia6MesesPreventa(anioNum, mesNum);
 
+    const fechaInicioMesActualStr = getFechaInicioMes(anioNum, mesNum);
+    const fechaFinMesActualStr    = await getFechaFinQuery(anioNum, mesNum);
+
+    let mesAntO = mesNum - 1, anioAntO = anioNum;
+    if (mesAntO === 0) { mesAntO = 12; anioAntO--; }
+    const fechaInicioMesAntO = getFechaInicioMes(anioAntO, mesAntO);
+    const fechaFinMesAntO    = getFechaFinMes(anioAntO, mesAntO);
+
+    const [odooActual, odooAnterior] = await Promise.all([
+      obtenerOdooDescartablePorCanal(fechaInicioMesActualStr, fechaFinMesActualStr),
+      obtenerOdooDescartablePorCanal(fechaInicioMesAntO,      fechaFinMesAntO),
+    ]);
+
+    const hoyO          = new Date();
+    const esMesActualO  = anioNum === hoyO.getFullYear() && mesNum === hoyO.getMonth() + 1;
+    const diasTransO    = getDiasHabilesTranscurridos(anioNum, mesNum);
+    const diasLabO      = getDiasLaborablesMes(anioNum, mesNum);
+
+    const ventasDescartableOdoo = odooActual.map(curr => {
+      const prev        = odooAnterior.find(p => p.canal === curr.canal);
+      const montoAct    = Number(curr.total_imponible) || 0;
+      const montoAnt    = prev ? Number(prev.total_imponible) || 0 : 0;
+      const varAbs      = Number((montoAct - montoAnt).toFixed(2));
+      const varPorc     = montoAnt > 0 ? Number(((varAbs / montoAnt) * 100).toFixed(2)) : null;
+      const proyeccion  = esMesActualO && diasTransO > 0
+        ? Number(((montoAct / diasTransO) * diasLabO).toFixed(2))
+        : montoAct;
+      return {
+        ...curr,
+        proyeccion,
+        vsMesAnterior: { monto_anterior: montoAnt, variacion_abs: varAbs, variacion_porc: varPorc },
+      };
+    });
+
     return res.status(200).json({
       ...publicResumen,
       comparativaMesAnterior,
       topClientes             : resumenActual.topClientes,
       precioPromedioTabla,
       ventasDescartablePorCanal: ventasDescartableConComparativa,
+      ventasDescartableOdoo,
       resumenVentasPorCanal,
       tendencia6Meses,
     });
