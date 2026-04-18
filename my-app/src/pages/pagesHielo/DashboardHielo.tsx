@@ -36,6 +36,7 @@ const DashboardHielo: React.FC = () => {
   const [comparativaMesAnterior, setComparativaMesAnterior] = useState<any | null>(null);
   const [tendencia6Meses,       setTendencia6Meses]       = useState<any[]>([]);
   const [loading, setLoading]   = useState<boolean>(true);
+  const [loadingOdoo, setLoadingOdoo] = useState<boolean>(false);
   const [error,   setError]     = useState<string | null>(null);
   const [proyeccionDolares,         setProyeccionDolares]         = useState<number>(0);
   const [proyeccionUnidades,        setProyeccionUnidades]        = useState<number>(0);
@@ -200,7 +201,7 @@ const DashboardHielo: React.FC = () => {
         {/* ============================
             ESTADOS
         ============================ */}
-        {loading && (
+        {(loading || loadingOdoo) && (
           <div className="flex flex-col justify-center items-center py-32 gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400" />
           <p className="text-gray-400 text-sm">Cargando datos…</p>
@@ -213,7 +214,7 @@ const DashboardHielo: React.FC = () => {
         {/* ============================
             KPIs
         ============================ */}
-        {!loading && !error && kpisHielo && (
+        {!loading && !loadingOdoo && !error && kpisHielo && (
           <KpisHielo
             kpis={{
               ...kpisHielo,
@@ -230,7 +231,7 @@ const DashboardHielo: React.FC = () => {
           />
         )}
 
-     
+
 
         {/* ============================
             TABLA HIELO ODOO — solo ADMIN
@@ -239,6 +240,7 @@ const DashboardHielo: React.FC = () => {
           <TablaHieloOdoo
             anio={anioSeleccionado}
             mes={mesSeleccionado}
+            onLoadingChange={setLoadingOdoo}
             onTotalesLoaded={(t) => {
               setProyeccionDolares(t.monto);
               setProyeccionUnidades(t.proyeccionUnidades);

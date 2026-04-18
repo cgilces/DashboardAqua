@@ -307,7 +307,9 @@ const obtenerVentaPorProducto = async (anioNum, mesNum) => {
 const obtenerVentasDescartablePorCanal = async (fechaInicio, fechaFin) => {
   const sql = `
     SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
-           COUNT(DISTINCT o.customer_code) AS clientes, 'FACTURA' AS origen
+           COUNT(DISTINCT o.customer_code) AS clientes,
+           ARRAY_AGG(DISTINCT o.customer_code) AS customer_codes,
+           'FACTURA' AS origen
     FROM facturas o JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE (o.seller_code ILIKE 'A%' OR o.seller_code ILIKE 'V%' OR o.seller_code ILIKE 'M%')
       AND dd.codigo_categoria='7' AND o.status IN('2','4','5')
@@ -315,7 +317,9 @@ const obtenerVentasDescartablePorCanal = async (fechaInicio, fechaFin) => {
     GROUP BY o.seller_code
     UNION ALL
     SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
-           COUNT(DISTINCT o.customer_code) AS clientes, 'ORDEN' AS origen
+           COUNT(DISTINCT o.customer_code) AS clientes,
+           ARRAY_AGG(DISTINCT o.customer_code) AS customer_codes,
+           'ORDEN' AS origen
     FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.seller_code ILIKE 'M%' AND dd.codigo_categoria='7' AND o.status IN('2','4','5')
       AND COALESCE(o.fecha_entrega, o.fecha_creacion)>='${fechaInicio}' AND COALESCE(o.fecha_entrega, o.fecha_creacion)<'${fechaFin}'
@@ -374,15 +378,16 @@ const obtenerOdooDescartablePorCanal = async (fechaInicio, fechaFin) => {
       ROUND(SUM(dd.total)::NUMERIC, 2)             AS total_imponible,
       COALESCE(SUM(dd.cantidad), 0)::bigint        AS total_unidades,
       COUNT(DISTINCT o.code)                       AS rotacion,
-      COUNT(DISTINCT o.customer_code)              AS clientes
+      COUNT(DISTINCT o.customer_code)              AS clientes,
+      ARRAY_AGG(DISTINCT o.customer_code)          AS customer_codes
     FROM ordenes o
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.origen_sistema = 'ODOO'
       AND o.type    = 2
-      AND o.status  = 2
+      AND o.status  IN (2, 4, 5)
       AND o.fecha_creacion >= '${fechaInicio}'
       AND o.fecha_creacion  < '${fechaFin}'
-      AND UPPER(dd.descripcion_categoria) = 'DESCARTABLE'
+      AND dd.codigo_categoria = '7'
     GROUP BY o.equipo_ventas
     ORDER BY total_imponible DESC
   `;
@@ -457,6 +462,7 @@ const calcularVentasDescartableConComparativa = async (anioNum, mesNum) => {
     metasProyectadas[preventa] = {
       ...venta,
       clientes:   Number(venta.clientes) || 0,
+      customer_codes: Array.isArray(venta.customer_codes) ? venta.customer_codes.filter(Boolean) : [],
       meta: metaHistorica,
       proyeccion: Number(proyeccion.toFixed(2)),
       vsMesAnterior: {
@@ -1129,6 +1135,7 @@ const obtenerDatosDashboard = async (req, res) => {
         : montoAct;
       return {
         ...curr,
+        customer_codes: Array.isArray(curr.customer_codes) ? curr.customer_codes.filter(Boolean) : [],
         proyeccion,
         vsMesAnterior: { monto_anterior: montoAnt, variacion_abs: varAbs, variacion_porc: varPorc },
       };

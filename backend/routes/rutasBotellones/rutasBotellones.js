@@ -15,4 +15,10 @@ router.get('/empresas-subcanales',         botellonesController.obtenerEmpresasS
 router.get('/empresas-clientes-tipo',      botellonesController.obtenerEmpresasClientesPorTipo);
 router.get('/empresas-cliente-detalle',    botellonesController.obtenerEmpresasDetalleCliente);
 
+// Quito / Website — canales independientes (MV + Odoo)
+router.get('/quito-consolidado',   verificarTokenOpcional, botellonesController.obtenerQuitoConsolidado);
+router.get('/clientes-quito',      botellonesController.obtenerClientesQuitoBotellon);
+router.get('/website-consolidado', verificarTokenOpcional, botellonesController.obtenerWebsiteConsolidado);
+router.get('/clientes-website',    botellonesController.obtenerClientesWebsiteBotellon);
+
 module.exports = router;

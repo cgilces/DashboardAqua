@@ -6,6 +6,8 @@ const {
   obtenerDetalleRutaCOTTSA,
   obtenerClientesCOTTSA,
   diagnosticoCOTTSA,
+  obtenerCottsaExtra,
+  guardarCottsaExtra,
 } = require("../../controllers/controllerCotxa/cotsaController");
 
 // GET /api/COTTSA/dashboard?anio=2026&mes=3
@@ -19,5 +21,9 @@ router.get("/clientes", obtenerClientesCOTTSA);
 
 // GET /api/COTTSA/diagnostico?anio=2026&mes=2
 router.get("/diagnostico", diagnosticoCOTTSA);
+
+// GET/PUT /api/COTTSA/extra — datos externos manuales por año+mes
+router.get("/extra", obtenerCottsaExtra);
+router.put("/extra", guardarCottsaExtra);
 
 module.exports = router;

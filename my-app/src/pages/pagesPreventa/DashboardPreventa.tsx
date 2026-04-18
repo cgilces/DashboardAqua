@@ -281,21 +281,51 @@ export default function DashboardPreventa() {
                   Resumen por canal
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    ...Object.values(resumenVentasPorCanal).filter((c: any) => c.monto > 0 || c.unidades > 0),
-                    ...(COTTSACard ? [COTTSACard] : []),
-                    ...(datos?.ventasDescartableOdoo || []).map((o: any) => ({
-                      canal:        `ODOO · ${o.canal}`,
-                      _slug:        SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
-                      monto:        Number(o.proyeccion ?? o.total_imponible ?? 0),
-                      montoReal:    Number(o.total_imponible ?? 0),
-                      mesAnterior:  Number(o.vsMesAnterior?.monto_anterior ?? 0),
-                      variacionAbs: Number(o.vsMesAnterior?.variacion_abs  ?? 0),
-                      variacionPorc: Number(o.vsMesAnterior?.variacion_porc ?? 0),
-                      unidades:     Number(o.total_unidades ?? 0),
-                      isOdooCanal:  true,
-                    })),
-                  ].map((canal: any) => {
+                  {(() => {
+                    const odooList: any[] = datos?.ventasDescartableOdoo || [];
+                    const preventaBase = Object.values(resumenVentasPorCanal)
+                      .filter((c: any) => c.monto > 0 || c.unidades > 0) as any[];
+
+                    // Fusiona un canal preventa con su contraparte ODOO (sumando montos/unidades)
+                    const fusionar = (preventa: any, nombreOdoo: string): any => {
+                      const odoo = odooList.find((o: any) => o.canal === nombreOdoo);
+                      if (!odoo) return preventa;
+                      const monto       = Number(preventa.monto ?? 0)     + Number(odoo.proyeccion ?? odoo.total_imponible ?? 0);
+                      const montoReal   = Number(preventa.montoReal ?? preventa.monto ?? 0) + Number(odoo.total_imponible ?? 0);
+                      const mesAnterior = Number(preventa.mesAnterior ?? 0) + Number(odoo.vsMesAnterior?.monto_anterior ?? 0);
+                      const unidades    = Number(preventa.unidades ?? 0) + Number(odoo.total_unidades ?? 0);
+                      const variacionAbs  = monto - mesAnterior;
+                      const variacionPorc = mesAnterior > 0 ? (variacionAbs / mesAnterior) * 100 : 0;
+                      return { ...preventa, monto, montoReal, mesAnterior, variacionAbs, variacionPorc, unidades };
+                    };
+
+                    const preventaFusionados = preventaBase.map((c: any) => {
+                      if (c.canal === "VIP")       return fusionar(c, "Moderno");
+                      if (c.canal === "DOMICILIO") return fusionar(c, "Domicilio");
+                      return c;
+                    });
+
+                    const YA_FUSIONADOS = new Set(["Moderno", "Domicilio"]);
+                    const odooRestantes = odooList
+                      .filter((o: any) => !YA_FUSIONADOS.has(o.canal))
+                      .map((o: any) => ({
+                        canal:        String(o.canal).toUpperCase(),
+                        _slug:        SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
+                        monto:        Number(o.proyeccion ?? o.total_imponible ?? 0),
+                        montoReal:    Number(o.total_imponible ?? 0),
+                        mesAnterior:  Number(o.vsMesAnterior?.monto_anterior ?? 0),
+                        variacionAbs: Number(o.vsMesAnterior?.variacion_abs  ?? 0),
+                        variacionPorc: Number(o.vsMesAnterior?.variacion_porc ?? 0),
+                        unidades:     Number(o.total_unidades ?? 0),
+                        isOdooCanal:  true,
+                      }));
+
+                    return [
+                      ...preventaFusionados,
+                      ...(COTTSACard ? [COTTSACard] : []),
+                      ...odooRestantes,
+                    ];
+                  })().map((canal: any) => {
                     const positivo   = canal.variacionAbs >= 0;
                     const esCOTTSA   = canal.canal === "COTTSA - AGUA OK";
                     const esOdooCanal = canal.isOdooCanal === true;

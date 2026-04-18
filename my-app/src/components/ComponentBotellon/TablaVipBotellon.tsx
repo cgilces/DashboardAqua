@@ -19,6 +19,8 @@ const TablaVipBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = fal
 
   const dolares    = Number(total?.dolares   ?? 0);
   const unidades   = Number(total?.unidades  ?? 0);
+  const numFacturas = Number(total?.numFacturas ?? 0);
+  const numOrdenes  = Number(total?.numOrdenes  ?? 0);
   const mesAnt     = Number(total?.mesAnterior?.dolares ?? 0);
   const varAbs     = Number(total?.mesAnterior?.variacionAbs  ?? (dolares - mesAnt));
   const varPorc    = Number(total?.mesAnterior?.variacionPorc ?? 0);
@@ -47,6 +49,14 @@ const TablaVipBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = fal
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Proyección</p>
             <p className="text-base font-bold text-emerald-400">{money(proyDolares)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Facturas</p>
+            <p className="text-base font-bold text-blue-300">{numFacturas.toLocaleString("es-EC")}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Órdenes</p>
+            <p className="text-base font-bold text-blue-300">{numOrdenes.toLocaleString("es-EC")}</p>
           </div>
         </div>
       </div>

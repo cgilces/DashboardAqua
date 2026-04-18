@@ -1,7 +1,10 @@
 // controllers/COTTSAController.js
-const { sequelize, MetaPreventa } = require('../../models');
+const { sequelize, MetaPreventa, CottsaExtraMes } = require('../../models');
 const Sequelize = require('sequelize');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+
+// Crea la tabla si no existe (una sola vez en el arranque)
+CottsaExtraMes.sync().catch(err => console.error('⚠️ sync CottsaExtraMes:', err.message));
 
 // ================================================================
 // HELPER — objetivos de gerencia (reutiliza tabla MetaPreventa)
@@ -500,4 +503,81 @@ const diagnosticoCOTTSA = async (req, res) => {
   }
 };
 
-module.exports = { obtenerDashboardCOTTSA, obtenerDetalleRutaCOTTSA, obtenerClientesCOTTSA, diagnosticoCOTTSA };
+// ================================================================
+// COTTSA — Datos externos (manualmente ingresados desde otro sistema)
+// GET  /api/COTTSA/extra?anio=YYYY&mes=MM   → devuelve el registro (o 0s)
+// PUT  /api/COTTSA/extra                    → upsert (anio, mes, unidades, dolares, facturas)
+// ================================================================
+const obtenerCottsaExtra = async (req, res) => {
+  try {
+    const anio = parseInt(req.query.anio, 10);
+    const mes  = parseInt(req.query.mes,  10);
+    if (isNaN(anio) || isNaN(mes) || mes < 1 || mes > 12)
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const reg = await CottsaExtraMes.findOne({ where: { anio, mes }, raw: true });
+    return res.json({
+      anio,
+      mes,
+      unidades: reg ? Number(reg.unidades) : 0,
+      dolares:  reg ? Number(reg.dolares)  : 0,
+      facturas: reg ? Number(reg.facturas) : 0,
+      actualizado_por: reg ? reg.actualizado_por : null,
+      updated_at:      reg ? reg.updated_at      : null,
+    });
+  } catch (err) {
+    console.error('❌ obtenerCottsaExtra:', err);
+    return res.status(500).json({ error: 'Error al obtener datos externos COTTSA' });
+  }
+};
+
+const guardarCottsaExtra = async (req, res) => {
+  try {
+    const anio     = parseInt(req.body.anio, 10);
+    const mes      = parseInt(req.body.mes,  10);
+    const unidades = Number(req.body.unidades) || 0;
+    const dolares  = Number(req.body.dolares)  || 0;
+    const facturas = parseInt(req.body.facturas, 10) || 0;
+    const actualizado_por = (req.user?.username || req.user?.email || null);
+
+    if (isNaN(anio) || isNaN(mes) || mes < 1 || mes > 12)
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+    if (unidades < 0 || dolares < 0 || facturas < 0)
+      return res.status(400).json({ error: 'Los valores no pueden ser negativos' });
+
+    const [reg, creado] = await CottsaExtraMes.findOrCreate({
+      where: { anio, mes },
+      defaults: { anio, mes, unidades, dolares, facturas, actualizado_por },
+    });
+
+    if (!creado) {
+      reg.unidades        = unidades;
+      reg.dolares         = dolares;
+      reg.facturas        = facturas;
+      reg.actualizado_por = actualizado_por;
+      await reg.save();
+    }
+
+    return res.json({
+      anio,
+      mes,
+      unidades: Number(reg.unidades),
+      dolares:  Number(reg.dolares),
+      facturas: Number(reg.facturas),
+      actualizado_por: reg.actualizado_por,
+      updated_at:      reg.updated_at,
+    });
+  } catch (err) {
+    console.error('❌ guardarCottsaExtra:', err);
+    return res.status(500).json({ error: 'Error al guardar datos externos COTTSA' });
+  }
+};
+
+module.exports = {
+  obtenerDashboardCOTTSA,
+  obtenerDetalleRutaCOTTSA,
+  obtenerClientesCOTTSA,
+  diagnosticoCOTTSA,
+  obtenerCottsaExtra,
+  guardarCottsaExtra,
+};

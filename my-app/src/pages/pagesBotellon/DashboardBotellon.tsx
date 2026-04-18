@@ -10,6 +10,8 @@ import ChatFlotante from "../../components/elements/ChatFlotante";
 import TablaVipBotellon from "../../components/ComponentBotellon/TablaVipBotellon";
 import TablaDomicilioBotellon from "../../components/ComponentBotellon/TablaDomicilioBotellon";
 import TablaEmpresasBotellon from "../../components/ComponentBotellon/TablaEmpresasBotellon";
+import TablaQuitoBotellon from "../../components/ComponentBotellon/TablaQuitoBotellon";
+import TablaWebsiteBotellon from "../../components/ComponentBotellon/TablaWebsiteBotellon";
 import { API_BASE_URL } from "../../config";
 import GraficoTendencia from "../../components/common/GraficoTendencia";
 
@@ -40,7 +42,6 @@ const SECCIONES = [
   { key: "TIENDAS", titulo: "Tiendas", excel: "tiendas" },
   { key: "MAYORISTA", titulo: "Mayorista", excel: "mayorista" },
   { key: "RURAL", titulo: "Rural", excel: "rural" },
-  { key: "QUITO", titulo: "Quito", excel: "quito" },
   { key: "TELEVENTA_VIP", titulo: "Televentas VIP", excel: "televentas_vip" },
 ];
 
@@ -58,6 +59,8 @@ export default function DashboardBotellon() {
 
   const [botellones, setBotellones] = useState<any>(null);
   const [empresasData, setEmpresasData] = useState<any>(null);
+  const [quitoData, setQuitoData] = useState<any>(null);
+  const [websiteData, setWebsiteData] = useState<any>(null);
   const [tendencia6Meses, setTendencia6Meses] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
   const [cargandoEmpresas, setCargandoEmpresas] = useState(false);
@@ -82,21 +85,29 @@ export default function DashboardBotellon() {
       setCargandoEmpresas(true);
       setBotellones(null);
       setEmpresasData(null);
+      setQuitoData(null);
+      setWebsiteData(null);
       setTendencia6Meses([]);
       setMostrarTablas(false);
 
       const token = localStorage.getItem('app_token');
       const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
-      const [resDash, resEmp] = await Promise.all([
+      const [resDash, resEmp, resQuito, resWeb] = await Promise.all([
         fetch(`${API_BASE_URL}/api/botellones/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/api/botellones/empresas-consolidado?anio=${anioSeleccionado}&mes=${mesSeleccionado}`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/api/botellones/quito-consolidado?anio=${anioSeleccionado}&mes=${mesSeleccionado}`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/api/botellones/website-consolidado?anio=${anioSeleccionado}&mes=${mesSeleccionado}`, { headers: authHeaders }),
       ]);
 
       const jsonDash = await resDash.json();
       const jsonEmp = await resEmp.json();
+      const jsonQuito = await resQuito.json();
+      const jsonWeb = await resWeb.json();
 
       setBotellones(jsonDash.botellones);
       setEmpresasData(jsonEmp);
+      setQuitoData(jsonQuito);
+      setWebsiteData(jsonWeb);
       setTendencia6Meses(jsonDash.tendencia6Meses ?? []);
     } catch (error) {
       console.error("Error cargando dashboard botellones", error);
@@ -144,8 +155,8 @@ export default function DashboardBotellon() {
       );
     });
 
-    // Incluir VIP, DOMICILIO y EMPRESAS en el total
-    [botellones.VIP, botellones.DOMICILIO, empresasData].forEach((src) => {
+    // Incluir VIP, DOMICILIO, EMPRESAS, QUITO y WEBSITE en el total
+    [botellones.VIP, botellones.DOMICILIO, empresasData, quitoData, websiteData].forEach((src) => {
       if (!src) return;
       const total = src.total;
       const detalle = src.detalle || [];
@@ -185,7 +196,7 @@ export default function DashboardBotellon() {
       varAbsDolares,
       varPorcDolares,
     };
-  }, [botellones, empresasData]);
+  }, [botellones, empresasData, quitoData, websiteData]);
 
   const resumenVentasUSD = useMemo(() => {
     if (!botellones) return null;
@@ -222,10 +233,12 @@ export default function DashboardBotellon() {
       toEntry('vip', botellones.VIP),
       toEntry('domicilio', botellones.DOMICILIO),
       toEntry('empresas', empresasData),
+      toEntry('quito', quitoData),
+      toEntry('website', websiteData),
     ].filter(Boolean) as [string, any][];
 
     return Object.fromEntries([...seccionEntries, ...extraEntries]);
-  }, [botellones, empresasData]);
+  }, [botellones, empresasData, quitoData, websiteData]);
 
   return (
     <DashboardLayout>
@@ -366,8 +379,8 @@ export default function DashboardBotellon() {
                 <ResumenVentasCanalUSD
                   titulo="Ventas USD Botellón"
                   canales={[
-                    "vip", "domicilio", "empresas",
-                    "tiendas_vip", "tiendas", "mayorista", "rural", "quito", "televenta_vip",
+                    "vip", "domicilio", "empresas", "quito", "website",
+                    "tiendas_vip", "tiendas", "mayorista", "rural", "televenta_vip",
                   ]}
                   data={resumenVentasUSD}
                   anio={anioSeleccionado}
@@ -376,13 +389,14 @@ export default function DashboardBotellon() {
                     vip: "/vip-botellon/clientes",
                     domicilio: "/domicilio-botellon/clientes",
                     empresas: "/empresas-botellon/clientes",
+                    quito: "/quito-botellon/clientes",
+                    website: "/website-botellon/clientes",
                   }}
                   scrollTargets={{
                     tiendas_vip: "seccion-tiendas_vip",
                     tiendas: "seccion-tiendas",
                     mayorista: "seccion-mayorista",
                     rural: "seccion-rural",
-                    quito: "seccion-quito",
                     televenta_vip: "seccion-televenta_vip",
                   }}
                   onScrollClick={activarSeccion}
@@ -428,6 +442,32 @@ export default function DashboardBotellon() {
                       Number(mesSeleccionado) === new Date().getMonth() + 1
                     }
                   />
+
+                  {/* Canal Quito */}
+                  {quitoData && (
+                    <TablaQuitoBotellon
+                      anio={anioSeleccionado}
+                      mes={mesSeleccionado}
+                      datos={quitoData}
+                      esMesActual={
+                        Number(anioSeleccionado) === new Date().getFullYear() &&
+                        Number(mesSeleccionado) === new Date().getMonth() + 1
+                      }
+                    />
+                  )}
+
+                  {/* Canal Website */}
+                  {websiteData && (
+                    <TablaWebsiteBotellon
+                      anio={anioSeleccionado}
+                      mes={mesSeleccionado}
+                      datos={websiteData}
+                      esMesActual={
+                        Number(anioSeleccionado) === new Date().getFullYear() &&
+                        Number(mesSeleccionado) === new Date().getMonth() + 1
+                      }
+                    />
+                  )}
 
                   {/* Tablas MobilVendor */}
                   {mostrarTablas &&

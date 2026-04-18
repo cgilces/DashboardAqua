@@ -51,6 +51,7 @@ const CANALES_LABELS: Record<string, string> = {
   tiendas: "Tiendas",
   tiendas_vip: "Tiendas VIP",
   vip: "VIP",
+  website: "Website",
 };
 
 /* ============================

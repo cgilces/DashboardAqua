@@ -12,6 +12,7 @@ interface VentaDescartable {
   unidades: string | number;
   dolares: string | number;
   clientes?: number;
+  customer_codes?: string[];
   proyeccion?: number;
   vsMesAnterior?: {
     monto_anterior: number;
@@ -29,6 +30,7 @@ interface OdooCanal {
   total_unidades: number;
   rotacion: number;
   clientes: number;
+  customer_codes?: string[];
   proyeccion?: number;
   vsMesAnterior?: {
     monto_anterior: number;
@@ -47,6 +49,7 @@ interface CanalAgregado {
   variacion_abs: number | null;
   variacion_porc: number | null;
   clientes: number;
+  codigos: Set<string>;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -118,25 +121,25 @@ const RankingDescartablePorCanal = ({
 
   // ── Agregar canales preventa ───────────────────────────────────────────────
   const preventaMap: Record<string, {
-    unidades: number; dolares: number; proyeccion: number; clientes: number;
-    variacion_abs: number; monto_anterior: number;
+    unidades: number; dolares: number; proyeccion: number;
+    variacion_abs: number; monto_anterior: number; codigos: Set<string>;
   }> = {};
 
   Object.values(data ?? {}).forEach((r) => {
     const canal = obtenerCanalPreventa(r.seller_code);
     if (!preventaMap[canal]) {
       preventaMap[canal] = {
-        unidades: 0, dolares: 0, proyeccion: 0, clientes: 0,
-        variacion_abs: 0, monto_anterior: 0,
+        unidades: 0, dolares: 0, proyeccion: 0,
+        variacion_abs: 0, monto_anterior: 0, codigos: new Set<string>(),
       };
     }
     const g = preventaMap[canal];
     g.unidades      += Number(r.unidades  ?? 0);
     g.dolares       += Number(r.dolares   ?? 0);
     g.proyeccion    += Number(r.proyeccion ?? 0);
-    g.clientes      += Number(r.clientes  ?? 0);
     g.variacion_abs += Number(r.vsMesAnterior?.variacion_abs  ?? 0);
     g.monto_anterior += Number(r.vsMesAnterior?.monto_anterior ?? 0);
+    (r.customer_codes ?? []).forEach(code => { if (code) g.codigos.add(code); });
   });
 
   const canalesPreventa: CanalAgregado[] = Object.entries(preventaMap).map(
@@ -147,7 +150,8 @@ const RankingDescartablePorCanal = ({
       unidades:      g.unidades,
       dolares:       g.dolares,
       proyeccion:    g.proyeccion,
-      clientes:      g.clientes,
+      clientes:      g.codigos.size,
+      codigos:       g.codigos,
       variacion_abs: g.variacion_abs,
       variacion_porc:
         g.monto_anterior > 0
@@ -157,17 +161,21 @@ const RankingDescartablePorCanal = ({
   ).sort((a, b) => b.dolares - a.dolares);
 
   // ── Canales ODOO ──────────────────────────────────────────────────────────
-  const canalesOdoo: CanalAgregado[] = (odooData ?? []).map((o) => ({
-    canal:          o.canal,
-    slug:           SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
-    fuente:         "odoo" as const,
-    unidades:       Number(o.total_unidades ?? 0),
-    dolares:        Number(o.total_imponible ?? 0),
-    proyeccion:     Number(o.proyeccion ?? 0),
-    variacion_abs:  o.vsMesAnterior ? Number(o.vsMesAnterior.variacion_abs) : null,
-    variacion_porc: o.vsMesAnterior ? o.vsMesAnterior.variacion_porc : null,
-    clientes:       Number(o.clientes ?? 0),
-  })).sort((a, b) => b.dolares - a.dolares);
+  const canalesOdoo: CanalAgregado[] = (odooData ?? []).map((o) => {
+    const codigos = new Set<string>((o.customer_codes ?? []).filter(Boolean));
+    return {
+      canal:          o.canal,
+      slug:           SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
+      fuente:         "odoo" as const,
+      unidades:       Number(o.total_unidades ?? 0),
+      dolares:        Number(o.total_imponible ?? 0),
+      proyeccion:     Number(o.proyeccion ?? 0),
+      variacion_abs:  o.vsMesAnterior ? Number(o.vsMesAnterior.variacion_abs) : null,
+      variacion_porc: o.vsMesAnterior ? o.vsMesAnterior.variacion_porc : null,
+      clientes:       codigos.size > 0 ? codigos.size : Number(o.clientes ?? 0),
+      codigos,
+    };
+  }).sort((a, b) => b.dolares - a.dolares);
 
   // ── Fusionar DOMICILIO Mobilvendor + ODOO Domicilio ──────────────────────
   const mobilDom = canalesPreventa.find(c => c.canal === "DOMICILIO");
@@ -184,6 +192,7 @@ const RankingDescartablePorCanal = ({
     const montoAntMobil = mobilDom.dolares - (mobilDom.variacion_abs ?? 0);
     const montoAntOdoo  = ooooDom.dolares  - (ooooDom.variacion_abs  ?? 0);
     const montoAntTotal = montoAntMobil + montoAntOdoo;
+    const codigosDom    = new Set<string>([...mobilDom.codigos, ...ooooDom.codigos]);
 
     const combinado: CanalAgregado = {
       canal:          "DOMICILIO",
@@ -196,7 +205,8 @@ const RankingDescartablePorCanal = ({
       variacion_porc: montoAntTotal > 0
         ? Number(((varAbsTotal / montoAntTotal) * 100).toFixed(2))
         : null,
-      clientes:       mobilDom.clientes  + ooooDom.clientes,
+      clientes:       codigosDom.size > 0 ? codigosDom.size : (mobilDom.clientes + ooooDom.clientes),
+      codigos:        codigosDom,
     };
 
     canalesPreventaFinal = [...canalesPreventaFinal, combinado].sort((a, b) => b.dolares - a.dolares);
@@ -221,6 +231,7 @@ const RankingDescartablePorCanal = ({
     const montoAntVip = mobilVip.dolares  - (mobilVip.variacion_abs  ?? 0);
     const montoAntMod = odooModerno.dolares - (odooModerno.variacion_abs ?? 0);
     const montoAntTot = montoAntVip + montoAntMod;
+    const codigosVip  = new Set<string>([...mobilVip.codigos, ...odooModerno.codigos]);
 
     const vipCombinado: CanalAgregado = {
       canal:          "VIP",
@@ -233,7 +244,8 @@ const RankingDescartablePorCanal = ({
       variacion_porc: montoAntTot > 0
         ? Number(((varAbsVip / montoAntTot) * 100).toFixed(2))
         : null,
-      clientes:       mobilVip.clientes   + odooModerno.clientes,
+      clientes:       codigosVip.size > 0 ? codigosVip.size : (mobilVip.clientes + odooModerno.clientes),
+      codigos:        codigosVip,
     };
 
     canalesPreventaFinal = [...canalesPreventaFinal, vipCombinado]

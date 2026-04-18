@@ -149,6 +149,7 @@ const obtenerClientesCanal = async (req, res) => {
           da.customer_code, da.customer_address_code,
           dc.descripcion_direccion_cliente   AS descripcion_direccion,
           c.nombre_cliente,
+          c.identificacion_cliente,
           tn.descripcion                    AS tipo_negocio,
           dc.calle1_direccion_cliente        AS direccion_entrega,
           dc.telefono_direccion_cliente      AS telefono,
@@ -180,7 +181,7 @@ const obtenerClientesCanal = async (req, res) => {
             AND o.fecha_creacion >= '${antInicio}'
         ),
         consumo_actual AS (
-          SELECT o.customer_code,
+          SELECT o.customer_code, o.customer_address_code,
             SUM(dd.cantidad) AS unidades, SUM(dd.total) AS monto
           FROM ordenes o
           JOIN detalle_documento dd ON dd.documento_code = o.code
@@ -189,10 +190,10 @@ const obtenerClientesCanal = async (req, res) => {
             AND o.type = 2 AND o.status IN (2, 4, 5)
             AND dd.codigo_categoria = '7'
             AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         ),
         consumo_anterior AS (
-          SELECT o.customer_code, SUM(dd.total) AS monto
+          SELECT o.customer_code, o.customer_address_code, SUM(dd.total) AS monto
           FROM ordenes o
           JOIN detalle_documento dd ON dd.documento_code = o.code
           WHERE o.origen_sistema = 'ODOO'
@@ -200,20 +201,21 @@ const obtenerClientesCanal = async (req, res) => {
             AND o.type = 2 AND o.status IN (2, 4, 5)
             AND dd.codigo_categoria = '7'
             AND o.fecha_creacion >= '${antInicio}' AND o.fecha_creacion < '${antFin}'
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         ),
         ultima_compra AS (
-          SELECT o.customer_code, MAX(o.fecha_creacion) AS ultima
+          SELECT o.customer_code, o.customer_address_code, MAX(o.fecha_creacion) AS ultima
           FROM ordenes o
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
             AND o.type = 2 AND o.status IN (2, 4, 5)
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         )
         SELECT
           cc.customer_code, cc.customer_address_code,
           COALESCE(dc.descripcion_direccion_cliente, dc2.descripcion_direccion_cliente) AS descripcion_direccion,
           c.nombre_cliente,
+          c.identificacion_cliente,
           tn.descripcion                    AS tipo_negocio,
           COALESCE(dc.calle1_direccion_cliente, dc2.calle1_direccion_cliente)   AS direccion_entrega,
           COALESCE(dc.telefono_direccion_cliente, dc2.telefono_direccion_cliente) AS telefono,
@@ -236,8 +238,11 @@ const obtenerClientesCanal = async (req, res) => {
           FROM direcciones_clientes ORDER BY codigo_cliente
         ) dc2 ON dc2.codigo_cliente = cc.customer_code
         LEFT JOIN consumo_actual   ca     ON ca.customer_code = cc.customer_code
+                                          AND ca.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         LEFT JOIN consumo_anterior cp     ON cp.customer_code = cc.customer_code
+                                          AND cp.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         LEFT JOIN ultima_compra    uc     ON uc.customer_code = cc.customer_code
+                                          AND uc.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         ORDER BY consumo_actual DESC;
       `;
 
@@ -262,7 +267,7 @@ const obtenerClientesCanal = async (req, res) => {
             AND o.fecha_creacion >= '${antInicio}'
         ),
         consumo_actual AS (
-          SELECT o.customer_code,
+          SELECT o.customer_code, o.customer_address_code,
             SUM(dd.cantidad) AS unidades,
             SUM(dd.total)    AS monto
           FROM ordenes o
@@ -273,10 +278,10 @@ const obtenerClientesCanal = async (req, res) => {
             AND o.status IN (2, 4, 5)
             AND dd.codigo_categoria = '7'
             AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         ),
         consumo_anterior AS (
-          SELECT o.customer_code,
+          SELECT o.customer_code, o.customer_address_code,
             SUM(dd.total) AS monto
           FROM ordenes o
           JOIN detalle_documento dd ON dd.documento_code = o.code
@@ -286,21 +291,22 @@ const obtenerClientesCanal = async (req, res) => {
             AND o.status IN (2, 4, 5)
             AND dd.codigo_categoria = '7'
             AND o.fecha_creacion >= '${antInicio}' AND o.fecha_creacion < '${antFin}'
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         ),
         ultima_compra AS (
-          SELECT o.customer_code, MAX(o.fecha_creacion) AS ultima
+          SELECT o.customer_code, o.customer_address_code, MAX(o.fecha_creacion) AS ultima
           FROM ordenes o
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
             AND o.type = 2 AND o.status IN (2, 4, 5)
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         )
         SELECT
           cc.customer_code,
           cc.customer_address_code,
           COALESCE(dc.descripcion_direccion_cliente, dc2.descripcion_direccion_cliente) AS descripcion_direccion,
           c.nombre_cliente,
+          c.identificacion_cliente,
           tn.descripcion                    AS tipo_negocio,
           COALESCE(dc.calle1_direccion_cliente, dc2.calle1_direccion_cliente)   AS direccion_entrega,
           COALESCE(dc.telefono_direccion_cliente, dc2.telefono_direccion_cliente) AS telefono,
@@ -324,8 +330,11 @@ const obtenerClientesCanal = async (req, res) => {
           ORDER BY codigo_cliente
         ) dc2 ON dc2.codigo_cliente = cc.customer_code
         LEFT JOIN consumo_actual   ca     ON ca.customer_code  = cc.customer_code
+                                          AND ca.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         LEFT JOIN consumo_anterior cp     ON cp.customer_code  = cc.customer_code
+                                          AND cp.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         LEFT JOIN ultima_compra    uc     ON uc.customer_code  = cc.customer_code
+                                          AND uc.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         ORDER BY consumo_actual DESC;
       `;
 
@@ -380,6 +389,7 @@ const obtenerClientesCanal = async (req, res) => {
           da.customer_address_code,
           dc.descripcion_direccion_cliente   AS descripcion_direccion,
           c.nombre_cliente,
+          c.identificacion_cliente,
           tn.descripcion                    AS tipo_negocio,
           dc.calle1_direccion_cliente        AS direccion_entrega,
           dc.telefono_direccion_cliente      AS telefono,
@@ -419,7 +429,7 @@ const obtenerClientesCanal = async (req, res) => {
             AND o.fecha_creacion >= '${antInicio}'
         ),
         consumo_actual AS (
-          SELECT o.customer_code,
+          SELECT o.customer_code, o.customer_address_code,
             SUM(dd.cantidad) AS unidades,
             SUM(dd.total)    AS monto
           FROM ordenes o
@@ -429,10 +439,10 @@ const obtenerClientesCanal = async (req, res) => {
             AND dd.codigo_categoria = '7'
             AND o.seller_nombre IN (${rutasEsc})
             AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         ),
         consumo_anterior AS (
-          SELECT o.customer_code,
+          SELECT o.customer_code, o.customer_address_code,
             SUM(dd.total) AS monto
           FROM ordenes o
           JOIN detalle_documento dd ON dd.documento_code = o.code
@@ -441,20 +451,21 @@ const obtenerClientesCanal = async (req, res) => {
             AND dd.codigo_categoria = '7'
             AND o.seller_nombre IN (${rutasEsc})
             AND o.fecha_creacion >= '${antInicio}' AND o.fecha_creacion < '${antFin}'
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         ),
         ultima_compra AS (
-          SELECT o.customer_code, MAX(o.fecha_creacion) AS ultima
+          SELECT o.customer_code, o.customer_address_code, MAX(o.fecha_creacion) AS ultima
           FROM ordenes o
           WHERE o.type = 2 AND o.status IN (2, 4, 5)
             AND o.seller_nombre IN (${rutasEsc})
-          GROUP BY o.customer_code
+          GROUP BY o.customer_code, o.customer_address_code
         )
         SELECT
           cc.customer_code,
           cc.customer_address_code,
           COALESCE(dc.descripcion_direccion_cliente, dc2.descripcion_direccion_cliente) AS descripcion_direccion,
           c.nombre_cliente,
+          c.identificacion_cliente,
           tn.descripcion   AS tipo_negocio,
           COALESCE(dc.calle1_direccion_cliente, dc2.calle1_direccion_cliente)   AS direccion_entrega,
           COALESCE(dc.telefono_direccion_cliente, dc2.telefono_direccion_cliente) AS telefono,
@@ -478,8 +489,11 @@ const obtenerClientesCanal = async (req, res) => {
           ORDER BY codigo_cliente
         ) dc2 ON dc2.codigo_cliente = cc.customer_code
         LEFT JOIN consumo_actual   ca     ON ca.customer_code  = cc.customer_code
+                                          AND ca.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         LEFT JOIN consumo_anterior cp     ON cp.customer_code  = cc.customer_code
+                                          AND cp.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         LEFT JOIN ultima_compra    uc     ON uc.customer_code  = cc.customer_code
+                                          AND uc.customer_address_code IS NOT DISTINCT FROM cc.customer_address_code
         ORDER BY consumo_actual DESC;
       `;
 
@@ -504,9 +518,13 @@ const obtenerClientesCanal = async (req, res) => {
         customer_code         : c.customer_code,
         customer_address_code : c.customer_address_code || null,
         nombre_cliente        : c.nombre_cliente   || "SIN NOMBRE",
+        identificacion_cliente: c.identificacion_cliente || null,
         tipo_negocio          : c.tipo_negocio     || "SIN CLASIFICAR",
+        descripcion_direccion : c.descripcion_direccion || null,
         direccion_entrega     : c.direccion_entrega || "—",
         telefono              : c.telefono         || "—",
+        latitud               : c.latitud          || null,
+        longitud              : c.longitud         || null,
         consumo_actual        : Number(actual.toFixed(2)),
         unidades_actual       : Number(c.unidades_actual) || 0,
         consumo_anterior      : Number(anterior.toFixed(2)),
