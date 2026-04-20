@@ -176,39 +176,33 @@ export default function DashboardPreventa() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-2 sm:px-4 md:px-10 py-3 md:py-6">
+      <div className="main-content min-h-screen text-white px-4 md:px-10 py-4 md:py-6">
         <Header />
 
-        <header className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:justify-between lg:items-center mb-5 sm:mb-6 md:mb-10 border-b border-[#046C5E] pb-4 pt-4 md:pt-6">
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            <img src={logo} className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0 transition-all duration-300" alt="Logo" />
-            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold tracking-wide leading-tight truncate">DASHBOARD DESCARTABLE</h1>
+        <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6 md:mb-10 border-b border-[#046C5E] pb-4 py-4 md:py-6">
+          <div className="flex items-center gap-4">
+            <img src={logo} className="h-14 w-auto transition-all duration-300" alt="Logo" />
+            <h1 className="text-xl md:text-3xl font-bold tracking-wide">DASHBOARD DESCARTABLE</h1>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full lg:w-auto lg:items-center">
+          <div className="flex justify-center w-full md:w-auto">
             {isAdmin && <BotonActualizarSincronizacion />}
+          </div>
 
-            <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
-              <select
-                className="bg-[#046C5E] px-3 sm:px-4 py-2 rounded-lg flex-1 sm:flex-initial sm:min-w-[130px] text-sm"
-                value={mesSeleccionado}
-                onChange={e => setMesSeleccionado(e.target.value)}
-              >
-                {Object.entries(meses).map(([n, v]) => (
-                  <option key={n} value={v}>{n}</option>
-                ))}
-              </select>
-              <select
-                className="bg-[#046C5E] px-3 sm:px-4 py-2 rounded-lg flex-1 sm:flex-initial sm:min-w-[100px] text-sm"
-                value={anioSeleccionado}
-                onChange={e => setAnioSeleccionado(e.target.value)}
-              >
-                {Array.from({ length: 5 }, (_, i) => {
-                  const y = new Date().getFullYear() - i;
-                  return <option key={y} value={y}>{y}</option>;
-                })}
-              </select>
-            </div>
+          <div className="flex gap-3 w-full md:w-auto flex-wrap items-center">
+            <select className="bg-[#046C5E] px-4 py-2 rounded-lg flex-1 min-w-[120px]" value={mesSeleccionado}
+              onChange={e => setMesSeleccionado(e.target.value)}>
+              {Object.entries(meses).map(([n, v]) => (
+                <option key={n} value={v}>{n}</option>
+              ))}
+            </select>
+            <select className="bg-[#046C5E] px-4 py-2 rounded-lg flex-1 min-w-[120px]" value={anioSeleccionado}
+              onChange={e => setAnioSeleccionado(e.target.value)}>
+              {Array.from({ length: 5 }, (_, i) => {
+                const y = new Date().getFullYear() - i;
+                return <option key={y} value={y}>{y}</option>;
+              })}
+            </select>
           </div>
         </header>
 
@@ -287,51 +281,21 @@ export default function DashboardPreventa() {
                   Resumen por canal
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {(() => {
-                    const odooList: any[] = datos?.ventasDescartableOdoo || [];
-                    const preventaBase = Object.values(resumenVentasPorCanal)
-                      .filter((c: any) => c.monto > 0 || c.unidades > 0) as any[];
-
-                    // Fusiona un canal preventa con su contraparte ODOO (sumando montos/unidades)
-                    const fusionar = (preventa: any, nombreOdoo: string): any => {
-                      const odoo = odooList.find((o: any) => o.canal === nombreOdoo);
-                      if (!odoo) return preventa;
-                      const monto       = Number(preventa.monto ?? 0)     + Number(odoo.proyeccion ?? odoo.total_imponible ?? 0);
-                      const montoReal   = Number(preventa.montoReal ?? preventa.monto ?? 0) + Number(odoo.total_imponible ?? 0);
-                      const mesAnterior = Number(preventa.mesAnterior ?? 0) + Number(odoo.vsMesAnterior?.monto_anterior ?? 0);
-                      const unidades    = Number(preventa.unidades ?? 0) + Number(odoo.total_unidades ?? 0);
-                      const variacionAbs  = monto - mesAnterior;
-                      const variacionPorc = mesAnterior > 0 ? (variacionAbs / mesAnterior) * 100 : 0;
-                      return { ...preventa, monto, montoReal, mesAnterior, variacionAbs, variacionPorc, unidades };
-                    };
-
-                    const preventaFusionados = preventaBase.map((c: any) => {
-                      if (c.canal === "VIP")       return fusionar(c, "Moderno");
-                      if (c.canal === "DOMICILIO") return fusionar(c, "Domicilio");
-                      return c;
-                    });
-
-                    const YA_FUSIONADOS = new Set(["Moderno", "Domicilio"]);
-                    const odooRestantes = odooList
-                      .filter((o: any) => !YA_FUSIONADOS.has(o.canal))
-                      .map((o: any) => ({
-                        canal:        String(o.canal).toUpperCase(),
-                        _slug:        SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
-                        monto:        Number(o.proyeccion ?? o.total_imponible ?? 0),
-                        montoReal:    Number(o.total_imponible ?? 0),
-                        mesAnterior:  Number(o.vsMesAnterior?.monto_anterior ?? 0),
-                        variacionAbs: Number(o.vsMesAnterior?.variacion_abs  ?? 0),
-                        variacionPorc: Number(o.vsMesAnterior?.variacion_porc ?? 0),
-                        unidades:     Number(o.total_unidades ?? 0),
-                        isOdooCanal:  true,
-                      }));
-
-                    return [
-                      ...preventaFusionados,
-                      ...(COTTSACard ? [COTTSACard] : []),
-                      ...odooRestantes,
-                    ];
-                  })().map((canal: any) => {
+                  {[
+                    ...Object.values(resumenVentasPorCanal).filter((c: any) => c.monto > 0 || c.unidades > 0),
+                    ...(COTTSACard ? [COTTSACard] : []),
+                    ...(datos?.ventasDescartableOdoo || []).map((o: any) => ({
+                      canal:        `ODOO · ${o.canal}`,
+                      _slug:        SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
+                      monto:        Number(o.proyeccion ?? o.total_imponible ?? 0),
+                      montoReal:    Number(o.total_imponible ?? 0),
+                      mesAnterior:  Number(o.vsMesAnterior?.monto_anterior ?? 0),
+                      variacionAbs: Number(o.vsMesAnterior?.variacion_abs  ?? 0),
+                      variacionPorc: Number(o.vsMesAnterior?.variacion_porc ?? 0),
+                      unidades:     Number(o.total_unidades ?? 0),
+                      isOdooCanal:  true,
+                    })),
+                  ].map((canal: any) => {
                     const positivo   = canal.variacionAbs >= 0;
                     const esCOTTSA   = canal.canal === "COTTSA - AGUA OK";
                     const esOdooCanal = canal.isOdooCanal === true;

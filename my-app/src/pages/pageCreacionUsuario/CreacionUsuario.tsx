@@ -369,9 +369,7 @@ const CreacionUsuario: React.FC = () => {
                             <h1 className="text-3xl font-bold tracking-wide">REGISTROS DE USUARIOS</h1>
                         </div>
                     </div>
-                    <div className="flex justify-center w-full sm:w-auto mt-4 sm:mt-0">
-                        <BotonActualizarSincronizacion />
-                    </div>
+                    
                 </header>
 
                 {/* GRID */}
