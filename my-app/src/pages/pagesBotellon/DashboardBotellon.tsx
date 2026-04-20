@@ -379,8 +379,8 @@ export default function DashboardBotellon() {
                 <ResumenVentasCanalUSD
                   titulo="Ventas USD Botellón"
                   canales={[
-                    "vip", "domicilio", "empresas", "quito", "website",
-                    "tiendas_vip", "tiendas", "mayorista", "rural", "televenta_vip",
+                    "vip", "domicilio", "empresas",
+                    "tiendas_vip", "tiendas", "mayorista", "rural", "quito", "televenta_vip",
                   ]}
                   data={resumenVentasUSD}
                   anio={anioSeleccionado}
@@ -389,14 +389,13 @@ export default function DashboardBotellon() {
                     vip: "/vip-botellon/clientes",
                     domicilio: "/domicilio-botellon/clientes",
                     empresas: "/empresas-botellon/clientes",
-                    quito: "/quito-botellon/clientes",
-                    website: "/website-botellon/clientes",
                   }}
                   scrollTargets={{
                     tiendas_vip: "seccion-tiendas_vip",
                     tiendas: "seccion-tiendas",
                     mayorista: "seccion-mayorista",
                     rural: "seccion-rural",
+                    quito: "seccion-quito",
                     televenta_vip: "seccion-televenta_vip",
                   }}
                   onScrollClick={activarSeccion}
@@ -442,32 +441,6 @@ export default function DashboardBotellon() {
                       Number(mesSeleccionado) === new Date().getMonth() + 1
                     }
                   />
-
-                  {/* Canal Quito */}
-                  {quitoData && (
-                    <TablaQuitoBotellon
-                      anio={anioSeleccionado}
-                      mes={mesSeleccionado}
-                      datos={quitoData}
-                      esMesActual={
-                        Number(anioSeleccionado) === new Date().getFullYear() &&
-                        Number(mesSeleccionado) === new Date().getMonth() + 1
-                      }
-                    />
-                  )}
-
-                  {/* Canal Website */}
-                  {websiteData && (
-                    <TablaWebsiteBotellon
-                      anio={anioSeleccionado}
-                      mes={mesSeleccionado}
-                      datos={websiteData}
-                      esMesActual={
-                        Number(anioSeleccionado) === new Date().getFullYear() &&
-                        Number(mesSeleccionado) === new Date().getMonth() + 1
-                      }
-                    />
-                  )}
 
                   {/* Tablas MobilVendor */}
                   {mostrarTablas &&

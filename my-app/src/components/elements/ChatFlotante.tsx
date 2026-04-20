@@ -394,7 +394,8 @@ const ChatFlotante: React.FC = () => {
 
       {/* ── BOTÓN FLOTANTE ── */}
       <button onClick={() => setAbierto(v => !v)} aria-label="Abrir asistente"
-        className={`fixed bottom-6 right-6 w-16 h-16 rounded-full z-50 bg-gradient-to-br from-[#D2B858] to-[#9a7c28] flex items-center justify-center shadow-[0_8px_28px_rgba(210,184,88,0.5)] transition-all duration-300 hover:scale-110 active:scale-95 ${!abierto ? "pulse-ring" : ""}`}>
+        style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+        className={`fixed right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 rounded-full z-50 bg-gradient-to-br from-[#D2B858] to-[#9a7c28] flex items-center justify-center shadow-[0_8px_28px_rgba(210,184,88,0.5)] transition-all duration-300 hover:scale-110 active:scale-95 ${!abierto ? "pulse-ring" : ""}`}>
         {abierto ? (
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
             stroke="#000" strokeWidth="2.5" strokeLinecap="round">
@@ -410,7 +411,9 @@ const ChatFlotante: React.FC = () => {
 
       {/* ── VENTANA CHAT ── */}
       {abierto && (
-        <div className="chat-window fixed bottom-24 right-6 w-[calc(100vw-32px)] sm:w-[420px] h-[640px] max-h-[calc(100vh-120px)] bg-gradient-to-b from-[#0d2b22] to-[#081a14] border border-[#1a4a3a] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] flex flex-col overflow-hidden z-50 backdrop-blur-sm">
+        <div
+          style={{ bottom: "calc(5rem + env(safe-area-inset-bottom))" }}
+          className="chat-window fixed left-4 right-4 sm:left-auto sm:right-6 w-auto sm:w-[420px] h-[min(640px,calc(100dvh-120px))] bg-gradient-to-b from-[#0d2b22] to-[#081a14] border border-[#1a4a3a] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] flex flex-col overflow-hidden z-50 backdrop-blur-sm">
 
           {/* HEADER */}
           <div className="relative bg-gradient-to-r from-[#014434] via-[#025f4b] to-[#014434] px-4 py-3.5 flex items-center justify-between border-b border-[#1a4a3a] flex-shrink-0 overflow-hidden">

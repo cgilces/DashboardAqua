@@ -156,31 +156,36 @@ const BotonActualizarSincronizacion = () => {
    * ===================================================== */
   return (
     <>
-      <div className="text-center">
-        <div className="text-sm text-gray-500 mb-4 text-center">
+      <div
+        className="flex flex-col items-center justify-center mx-auto w-full"
+        style={{ textAlign: "center" }}
+      >
+        <div
+          className="text-xs sm:text-sm text-gray-500 mb-2 sm:mb-3 w-full"
+          style={{ textAlign: "center" }}
+        >
           Última sincronización: <strong>{lastSyncDate}</strong>
         </div>
 
-        <div className="text-center">
-          <button
-            onClick={() => {
-              console.log("🟢 Abriendo modal de fechas");
-              setOpenModal(true);
-            }}
-            disabled={isSyncing}
-            className={`px-6 py-3 rounded-xl shadow-lg font-medium transition
-              ${isSyncing
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-[#0db48b] text-white hover:bg-[#058A73]"
-              }`}
-          >
-            {isSyncing ? "Sincronizando..." : "Sincronizar Ordenes/Facturas"}
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            console.log("🟢 Abriendo modal de fechas");
+            setOpenModal(true);
+          }}
+          disabled={isSyncing}
+          style={{ marginLeft: "auto", marginRight: "auto", display: "block" }}
+          className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl shadow-lg font-medium transition text-sm sm:text-base whitespace-nowrap
+            ${isSyncing
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-[#0db48b] text-white hover:bg-[#058A73]"
+            }`}
+        >
+          {isSyncing ? "Sincronizando..." : "Sincronizar Ordenes/Facturas"}
+        </button>
 
         {isSyncing && (
-          <div className="mb-3">
-            <div className="text-sm mb-1">
+          <div className="w-full mt-3">
+            <div className="text-xs sm:text-sm mb-1" style={{ textAlign: "center" }}>
               Sincronizando... {progress}%
             </div>
             <div className="w-full bg-gray-200 rounded">

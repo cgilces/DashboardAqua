@@ -524,15 +524,15 @@ export default function DashboardClientesTabla() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-4 md:px-10 py-4 md:py-6">
+      <div className="main-content min-h-screen text-white px-2 sm:px-4 md:px-10 py-3 md:py-6">
         <Header/>
 
         {/* Title */}
-        <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl md:text-3xl font-bold tracking-wide">DASHBOARD CLIENTES</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-5 sm:mb-6 gap-3 pt-4 sm:pt-0">
+          <div className="flex items-center gap-3 flex-wrap min-w-0">
+            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold tracking-wide leading-tight">DASHBOARD CLIENTES</h1>
             {isFetching && (
-              <span className="flex items-center gap-2 text-sm text-emerald-400">
+              <span className="flex items-center gap-2 text-xs sm:text-sm text-emerald-400">
                 <span className="w-4 h-4 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"/>
                 Actualizando…
               </span>
@@ -540,9 +540,9 @@ export default function DashboardClientesTabla() {
           </div>
           <button onClick={exportarExcel}
             disabled={filteredData.length === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto">
             <BsDownload size={16}/>
-            <span className="whitespace-nowrap">
+            <span className="whitespace-nowrap text-sm">
               Exportar{seleccionados.size > 0 ? ` (${seleccionados.size})` : filteredData.length !== empresas.length ? " filtrados" : ""}
             </span>
           </button>
