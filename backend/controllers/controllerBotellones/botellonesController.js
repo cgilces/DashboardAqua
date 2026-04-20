@@ -75,62 +75,55 @@ const metaHistoricaBotellon = async () => {
       /* ===================== ORDENES ===================== */
       SELECT
         CASE
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'M%'  THEN 'MAYORISTA'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'TV%' THEN 'TIENDAS_VIP'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'T%'
-               AND COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) NOT ILIKE 'TV%' THEN 'TIENDAS'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'R%'  THEN 'RURAL'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) = '148399'  THEN 'TELEVENTA_VIP'
+          WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+          WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+          WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+          WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
+          WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
         END AS grupo,
-        COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) AS codigo,
+        o.seller_code AS codigo,
         DATE_TRUNC('month', o.fecha_creacion) AS mes,
         SUM(dd.total) AS total_usd
       FROM ordenes o
       JOIN detalle_documento dd
         ON dd.documento_code = o.code
-      LEFT JOIN clientes c
-        ON c.codigo_cliente = o.customer_code
       WHERE
         o.status IN (2)
         AND o.origen_sistema = 'MOBILVENDOR'
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND (
-          COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'M%'
-          OR COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'TV%'
-          OR (COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'T%'
-              AND COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) NOT ILIKE 'TV%')
-          OR COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'R%'
-          OR COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) = '148399'
+          o.seller_code ILIKE 'M%'
+          OR o.seller_code ILIKE 'TV%'
+          OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
+          OR o.seller_code ILIKE 'R%'
+          OR o.seller_code = '148399'
         )
-      GROUP BY grupo, COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code), DATE_TRUNC('month', o.fecha_creacion)
+      GROUP BY grupo, o.seller_code, DATE_TRUNC('month', o.fecha_creacion)
 
       UNION ALL
 
       /* ===================== FACTURAS ===================== */
       SELECT
         CASE
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'M%'  THEN 'MAYORISTA'
+          WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
           WHEN f.route_code  ILIKE 'A%'  THEN 'DOMICILIO'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'E%'  THEN 'EMPRESAS'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'R%'  THEN 'RURAL'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'TV%' THEN 'TIENDAS_VIP'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'T%'
-               AND COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) NOT ILIKE 'TV%' THEN 'TIENDAS'
+          WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
+          WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
+          WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+          WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
           WHEN f.codigo_tipo_negocio = '29' THEN 'VIP'
-          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) = 'U1' THEN 'QUITO'
+          WHEN f.seller_code = 'U1'      THEN 'QUITO'
         END AS grupo,
-        COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) AS codigo,
+        f.seller_code AS codigo,
         DATE_TRUNC('month', CASE WHEN f.codigo_tipo_negocio = '29' THEN f.fecha_creacion ELSE f.fecha_entrega END) AS mes,
         SUM(dd.total) AS total_usd
       FROM facturas f
       JOIN detalle_documento dd
         ON dd.documento_code = f.code
-      LEFT JOIN clientes c
-        ON c.codigo_cliente = f.customer_code
       WHERE
         f.status IN (2)
         AND dd.descripcion_categoria = 'BOTELLÓN'
-      GROUP BY grupo, COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code), DATE_TRUNC('month', CASE WHEN f.codigo_tipo_negocio = '29' THEN f.fecha_creacion ELSE f.fecha_entrega END)
+      GROUP BY grupo, f.seller_code, DATE_TRUNC('month', CASE WHEN f.codigo_tipo_negocio = '29' THEN f.fecha_creacion ELSE f.fecha_entrega END)
     ),
 
     /*  AQUÍ ESTÁ LA DIFERENCIA CLAVE */
