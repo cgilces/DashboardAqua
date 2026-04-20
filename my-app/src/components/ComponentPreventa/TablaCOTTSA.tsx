@@ -1,10 +1,59 @@
 // components/ComponentPreventa/TablaCOTTSA.tsx
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { BsDownload, BsGear } from "react-icons/bs";
+import { BsDownload, BsGear, BsPlusCircle, BsX } from "react-icons/bs";
 import { useAuth } from "../../components/auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../../config";
+
+interface ExtraCOTTSA {
+  unidades: number;
+  dolares: number;
+  facturas: number;
+}
+
+const EXTRA_VACIO: ExtraCOTTSA = { unidades: 0, dolares: 0, facturas: 0 };
+
+const authHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('app_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const fetchExtra = async (anio: number | string, mes: number | string): Promise<ExtraCOTTSA> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/COTTSA/extra?anio=${anio}&mes=${mes}`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) return EXTRA_VACIO;
+    const data = await res.json();
+    return {
+      unidades: Number(data.unidades) || 0,
+      dolares:  Number(data.dolares)  || 0,
+      facturas: Number(data.facturas) || 0,
+    };
+  } catch {
+    return EXTRA_VACIO;
+  }
+};
+
+const guardarExtraRemoto = async (
+  anio: number | string,
+  mes: number | string,
+  data: ExtraCOTTSA
+): Promise<ExtraCOTTSA> => {
+  const res = await fetch(`${API_BASE_URL}/api/COTTSA/extra`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ anio, mes, ...data }),
+  });
+  if (!res.ok) throw new Error('No se pudo guardar');
+  const j = await res.json();
+  return {
+    unidades: Number(j.unidades) || 0,
+    dolares:  Number(j.dolares)  || 0,
+    facturas: Number(j.facturas) || 0,
+  };
+};
 
 interface TotalesCOTTSA {
   unidades: number;
@@ -58,6 +107,82 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
   const [cargando, setCargando] = useState(false);
   const [error,    setError]    = useState<string | null>(null);
 
+  const [extra,          setExtra]         = useState<ExtraCOTTSA>(EXTRA_VACIO);
+  const [mostrarModal,   setMostrarModal]  = useState(false);
+  const [formUnidades,   setFormUnidades]  = useState("");
+  const [formDolares,    setFormDolares]   = useState("");
+  const [formFacturas,   setFormFacturas]  = useState("");
+  const [guardando,      setGuardando]     = useState(false);
+  const [errorModal,     setErrorModal]    = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    fetchExtra(anio, mes).then(d => { if (!cancelado) setExtra(d); });
+    return () => { cancelado = true; };
+  }, [anio, mes]);
+
+  useEffect(() => {
+    if (!datos || !onTotalesLoaded) return;
+    const ant = datos.totales.mesAnterior ?? datos.ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
+    const hoyNow = new Date();
+    const esMes  = Number(anio) === hoyNow.getFullYear() && Number(mes) === hoyNow.getMonth() + 1;
+    const dolaresReal   = datos.totales.dolares    + extra.dolares;
+    const proyeccionTot = datos.totales.proyeccion + extra.dolares;
+    const montoComparar = esMes ? proyeccionTot : dolaresReal;
+    const varAbs        = montoComparar - ant;
+    onTotalesLoaded({
+      canal: "COTTSA - AGUA OK",
+      monto: montoComparar,
+      montoReal: dolaresReal,
+      mesAnterior: ant,
+      variacionAbs: varAbs,
+      variacionPorc: ant > 0 ? (varAbs / ant) * 100 : 0,
+      unidades: datos.totales.unidades + extra.unidades,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extra, datos]);
+
+  const abrirModal = () => {
+    setFormUnidades(extra.unidades ? String(extra.unidades) : "");
+    setFormDolares (extra.dolares  ? String(extra.dolares)  : "");
+    setFormFacturas(extra.facturas ? String(extra.facturas) : "");
+    setErrorModal(null);
+    setMostrarModal(true);
+  };
+
+  const guardarModal = async () => {
+    const nuevo: ExtraCOTTSA = {
+      unidades: Number(formUnidades) || 0,
+      dolares:  Number(formDolares)  || 0,
+      facturas: Number(formFacturas) || 0,
+    };
+    setGuardando(true);
+    setErrorModal(null);
+    try {
+      const guardado = await guardarExtraRemoto(anio, mes, nuevo);
+      setExtra(guardado);
+      setMostrarModal(false);
+    } catch (e: any) {
+      setErrorModal(e?.message || "Error al guardar");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const limpiarExtra = async () => {
+    setGuardando(true);
+    setErrorModal(null);
+    try {
+      const guardado = await guardarExtraRemoto(anio, mes, EXTRA_VACIO);
+      setExtra(guardado);
+      setMostrarModal(false);
+    } catch (e: any) {
+      setErrorModal(e?.message || "Error al limpiar");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   const hoy         = new Date();
   const esMesActual = Number(anio) === hoy.getFullYear() && Number(mes) === hoy.getMonth() + 1;
 
@@ -67,25 +192,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
     setError(null);
     fetch(`${API_BASE_URL}/api/COTTSA/dashboard?anio=${anio}&mes=${mes}`)
       .then(res => { if (!res.ok) throw new Error("Error COTTSA"); return res.json(); })
-      .then((data: DatosCOTTSA) => {
-        setDatos(data);
-        if (onTotalesLoaded) {
-          const ant = data.totales.mesAnterior ?? data.ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
-          const hoyNow = new Date();
-          const esMes = Number(anio) === hoyNow.getFullYear() && Number(mes) === hoyNow.getMonth() + 1;
-          const montoComparar = esMes ? data.totales.proyeccion : data.totales.dolares;
-          const varAbs = montoComparar - ant;
-          onTotalesLoaded({
-            canal: "COTTSA - AGUA OK",
-            monto: montoComparar,
-            montoReal: data.totales.dolares,
-            mesAnterior: ant,
-            variacionAbs: varAbs,
-            variacionPorc: ant > 0 ? (varAbs / ant) * 100 : 0,
-            unidades: data.totales.unidades,
-          });
-        }
-      })
+      .then((data: DatosCOTTSA) => setDatos(data))
       .catch(err => setError(err.message))
       .finally(() => setCargando(false));
   }, [anio, mes]);
@@ -109,9 +216,16 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
 
   const { totales, ranking } = datos;
 
+  // Totales combinados (datos del sistema + datos externos cargados desde el modal)
+  const unidadesTotal   = totales.unidades      + extra.unidades;
+  const dolaresTotal    = totales.dolares       + extra.dolares;
+  const proyeccionTotal = totales.proyeccion    + extra.dolares;
+  const facturasTotal   = totales.cant_facturas + extra.facturas;
+  const hayExtra        = extra.unidades > 0 || extra.dolares > 0 || extra.facturas > 0;
+
   // Variación del canal vs mes anterior
   const totalAnterior    = totales.mesAnterior ?? ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
-  const montoActualTabla = esMesActual ? totales.proyeccion : totales.dolares;
+  const montoActualTabla = esMesActual ? proyeccionTotal : dolaresTotal;
   const totalVariacion   = montoActualTabla - totalAnterior;
   const porcVariacion    = totalAnterior > 0 ? (totalVariacion / totalAnterior) * 100 : null;
   const esPositivo       = totalVariacion >= 0;
@@ -132,15 +246,18 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
     try {
       const row = {
         "Canal"          : "COTTSA - AGUA OK",
-        "Unidades"       : fmtInt(totales.unidades),
-        "Dólares $"      : fmt(totales.dolares),
-        "Proyección"     : fmt(totales.proyeccion),
+        "Unidades"       : fmtInt(unidadesTotal),
+        "Dólares $"      : fmt(dolaresTotal),
+        "Proyección"     : fmt(proyeccionTotal),
         "Cupo Gerencia"  : objetivo > 0 ? fmt(objetivo) : "—",
         "Mes Anterior $" : sinDatos ? "Sin datos" : fmt(totalAnterior),
         "Variación $"    : sinDatos ? "Sin datos" : fmt(totalVariacion),
         "Variación %"    : sinDatos ? "Sin datos" : porcVariacion !== null ? `${porcVariacion >= 0 ? "+" : ""}${porcVariacion.toFixed(2)}%` : "–",
-        "Facturas"       : totales.cant_facturas,
+        "Facturas"       : facturasTotal,
         "Clientes"       : totales.cant_clientes,
+        "Extra Unidades" : extra.unidades,
+        "Extra Dólares"  : fmt(extra.dolares),
+        "Extra Facturas" : extra.facturas,
       };
       const ws = XLSX.utils.json_to_sheet([]);
       XLSX.utils.sheet_add_aoa(ws, [[`COTTSA — VENTAS POR RUTA - ${mes}/${anio}`], []], { origin: "A1" });
@@ -165,21 +282,31 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
         <div className="flex gap-3 flex-wrap items-center">
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Dólares $</p>
-            <p className="text-base font-bold text-white">${fmt(totales.dolares)}</p>
+            <p className="text-base font-bold text-white">${fmt(dolaresTotal)}</p>
+            {hayExtra && (
+              <p className="text-[10px] text-purple-300 italic mt-0.5">
+                +${fmt(extra.dolares)} externo
+              </p>
+            )}
           </div>
           {esMesActual && (
             <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
               <p className="text-xs text-gray-400">Proyección</p>
-              <p className="text-base font-bold text-emerald-400">${fmt(totales.proyeccion)}</p>
+              <p className="text-base font-bold text-emerald-400">${fmt(proyeccionTotal)}</p>
             </div>
           )}
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Unidades</p>
-            <p className="text-base font-bold text-blue-300">{fmtInt(totales.unidades)}</p>
+            <p className="text-base font-bold text-blue-300">{fmtInt(unidadesTotal)}</p>
+            {hayExtra && (
+              <p className="text-[10px] text-purple-300 italic mt-0.5">
+                +{fmtInt(extra.unidades)} externo
+              </p>
+            )}
           </div>
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Facturas</p>
-            <p className="text-base font-bold text-white">{totales.cant_facturas}</p>
+            <p className="text-base font-bold text-white">{facturasTotal}</p>
           </div>
           <div className="bg-[#011f1a] border border-amber-500/40 rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-amber-400">Cupo</p>
@@ -187,6 +314,20 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               {objetivo > 0 ? `$${fmt(objetivo)}` : <span className="text-gray-500 text-sm">—</span>}
             </p>
           </div>
+          {isAdmin && (
+            <button
+              onClick={abrirModal}
+              title="Agregar datos de sistema externo"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-semibold active:scale-[0.98] transition-all ${
+                hayExtra
+                  ? "border-purple-400/70 bg-purple-500/25 text-purple-100 hover:bg-purple-500/35"
+                  : "border-purple-500/60 bg-purple-500/20 text-white hover:bg-purple-500/30"
+              }`}
+            >
+              <BsPlusCircle size={16} className="shrink-0" />
+              <span>{hayExtra ? "Editar externo" : "Añadir externo"}</span>
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={() => navigate("/configurar-metas")}
@@ -239,21 +380,41 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               className="bg-[#013d32] cursor-pointer hover:bg-[#025940] border-l-4 border-transparent hover:border-green-400 transition-all duration-200"
             >
               <td className="px-4 py-3 font-bold text-blue-300">
-                COTTSA — AGUA OK
-                <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span>COTTSA — AGUA OK</span>
+                  {hayExtra && (
+                    <span
+                      title={`Externo: ${fmtInt(extra.unidades)} und · $${fmt(extra.dolares)}`}
+                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/25 text-purple-200 border border-purple-400/60 whitespace-nowrap tracking-wide"
+                    >
+                      + Externo
+                    </span>
+                  )}
+                </div>
+                <span className="ml-0 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
               </td>
 
               <td className="px-4 py-3 text-right text-green-400 font-bold">
-                {fmtInt(totales.unidades)}
+                {fmtInt(unidadesTotal)}
+                {hayExtra && (
+                  <span className="block text-[10px] text-purple-300 font-normal italic">
+                    +{fmtInt(extra.unidades)}
+                  </span>
+                )}
               </td>
 
               <td className="px-4 py-3 text-right font-bold text-white">
-                ${fmt(totales.dolares)}
+                ${fmt(dolaresTotal)}
+                {hayExtra && (
+                  <span className="block text-[10px] text-purple-300 font-normal italic">
+                    +${fmt(extra.dolares)}
+                  </span>
+                )}
               </td>
 
               {esMesActual && (
                 <td className="px-4 py-3 text-right font-bold text-emerald-400">
-                  ${fmt(totales.proyeccion)}
+                  ${fmt(proyeccionTotal)}
                 </td>
               )}
 
@@ -301,12 +462,114 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                 )}
               </td>
 
-              <td className="px-4 py-3 text-right text-gray-300">{totales.cant_facturas}</td>
+              <td className="px-4 py-3 text-right text-gray-300">
+                {facturasTotal}
+                {hayExtra && extra.facturas > 0 && (
+                  <span className="block text-[10px] text-purple-300 font-normal italic">
+                    +{extra.facturas}
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-3 text-right text-gray-300">{totales.cant_clientes}</td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      {/* ── Modal Agregar datos externos ─────────────────────────── */}
+      {mostrarModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setMostrarModal(false)}>
+          <div
+            className="bg-[#012E24] border border-purple-500/50 rounded-xl shadow-2xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-purple-300">Añadir datos externos · COTTSA</h3>
+              <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-white">
+                <BsX size={24} />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 mb-4">
+              Ingresa los totales de unidades y dólares provenientes del sistema externo (mes {mes}/{anio}).
+              Estos valores se sumarán al total actual de COTTSA y se guardan en servidor (visibles desde cualquier navegador).
+            </p>
+
+            {errorModal && (
+              <div className="mb-3 p-2 rounded bg-red-900/30 border border-red-500/50 text-red-300 text-xs">
+                {errorModal}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-xs text-gray-300">Unidades externas</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={formUnidades}
+                  onChange={(e) => setFormUnidades(e.target.value)}
+                  placeholder="Ej: 103049"
+                  className="mt-1 w-full rounded-lg bg-[#011f1a] border border-[#046C5E] px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs text-gray-300">Dólares externos ($)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={formDolares}
+                  onChange={(e) => setFormDolares(e.target.value)}
+                  placeholder="Ej: 12500.50"
+                  className="mt-1 w-full rounded-lg bg-[#011f1a] border border-[#046C5E] px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs text-gray-300">Facturas externas (opcional)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={formFacturas}
+                  onChange={(e) => setFormFacturas(e.target.value)}
+                  placeholder="Ej: 120"
+                  className="mt-1 w-full rounded-lg bg-[#011f1a] border border-[#046C5E] px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-400"
+                />
+              </label>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <button
+                onClick={guardarModal}
+                disabled={guardando}
+                className="flex-1 px-4 py-2 rounded-lg border border-purple-500/60 bg-purple-500/30 text-white font-semibold hover:bg-purple-500/40 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {guardando ? "Guardando..." : "Guardar"}
+              </button>
+              {hayExtra && (
+                <button
+                  onClick={limpiarExtra}
+                  disabled={guardando}
+                  className="px-4 py-2 rounded-lg border border-red-500/50 bg-red-500/20 text-red-200 font-semibold hover:bg-red-500/30 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Limpiar
+                </button>
+              )}
+              <button
+                onClick={() => setMostrarModal(false)}
+                disabled={guardando}
+                className="px-4 py-2 rounded-lg border border-[#046C5E] bg-[#011f1a] text-gray-300 font-semibold hover:bg-[#022a22] active:scale-[0.98] transition-all disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

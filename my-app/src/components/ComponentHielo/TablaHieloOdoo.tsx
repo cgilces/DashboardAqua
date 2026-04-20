@@ -38,12 +38,13 @@ interface Props {
     unidades: number;
     proyeccionUnidades: number;
   }) => void;
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 const fmt    = (n: number) => n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n: number) => n.toLocaleString("es-EC");
 
-export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
+export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded, onLoadingChange }: Props) {
   const { user }  = useAuth();
   const isAdmin   = (user?.role ?? "").toUpperCase() === "ADMIN";
   const navigate  = useNavigate();
@@ -58,6 +59,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
   useEffect(() => {
     if (!anio || !mes) return;
     setCargando(true);
+    onLoadingChange?.(true);
     setError(null);
     fetch(`${API_BASE_URL}/api/odoo/hielo?anio=${anio}&mes=${mes}`)
       .then(res => { if (!res.ok) throw new Error("Error Hielo Odoo"); return res.json(); })
@@ -78,16 +80,13 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded }: Props) {
         }
       })
       .catch(err => setError(err.message))
-      .finally(() => setCargando(false));
+      .finally(() => {
+        setCargando(false);
+        onLoadingChange?.(false);
+      });
   }, [anio, mes]);
 
-  if (cargando)
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-[#046C5E]" />
-        <span className="ml-3 text-gray-400">Cargando hielo Odoo...</span>
-      </div>
-    );
+  if (cargando) return null;
 
   if (error)
     return (

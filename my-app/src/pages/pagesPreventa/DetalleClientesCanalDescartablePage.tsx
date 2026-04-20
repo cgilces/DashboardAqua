@@ -41,6 +41,7 @@ interface Cliente {
   customer_address_code: string | null;
   descripcion_direccion: string | null;
   nombre_cliente: string;
+  identificacion_cliente?: string | null;
   direccion_entrega: string;
   tipo_negocio: string;
   telefono: string;
@@ -71,6 +72,7 @@ interface Producto {
 interface ClienteAgrupado {
   customer_code: string;
   nombre_cliente: string;
+  identificacion_cliente?: string | null;
   tipo_negocio: string;
   telefono: string;
   consumo_actual: number;
@@ -95,18 +97,25 @@ interface TipoCard {
   anterior: number;
 }
 
+// tipo_negocio con nombres de canales no deben aparecer como cards de tipo
+const TIPOS_EXCLUIDOS = new Set(["DOMICILIO", "TIENDAS", "VIP", "EMPRESAS", "MAYORISTA", "MODERNO", "DISTRIBUIDORES"]);
+
 function buildTipoCards(clientes: Cliente[]): TipoCard[] {
-  const mapa: Record<string, TipoCard> = {};
+  type Acc = TipoCard & { codigos: Set<string>; codigosConsumo: Set<string> };
+  const mapa: Record<string, Acc> = {};
   clientes.forEach(c => {
     const t = c.tipo_negocio || "SIN CLASIFICAR";
-    if (!mapa[t]) mapa[t] = { tipo: t, total: 0, conConsumo: 0, unidades: 0, monto: 0, anterior: 0 };
-    mapa[t].total       += 1;
+    if (TIPOS_EXCLUIDOS.has(t.toUpperCase())) return;
+    if (!mapa[t]) mapa[t] = { tipo: t, total: 0, conConsumo: 0, unidades: 0, monto: 0, anterior: 0, codigos: new Set(), codigosConsumo: new Set() };
+    mapa[t].codigos.add(c.customer_code);
+    if (c.consumo_actual > 0) mapa[t].codigosConsumo.add(c.customer_code);
     mapa[t].unidades    += Number(c.unidades_actual   || 0);
     mapa[t].monto       += Number(c.consumo_actual    || 0);
     mapa[t].anterior    += Number(c.consumo_anterior  || 0);
-    if (c.consumo_actual > 0) mapa[t].conConsumo += 1;
   });
-  return Object.values(mapa).sort((a, b) => b.monto - a.monto);
+  return Object.values(mapa)
+    .map(m => ({ tipo: m.tipo, total: m.codigos.size, conConsumo: m.codigosConsumo.size, unidades: m.unidades, monto: m.monto, anterior: m.anterior }))
+    .sort((a, b) => b.monto - a.monto);
 }
 
 export default function DetalleClientesCanalDescartablePage() {
@@ -130,6 +139,7 @@ export default function DetalleClientesCanalDescartablePage() {
   // null = lista agrupada; string = customer_code seleccionado (vista sucursales)
   const [clienteSeleccionado, setClienteSeleccionado] = useState<string | null>(null);
   const [clienteNombre,       setClienteNombre]       = useState<string>("");
+  const [clienteIdentificacion, setClienteIdentificacion] = useState<string>("");
   // Expand productos por sucursal
   const [expandedSuc,    setExpandedSuc]    = useState<Set<string>>(new Set());
   const [productosSuc,   setProductosSuc]   = useState<Map<string, Producto[]>>(new Map());
@@ -235,6 +245,7 @@ export default function DetalleClientesCanalDescartablePage() {
         mapa[c.customer_code] = {
           customer_code:   c.customer_code,
           nombre_cliente:  c.nombre_cliente,
+          identificacion_cliente: c.identificacion_cliente || null,
           tipo_negocio:    c.tipo_negocio,
           telefono:        c.telefono,
           consumo_actual:  0,
@@ -375,7 +386,7 @@ export default function DetalleClientesCanalDescartablePage() {
             <button
               onClick={() => {
                 if (clienteSeleccionado !== null) {
-                  setClienteSeleccionado(null); setBusqueda(""); setFiltro("todos"); setPagina(1);
+                  setClienteSeleccionado(null); setClienteIdentificacion(""); setBusqueda(""); setFiltro("todos"); setPagina(1);
                 } else if (esVip && tipoSeleccionado !== null) {
                   setTipoSeleccionado(null); setFuenteSeleccionada(null); setBusqueda(""); setFiltro("todos"); setPagina(1);
                 } else {
@@ -406,6 +417,11 @@ export default function DetalleClientesCanalDescartablePage() {
                   </>
               }
             </h1>
+            {clienteSeleccionado !== null && clienteIdentificacion && (
+              <p className="text-xs text-emerald-300/80 mt-0.5">
+                Identificacion: <span className="text-sm font-mono text-white">{clienteIdentificacion}</span>
+              </p>
+            )}
             <p className="text-xs text-gray-400">
               {MESES[Number(mes)]} {anio}
               {clienteSeleccionado !== null && " · Sucursales / Direcciones de entrega"}
@@ -497,63 +513,7 @@ export default function DetalleClientesCanalDescartablePage() {
         {/* ══ VIP: Cards por tipo de negocio ══════════════════════════════════ */}
         {!cargando && esVip && tipoSeleccionado === null && (
           <>
-            {/* Resumen de fuentes (informativo) */}
-            {fuentesDisponibles.length > 1 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 max-w-2xl">
-                {[
-                  { fuente: "mobilvendor", label: "VIP",     sub: "Mobilvendor", color: "blue"   },
-                  { fuente: "odoo",        label: "Moderno",  sub: "ODOO",        color: "purple" },
-                ].map(({ fuente, label, sub, color }) => {
-                  const cls     = clientes.filter(c => c.fuente === fuente);
-                  const monto   = cls.reduce((a, c) => a + c.consumo_actual,  0);
-                  const unds    = cls.reduce((a, c) => a + c.unidades_actual, 0);
-                  const activos = cls.filter(c => c.consumo_actual > 0).length;
-                  const borderC = color === "blue" ? "border-blue-500/30"   : "border-purple-500/30";
-                  const badgeC  = color === "blue" ? "bg-blue-500/20 text-blue-300 border-blue-500/40"   : "bg-purple-500/20 text-purple-300 border-purple-500/40";
-                  const montoC  = color === "blue" ? "text-blue-300"   : "text-purple-300";
-                  return (
-                    <div key={fuente}
-                      onClick={() => { setFuenteSeleccionada(fuente); setTipoSeleccionado("TODOS"); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
-                      className={`cursor-pointer bg-gradient-to-br from-[#012E24] to-[#014034] border ${borderC} rounded-xl p-4 flex flex-col gap-2
-                        hover:scale-[1.02] hover:border-opacity-70 transition-all duration-200`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${badgeC}`}>{sub}</span>
-                          <span className="font-semibold text-white text-sm">{label}</span>
-                        </div>
-                        <span className="text-[11px] text-white/30">→</span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                        <div>
-                          <p className="text-[9px] text-gray-500 uppercase tracking-wide">Total</p>
-                          <p className="text-white font-bold">{cls.length.toLocaleString("es-EC")}</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] text-gray-500 uppercase tracking-wide">Activos</p>
-                          <p className="text-emerald-400 font-bold">{activos.toLocaleString("es-EC")}</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] text-gray-500 uppercase tracking-wide">Sin consumo</p>
-                          <p className="text-red-400 font-bold">{(cls.length - activos).toLocaleString("es-EC")}</p>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center border-t border-[#046C5E]/20 pt-2">
-                        <div>
-                          <p className="text-[9px] text-gray-500 uppercase tracking-wide">Dólares</p>
-                          <p className={`font-extrabold text-base ${montoC}`}>${fmt(monto)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[9px] text-gray-500 uppercase tracking-wide">Unidades</p>
-                          <p className="text-green-400 font-bold text-sm">{unds.toLocaleString("es-EC")}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {tipoCards.length === 0 ? (
+            {tipoCards.length === 0 && fuentesDisponibles.length <= 1 ? (
               <p className="text-center text-gray-400 py-16 text-sm">No se encontraron datos para este período.</p>
             ) : (
               <>
@@ -568,6 +528,80 @@ export default function DetalleClientesCanalDescartablePage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 mb-8">
+                  {/* Cards de fuente (Mobilvendor VIP / ODOO Moderno) con el mismo diseño */}
+                  {fuentesDisponibles.length > 1 && [
+                    { fuente: "mobilvendor", label: "Mobilvendor VIP", badge: "Mobilvendor", borderClass: "border-blue-500/40 hover:border-blue-400/70",   badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/40" },
+                    { fuente: "odoo",        label: "ODOO Moderno",    badge: "ODOO",        borderClass: "border-purple-500/40 hover:border-purple-400/70", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/40" },
+                  ].map(({ fuente, label, badge, borderClass, badgeClass }) => {
+                    const cls      = clientes.filter(c => c.fuente === fuente);
+                    const monto    = cls.reduce((a, c) => a + c.consumo_actual,   0);
+                    const anterior = cls.reduce((a, c) => a + c.consumo_anterior, 0);
+                    const unds     = cls.reduce((a, c) => a + c.unidades_actual,  0);
+                    const codigosUnicos = new Set(cls.map(c => c.customer_code));
+                    const codigosConConsumo = new Set(cls.filter(c => c.consumo_actual > 0).map(c => c.customer_code));
+                    const totalClientes = codigosUnicos.size;
+                    const activos  = codigosConConsumo.size;
+                    const sinConsumo = totalClientes - activos;
+                    const varMonto = monto - anterior;
+                    return (
+                      <div
+                        key={fuente}
+                        onClick={() => { setFuenteSeleccionada(fuente); setTipoSeleccionado("TODOS"); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
+                        className={`cursor-pointer bg-gradient-to-br from-[#012E24] to-[#014034]
+                          border ${borderClass} rounded-2xl p-5 shadow-lg flex flex-col gap-3
+                          hover:scale-[1.02] transition-all duration-200`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border ${badgeClass}`}>{badge}</span>
+                            <p className="text-sm font-bold text-white leading-tight">{label}</p>
+                          </div>
+                          <span className="shrink-0 text-[10px] text-gray-400 italic mt-0.5">Ver clientes →</span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div>
+                            <p className="text-[9px] text-gray-500 uppercase tracking-wide">Total</p>
+                            <p className="text-white font-bold text-base">{totalClientes.toLocaleString("es-EC")}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] text-gray-500 uppercase tracking-wide">Activos</p>
+                            <p className="text-emerald-400 font-bold text-base">{activos.toLocaleString("es-EC")}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] text-gray-500 uppercase tracking-wide">Sin consumo</p>
+                            <p className="text-red-400 font-bold text-base">{sinConsumo.toLocaleString("es-EC")}</p>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-[#046C5E]/30" />
+
+                        <div>
+                          <p className="text-[9px] text-gray-500 uppercase tracking-wide mb-1">Dólares Actual</p>
+                          <p className="text-amber-300 font-extrabold text-lg">${fmt(monto)}</p>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[9px] text-gray-500 uppercase tracking-wide">Mes anterior</p>
+                            <p className="text-gray-300 text-sm font-semibold">${fmt(anterior)}</p>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border
+                            ${varMonto >= 0
+                              ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/10"
+                              : "text-red-400 border-red-400/20 bg-red-400/10"}`}>
+                            {varMonto >= 0 ? "▲" : "▼"} ${fmt(Math.abs(varMonto))}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-[#046C5E]/20 pt-2">
+                          <p className="text-[9px] text-gray-500 uppercase tracking-wide">Unidades</p>
+                          <p className="text-blue-300 font-bold">{unds.toLocaleString("es-EC")}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+
                   {tipoCards.map(t => {
                     const sinConsumo = t.total - t.conConsumo;
                     const varMonto   = t.monto - t.anterior;
@@ -711,7 +745,7 @@ export default function DetalleClientesCanalDescartablePage() {
                                       <div className="flex-1 min-w-0 pr-2">
                                         <div className="flex items-center gap-2 mb-0.5">
                                           <span className={`text-[10px] transition-transform duration-200 inline-block ${isExpanded ? "rotate-90" : ""} text-white/40`}>▶</span>
-                                          <p className="text-[10px] font-mono text-white/40">{s.descripcion_direccion || s.customer_address_code || "—"}</p>
+                                          <p className="text-[10px] font-mono text-white/40">{s.customer_address_code || "—"}</p>
                                         </div>
                                         <p className="text-sm font-medium text-white/80 truncate">
                                           {getDireccionLabel(s.descripcion_direccion, s.direccion_entrega)}
@@ -808,7 +842,7 @@ export default function DetalleClientesCanalDescartablePage() {
                         const sinConsumo = c.consumo_actual === 0;
                         return (
                           <div key={c.customer_code}
-                            onClick={() => { setClienteSeleccionado(c.customer_code); setClienteNombre(c.nombre_cliente); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
+                            onClick={() => { setClienteSeleccionado(c.customer_code); setClienteNombre(c.nombre_cliente); setClienteIdentificacion(c.identificacion_cliente || ""); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
                             className={`p-4 cursor-pointer ${sinConsumo ? "bg-red-900/30 border-l-4 border-red-500/60" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1 min-w-0">
@@ -929,7 +963,7 @@ export default function DetalleClientesCanalDescartablePage() {
                                       <span className="text-white/30">{globalN}</span>
                                     </span>
                                   </td>
-                                  <td className="px-3 py-2 text-left font-mono text-xs text-white/50">{s.descripcion_direccion || s.customer_address_code || "—"}</td>
+                                  <td className="px-3 py-2 text-left font-mono text-xs text-white/50">{s.customer_address_code || "—"}</td>
                                   <td className="px-3 py-2 text-left text-xs text-white/80 max-w-[220px]">
                                     <span className="truncate block" title={dirLabel}>{dirLabel}</span>
                                   </td>
@@ -1028,7 +1062,7 @@ export default function DetalleClientesCanalDescartablePage() {
                             const sinConsumo = c.consumo_actual === 0;
                             return (
                               <tr key={c.customer_code}
-                                onClick={() => { setClienteSeleccionado(c.customer_code); setClienteNombre(c.nombre_cliente); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
+                                onClick={() => { setClienteSeleccionado(c.customer_code); setClienteNombre(c.nombre_cliente); setClienteIdentificacion(c.identificacion_cliente || ""); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
                                 className={`cursor-pointer ${sinConsumo ? "bg-[rgba(220,38,38,0.5)]" : idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition`}>
                                 <td className="px-3 py-2 text-center text-gray-400 text-xs">{(pagina-1)*POR_PAGINA+idx+1}</td>
                                 <td className="px-3 py-2 text-left font-mono text-xs text-gray-300">{c.customer_code}</td>

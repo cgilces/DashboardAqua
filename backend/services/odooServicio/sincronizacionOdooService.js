@@ -378,7 +378,12 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
         descripcion_company: descripcionCompany,
         customer_code: orden.partner_id?.[0] ? String(orden.partner_id[0]) : null,
         customer_nombre: orden.partner_id?.[1] || null,
-        seller_code: orden.user_id?.[0] ? String(orden.user_id[0]) : null,
+        // En Odoo el user_id es solo el creador de la orden (ID numérico),
+        // NO el vendedor/ruta. El código real de ruta/tienda vive en
+        // x_studio_ruta del cliente. Guardamos la ruta como seller_code
+        // para que los queries de reportes agrupen igual que MobilVendor.
+        seller_code: cliente?.x_studio_ruta
+          || (orden.user_id?.[0] ? String(orden.user_id[0]) : null),
         seller_nombre: orden.user_id?.[1] || null,
         equipo_ventas: orden.team_id?.[1] || null,
         customer_address_code: orden.partner_shipping_id?.[0] || null,
@@ -591,9 +596,15 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
         // ✅ AQUÍ USAS direccion correctamente
         customer_address_code: direccion,
 
-        seller_code: factura.invoice_user_id?.[0]
-          ? String(factura.invoice_user_id[0])
-          : null,
+        // En Odoo el invoice_user_id es solo el facturador (ID numérico),
+        // NO el vendedor/ruta. El código real de ruta/tienda vive en
+        // x_studio_ruta del cliente. Para que los queries de reportes
+        // agrupen igual que en MobilVendor, guardamos la ruta como
+        // seller_code cuando existe; si no, caemos al invoice_user_id.
+        seller_code: cliente?.x_studio_ruta
+          || (factura.invoice_user_id?.[0]
+            ? String(factura.invoice_user_id[0])
+            : null),
 
         route_code: cliente?.x_studio_ruta || null,
 

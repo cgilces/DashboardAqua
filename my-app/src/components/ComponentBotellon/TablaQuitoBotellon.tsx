@@ -3,14 +3,14 @@ import { useNavigate } from "react-router-dom";
 interface Props {
   anio: number | string;
   mes: number | string;
+  datos?: any;
   esMesActual?: boolean;
-  datos: any;
 }
 
 const money = (v?: number) =>
   v != null ? `$${v.toLocaleString("es-EC", { minimumFractionDigits: 2 })}` : "$0,00";
 
-const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false, datos }) => {
+const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = false }) => {
   const navigate = useNavigate();
   if (!datos) return null;
 
@@ -26,14 +26,16 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
   const proyUnidades = detalle.reduce((s: number, r: any) => s + Number(r.proyeccion?.unidades || 0), 0);
   const positivo = varAbs >= 0;
 
-  const irClientes = () => navigate(`/empresas-botellon/clientes/${anio}/${mes}`);
+  if (unidades === 0 && dolares === 0 && proyDolares === 0) return null;
+
+  const irClientes = () => navigate(`/quito-botellon/clientes/${anio}/${mes}`);
 
   return (
     <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mb-6 md:mb-8 overflow-hidden">
       <div className="flex flex-col gap-3 md:gap-4 md:flex-row md:items-center md:justify-between px-3 sm:px-4 py-3 sm:py-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-base sm:text-lg md:text-xl font-bold text-green-300 leading-tight">EMPRESAS</h2>
-          <p className="text-xs sm:text-sm text-gray-300">Botellones — Canal Empresa (facturas E% + Odoo rutas empresa)</p>
+          <h2 className="text-base sm:text-lg md:text-xl font-bold text-green-300 leading-tight">QUITO</h2>
+          <p className="text-xs sm:text-sm text-gray-300">Botellones — Canal Quito (MobilVendor U1 + Odoo)</p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-2 sm:gap-3 items-stretch">
@@ -80,7 +82,7 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
                          border-l-4 border-transparent hover:border-green-400 hover:shadow-lg"
             >
               <td className="px-4 py-3 font-bold text-blue-300">
-                EMPRESAS BOTELLÓN
+                QUITO BOTELLÓN
                 <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
               </td>
               <td className="px-4 py-3 text-right text-green-400 font-bold">{unidades.toLocaleString("es-EC")}</td>
@@ -120,7 +122,7 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
                      border border-[#046C5E] rounded-xl p-4 text-left"
         >
           <div className="flex items-center justify-between mb-3">
-            <span className="font-bold text-blue-300 text-sm">EMPRESAS BOTELLÓN</span>
+            <span className="font-bold text-blue-300 text-sm">QUITO BOTELLÓN</span>
             <span className="text-[10px] text-emerald-300 italic">Ver clientes →</span>
           </div>
           <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
@@ -149,4 +151,4 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
   );
 };
 
-export default TablaEmpresasBotellon;
+export default TablaQuitoBotellon;

@@ -183,40 +183,42 @@ export default function Dashboardconsolidado() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-4 md:px-8 py-4 md:py-6">
+      <div className="main-content min-h-screen text-white px-2 sm:px-4 md:px-8 py-3 md:py-6">
         <Header />
 
         {/* ── HEADER ────────────────────────────────────────── */}
-        <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-8 border-b border-[#046C5E]/50 pb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-              <BarChart2 className="text-emerald-400 w-5 h-5" />
+        <header className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:justify-between lg:items-center mb-6 md:mb-8 border-b border-[#046C5E]/50 pb-4 sm:pb-5 pt-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+              <BarChart2 className="text-emerald-400 w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Consolidado General</h1>
-              <p className="text-xs text-gray-400 tracking-wide">Grupo AQUA S.A. — {periodo?.label || "—"}</p>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold tracking-tight leading-tight">Consolidado General</h1>
+              <p className="text-[11px] sm:text-xs text-gray-400 tracking-wide truncate">Grupo AQUA S.A. — {periodo?.label || "—"}</p>
             </div>
           </div>
-          <div className="flex justify-center w-full md:w-auto">
+
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full lg:w-auto lg:items-center">
             <BotonActualizarSincronizacion />
-          </div>
-          <div className="flex gap-2 flex-wrap items-center">
-            <select
-              className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium"
-              value={mesSeleccionado}
-              onChange={e => setMesSeleccionado(Number(e.target.value))}
-            >
-              {Object.entries(MESES).map(([n, v]) => <option key={v} value={v}>{n}</option>)}
-            </select>
-            <select
-              className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium"
-              value={anioSeleccionado}
-              onChange={e => setAnioSeleccionado(Number(e.target.value))}
-            >
-              {Array.from({ length: 5 }, (_, i) => hoy.getFullYear() - i).map(y =>
-                <option key={y} value={y}>{y}</option>
-              )}
-            </select>
+
+            <div className="flex gap-2 w-full sm:w-auto">
+              <select
+                className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium flex-1 sm:flex-initial sm:min-w-[130px]"
+                value={mesSeleccionado}
+                onChange={e => setMesSeleccionado(Number(e.target.value))}
+              >
+                {Object.entries(MESES).map(([n, v]) => <option key={v} value={v}>{n}</option>)}
+              </select>
+              <select
+                className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium flex-1 sm:flex-initial sm:min-w-[100px]"
+                value={anioSeleccionado}
+                onChange={e => setAnioSeleccionado(Number(e.target.value))}
+              >
+                {Array.from({ length: 5 }, (_, i) => hoy.getFullYear() - i).map(y =>
+                  <option key={y} value={y}>{y}</option>
+                )}
+              </select>
+            </div>
           </div>
         </header>
 

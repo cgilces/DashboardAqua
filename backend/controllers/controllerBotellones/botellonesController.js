@@ -106,7 +106,7 @@ const metaHistoricaBotellon = async () => {
       SELECT
         CASE
           WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
-          WHEN f.seller_code ILIKE 'A%'  THEN 'DOMICILIO'
+          WHEN f.route_code  ILIKE 'A%'  THEN 'DOMICILIO'
           WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
           WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
           WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
@@ -229,7 +229,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     SELECT
       CASE
         WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
-        WHEN f.seller_code ILIKE 'A%'  THEN 'DOMICILIO'
+        WHEN f.route_code  ILIKE 'A%'  THEN 'DOMICILIO'
         WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
         WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
         WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
@@ -245,7 +245,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     JOIN detalle_documento dd
       ON dd.documento_code = f.code
     WHERE
-      f.status IN (2,4,5)
+      f.status IN (0,2,3,4,5)
       AND dd.descripcion_categoria = 'BOTELLÓN'
       AND (
         (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
@@ -274,6 +274,82 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     },
     type: Sequelize.QueryTypes.SELECT,
   });
+
+  // Conteo de documentos (facturas MV + ordenes MV) del mes actual por grupo
+  const countSql = `
+    SELECT
+      COALESCE(SUM(num_facturas), 0) AS num_facturas,
+      COALESCE(SUM(num_ordenes),  0) AS num_ordenes
+    FROM (
+      /* ORDENES MOBILVENDOR */
+      SELECT
+        CASE
+          WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+          WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+          WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+          WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
+          WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
+        END AS grupo,
+        0 AS num_facturas,
+        COUNT(DISTINCT o.code) AS num_ordenes
+      FROM ordenes o
+      WHERE o.status IN (2,4,5)
+        AND o.origen_sistema = 'MOBILVENDOR'
+        AND o.fecha_creacion >= :inicio
+        AND o.fecha_creacion <  :fin
+        AND (
+          o.seller_code ILIKE 'M%'
+          OR o.seller_code ILIKE 'TV%'
+          OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
+          OR o.seller_code ILIKE 'R%'
+          OR o.seller_code = '148399'
+        )
+        AND EXISTS (
+          SELECT 1 FROM detalle_documento dd
+          WHERE dd.documento_code = o.code
+            AND dd.descripcion_categoria = 'BOTELLÓN'
+        )
+      GROUP BY grupo
+
+      UNION ALL
+
+      /* FACTURAS */
+      SELECT
+        CASE
+          WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+          WHEN f.route_code  ILIKE 'A%'  THEN 'DOMICILIO'
+          WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
+          WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
+          WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+          WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+          WHEN f.codigo_tipo_negocio = '29' THEN 'VIP'
+          WHEN f.seller_code = 'U1'      THEN 'QUITO'
+          ELSE 'OTROS'
+        END AS grupo,
+        COUNT(DISTINCT f.code) AS num_facturas,
+        0 AS num_ordenes
+      FROM facturas f
+      WHERE f.status IN (0,2,3,4,5)
+        AND (
+          (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
+          OR
+          (f.codigo_tipo_negocio  = '29' AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin)
+        )
+        AND EXISTS (
+          SELECT 1 FROM detalle_documento dd
+          WHERE dd.documento_code = f.code
+            AND dd.descripcion_categoria = 'BOTELLÓN'
+        )
+      GROUP BY grupo
+    ) t
+    WHERE grupo = :grupo
+  `;
+  const countsRes = await sequelize.query(countSql, {
+    replacements: { inicio, fin, grupo: nombreGrupo },
+    type: Sequelize.QueryTypes.SELECT,
+  });
+  const numFacturas = Number(countsRes[0]?.num_facturas || 0);
+  const numOrdenes  = Number(countsRes[0]?.num_ordenes  || 0);
 
   // ── Filtrar por rutas permitidas si VENDEDOR ──────────────────
   if (rutasPermitidas) {
@@ -323,6 +399,8 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     total: {
       unidades: totalActual.unidades,
       dolares: totalActual.dolares,
+      numFacturas,
+      numOrdenes,
       mesAnterior: {
         dolares: totalAnterior.dolares,
         variacionAbs:         Number(variacionAbs.toFixed(2)),
@@ -344,7 +422,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
       const proyeccionUnidades = diasTrans > 0 ? (r.unidades / diasTrans) * diasMes : 0;
 
       const meta       = metas.find(m => m.codigo === r.codigo);
-      const metaConfig = metasConfigMap[r.codigo.toUpperCase()];
+      const metaConfig = r.codigo ? metasConfigMap[r.codigo.toUpperCase()] : null;
 
       const variacionAbsUnidadesDet = Number(r.unidades) - (ant.unidades || 0);
       const variacionPorcUnidadesDet =
@@ -680,9 +758,41 @@ const queryTotalesEmpresas = async (inicio, fin) => {
     type: Sequelize.QueryTypes.SELECT,
   });
 
+  const countsRows = await sequelize.query(`
+    SELECT
+      COALESCE((
+        SELECT COUNT(DISTINCT f.code)
+        FROM facturas f
+        WHERE f.seller_code ILIKE 'E%' AND f.status IN (0,2,3,4,5)
+          AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+          AND EXISTS (
+            SELECT 1 FROM detalle_documento dd
+            WHERE dd.documento_code = f.code
+              AND dd.descripcion_categoria = 'BOTELLÓN'
+          )
+      ), 0) AS num_facturas,
+      COALESCE((
+        SELECT COUNT(DISTINCT o.code)
+        FROM ordenes o
+        WHERE o.seller_nombre IN (${rutasPH})
+          AND o.type = 2 AND o.status IN (2,4,5)
+          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+          AND EXISTS (
+            SELECT 1 FROM detalle_documento dd
+            WHERE dd.documento_code = o.code
+              AND dd.descripcion_categoria = 'BOTELLÓN'
+          )
+      ), 0) AS num_ordenes
+  `, {
+    replacements: { inicio, fin, ...rutasRepl },
+    type: Sequelize.QueryTypes.SELECT,
+  });
+
   return {
-    unidades: Number(rows[0]?.unidades || 0),
-    dolares:  Number(rows[0]?.dolares  || 0),
+    unidades:    Number(rows[0]?.unidades || 0),
+    dolares:     Number(rows[0]?.dolares  || 0),
+    numFacturas: Number(countsRows[0]?.num_facturas || 0),
+    numOrdenes:  Number(countsRows[0]?.num_ordenes  || 0),
   };
 };
 
@@ -735,8 +845,10 @@ const obtenerEmpresasConsolidado = async (req, res) => {
 
     return res.json({
       total: {
-        unidades: actual.unidades,
-        dolares:  actual.dolares,
+        unidades:    actual.unidades,
+        dolares:     actual.dolares,
+        numFacturas: actual.numFacturas,
+        numOrdenes:  actual.numOrdenes,
         mesAnterior: {
           dolares:              anterior.dolares,
           variacionAbs:         Number(variacionAbs.toFixed(2)),
@@ -801,9 +913,9 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
         SELECT DISTINCT f0.customer_code
         FROM facturas f0
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-        WHERE f0.seller_code ILIKE 'A%'
+        WHERE f0.route_code ILIKE 'A%'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
-          AND f0.status IN (2,4,5)
+          AND f0.status IN (0,2,3,4,5)
           AND (
             (f0.codigo_tipo_negocio != '29' AND f0.fecha_entrega  >= :iniYear AND f0.fecha_entrega  < :finYear)
             OR
@@ -830,9 +942,9 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
         FROM facturas f2
         JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
         WHERE f2.customer_code = base.customer_code
-          AND f2.seller_code ILIKE 'A%'
+          AND f2.route_code ILIKE 'A%'
           AND dd2.descripcion_categoria = 'BOTELLÓN'
-          AND f2.status IN (2,4,5)
+          AND f2.status IN (0,2,3,4,5)
           AND (
             (f2.codigo_tipo_negocio != '29' AND f2.fecha_entrega  >= :inicio AND f2.fecha_entrega  < :fin)
             OR
@@ -844,9 +956,9 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
         FROM facturas f3
         JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
         WHERE f3.customer_code = base.customer_code
-          AND f3.seller_code ILIKE 'A%'
+          AND f3.route_code ILIKE 'A%'
           AND dd3.descripcion_categoria = 'BOTELLÓN'
-          AND f3.status IN (2,4,5)
+          AND f3.status IN (0,2,3,4,5)
           AND (
             (f3.codigo_tipo_negocio != '29' AND f3.fecha_entrega  >= :iniAnt AND f3.fecha_entrega  < :finAnt)
             OR
@@ -858,18 +970,18 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
         FROM facturas f4
         JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
         WHERE f4.customer_code = base.customer_code
-          AND f4.seller_code ILIKE 'A%'
+          AND f4.route_code ILIKE 'A%'
           AND dd4.descripcion_categoria = 'BOTELLÓN'
-          AND f4.status IN (2,4,5)
+          AND f4.status IN (0,2,3,4,5)
       ) mx ON true
       LEFT JOIN LATERAL (
         SELECT MAX(f5.fecha_creacion)::date AS ultima_factura
         FROM facturas f5
         JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
         WHERE f5.customer_code = base.customer_code
-          AND f5.seller_code ILIKE 'A%'
+          AND f5.route_code ILIKE 'A%'
           AND dd5.descripcion_categoria = 'BOTELLÓN'
-          AND f5.status IN (2,4,5)
+          AND f5.status IN (0,2,3,4,5)
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
     `, {
@@ -887,8 +999,8 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
              SUM(dd.total)    AS monto_usd
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.seller_code ILIKE 'A%'
-        AND f.status IN (2,4,5)
+      WHERE f.route_code ILIKE 'A%'
+        AND f.status IN (0,2,3,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND (
           (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
@@ -1870,6 +1982,461 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
   }
 };
 
+/* ======================================================
+   QUITO CONSOLIDADO (MV U1 + Odoo equipo_ventas='Quito')
+   GET /api/botellones/quito-consolidado?anio=YYYY&mes=MM
+====================================================== */
+const queryTotalesQuito = async (inicio, fin) => {
+  const rows = await sequelize.query(`
+    SELECT COALESCE(SUM(sub.unidades), 0) AS unidades,
+           COALESCE(SUM(sub.dolares),  0) AS dolares
+    FROM (
+      -- MobilVendor: facturas seller_code = U1
+      SELECT COALESCE(SUM(dd.cantidad), 0) AS unidades, COALESCE(SUM(dd.total), 0) AS dolares
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.seller_code = 'U1' AND f.status IN (0,2,3,4,5)
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
+        AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
+      UNION ALL
+      -- Odoo: ordenes equipo_ventas = Quito
+      SELECT COALESCE(SUM(dd.cantidad), 0), COALESCE(SUM(dd.total), 0)
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
+        AND o.status IN (2,4,5)
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
+        AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+    ) sub
+  `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+
+  const countsRows = await sequelize.query(`
+    SELECT
+      COALESCE((
+        SELECT COUNT(DISTINCT f.code)
+        FROM facturas f
+        WHERE f.seller_code = 'U1' AND f.status IN (0,2,3,4,5)
+          AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
+          AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
+          AND EXISTS (
+            SELECT 1 FROM detalle_documento dd
+            WHERE dd.documento_code = f.code
+              AND dd.descripcion_categoria = 'BOTELLÓN'
+          )
+      ), 0) AS num_facturas,
+      COALESCE((
+        SELECT COUNT(DISTINCT o.code)
+        FROM ordenes o
+        WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
+          AND o.status IN (2,4,5)
+          AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
+          AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+          AND EXISTS (
+            SELECT 1 FROM detalle_documento dd
+            WHERE dd.documento_code = o.code
+              AND dd.descripcion_categoria = 'BOTELLÓN'
+          )
+      ), 0) AS num_ordenes
+  `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+
+  return {
+    unidades:    Number(rows[0]?.unidades || 0),
+    dolares:     Number(rows[0]?.dolares  || 0),
+    numFacturas: Number(countsRows[0]?.num_facturas || 0),
+    numOrdenes:  Number(countsRows[0]?.num_ordenes  || 0),
+  };
+};
+
+const queryTotalesWebsite = async (inicio, fin) => {
+  const rows = await sequelize.query(`
+    SELECT COALESCE(SUM(dd.cantidad), 0) AS unidades,
+           COALESCE(SUM(dd.total),   0) AS dolares
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
+      AND o.status IN (2,4,5)
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+  `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+
+  const countsRows = await sequelize.query(`
+    SELECT COALESCE(COUNT(DISTINCT o.code), 0) AS num_ordenes
+    FROM ordenes o
+    WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
+      AND o.status IN (2,4,5)
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+      AND EXISTS (
+        SELECT 1 FROM detalle_documento dd
+        WHERE dd.documento_code = o.code
+          AND dd.descripcion_categoria = 'BOTELLÓN'
+      )
+  `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+
+  return {
+    unidades:    Number(rows[0]?.unidades || 0),
+    dolares:     Number(rows[0]?.dolares  || 0),
+    numFacturas: 0,
+    numOrdenes:  Number(countsRows[0]?.num_ordenes || 0),
+  };
+};
+
+const buildConsolidadoResponse = (actual, anterior, esMesActual, diasTrans, diasMes) => {
+  const proyDolares  = esMesActual && diasTrans > 0
+    ? (actual.dolares  / diasTrans) * diasMes
+    : actual.dolares;
+  const proyUnidades = esMesActual && diasTrans > 0
+    ? Math.round((actual.unidades / diasTrans) * diasMes)
+    : actual.unidades;
+
+  const variacionAbs  = proyDolares  - anterior.dolares;
+  const variacionPorc = anterior.dolares > 0 ? (variacionAbs / anterior.dolares) * 100 : 0;
+  const varAbsUnid    = proyUnidades  - anterior.unidades;
+  const varPorcUnid   = anterior.unidades > 0 ? (varAbsUnid / anterior.unidades) * 100 : 0;
+
+  return {
+    total: {
+      unidades:    actual.unidades,
+      dolares:     actual.dolares,
+      numFacturas: actual.numFacturas ?? 0,
+      numOrdenes:  actual.numOrdenes  ?? 0,
+      mesAnterior: {
+        dolares:              anterior.dolares,
+        variacionAbs:         Number(variacionAbs.toFixed(2)),
+        variacionPorc:        Number(variacionPorc.toFixed(2)),
+        unidades:             anterior.unidades,
+        variacionAbsUnidades: Math.round(varAbsUnid),
+        variacionPorcUnidades: Number(varPorcUnid.toFixed(2)),
+      },
+    },
+    detalle: [{
+      proyeccion: {
+        dolares:  Number(proyDolares.toFixed(2)),
+        unidades: Number(proyUnidades.toFixed(0)),
+      },
+    }],
+  };
+};
+
+const obtenerQuitoConsolidado = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum))
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const hoyQ = new Date();
+    const esMesActualQ = hoyQ.getFullYear() === anioNum && hoyQ.getMonth() + 1 === mesNum;
+    const { inicio, fin: finFull } = getRangoFechas(anioNum, mesNum);
+    const finHoyQ = `${hoyQ.getFullYear()}-${String(hoyQ.getMonth() + 1).padStart(2, '0')}-${String(hoyQ.getDate()).padStart(2, '0')} 00:00:00`;
+    const fin = esMesActualQ ? finHoyQ : finFull;
+    const { inicio: inicioAnt, fin: finAnt } = getRangoFechas(
+      mesNum === 1 ? anioNum - 1 : anioNum,
+      mesNum === 1 ? 12 : mesNum - 1
+    );
+    const diasTrans = getDiasHabilesTranscurridos(anioNum, mesNum);
+    const diasMes   = getDiasLaborablesMes(anioNum, mesNum);
+
+    const [actual, anterior] = await Promise.all([
+      queryTotalesQuito(inicio, fin),
+      queryTotalesQuito(inicioAnt, finAnt),
+    ]);
+
+    return res.json(buildConsolidadoResponse(actual, anterior, esMesActualQ, diasTrans, diasMes));
+  } catch (error) {
+    console.error('❌ ERROR QUITO CONSOLIDADO:', error);
+    return res.status(500).json({ message: 'Error quito consolidado', detail: error.message });
+  }
+};
+
+const obtenerWebsiteConsolidado = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum))
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const hoyW = new Date();
+    const esMesActualW = hoyW.getFullYear() === anioNum && hoyW.getMonth() + 1 === mesNum;
+    const { inicio, fin: finFull } = getRangoFechas(anioNum, mesNum);
+    const finHoyW = `${hoyW.getFullYear()}-${String(hoyW.getMonth() + 1).padStart(2, '0')}-${String(hoyW.getDate()).padStart(2, '0')} 00:00:00`;
+    const fin = esMesActualW ? finHoyW : finFull;
+    const { inicio: inicioAnt, fin: finAnt } = getRangoFechas(
+      mesNum === 1 ? anioNum - 1 : anioNum,
+      mesNum === 1 ? 12 : mesNum - 1
+    );
+    const diasTrans = getDiasHabilesTranscurridos(anioNum, mesNum);
+    const diasMes   = getDiasLaborablesMes(anioNum, mesNum);
+
+    const [actual, anterior] = await Promise.all([
+      queryTotalesWebsite(inicio, fin),
+      queryTotalesWebsite(inicioAnt, finAnt),
+    ]);
+
+    return res.json(buildConsolidadoResponse(actual, anterior, esMesActualW, diasTrans, diasMes));
+  } catch (error) {
+    console.error('❌ ERROR WEBSITE CONSOLIDADO:', error);
+    return res.status(500).json({ message: 'Error website consolidado', detail: error.message });
+  }
+};
+
+/* ======================================================
+   CLIENTES QUITO / WEBSITE BOTELLÓN
+   GET /api/botellones/clientes-quito|website?anio=YYYY&mes=MM
+====================================================== */
+const buildClientesOdooBotellon = (fuenteQuery) => async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum))
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
+    const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
+      mesNum === 1 ? anioNum - 1 : anioNum,
+      mesNum === 1 ? 12 : mesNum - 1
+    );
+
+    const { clientesSql, productosSql, replacements } = fuenteQuery({ inicio, fin, iniAnt, finAnt, anioNum });
+
+    const clientes = await sequelize.query(clientesSql, {
+      replacements, type: Sequelize.QueryTypes.SELECT,
+    });
+
+    const totalClientes      = clientes.length;
+    const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
+    const clientesSinConsumo = totalClientes - clientesConConsumo;
+
+    const productosVendidos = await sequelize.query(productosSql, {
+      replacements, type: Sequelize.QueryTypes.SELECT,
+    });
+
+    return res.json({
+      clientes,
+      resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
+      productosVendidos,
+    });
+  } catch (error) {
+    console.error('❌ ERROR CLIENTES BOTELLÓN ODOO:', error);
+    return res.status(500).json({ message: 'Error al obtener clientes', detail: error.message });
+  }
+};
+
+const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
+  const iniYear = `${anioNum}-01-01 00:00:00`;
+  const finYear = `${anioNum + 1}-01-01 00:00:00`;
+  return {
+    replacements: { inicio, fin, iniAnt, finAnt, iniYear, finYear },
+    clientesSql: `
+      WITH base AS (
+        -- MV U1
+        SELECT DISTINCT f0.customer_code
+        FROM facturas f0
+        JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
+        WHERE f0.seller_code = 'U1'
+          AND dd0.descripcion_categoria = 'BOTELLÓN'
+          AND f0.status IN (2,4,5)
+          AND COALESCE(f0.fecha_entrega, f0.fecha_creacion) >= :iniYear
+          AND COALESCE(f0.fecha_entrega, f0.fecha_creacion) <  :finYear
+        UNION
+        -- Odoo Quito
+        SELECT DISTINCT o0.customer_code
+        FROM ordenes o0
+        JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
+        WHERE o0.origen_sistema = 'ODOO' AND o0.equipo_ventas = 'Quito'
+          AND dd0.descripcion_categoria = 'BOTELLÓN'
+          AND o0.status IN (2,4,5)
+          AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) >= :iniYear
+          AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) <  :finYear
+      )
+      SELECT
+        base.customer_code                                AS codigo_cliente,
+        COALESCE(c.nombre_cliente, base.customer_code)    AS nombre_cliente,
+        COALESCE(c.direccion_cliente, '')                 AS direccion_entrega,
+        COALESCE(tn.descripcion, '')                      AS tipo_negocio,
+        COALESCE(c.telefono_cliente, '')                  AS telefono,
+        COALESCE(c.latitud_cliente::text,  '')            AS latitud,
+        COALESCE(c.longitud_cliente::text, '')            AS longitud,
+        COALESCE(act.cantidad_actual,  0)                 AS cantidad_actual,
+        COALESCE(act.consumo_actual,   0)                 AS consumo_actual,
+        COALESCE(ant.consumo_anterior, 0)                 AS consumo_anterior,
+        ult.ultima_factura
+      FROM base
+      LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
+      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      LEFT JOIN LATERAL (
+        SELECT SUM(cant) AS cantidad_actual, SUM(tot) AS consumo_actual FROM (
+          SELECT dd.cantidad AS cant, dd.total AS tot
+          FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+          WHERE f.customer_code = base.customer_code
+            AND f.seller_code = 'U1'
+            AND dd.descripcion_categoria = 'BOTELLÓN'
+            AND f.status IN (2,4,5)
+            AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
+            AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
+          UNION ALL
+          SELECT dd.cantidad, dd.total
+          FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+          WHERE o.customer_code = base.customer_code
+            AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
+            AND dd.descripcion_categoria = 'BOTELLÓN'
+            AND o.status IN (2,4,5)
+            AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
+            AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+        ) s
+      ) act ON true
+      LEFT JOIN LATERAL (
+        SELECT SUM(tot) AS consumo_anterior FROM (
+          SELECT dd.total AS tot
+          FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+          WHERE f.customer_code = base.customer_code
+            AND f.seller_code = 'U1'
+            AND dd.descripcion_categoria = 'BOTELLÓN'
+            AND f.status IN (2,4,5)
+            AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :iniAnt
+            AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :finAnt
+          UNION ALL
+          SELECT dd.total
+          FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+          WHERE o.customer_code = base.customer_code
+            AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
+            AND dd.descripcion_categoria = 'BOTELLÓN'
+            AND o.status IN (2,4,5)
+            AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :iniAnt
+            AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :finAnt
+        ) s
+      ) ant ON true
+      LEFT JOIN LATERAL (
+        SELECT MAX(fecha)::date AS ultima_factura FROM (
+          SELECT f.fecha_creacion AS fecha
+          FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+          WHERE f.customer_code = base.customer_code AND f.seller_code = 'U1'
+            AND dd.descripcion_categoria = 'BOTELLÓN' AND f.status IN (2,4,5)
+          UNION ALL
+          SELECT o.fecha_creacion
+          FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+          WHERE o.customer_code = base.customer_code
+            AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
+            AND dd.descripcion_categoria = 'BOTELLÓN' AND o.status IN (2,4,5)
+        ) s
+      ) ult ON true
+      ORDER BY consumo_actual DESC NULLS LAST
+    `,
+    productosSql: `
+      SELECT producto, SUM(unidades_vendidas) AS unidades_vendidas, SUM(monto_usd) AS monto_usd
+      FROM (
+        SELECT dd.descripcion AS producto, SUM(dd.cantidad) AS unidades_vendidas, SUM(dd.total) AS monto_usd
+        FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.seller_code = 'U1' AND f.status IN (2,4,5)
+          AND dd.descripcion_categoria = 'BOTELLÓN'
+          AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
+          AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
+        GROUP BY dd.descripcion
+        UNION ALL
+        SELECT dd.descripcion, SUM(dd.cantidad), SUM(dd.total)
+        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
+          AND o.status IN (2,4,5)
+          AND dd.descripcion_categoria = 'BOTELLÓN'
+          AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
+          AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+        GROUP BY dd.descripcion
+      ) p
+      GROUP BY producto
+      ORDER BY unidades_vendidas DESC
+    `,
+  };
+};
+
+const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
+  const iniYear = `${anioNum}-01-01 00:00:00`;
+  const finYear = `${anioNum + 1}-01-01 00:00:00`;
+  return {
+    replacements: { inicio, fin, iniAnt, finAnt, iniYear, finYear },
+    clientesSql: `
+      WITH base AS (
+        SELECT DISTINCT o0.customer_code
+        FROM ordenes o0
+        JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
+        WHERE o0.origen_sistema = 'ODOO' AND o0.equipo_ventas = 'Website'
+          AND dd0.descripcion_categoria = 'BOTELLÓN'
+          AND o0.status IN (2,4,5)
+          AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) >= :iniYear
+          AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) <  :finYear
+      )
+      SELECT
+        base.customer_code                                AS codigo_cliente,
+        COALESCE(c.nombre_cliente, base.customer_code)    AS nombre_cliente,
+        COALESCE(c.direccion_cliente, '')                 AS direccion_entrega,
+        COALESCE(tn.descripcion, '')                      AS tipo_negocio,
+        COALESCE(c.telefono_cliente, '')                  AS telefono,
+        COALESCE(c.latitud_cliente::text,  '')            AS latitud,
+        COALESCE(c.longitud_cliente::text, '')            AS longitud,
+        COALESCE(act.cantidad_actual,  0)                 AS cantidad_actual,
+        COALESCE(act.consumo_actual,   0)                 AS consumo_actual,
+        COALESCE(ant.consumo_anterior, 0)                 AS consumo_anterior,
+        ult.ultima_factura
+      FROM base
+      LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
+      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      LEFT JOIN LATERAL (
+        SELECT SUM(dd.cantidad) AS cantidad_actual, SUM(dd.total) AS consumo_actual
+        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.customer_code = base.customer_code
+          AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
+          AND dd.descripcion_categoria = 'BOTELLÓN'
+          AND o.status IN (2,4,5)
+          AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
+          AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+      ) act ON true
+      LEFT JOIN LATERAL (
+        SELECT SUM(dd.total) AS consumo_anterior
+        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.customer_code = base.customer_code
+          AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
+          AND dd.descripcion_categoria = 'BOTELLÓN'
+          AND o.status IN (2,4,5)
+          AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :iniAnt
+          AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :finAnt
+      ) ant ON true
+      LEFT JOIN LATERAL (
+        SELECT MAX(o.fecha_creacion)::date AS ultima_factura
+        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.customer_code = base.customer_code
+          AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
+          AND dd.descripcion_categoria = 'BOTELLÓN' AND o.status IN (2,4,5)
+      ) ult ON true
+      ORDER BY consumo_actual DESC NULLS LAST
+    `,
+    productosSql: `
+      SELECT dd.descripcion AS producto,
+             SUM(dd.cantidad) AS unidades_vendidas,
+             SUM(dd.total)    AS monto_usd
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
+        AND o.status IN (2,4,5)
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
+        AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+      GROUP BY dd.descripcion
+      ORDER BY unidades_vendidas DESC
+    `,
+  };
+};
+
+const obtenerClientesQuitoBotellon    = buildClientesOdooBotellon(fuenteQuito);
+const obtenerClientesWebsiteBotellon  = buildClientesOdooBotellon(fuenteWebsite);
+
 module.exports = {
   obtenerDashboardBotellones,
   obtenerClientesVipBotellon,
@@ -1882,5 +2449,9 @@ module.exports = {
   obtenerEmpresasSubcanales,
   obtenerEmpresasClientesPorTipo,
   obtenerEmpresasDetalleCliente,
+  obtenerQuitoConsolidado,
+  obtenerWebsiteConsolidado,
+  obtenerClientesQuitoBotellon,
+  obtenerClientesWebsiteBotellon,
 };
 

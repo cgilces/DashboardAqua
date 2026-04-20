@@ -24,6 +24,7 @@ import EmpresasClientesPorTipoPage from "./pages/pagesBotellon/EmpresasClientesP
 import EmpresasDetalleClientePage from "./pages/pagesBotellon/EmpresasDetalleClientePage";
 import DetalleClientesDomicilioPage from "./pages/pagesBotellon/DetalleClientesDomicilioPage";
 import DetalleClientesEmpresasPage from "./pages/pagesBotellon/DetalleClientesEmpresasPage";
+import DetalleClientesCanalBotellonPage from "./pages/pagesBotellon/DetalleClientesCanalBotellonPage";
 import ConfigurarMetasBotellon from "./pages/pagesBotellon/ConfigurarMetasBotellon";
 
 import DashboardHielo from "./pages/pagesHielo/DashboardHielo";
@@ -137,6 +138,22 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/empresas-botellon/cliente/:clienteCode/:anio/:mes"
               element={<EmpresasDetalleClientePage />}
+            />
+            <Route
+              path="/quito-botellon/clientes/:anio/:mes"
+              element={<DetalleClientesCanalBotellonPage
+                titulo="Clientes Quito — Botellón"
+                endpoint="clientes-quito"
+                excelSheet="Quito Botellón"
+                excelFile="clientes_quito_botellon" />}
+            />
+            <Route
+              path="/website-botellon/clientes/:anio/:mes"
+              element={<DetalleClientesCanalBotellonPage
+                titulo="Clientes Website — Botellón"
+                endpoint="clientes-website"
+                excelSheet="Website Botellón"
+                excelFile="clientes_website_botellon" />}
             />
             <Route
               path="/configurar-metas-botellon/:seccion"

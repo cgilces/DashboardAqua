@@ -19,6 +19,7 @@ const TipoNegocio = require('./tipos_negocio');
 const TipoDocumentoLatam = require('./TipoDocumentoLatam');
 const Producto = require('./Producto');
 const Subcanal = require('./Subcanal'); // 🔥 NUEVO
+const CottsaExtraMes = require('./CottsaExtraMes');
 
 // =============================
 // RELACIONES
@@ -218,5 +219,6 @@ module.exports = {
   TipoDocumentoLatam,
   Producto,
   Subcanal, //  NUEVO
+  CottsaExtraMes,
   sequelize,
 };

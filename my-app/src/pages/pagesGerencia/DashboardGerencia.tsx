@@ -194,33 +194,33 @@ export default function DashboardGerencia() {
 
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-4 md:px-8 py-4 md:py-6">
+      <div className="main-content min-h-screen text-white px-2 sm:px-4 md:px-8 py-3 md:py-6">
         <Header />
 
         {/* ── Cabecera ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 border-b border-[#046C5E]/50 pb-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Dashboard Gerencial</h1>
-            <p className="text-sm text-gray-400 mt-1">Vista ejecutiva integral · Grupo AQUA S.A. · {MESES_LABEL[mes]} {anio}</p>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-5 border-b border-[#046C5E]/50 pb-4 pt-4">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-extrabold tracking-tight leading-tight">Dashboard Gerencial</h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1 truncate">Vista ejecutiva integral · Grupo AQUA S.A. · {MESES_LABEL[mes]} {anio}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <select value={anio} onChange={e=>setAnio(Number(e.target.value))}
-              className="bg-[#013d30] border border-[#046C5E]/40 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none">
+              className="bg-[#013d30] border border-[#046C5E]/40 text-white rounded-lg px-3 py-2 text-sm focus:outline-none flex-1 sm:flex-initial sm:min-w-[100px]">
               {anios.map(a=><option key={a} value={a}>{a}</option>)}
             </select>
             <select value={mes} onChange={e=>setMes(Number(e.target.value))}
-              className="bg-[#013d30] border border-[#046C5E]/40 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none">
+              className="bg-[#013d30] border border-[#046C5E]/40 text-white rounded-lg px-3 py-2 text-sm focus:outline-none flex-1 sm:flex-initial sm:min-w-[120px]">
               {MESES_LABEL.slice(1).map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}
             </select>
             <button onClick={fetchAll} disabled={loading}
-              className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition flex items-center gap-1.5">
+              className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition flex items-center justify-center gap-1.5 w-full sm:w-auto">
               <InsightsIcon sx={{fontSize:15}}/> {loading ? "Cargando…" : "Actualizar"}
             </button>
           </div>
         </div>
 
         {/* ── Tabs ── */}
-        <div className="flex flex-wrap gap-1.5 mb-5">
+        <div className="flex flex-wrap gap-1.5 mb-5 overflow-x-auto scroll-x-thin">
           {TABS.map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
               className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition
