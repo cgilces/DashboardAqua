@@ -213,8 +213,9 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
       saldo_cliente: 0,
       tiene_documentos_cliente: false,
       estado_proceso_cliente: 0,
-      codigo_usuario_asignado_cliente: docDelCliente?.user_id?.[0]
-        ? String(docDelCliente.user_id[0]) : null,
+      codigo_usuario_asignado_cliente: cliente?.x_studio_ruta
+        ? String(cliente.x_studio_ruta).trim()
+        : (docDelCliente?.user_id?.[0] ? String(docDelCliente.user_id[0]) : null),
       estado_cliente: 1,
       fecha_creacion_cliente: new Date(),
       fecha_actualizacion_cliente: new Date(),

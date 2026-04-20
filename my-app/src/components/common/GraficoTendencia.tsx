@@ -336,7 +336,10 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             stroke="#34d399"
             strokeWidth={2.5}
             fill="url(#gradDolaresShared)"
-            dot={(p: any) => <PulsingDot {...p} color="#34d399" mesActual={mesActual} anioActual={anioActual} />}
+            dot={(p: any) => {
+              const { key, ...rest } = p;
+              return <PulsingDot key={key} {...rest} color="#34d399" mesActual={mesActual} anioActual={anioActual} />;
+            }}
             activeDot={false}
           />
           <Line
@@ -347,7 +350,10 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             strokeWidth={2}
             strokeDasharray="7 4"
             fill="none"
-            dot={(p: any) => <ProyeccionDot {...p} mesActual={mesActual} anioActual={anioActual} />}
+            dot={(p: any) => {
+              const { key, ...rest } = p;
+              return <ProyeccionDot key={key} {...rest} mesActual={mesActual} anioActual={anioActual} />;
+            }}
             activeDot={false}
           />
           <Line
@@ -358,7 +364,10 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             strokeWidth={2}
             strokeDasharray="6 3"
             fill="none"
-            dot={(p: any) => <PulsingDot {...p} color="#22d3ee" mesActual={mesActual} anioActual={anioActual} />}
+            dot={(p: any) => {
+              const { key, ...rest } = p;
+              return <PulsingDot key={key} {...rest} color="#22d3ee" mesActual={mesActual} anioActual={anioActual} />;
+            }}
             activeDot={false}
           />
           <Line
@@ -368,7 +377,10 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             stroke="#a78bfa"
             strokeWidth={2.5}
             fill="none"
-            dot={(p: any) => <PulsingDot {...p} color="#a78bfa" mesActual={mesActual} anioActual={anioActual} />}
+            dot={(p: any) => {
+              const { key, ...rest } = p;
+              return <PulsingDot key={key} {...rest} color="#a78bfa" mesActual={mesActual} anioActual={anioActual} />;
+            }}
             activeDot={false}
           />
         </ComposedChart>

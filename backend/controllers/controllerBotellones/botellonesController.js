@@ -75,55 +75,62 @@ const metaHistoricaBotellon = async () => {
       /* ===================== ORDENES ===================== */
       SELECT
         CASE
-          WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
-          WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
-          WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
-          WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
-          WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'M%'  THEN 'MAYORISTA'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'TV%' THEN 'TIENDAS_VIP'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'T%'
+               AND COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) NOT ILIKE 'TV%' THEN 'TIENDAS'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'R%'  THEN 'RURAL'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) = '148399'  THEN 'TELEVENTA_VIP'
         END AS grupo,
-        o.seller_code AS codigo,
+        COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) AS codigo,
         DATE_TRUNC('month', o.fecha_creacion) AS mes,
         SUM(dd.total) AS total_usd
       FROM ordenes o
       JOIN detalle_documento dd
         ON dd.documento_code = o.code
+      LEFT JOIN clientes c
+        ON c.codigo_cliente = o.customer_code
       WHERE
-        o.status IN (2,4,5)
+        o.status IN (2)
         AND o.origen_sistema = 'MOBILVENDOR'
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND (
-          o.seller_code ILIKE 'M%'
-          OR o.seller_code ILIKE 'TV%'
-          OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
-          OR o.seller_code ILIKE 'R%'
-          OR o.seller_code = '148399'
+          COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'M%'
+          OR COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'TV%'
+          OR (COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'T%'
+              AND COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) NOT ILIKE 'TV%')
+          OR COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) ILIKE 'R%'
+          OR COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code) = '148399'
         )
-      GROUP BY grupo, o.seller_code, DATE_TRUNC('month', o.fecha_creacion)
+      GROUP BY grupo, COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), o.seller_code), DATE_TRUNC('month', o.fecha_creacion)
 
       UNION ALL
 
       /* ===================== FACTURAS ===================== */
       SELECT
         CASE
-          WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'M%'  THEN 'MAYORISTA'
           WHEN f.route_code  ILIKE 'A%'  THEN 'DOMICILIO'
-          WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
-          WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
-          WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
-          WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'E%'  THEN 'EMPRESAS'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'R%'  THEN 'RURAL'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'TV%' THEN 'TIENDAS_VIP'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) ILIKE 'T%'
+               AND COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) NOT ILIKE 'TV%' THEN 'TIENDAS'
           WHEN f.codigo_tipo_negocio = '29' THEN 'VIP'
-          WHEN f.seller_code = 'U1'      THEN 'QUITO'
+          WHEN COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) = 'U1' THEN 'QUITO'
         END AS grupo,
-        f.seller_code AS codigo,
+        COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code) AS codigo,
         DATE_TRUNC('month', CASE WHEN f.codigo_tipo_negocio = '29' THEN f.fecha_creacion ELSE f.fecha_entrega END) AS mes,
         SUM(dd.total) AS total_usd
       FROM facturas f
       JOIN detalle_documento dd
         ON dd.documento_code = f.code
+      LEFT JOIN clientes c
+        ON c.codigo_cliente = f.customer_code
       WHERE
-        f.status IN (0,2,3,4,5)
+        f.status IN (2)
         AND dd.descripcion_categoria = 'BOTELLÓN'
-      GROUP BY grupo, f.seller_code, DATE_TRUNC('month', CASE WHEN f.codigo_tipo_negocio = '29' THEN f.fecha_creacion ELSE f.fecha_entrega END)
+      GROUP BY grupo, COALESCE(NULLIF(TRIM(c.codigo_usuario_asignado_cliente), ''), f.seller_code), DATE_TRUNC('month', CASE WHEN f.codigo_tipo_negocio = '29' THEN f.fecha_creacion ELSE f.fecha_entrega END)
     ),
 
     /*  AQUÍ ESTÁ LA DIFERENCIA CLAVE */
@@ -209,7 +216,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     JOIN detalle_documento dd
       ON dd.documento_code = o.code
     WHERE
-      o.status IN (2,4,5)
+      o.status IN (2)
       AND o.origen_sistema = 'MOBILVENDOR'
       AND dd.descripcion_categoria = 'BOTELLÓN'
       AND (
@@ -245,10 +252,10 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
     JOIN detalle_documento dd
       ON dd.documento_code = f.code
     WHERE
-      f.status IN (0,2,3,4,5)
+      f.status IN (2)
       AND dd.descripcion_categoria = 'BOTELLÓN'
       AND (
-        (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
+        (f.codigo_tipo_negocio IS DISTINCT FROM '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
         OR
         (f.codigo_tipo_negocio  = '29' AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin)
       )
@@ -293,7 +300,7 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
         0 AS num_facturas,
         COUNT(DISTINCT o.code) AS num_ordenes
       FROM ordenes o
-      WHERE o.status IN (2,4,5)
+      WHERE o.status IN (2)
         AND o.origen_sistema = 'MOBILVENDOR'
         AND o.fecha_creacion >= :inicio
         AND o.fecha_creacion <  :fin
@@ -329,9 +336,9 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
         COUNT(DISTINCT f.code) AS num_facturas,
         0 AS num_ordenes
       FROM facturas f
-      WHERE f.status IN (0,2,3,4,5)
+      WHERE f.status IN (2)
         AND (
-          (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
+          (f.codigo_tipo_negocio IS DISTINCT FROM '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
           OR
           (f.codigo_tipo_negocio  = '29' AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin)
         )
@@ -481,7 +488,8 @@ const tendencia6MesesBotellon = async (anioNum, mesNum) => {
              SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
       FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
-      WHERE o.status IN (2,4,5)
+      WHERE o.status IN (2)
+        AND o.origen_sistema = 'MOBILVENDOR'
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND o.fecha_creacion >= :inicio6 AND o.fecha_creacion < :fin6
       GROUP BY DATE_TRUNC('month', o.fecha_creacion)
@@ -492,7 +500,7 @@ const tendencia6MesesBotellon = async (anioNum, mesNum) => {
              SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.status IN ('0','2','4','5')
+      WHERE f.status IN (2)
         AND dd.descripcion_categoria = 'BOTELLÓN'
         AND f.fecha_entrega >= :inicio6 AND f.fecha_entrega < :fin6
       GROUP BY DATE_TRUNC('month', f.fecha_entrega)
