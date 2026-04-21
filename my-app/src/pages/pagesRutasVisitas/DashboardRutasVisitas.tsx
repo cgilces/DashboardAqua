@@ -256,58 +256,54 @@ export default function DashboardRutasVisitas() {
   ============================================================ */
   return (
     <DashboardLayout>
-      <div className="main-content min-h-screen text-white px-2 sm:px-4 md:px-8 py-3 md:py-6">
+      <div className="main-content min-h-screen text-white px-4 md:px-8 py-4 md:py-6">
         <Header />
 
         {/* ── CABECERA ── */}
-        <header className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:justify-between lg:items-center mb-5 sm:mb-6 border-b border-[#046C5E] pb-4 pt-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <LocalShippingIcon className="flex-shrink-0" sx={{ fontSize: 28 }} />
-            <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold tracking-wide leading-tight truncate">DASHBOARD VISITAS RUTAS</h1>
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-[#046C5E] pb-4 gap-4">
+          <div className="flex items-center gap-3">
+            <LocalShippingIcon sx={{ fontSize: 36 }} />
+            <h1 className="text-xl md:text-2xl font-bold">DASHBOARD VISITAS RUTAS</h1>
           </div>
 
-          <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:items-center">
-            {isAdmin && (
-              <div className="flex flex-wrap gap-2">
-                <BotonRutasyDetalles />
-                <BotonHistorialRutas />
-              </div>
+          <div className="flex flex-wrap gap-2 items-center  py-6 ">
+            {isAdmin && <BotonRutasyDetalles />}
+            {isAdmin && <BotonHistorialRutas />}
+          </div>
+
+          {/* Selector periodo */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm" value={tipoPeriodo}
+              onChange={e => setTipoPeriodo(e.target.value as any)}>
+              <option value="dia">Día</option>
+              <option value="semana">Semana</option>
+              <option value="mes">Mes</option>
+            </select>
+
+            {tipoPeriodo === "mes" && (
+              <>
+                <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm" value={mesSeleccionado}
+                  onChange={e => setMesSeleccionado(e.target.value)}>
+                  {Object.entries(MESES_LARGOS).map(([n, v]) => (
+                    <option key={v} value={v}>{n}</option>
+                  ))}
+                </select>
+                <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm" value={anioSeleccionado}
+                  onChange={e => setAnioSeleccionado(e.target.value)}>
+                  {Array.from({ length: 5 }, (_, i) => anioActual + 1 - i).map(a => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </>
             )}
-
-            {/* Selector periodo */}
-            <div className="flex flex-wrap gap-2 items-center">
-              <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm flex-1 min-w-[90px]" value={tipoPeriodo}
-                onChange={e => setTipoPeriodo(e.target.value as any)}>
-                <option value="dia">Día</option>
-                <option value="semana">Semana</option>
-                <option value="mes">Mes</option>
-              </select>
-
-              {tipoPeriodo === "mes" && (
-                <>
-                  <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm flex-1 min-w-[120px]" value={mesSeleccionado}
-                    onChange={e => setMesSeleccionado(e.target.value)}>
-                    {Object.entries(MESES_LARGOS).map(([n, v]) => (
-                      <option key={v} value={v}>{n}</option>
-                    ))}
-                  </select>
-                  <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm flex-1 min-w-[90px]" value={anioSeleccionado}
-                    onChange={e => setAnioSeleccionado(e.target.value)}>
-                    {Array.from({ length: 5 }, (_, i) => anioActual + 1 - i).map(a => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
-                </>
-              )}
-              {tipoPeriodo === "semana" && (
-                <input type="date" className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm flex-1 min-w-[140px]"
-                  value={fechaSemana} onChange={e => setFechaSemana(e.target.value)} />
-              )}
-              {tipoPeriodo === "dia" && (
-                <input type="date" className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm flex-1 min-w-[140px]"
-                  value={fechaDia} onChange={e => setFechaDia(e.target.value)} />
-              )}
-            </div>
+            {tipoPeriodo === "semana" && (
+              <input type="date" className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm"
+                value={fechaSemana} onChange={e => setFechaSemana(e.target.value)} />
+            )}
+            {tipoPeriodo === "dia" && (
+              <input type="date" className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm"
+                value={fechaDia} onChange={e => setFechaDia(e.target.value)} />
+            )}
           </div>
         </header>
 
