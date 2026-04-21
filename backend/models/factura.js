@@ -8,6 +8,13 @@ const Factura = sequelize.define("Factura", {
     allowNull: false,
   },
 
+  //  ID real de Odoo (MUY recomendado)
+  odoo_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    unique: true,
+  },
+
   type: {
     type: DataTypes.INTEGER,
     allowNull: true,
@@ -15,6 +22,11 @@ const Factura = sequelize.define("Factura", {
 
   status: {
     type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+  tipo_movimiento: {
+    type: DataTypes.STRING(20),
     allowNull: true,
   },
 
@@ -44,6 +56,28 @@ const Factura = sequelize.define("Factura", {
   },
 
   customer_address_code: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  // 🔥 RELACIÓN CON PEDIDO
+  invoice_origin: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  // 🔥 COMERCIAL (CRÍTICO PARA REPORTES)
+  equipo_ventas: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  equipo_ventas_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+  equipo_ventas_nombre: {
     type: DataTypes.STRING,
     allowNull: true,
   },
@@ -98,11 +132,6 @@ const Factura = sequelize.define("Factura", {
     allowNull: true,
   },
 
-  // parent_id: {
-  //   type: DataTypes.STRING,
-  //   allowNull: true,
-  // },
-
   auth_code: {
     type: DataTypes.STRING,
     allowNull: true,
@@ -143,7 +172,7 @@ const Factura = sequelize.define("Factura", {
     allowNull: true,
   },
 
-  // Clasificación directa del canal y subcanal (igual que en ordenes)
+  // Clasificación comercial
   codigo_tipo_negocio: {
     type: DataTypes.STRING(50),
     allowNull: true,
@@ -151,11 +180,6 @@ const Factura = sequelize.define("Factura", {
 
   codigo_subcanal: {
     type: DataTypes.STRING(50),
-    allowNull: true,
-  },
-
-  tipo_movimiento: {
-    type: DataTypes.STRING(20),
     allowNull: true,
   },
 
