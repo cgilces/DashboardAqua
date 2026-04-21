@@ -199,7 +199,7 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
       telefono_cliente: cliente.phone || cliente.mobile || null,
       contacto_cliente: cliente.name || null,
       direccion_cliente: cliente.street || null,
-      latitud_cliente: toNumber(cliente.partner_latitude) || null,
+      latitud_cliente: cliente.partner_latitude != null ? toNumber(cliente.partner_latitude) : null,
       longitud_cliente: toNumber(cliente.partner_longitude) || null,
       ciudad_cliente: cliente.city || null,
       pais_cliente: cliente.country_id?.[1] || null,
@@ -383,12 +383,16 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
         // NO el vendedor/ruta. El código real de ruta/tienda vive en
         // x_studio_ruta del cliente. Guardamos la ruta como seller_code
         // para que los queries de reportes agrupen igual que MobilVendor.
-        seller_code: cliente?.x_studio_ruta
-          || (orden.user_id?.[0] ? String(orden.user_id[0]) : null),
+        // seller_code: cliente?.x_studio_ruta
+        //   || (orden.user_id?.[0] ? String(orden.user_id[0]) : null),
         seller_nombre: orden.user_id?.[1] || null,
+
         equipo_ventas: orden.team_id?.[1] || null,
+        equipo_ventas_id: orden.team_id?.[0] || null,
+        equipo_ventas_nombre: orden.team_id?.[1] || null,
+
         customer_address_code: orden.partner_shipping_id?.[0] || null,
-        route_code: cliente?.x_studio_ruta || null,
+        // route_code: cliente?.x_studio_ruta || null,
         moneda: orden.currency_id?.[1] || "USD",
         tasa_cambio: orden.currency_rate || 1,
         total: toNumber(orden.amount_total),
@@ -402,7 +406,7 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
         payment_term_id: orden.payment_term_id?.[0] || null,
         payment_term_nombre: orden.payment_term_id?.[1] || null,
         source_document: orden.client_order_ref || null,
-        mobilvendor_id: orden.mobilvendor_id || null,
+        mobilvendor_id: orden.mobilvendor_id ? String(orden.mobilvendor_id) : null,
         notes: orden.note || null,
         // Clasificación del cliente tomada de la tabla clientes local
         codigo_tipo_negocio: clienteLocal?.codigo_tipo_negocio || null,
@@ -514,6 +518,37 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
     clientesLocales.map(c => [c.codigo_cliente, c])
   );
 
+
+  // ================================
+  // 🔥 FETCH ÓRDENES POR invoice_origin
+  // ================================
+  const invoiceOrigins = [
+    ...new Set(
+      facturas
+        .map(f => f.invoice_origin)
+        .filter(Boolean)
+    )
+  ];
+
+  const ordenesMap = await (async () => {
+    if (!invoiceOrigins.length) return {};
+
+    const data = await odooExecute([
+      process.env.ODOO_DB,
+      uid,
+      process.env.ODOO_API_KEY,
+      "sale.order",
+      "search_read",
+      [[["name", "in", invoiceOrigins]]],
+      {
+        fields: ["name", "team_id"],
+        limit: 0,
+      },
+    ]);
+
+    return Object.fromEntries(data.map(o => [o.name, o]));
+  })();
+
   // 4. Facturas en paralelo — solo tocan facturas + detalle_documento (sin conflicto)
   await Promise.all(facturas.map(async (factura) => {
     const t = await sequelize.transaction();
@@ -577,6 +612,19 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
         ? String(factura.partner_shipping_id[0])
         : null;
 
+      // ================================
+      //  EQUIPO DE VENTAS (robusto)
+      // ================================
+      let equipoVentasId = factura.team_id?.[0] || null;
+      let equipoVentasNombre = factura.team_id?.[1] || null;
+
+      // fallback desde la orden
+      if (!equipoVentasId && factura.invoice_origin) {
+        const orden = ordenesMap[factura.invoice_origin];
+        equipoVentasId = orden?.team_id?.[0] || null;
+        equipoVentasNombre = orden?.team_id?.[1] || null;
+      }
+
       await Factura.upsert({
         code: factura.name,
         origen_sistema: "ODOO",
@@ -584,6 +632,10 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
         tipo_movimiento: factura.move_type, //
 
         status: statusNum,
+
+        equipo_ventas: equipoVentasNombre,
+        equipo_ventas_id: equipoVentasId,
+        equipo_ventas_nombre: equipoVentasNombre,
 
         estado_pago: factura.payment_state || null,
 
@@ -604,12 +656,12 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
         // x_studio_ruta del cliente. Para que los queries de reportes
         // agrupen igual que en MobilVendor, guardamos la ruta como
         // seller_code cuando existe; si no, caemos al invoice_user_id.
-        seller_code: cliente?.x_studio_ruta
-          || (factura.invoice_user_id?.[0]
-            ? String(factura.invoice_user_id[0])
-            : null),
+        // seller_code: cliente?.x_studio_ruta
+        //   || (factura.invoice_user_id?.[0]
+        //     ? String(factura.invoice_user_id[0])
+        //     : null),
 
-        route_code: cliente?.x_studio_ruta || null,
+        // route_code: cliente?.x_studio_ruta || null,
 
         total: toNumber(factura.amount_total),
         subtotal: toNumber(factura.amount_untaxed),
