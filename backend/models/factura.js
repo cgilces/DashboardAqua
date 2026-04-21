@@ -154,6 +154,11 @@ const Factura = sequelize.define("Factura", {
     allowNull: true,
   },
 
+  tipo_movimiento: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+  },
+
 }, {
   tableName: "facturas",
   timestamps: false,

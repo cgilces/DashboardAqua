@@ -581,6 +581,8 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
         code: factura.name,
         origen_sistema: "ODOO",
         type: tipoDocId,
+        tipo_movimiento: factura.move_type, //
+
         status: statusNum,
 
         estado_pago: factura.payment_state || null,
@@ -763,7 +765,7 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
       process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
       "account.move", "search_read",
       [[
-        ["move_type", "=", "out_invoice"],
+        ["move_type", "in", ["out_invoice", "out_refund"]],
         ["invoice_date", ">=", startDate],
         ["invoice_date", "<=", endDate],
       ]],
