@@ -1,3 +1,53 @@
+// ======================================================
+// CLIENTES DOMICILIO — 3 CARDS (BOTELLÓN, SUSCRIPCIÓN, WEBSITE)
+// GET /api/botellones/clientes-domicilio-cards?anio=YYYY&mes=MM
+// ======================================================
+const obtenerClientesDomicilioCards = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+    // BOTELLÓN
+    const botellon = await obtenerClientesDomicilioBotellon(req, { json: x => x });
+    // SUSCRIPCIÓN
+    const { inicio, fin } = getRangoFechas(parseInt(anio, 10), parseInt(mes, 10));
+    const clientesSuscripcion = await sequelize.query(`
+      SELECT
+        f.customer_code AS codigo_cliente,
+        COALESCE(c.nombre_cliente, f.customer_code) AS nombre_cliente,
+        COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente, '') AS direccion_entrega,
+        COALESCE(tn.descripcion, '') AS tipo_negocio,
+        COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '') AS telefono,
+        COALESCE(dc.latitud_direccion_cliente::text,  c.latitud_cliente::text,  '') AS latitud,
+        COALESCE(dc.longitud_direccion_cliente::text, c.longitud_cliente::text, '') AS longitud,
+        SUM(dd.cantidad) AS cantidad_actual,
+        SUM(dd.total)   AS consumo_actual
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      LEFT JOIN clientes c ON c.codigo_cliente = f.customer_code
+      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      LEFT JOIN direcciones_clientes dc ON dc.codigo_cliente = f.customer_code
+      WHERE f.route_code ILIKE 'A%'
+        AND dd.descripcion_categoria = 'SUSCRIPCION'
+        AND f.status IN (0,2,3,4,5)
+        AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
+      GROUP BY f.customer_code, c.nombre_cliente, dc.calle1_direccion_cliente, c.direccion_cliente, tn.descripcion, dc.telefono_direccion_cliente, c.telefono_cliente, dc.latitud_direccion_cliente, c.latitud_cliente, dc.longitud_direccion_cliente, c.longitud_cliente
+      ORDER BY consumo_actual DESC NULLS LAST
+    `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+    // WEBSITE
+    const website = await obtenerClientesWebsiteBotellon(req, { json: x => x });
+
+    return res.json({
+      cards: [
+        { nombre: 'BOTELLÓN', ...botellon },
+        { nombre: 'SUSCRIPCIÓN', clientes: clientesSuscripcion },
+        { nombre: 'WEBSITE', ...website }
+      ]
+    });
+  } catch (error) {
+    console.error('❌ ERROR CLIENTES DOMICILIO CARDS:', error);
+    return res.status(500).json({ message: 'Error al obtener cards domicilio', detail: error.message });
+  }
+};
 const {
   Orden,
   Factura,
@@ -188,75 +238,115 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
 
   const sql = `
   SELECT
-    grupo,
-    codigo,
-    SUM(unidades) AS unidades,
-    SUM(dolares)  AS dolares
-  FROM (
-    /* ===================== ORDENES ===================== */
-    SELECT
-      CASE
-        WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
-        WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
-        WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
-        WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
-        WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
-      END AS grupo,
-      o.seller_code AS codigo,
-      SUM(dd.cantidad) AS unidades,
-      SUM(dd.total) AS dolares
-    FROM ordenes o
-    JOIN detalle_documento dd
-      ON dd.documento_code = o.code
-    WHERE
-      o.status IN (2)
-      AND o.origen_sistema = 'MOBILVENDOR'
-      AND dd.descripcion_categoria = 'BOTELLÓN'
-      AND (
-        o.seller_code ILIKE 'M%'
-        OR o.seller_code ILIKE 'TV%'
-        OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
-        OR o.seller_code ILIKE 'R%'
-        OR o.seller_code = '148399'
-      )
-      AND o.fecha_creacion >= :inicio
-      AND o.fecha_creacion <  :fin
-    GROUP BY grupo, o.seller_code
+  grupo,
+  codigo,
+  SUM(unidades) AS unidades,
+  SUM(dolares)  AS dolares
+FROM (
 
-    UNION ALL
+  /* ===================== ORDENES ===================== */
+  SELECT
+    CASE
+      WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
+      WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+      WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+      WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
+      WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
+    END AS grupo,
+    o.seller_code AS codigo,
+    SUM(dd.cantidad) AS unidades,
+    SUM(dd.total) AS dolares
+  FROM ordenes o
+  JOIN detalle_documento dd
+    ON dd.documento_code = o.code
+  WHERE
+    o.status = 2
+    AND o.origen_sistema = 'MOBILVENDOR'
+    AND dd.descripcion_categoria = 'BOTELLÓN'
+    AND (
+      o.seller_code ILIKE 'M%'
+      OR o.seller_code ILIKE 'TV%'
+      OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
+      OR o.seller_code ILIKE 'R%'
+      OR o.seller_code = '148399'
+    )
+    AND o.fecha_creacion >= :inicio
+    AND o.fecha_creacion <  :fin
+  GROUP BY grupo, o.seller_code
 
-    /* ===================== FACTURAS ===================== */
-    SELECT
-      CASE
-        WHEN f.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
-        WHEN f.route_code  ILIKE 'A%'  THEN 'DOMICILIO'
-        WHEN f.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
-        WHEN f.seller_code ILIKE 'R%'  THEN 'RURAL'
-        WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
-        WHEN f.seller_code ILIKE 'T%'  AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
-        WHEN f.codigo_tipo_negocio = '29' THEN 'VIP'
-        WHEN f.seller_code = 'U1'      THEN 'QUITO'
-        ELSE 'OTROS'
-      END AS grupo,
-      f.seller_code AS codigo,
-      SUM(dd.cantidad) AS unidades,
-      SUM(dd.total) AS dolares
-    FROM facturas f
-    JOIN detalle_documento dd
-      ON dd.documento_code = f.code
-    WHERE
-      f.status IN (2)
-      AND dd.descripcion_categoria = 'BOTELLÓN'
-      AND (
-        (f.codigo_tipo_negocio IS DISTINCT FROM '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
-        OR
-        (f.codigo_tipo_negocio  = '29' AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin)
-      )
-    GROUP BY grupo, f.seller_code
-  ) t
-  WHERE grupo = :grupo
-  GROUP BY grupo, codigo
-  ORDER BY codigo;
+  UNION ALL
+
+  /* ===================== FACTURAS (DOMICILIO + OTROS) ===================== */
+  SELECT
+    CASE
+      WHEN f.seller_code IN ('A1','A2','A3','A4.1','A5','A6','A7','TA2')
+        THEN 'DOMICILIO'
+      WHEN f.seller_code ILIKE 'M%' THEN 'MAYORISTA'
+      WHEN f.seller_code ILIKE 'E%' THEN 'EMPRESAS'
+      WHEN f.seller_code ILIKE 'R%' THEN 'RURAL'
+      WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
+      WHEN f.seller_code ILIKE 'T%' AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
+      WHEN f.codigo_tipo_negocio = '29' THEN 'VIP'
+      WHEN f.seller_code = 'U1' THEN 'QUITO'
+      ELSE 'OTROS'
+    END AS grupo,
+    f.seller_code AS codigo,
+    SUM(dd.cantidad) AS unidades,
+    SUM(dd.total) AS dolares
+  FROM facturas f
+  JOIN detalle_documento dd
+    ON dd.documento_code = f.code
+  WHERE
+    f.status = 2
+    AND (
+      dd.descripcion_categoria = 'BOTELLÓN'
+      OR dd.descripcion_categoria = 'SUSCRIPCION'
+    )
+    AND f.fecha_creacion >= :inicio
+    AND f.fecha_creacion <  :fin
+  GROUP BY grupo, f.seller_code
+
+  UNION ALL
+
+  /* ===================== WEBSITE ===================== */
+  SELECT
+    'DOMICILIO' AS grupo,
+    o.seller_code AS codigo,
+    SUM(dd.cantidad) AS unidades,
+    SUM(dd.total) AS dolares
+  FROM ordenes o
+  JOIN detalle_documento dd
+    ON dd.documento_code = o.code
+  WHERE
+    o.status = 2
+    AND dd.descripcion_categoria = 'BOTELLÓN'
+    AND o.equipo_ventas = 'Website'
+    AND o.fecha_creacion >= :inicio
+    AND o.fecha_creacion <  :fin
+  GROUP BY o.seller_code
+
+  UNION ALL
+
+  /* ===================== SUSCRIPCION ===================== */
+  SELECT
+    'DOMICILIO' AS grupo,
+    f.seller_code AS codigo,
+    COUNT(DISTINCT dd.id_detalle) AS unidades,
+    SUM(dd.total) AS dolares
+  FROM facturas f
+  JOIN detalle_documento dd
+    ON dd.documento_code = f.code
+  WHERE
+    f.status = 2
+    AND dd.descripcion_categoria = 'SUSCRIPCION'
+    AND f.fecha_creacion >= :inicio
+    AND f.fecha_creacion <  :fin
+  GROUP BY f.seller_code
+
+) t
+WHERE grupo = :grupo
+GROUP BY grupo, codigo
+ORDER BY codigo;
   `;
 
   // Ventas actuales
@@ -2439,6 +2529,7 @@ const obtenerClientesQuitoBotellon    = buildClientesOdooBotellon(fuenteQuito);
 const obtenerClientesWebsiteBotellon  = buildClientesOdooBotellon(fuenteWebsite);
 
 module.exports = {
+    obtenerClientesDomicilioCards,
   obtenerDashboardBotellones,
   obtenerClientesVipBotellon,
   obtenerClientesDomicilioBotellon,

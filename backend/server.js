@@ -59,7 +59,7 @@ app.use("/api/metas-botellon", require("./routes/rutasBotellones/metasBotellonRo
 //  HIELO
 // ======================================================
 app.use("/api/hielo", require("./routes/rutasHielo/rutasHielo"));
-app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
+// app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
 
 
 // ======================================================

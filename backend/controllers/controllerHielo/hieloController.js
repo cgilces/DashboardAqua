@@ -73,8 +73,8 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
       AND f.status IN ('0','2','4','5')
-      AND f.fecha_entrega >= '${fechaInicioActual}'
-      AND f.fecha_entrega < '${fechaFinActual}';
+      AND f.fecha_creacion >= '${fechaInicioActual}'
+      AND f.fecha_creacion < '${fechaFinActual}';
   `);
 
   // ===============================
@@ -89,8 +89,8 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
       AND f.status IN ('0','2','4','5')
-      AND f.fecha_entrega >= '${fechaInicioAnterior}'
-      AND f.fecha_entrega < '${fechaFinAnterior}';
+      AND f.fecha_creacion >= '${fechaInicioAnterior}'
+      AND f.fecha_creacion < '${fechaFinAnterior}';
   `);
 
   // ===============================
@@ -178,7 +178,7 @@ const metaHistoricaHielo = async () => {
             WITH ventas_hielo_mensual AS (
                 SELECT
                     f.seller_code AS usuario,
-                    DATE_TRUNC('month', f.fecha_entrega) AS mes,
+                    DATE_TRUNC('month', f.fecha_creacion) AS mes,
                     SUM(dd.total) AS total_usd
                 FROM facturas f
                 JOIN detalle_documento dd
@@ -188,7 +188,7 @@ const metaHistoricaHielo = async () => {
                     AND f.status IN (0,2,3,4,5)
                 GROUP BY
                     f.seller_code,
-                    DATE_TRUNC('month', f.fecha_entrega)
+                    DATE_TRUNC('month', f.fecha_creacion)
             ),
             ranking_hielo AS (
                 SELECT
@@ -273,8 +273,8 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
       AND f.status IN ('0','2','4','5')
-      AND f.fecha_entrega >= '${fechaInicioStr}'
-      AND f.fecha_entrega < '${fechaFinStr}'
+      AND f.fecha_creacion >= '${fechaInicioStr}'
+      AND f.fecha_creacion < '${fechaFinStr}'
     GROUP BY f.seller_code
     ORDER BY f.seller_code;
   `);
@@ -291,8 +291,8 @@ const usuariosVentasHielo = async (anioNum, mesNum) => {
     WHERE
       (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
       AND f.status IN ('0','2','4','5')
-      AND f.fecha_entrega >= '${fechaInicioAntStr}'
-      AND f.fecha_entrega < '${fechaFinAntStr}'
+      AND f.fecha_creacion >= '${fechaInicioAntStr}'
+      AND f.fecha_creacion < '${fechaFinAntStr}'
     GROUP BY f.seller_code;
   `);
 
@@ -366,14 +366,14 @@ const tendencia6MesesHielo = async (anioNum, mesNum) => {
   const rows = await sequelize.query(`
     SELECT mes_periodo, SUM(dolares) AS dolares, SUM(unidades) AS unidades
     FROM (
-      SELECT DATE_TRUNC('month', f.fecha_entrega) AS mes_periodo,
+      SELECT DATE_TRUNC('month', f.fecha_creacion) AS mes_periodo,
              SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10','h3'))
         AND f.status IN ('0','2','4','5')
-        AND f.fecha_entrega >= :inicio6 AND f.fecha_entrega < :fin6
-      GROUP BY DATE_TRUNC('month', f.fecha_entrega)
+        AND f.fecha_creacion >= :inicio6 AND f.fecha_creacion < :fin6
+      GROUP BY DATE_TRUNC('month', f.fecha_creacion)
 
       UNION ALL
 
