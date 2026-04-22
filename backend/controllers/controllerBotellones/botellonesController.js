@@ -1,53 +1,3 @@
-// ======================================================
-// CLIENTES DOMICILIO — 3 CARDS (BOTELLÓN, SUSCRIPCIÓN, WEBSITE)
-// GET /api/botellones/clientes-domicilio-cards?anio=YYYY&mes=MM
-// ======================================================
-const obtenerClientesDomicilioCards = async (req, res) => {
-  try {
-    const { anio, mes } = req.query;
-    if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
-    // BOTELLÓN
-    const botellon = await obtenerClientesDomicilioBotellon(req, { json: x => x });
-    // SUSCRIPCIÓN
-    const { inicio, fin } = getRangoFechas(parseInt(anio, 10), parseInt(mes, 10));
-    const clientesSuscripcion = await sequelize.query(`
-      SELECT
-        f.customer_code AS codigo_cliente,
-        COALESCE(c.nombre_cliente, f.customer_code) AS nombre_cliente,
-        COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente, '') AS direccion_entrega,
-        COALESCE(tn.descripcion, '') AS tipo_negocio,
-        COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '') AS telefono,
-        COALESCE(dc.latitud_direccion_cliente::text,  c.latitud_cliente::text,  '') AS latitud,
-        COALESCE(dc.longitud_direccion_cliente::text, c.longitud_cliente::text, '') AS longitud,
-        SUM(dd.cantidad) AS cantidad_actual,
-        SUM(dd.total)   AS consumo_actual
-      FROM facturas f
-      JOIN detalle_documento dd ON dd.documento_code = f.code
-      LEFT JOIN clientes c ON c.codigo_cliente = f.customer_code
-      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
-      LEFT JOIN direcciones_clientes dc ON dc.codigo_cliente = f.customer_code
-      WHERE f.route_code ILIKE 'A%'
-        AND dd.descripcion_categoria = 'SUSCRIPCION'
-        AND f.status IN (0,2,3,4,5)
-        AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
-      GROUP BY f.customer_code, c.nombre_cliente, dc.calle1_direccion_cliente, c.direccion_cliente, tn.descripcion, dc.telefono_direccion_cliente, c.telefono_cliente, dc.latitud_direccion_cliente, c.latitud_cliente, dc.longitud_direccion_cliente, c.longitud_cliente
-      ORDER BY consumo_actual DESC NULLS LAST
-    `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
-    // WEBSITE
-    const website = await obtenerClientesWebsiteBotellon(req, { json: x => x });
-
-    return res.json({
-      cards: [
-        { nombre: 'BOTELLÓN', ...botellon },
-        { nombre: 'SUSCRIPCIÓN', clientes: clientesSuscripcion },
-        { nombre: 'WEBSITE', ...website }
-      ]
-    });
-  } catch (error) {
-    console.error('❌ ERROR CLIENTES DOMICILIO CARDS:', error);
-    return res.status(500).json({ message: 'Error al obtener cards domicilio', detail: error.message });
-  }
-};
 const {
   Orden,
   Factura,
@@ -439,11 +389,11 @@ ORDER BY codigo;
     type: Sequelize.QueryTypes.SELECT,
   });
   const numFacturas = Number(countsRes[0]?.num_facturas || 0);
-  const numOrdenes  = Number(countsRes[0]?.num_ordenes  || 0);
+  const numOrdenes = Number(countsRes[0]?.num_ordenes || 0);
 
   // ── Filtrar por rutas permitidas si VENDEDOR ──────────────────
   if (rutasPermitidas) {
-    actual   = actual.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
+    actual = actual.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
     anterior = anterior.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
   }
 
@@ -493,8 +443,8 @@ ORDER BY codigo;
       numOrdenes,
       mesAnterior: {
         dolares: totalAnterior.dolares,
-        variacionAbs:         Number(variacionAbs.toFixed(2)),
-        variacionPorc:        Number(variacionPorc.toFixed(2)),
+        variacionAbs: Number(variacionAbs.toFixed(2)),
+        variacionPorc: Number(variacionPorc.toFixed(2)),
         unidades: totalAnterior.unidades,
         variacionAbsUnidades: Math.round(variacionAbsUnidades),
         variacionPorcUnidades: variacionPorcUnidades !== null ? Number(variacionPorcUnidades.toFixed(2)) : null,
@@ -511,7 +461,7 @@ ORDER BY codigo;
 
       const proyeccionUnidades = diasTrans > 0 ? (r.unidades / diasTrans) * diasMes : 0;
 
-      const meta       = metas.find(m => m.codigo === r.codigo);
+      const meta = metas.find(m => m.codigo === r.codigo);
       const metaConfig = r.codigo ? metasConfigMap[r.codigo.toUpperCase()] : null;
 
       const variacionAbsUnidadesDet = Number(r.unidades) - (ant.unidades || 0);
@@ -523,14 +473,14 @@ ORDER BY codigo;
         unidades: Number(r.unidades),
         dolares: Number(r.dolares),
         meta: {
-          meta_historica:    meta ? Number(meta.meta_historica_usd).toFixed(2) : "0.00",
+          meta_historica: meta ? Number(meta.meta_historica_usd).toFixed(2) : "0.00",
           mes_mayor_consumo: meta?.mes_meta_historica || null,
         },
         cupo: metaConfig
           ? {
-              cupo_dolares:  Number(metaConfig.meta_dolares),
-              cupo_unidades: Number(metaConfig.meta_unidades),
-            }
+            cupo_dolares: Number(metaConfig.meta_dolares),
+            cupo_unidades: Number(metaConfig.meta_unidades),
+          }
           : null,
         proyeccion: {
           dolares: Number(proyeccionDolares.toFixed(2)),
@@ -556,13 +506,13 @@ ORDER BY codigo;
    TENDENCIA 6 MESES BOTELLÓN (ordenes MV + facturas E/A/V/U1)
 ====================================================== */
 const tendencia6MesesBotellon = async (anioNum, mesNum) => {
-  const NOMBRES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const NOMBRES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   let mesInicio = mesNum - 11, anioInicio = anioNum;
   while (mesInicio <= 0) { mesInicio += 12; anioInicio--; }
-  const inicio6 = `${anioInicio}-${String(mesInicio).padStart(2,'0')}-01 00:00:00`;
+  const inicio6 = `${anioInicio}-${String(mesInicio).padStart(2, '0')}-01 00:00:00`;
   let mesFin = mesNum + 1, anioFin = anioNum;
   if (mesFin === 13) { mesFin = 1; anioFin++; }
-  const fin6 = `${anioFin}-${String(mesFin).padStart(2,'0')}-01 00:00:00`;
+  const fin6 = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
 
   const rows = await sequelize.query(`
     SELECT mes_periodo, SUM(dolares) AS dolares, SUM(unidades) AS unidades
@@ -594,10 +544,10 @@ const tendencia6MesesBotellon = async (anioNum, mesNum) => {
 
   const hoy = new Date();
   return rows.map(r => {
-    const d        = new Date(r.mes_periodo);
-    const mes      = d.getMonth() + 1;
-    const anio     = d.getFullYear();
-    const dolares  = Number(Number(r.dolares  || 0).toFixed(2));
+    const d = new Date(r.mes_periodo);
+    const mes = d.getMonth() + 1;
+    const anio = d.getFullYear();
+    const dolares = Number(Number(r.dolares || 0).toFixed(2));
     const unidades = Number(r.unidades || 0);
     const esCurrent = anio === hoy.getFullYear() && mes === hoy.getMonth() + 1;
     const diasT = esCurrent ? getDiasHabilesTranscurridos(anio, mes) : 0;
@@ -679,11 +629,11 @@ const obtenerClientesVipBotellon = async (req, res) => {
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }       = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -778,7 +728,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
       type: Sequelize.QueryTypes.SELECT,
     });
 
-    const totalClientes      = clientes.length;
+    const totalClientes = clientes.length;
     const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
     const clientesSinConsumo = totalClientes - clientesConConsumo;
 
@@ -880,10 +830,10 @@ const queryTotalesEmpresas = async (inicio, fin) => {
   });
 
   return {
-    unidades:    Number(rows[0]?.unidades || 0),
-    dolares:     Number(rows[0]?.dolares  || 0),
+    unidades: Number(rows[0]?.unidades || 0),
+    dolares: Number(rows[0]?.dolares || 0),
     numFacturas: Number(countsRows[0]?.num_facturas || 0),
-    numOrdenes:  Number(countsRows[0]?.num_ordenes  || 0),
+    numOrdenes: Number(countsRows[0]?.num_ordenes || 0),
   };
 };
 
@@ -897,7 +847,7 @@ const obtenerEmpresasConsolidado = async (req, res) => {
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
@@ -914,44 +864,44 @@ const obtenerEmpresasConsolidado = async (req, res) => {
     );
 
     const diasTrans = getDiasHabilesTranscurridos(anioNum, mesNum);
-    const diasMes   = getDiasLaborablesMes(anioNum, mesNum);
+    const diasMes = getDiasLaborablesMes(anioNum, mesNum);
 
     const [actual, anterior] = await Promise.all([
       queryTotalesEmpresas(inicio, fin),
       queryTotalesEmpresas(inicioAnt, finAnt),
     ]);
 
-    const proyDolares  = esMesActualEmp && diasTrans > 0
-      ? (actual.dolares  / diasTrans) * diasMes
+    const proyDolares = esMesActualEmp && diasTrans > 0
+      ? (actual.dolares / diasTrans) * diasMes
       : actual.dolares;
     const proyUnidades = esMesActualEmp && diasTrans > 0
       ? Math.round((actual.unidades / diasTrans) * diasMes)
       : actual.unidades;
 
     // Variación: proyección vs mes anterior
-    const variacionAbs  = proyDolares  - anterior.dolares;
+    const variacionAbs = proyDolares - anterior.dolares;
     const variacionPorc = anterior.dolares > 0 ? (variacionAbs / anterior.dolares) * 100 : 0;
-    const varAbsUnid    = proyUnidades  - anterior.unidades;
-    const varPorcUnid   = anterior.unidades > 0 ? (varAbsUnid / anterior.unidades) * 100 : 0;
+    const varAbsUnid = proyUnidades - anterior.unidades;
+    const varPorcUnid = anterior.unidades > 0 ? (varAbsUnid / anterior.unidades) * 100 : 0;
 
     return res.json({
       total: {
-        unidades:    actual.unidades,
-        dolares:     actual.dolares,
+        unidades: actual.unidades,
+        dolares: actual.dolares,
         numFacturas: actual.numFacturas,
-        numOrdenes:  actual.numOrdenes,
+        numOrdenes: actual.numOrdenes,
         mesAnterior: {
-          dolares:              anterior.dolares,
-          variacionAbs:         Number(variacionAbs.toFixed(2)),
-          variacionPorc:        Number(variacionPorc.toFixed(2)),
-          unidades:             anterior.unidades,
+          dolares: anterior.dolares,
+          variacionAbs: Number(variacionAbs.toFixed(2)),
+          variacionPorc: Number(variacionPorc.toFixed(2)),
+          unidades: anterior.unidades,
           variacionAbsUnidades: Math.round(varAbsUnid),
           variacionPorcUnidades: Number(varPorcUnid.toFixed(2)),
         },
       },
       detalle: [{
         proyeccion: {
-          dolares:  Number(proyDolares.toFixed(2)),
+          dolares: Number(proyDolares.toFixed(2)),
           unidades: Number(proyUnidades.toFixed(0)),
         },
       }],
@@ -972,11 +922,11 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }       = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -986,121 +936,225 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
     const finYear = `${anioNum + 1}-01-01 00:00:00`;
 
     const clientes = await sequelize.query(`
-      SELECT
-        base.customer_code                                                        AS codigo_cliente,
-        COALESCE(c.nombre_cliente, base.customer_code)                            AS nombre_cliente,
-        COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente, '')            AS direccion_entrega,
-        COALESCE(tn.descripcion, '')                                              AS tipo_negocio,
-        COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '')           AS telefono,
-        COALESCE(dc.latitud_direccion_cliente::text,  c.latitud_cliente::text,  '') AS latitud,
-        COALESCE(dc.longitud_direccion_cliente::text, c.longitud_cliente::text, '') AS longitud,
-        COALESCE(act.cantidad_actual,  0)                                         AS cantidad_actual,
-        COALESCE(act.consumo_actual,   0)                                         AS consumo_actual,
-        COALESCE(ant.consumo_anterior, 0)                                         AS consumo_anterior,
-        COALESCE(mx.max_consumo,       0)                                         AS max_consumo,
-        ult.ultima_factura
-      FROM (
-        -- Todos los clientes Domicilio que compraron BOTELLÓN en el año seleccionado
-        SELECT DISTINCT f0.customer_code
-        FROM facturas f0
-        JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-        WHERE f0.route_code ILIKE 'A%'
-          AND dd0.descripcion_categoria = 'BOTELLÓN'
-          AND f0.status IN (0,2,3,4,5)
-          AND (
-            (f0.codigo_tipo_negocio != '29' AND f0.fecha_entrega  >= :iniYear AND f0.fecha_entrega  < :finYear)
-            OR
-            (f0.codigo_tipo_negocio  = '29' AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear)
-          )
-      ) base
-      LEFT JOIN clientes c ON c.codigo_cliente = base.customer_code
-      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
-      LEFT JOIN LATERAL (
-        SELECT calle1_direccion_cliente,
-               telefono_direccion_cliente,
-               latitud_direccion_cliente,
-               longitud_direccion_cliente
-        FROM direcciones_clientes
-        WHERE codigo_cliente = base.customer_code
-        ORDER BY
-          (latitud_direccion_cliente  IS NOT NULL AND longitud_direccion_cliente IS NOT NULL) DESC,
-          (telefono_direccion_cliente IS NOT NULL) DESC
-        LIMIT 1
-      ) dc ON true
-      LEFT JOIN LATERAL (
-        SELECT SUM(dd2.cantidad) AS cantidad_actual,
-               SUM(dd2.total)   AS consumo_actual
-        FROM facturas f2
-        JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
-        WHERE f2.customer_code = base.customer_code
-          AND f2.route_code ILIKE 'A%'
-          AND dd2.descripcion_categoria = 'BOTELLÓN'
-          AND f2.status IN (0,2,3,4,5)
-          AND (
-            (f2.codigo_tipo_negocio != '29' AND f2.fecha_entrega  >= :inicio AND f2.fecha_entrega  < :fin)
-            OR
-            (f2.codigo_tipo_negocio  = '29' AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin)
-          )
-      ) act ON true
-      LEFT JOIN LATERAL (
-        SELECT SUM(dd3.total) AS consumo_anterior
-        FROM facturas f3
-        JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
-        WHERE f3.customer_code = base.customer_code
-          AND f3.route_code ILIKE 'A%'
-          AND dd3.descripcion_categoria = 'BOTELLÓN'
-          AND f3.status IN (0,2,3,4,5)
-          AND (
-            (f3.codigo_tipo_negocio != '29' AND f3.fecha_entrega  >= :iniAnt AND f3.fecha_entrega  < :finAnt)
-            OR
-            (f3.codigo_tipo_negocio  = '29' AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt)
-          )
-      ) ant ON true
-      LEFT JOIN LATERAL (
-        SELECT MAX(dd4.total) AS max_consumo
-        FROM facturas f4
-        JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
-        WHERE f4.customer_code = base.customer_code
-          AND f4.route_code ILIKE 'A%'
-          AND dd4.descripcion_categoria = 'BOTELLÓN'
-          AND f4.status IN (0,2,3,4,5)
-      ) mx ON true
-      LEFT JOIN LATERAL (
-        SELECT MAX(f5.fecha_creacion)::date AS ultima_factura
-        FROM facturas f5
-        JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
-        WHERE f5.customer_code = base.customer_code
-          AND f5.route_code ILIKE 'A%'
-          AND dd5.descripcion_categoria = 'BOTELLÓN'
-          AND f5.status IN (0,2,3,4,5)
-      ) ult ON true
-      ORDER BY consumo_actual DESC NULLS LAST
-    `, {
-      replacements: { iniYear, finYear, inicio, fin, iniAnt, finAnt },
+SELECT
+  base.customer_code AS codigo_cliente,
+  base.origen_cliente,
+
+  COALESCE(c.nombre_cliente, base.customer_code) AS nombre_cliente,
+  COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente, '') AS direccion_entrega,
+  COALESCE(tn.descripcion, '') AS tipo_negocio,
+  COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente, '') AS telefono,
+  COALESCE(dc.latitud_direccion_cliente::text, c.latitud_cliente::text, '') AS latitud,
+  COALESCE(dc.longitud_direccion_cliente::text, c.longitud_cliente::text, '') AS longitud,
+
+  COALESCE(act.cantidad_actual, 0) AS cantidad_actual,
+  COALESCE(act.consumo_actual, 0) AS consumo_actual,
+  COALESCE(ant.consumo_anterior, 0) AS consumo_anterior,
+  COALESCE(mx.max_consumo, 0) AS max_consumo,
+  ult.ultima_factura
+
+FROM (
+
+  /* ================= BASE SIN DUPLICADOS ================= */
+  SELECT
+    f0.customer_code,
+
+    CASE
+      WHEN MAX(CASE WHEN f0.equipo_ventas = 'Website' THEN 1 ELSE 0 END) = 1 THEN 'WEBSITE'
+      WHEN MAX(CASE WHEN dd0.descripcion_categoria = 'SUSCRIPCION' THEN 1 ELSE 0 END) = 1 THEN 'SUSCRIPCION'
+      ELSE 'MV'
+    END AS origen_cliente
+
+  FROM facturas f0
+  JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
+
+  WHERE
+  (
+    (f0.seller_code ILIKE 'A%' AND dd0.descripcion_categoria = 'BOTELLÓN')
+    OR dd0.descripcion_categoria = 'SUSCRIPCION'
+    OR (f0.equipo_ventas = 'Website' AND dd0.descripcion_categoria = 'BOTELLÓN')
+  )
+  AND f0.status IN (0,2,3,4,5)
+  AND f0.fecha_creacion >= :inicio
+  AND f0.fecha_creacion <  :fin
+
+  GROUP BY f0.customer_code
+
+) base
+
+LEFT JOIN clientes c 
+  ON c.codigo_cliente = base.customer_code
+
+LEFT JOIN tipos_negocio tn 
+  ON tn.codigo = c.codigo_tipo_negocio
+
+
+/* ================= DIRECCIÓN ================= */
+LEFT JOIN LATERAL (
+  SELECT
+    calle1_direccion_cliente,
+    telefono_direccion_cliente,
+    latitud_direccion_cliente,
+    longitud_direccion_cliente
+  FROM direcciones_clientes
+  WHERE codigo_cliente = base.customer_code
+  ORDER BY
+    (latitud_direccion_cliente IS NOT NULL AND longitud_direccion_cliente IS NOT NULL) DESC,
+    (telefono_direccion_cliente IS NOT NULL) DESC
+  LIMIT 1
+) dc ON true
+
+
+/* ================= CONSUMO ACTUAL ================= */
+LEFT JOIN LATERAL (
+  SELECT
+    SUM(dd2.cantidad) AS cantidad_actual,
+    SUM(dd2.total) AS consumo_actual
+  FROM facturas f2
+  JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
+  WHERE f2.customer_code = base.customer_code
+    AND (
+      (f2.seller_code ILIKE 'A%' AND dd2.descripcion_categoria = 'BOTELLÓN')
+      OR dd2.descripcion_categoria = 'SUSCRIPCION'
+      OR (f2.equipo_ventas = 'Website' AND dd2.descripcion_categoria = 'BOTELLÓN')
+    )
+    AND f2.status IN (0,2,3,4,5)
+    AND f2.fecha_creacion >= :inicio
+    AND f2.fecha_creacion <  :fin
+) act ON true
+
+
+/* ================= CONSUMO ANTERIOR ================= */
+LEFT JOIN LATERAL (
+  SELECT SUM(dd3.total) AS consumo_anterior
+  FROM facturas f3
+  JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
+  WHERE f3.customer_code = base.customer_code
+    AND (
+      (f3.seller_code ILIKE 'A%' AND dd3.descripcion_categoria = 'BOTELLÓN')
+      OR dd3.descripcion_categoria = 'SUSCRIPCION'
+      OR (f3.equipo_ventas = 'Website' AND dd3.descripcion_categoria = 'BOTELLÓN')
+    )
+    AND f3.status IN (0,2,3,4,5)
+    AND f3.fecha_creacion >= :iniAnt
+    AND f3.fecha_creacion <  :finAnt
+) ant ON true
+
+
+/* ================= MAX CONSUMO ================= */
+LEFT JOIN LATERAL (
+  SELECT MAX(dd4.total) AS max_consumo
+  FROM facturas f4
+  JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
+  WHERE f4.customer_code = base.customer_code
+    AND (
+      (f4.seller_code ILIKE 'A%' AND dd4.descripcion_categoria = 'BOTELLÓN')
+      OR dd4.descripcion_categoria = 'SUSCRIPCION'
+      OR (f4.equipo_ventas = 'Website' AND dd4.descripcion_categoria = 'BOTELLÓN')
+    )
+    AND f4.status IN (0,2,3,4,5)
+) mx ON true
+
+
+/* ================= ÚLTIMA FACTURA ================= */
+LEFT JOIN LATERAL (
+  SELECT MAX(f5.fecha_creacion)::date AS ultima_factura
+  FROM facturas f5
+  JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
+  WHERE f5.customer_code = base.customer_code
+    AND (
+      (f5.seller_code ILIKE 'A%' AND dd5.descripcion_categoria = 'BOTELLÓN')
+      OR dd5.descripcion_categoria = 'SUSCRIPCION'
+      OR (f5.equipo_ventas = 'Website' AND dd5.descripcion_categoria = 'BOTELLÓN')
+    )
+    AND f5.status IN (0,2,3,4,5)
+) ult ON true
+
+ORDER BY consumo_actual DESC NULLS LAST;
+`, {
+      replacements: { inicio, fin, iniAnt, finAnt },
       type: Sequelize.QueryTypes.SELECT,
     });
 
-    const totalClientes      = clientes.length;
+    const totalClientes = clientes.length;
     const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
     const clientesSinConsumo = totalClientes - clientesConConsumo;
 
-    const productosVendidos = await sequelize.query(`
-      SELECT dd.descripcion AS producto,
-             SUM(dd.cantidad) AS unidades_vendidas,
-             SUM(dd.total)    AS monto_usd
-      FROM facturas f
-      JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.route_code ILIKE 'A%'
-        AND f.status IN (0,2,3,4,5)
-        AND dd.descripcion_categoria = 'BOTELLÓN'
-        AND (
-          (f.codigo_tipo_negocio != '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
-          OR
-          (f.codigo_tipo_negocio  = '29' AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin)
-        )
-      GROUP BY dd.descripcion
-      ORDER BY unidades_vendidas DESC
-    `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+const productosVendidos = await sequelize.query(`
+WITH base AS (
+
+  /* ================= FACTURAS DOMICILIO (A1..A7 + TA2) ================= */
+  SELECT
+    dd.descripcion,
+    dd.descripcion_categoria,
+    dd.cantidad,
+    dd.total
+  FROM facturas f
+  JOIN detalle_documento dd 
+    ON dd.documento_code = f.code
+  WHERE
+    f.status = 2
+    AND (
+      dd.descripcion_categoria = 'BOTELLÓN'
+      OR dd.descripcion_categoria = 'SUSCRIPCION'
+    )
+    AND f.fecha_creacion >= :inicio
+    AND f.fecha_creacion <  :fin
+    AND f.seller_code IN ('A1','A2','A3','A4.1','A5','A6','A7','TA2')
+
+  UNION ALL
+
+  /* ================= WEBSITE (ORDENES) ================= */
+  SELECT
+    dd.descripcion,
+    dd.descripcion_categoria,
+    dd.cantidad,
+    dd.total
+  FROM ordenes o
+  JOIN detalle_documento dd 
+    ON dd.documento_code = o.code
+  WHERE
+    o.status = 2
+    AND o.equipo_ventas = 'Website'
+    AND dd.descripcion_categoria = 'BOTELLÓN'
+    AND o.fecha_creacion >= :inicio
+    AND o.fecha_creacion <  :fin
+
+  UNION ALL
+
+  /* ================= SUSCRIPCIÓN (FORMA EXACTA DEL QUERY PRINCIPAL) ================= */
+  SELECT
+    'SUSCRIPCIÓN' AS descripcion,
+    'SUSCRIPCION' AS descripcion_categoria,
+    COUNT(DISTINCT dd.id_detalle) AS cantidad,
+    SUM(dd.total) AS total
+  FROM facturas f
+  JOIN detalle_documento dd 
+    ON dd.documento_code = f.code
+  WHERE
+    f.status = 2
+    AND dd.descripcion_categoria = 'SUSCRIPCION'
+    AND f.fecha_creacion >= :inicio
+    AND f.fecha_creacion <  :fin
+
+)
+
+SELECT
+  CASE
+    WHEN descripcion_categoria = 'SUSCRIPCION' THEN 'SUSCRIPCIÓN'
+    ELSE descripcion
+  END AS producto,
+
+  SUM(cantidad) AS unidades_vendidas,
+  SUM(total)    AS monto_usd
+
+FROM base
+GROUP BY 1
+ORDER BY unidades_vendidas DESC;
+`, {
+  replacements: { inicio, fin },
+  type: Sequelize.QueryTypes.SELECT
+});
 
     return res.json({
       clientes,
@@ -1123,11 +1177,11 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -1257,7 +1311,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
       type: Sequelize.QueryTypes.SELECT,
     });
 
-    const totalClientes      = clientes.length;
+    const totalClientes = clientes.length;
     const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
     const clientesSinConsumo = totalClientes - clientesConConsumo;
 
@@ -1296,7 +1350,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
       productosVendidos: productosVendidos.map(p => ({
         producto: p.producto,
         unidades: Number(p.unidades_vendidas || 0),
-        monto:    Number(p.monto_usd || 0),
+        monto: Number(p.monto_usd || 0),
       })),
     });
   } catch (error) {
@@ -1314,11 +1368,11 @@ const obtenerVipSubcanales = async (req, res) => {
     const { anio, mes } = req.query;
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -1418,11 +1472,11 @@ const obtenerVipClientesPorTipo = async (req, res) => {
     const { tipo, anio, mes } = req.query;
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -1540,11 +1594,11 @@ const obtenerVipDetalleCliente = async (req, res) => {
     if (!clienteCode || !anio || !mes)
       return res.status(400).json({ error: 'clienteCode, anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -1648,11 +1702,11 @@ const obtenerEmpresasSubcanales = async (req, res) => {
     const { anio, mes } = req.query;
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -1775,11 +1829,11 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
     const { tipo, anio, mes } = req.query;
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -1940,11 +1994,11 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
     if (!clienteCode || !anio || !mes)
       return res.status(400).json({ error: 'clienteCode, anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
-    const { inicio, fin }             = getRangoFechas(anioNum, mesNum);
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
     const { inicio: iniAnt, fin: finAnt } = getRangoFechas(
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
@@ -2133,10 +2187,10 @@ const queryTotalesQuito = async (inicio, fin) => {
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 
   return {
-    unidades:    Number(rows[0]?.unidades || 0),
-    dolares:     Number(rows[0]?.dolares  || 0),
+    unidades: Number(rows[0]?.unidades || 0),
+    dolares: Number(rows[0]?.dolares || 0),
     numFacturas: Number(countsRows[0]?.num_facturas || 0),
-    numOrdenes:  Number(countsRows[0]?.num_ordenes  || 0),
+    numOrdenes: Number(countsRows[0]?.num_ordenes || 0),
   };
 };
 
@@ -2168,44 +2222,44 @@ const queryTotalesWebsite = async (inicio, fin) => {
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 
   return {
-    unidades:    Number(rows[0]?.unidades || 0),
-    dolares:     Number(rows[0]?.dolares  || 0),
+    unidades: Number(rows[0]?.unidades || 0),
+    dolares: Number(rows[0]?.dolares || 0),
     numFacturas: 0,
-    numOrdenes:  Number(countsRows[0]?.num_ordenes || 0),
+    numOrdenes: Number(countsRows[0]?.num_ordenes || 0),
   };
 };
 
 const buildConsolidadoResponse = (actual, anterior, esMesActual, diasTrans, diasMes) => {
-  const proyDolares  = esMesActual && diasTrans > 0
-    ? (actual.dolares  / diasTrans) * diasMes
+  const proyDolares = esMesActual && diasTrans > 0
+    ? (actual.dolares / diasTrans) * diasMes
     : actual.dolares;
   const proyUnidades = esMesActual && diasTrans > 0
     ? Math.round((actual.unidades / diasTrans) * diasMes)
     : actual.unidades;
 
-  const variacionAbs  = proyDolares  - anterior.dolares;
+  const variacionAbs = proyDolares - anterior.dolares;
   const variacionPorc = anterior.dolares > 0 ? (variacionAbs / anterior.dolares) * 100 : 0;
-  const varAbsUnid    = proyUnidades  - anterior.unidades;
-  const varPorcUnid   = anterior.unidades > 0 ? (varAbsUnid / anterior.unidades) * 100 : 0;
+  const varAbsUnid = proyUnidades - anterior.unidades;
+  const varPorcUnid = anterior.unidades > 0 ? (varAbsUnid / anterior.unidades) * 100 : 0;
 
   return {
     total: {
-      unidades:    actual.unidades,
-      dolares:     actual.dolares,
+      unidades: actual.unidades,
+      dolares: actual.dolares,
       numFacturas: actual.numFacturas ?? 0,
-      numOrdenes:  actual.numOrdenes  ?? 0,
+      numOrdenes: actual.numOrdenes ?? 0,
       mesAnterior: {
-        dolares:              anterior.dolares,
-        variacionAbs:         Number(variacionAbs.toFixed(2)),
-        variacionPorc:        Number(variacionPorc.toFixed(2)),
-        unidades:             anterior.unidades,
+        dolares: anterior.dolares,
+        variacionAbs: Number(variacionAbs.toFixed(2)),
+        variacionPorc: Number(variacionPorc.toFixed(2)),
+        unidades: anterior.unidades,
         variacionAbsUnidades: Math.round(varAbsUnid),
         variacionPorcUnidades: Number(varPorcUnid.toFixed(2)),
       },
     },
     detalle: [{
       proyeccion: {
-        dolares:  Number(proyDolares.toFixed(2)),
+        dolares: Number(proyDolares.toFixed(2)),
         unidades: Number(proyUnidades.toFixed(0)),
       },
     }],
@@ -2217,7 +2271,7 @@ const obtenerQuitoConsolidado = async (req, res) => {
     const { anio, mes } = req.query;
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
@@ -2231,7 +2285,7 @@ const obtenerQuitoConsolidado = async (req, res) => {
       mesNum === 1 ? 12 : mesNum - 1
     );
     const diasTrans = getDiasHabilesTranscurridos(anioNum, mesNum);
-    const diasMes   = getDiasLaborablesMes(anioNum, mesNum);
+    const diasMes = getDiasLaborablesMes(anioNum, mesNum);
 
     const [actual, anterior] = await Promise.all([
       queryTotalesQuito(inicio, fin),
@@ -2250,7 +2304,7 @@ const obtenerWebsiteConsolidado = async (req, res) => {
     const { anio, mes } = req.query;
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
@@ -2264,7 +2318,7 @@ const obtenerWebsiteConsolidado = async (req, res) => {
       mesNum === 1 ? 12 : mesNum - 1
     );
     const diasTrans = getDiasHabilesTranscurridos(anioNum, mesNum);
-    const diasMes   = getDiasLaborablesMes(anioNum, mesNum);
+    const diasMes = getDiasLaborablesMes(anioNum, mesNum);
 
     const [actual, anterior] = await Promise.all([
       queryTotalesWebsite(inicio, fin),
@@ -2287,7 +2341,7 @@ const buildClientesOdooBotellon = (fuenteQuery) => async (req, res) => {
     const { anio, mes } = req.query;
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum))
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
@@ -2303,7 +2357,7 @@ const buildClientesOdooBotellon = (fuenteQuery) => async (req, res) => {
       replacements, type: Sequelize.QueryTypes.SELECT,
     });
 
-    const totalClientes      = clientes.length;
+    const totalClientes = clientes.length;
     const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
     const clientesSinConsumo = totalClientes - clientesConConsumo;
 
@@ -2525,11 +2579,10 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
   };
 };
 
-const obtenerClientesQuitoBotellon    = buildClientesOdooBotellon(fuenteQuito);
-const obtenerClientesWebsiteBotellon  = buildClientesOdooBotellon(fuenteWebsite);
+const obtenerClientesQuitoBotellon = buildClientesOdooBotellon(fuenteQuito);
+const obtenerClientesWebsiteBotellon = buildClientesOdooBotellon(fuenteWebsite);
 
 module.exports = {
-    obtenerClientesDomicilioCards,
   obtenerDashboardBotellones,
   obtenerClientesVipBotellon,
   obtenerClientesDomicilioBotellon,
