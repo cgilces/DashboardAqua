@@ -39,7 +39,7 @@ function obtenerRangoMesAnterior(anio, mes) {
 }
 
 /* ========================================================
-   🚀 CONTROLADOR BOTELLÓN
+    CONTROLADOR BOTELLÓN
 ======================================================== */
 
 const obtenerDetalleRuta = async (req, res) => {
