@@ -51,8 +51,8 @@ const queryMVHielo = async (inicio, fin) => {
      FROM facturas f
      LEFT JOIN detalle_documento dd ON f.code = dd.documento_code
      WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-       AND f.status IN ('2')             -- 
-       AND f.fecha_creacion >= :inicio   -- 
+       AND f.status IN ('2')
+       AND f.fecha_creacion >= :inicio
        AND f.fecha_creacion <  :fin`,
     { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT }
   );
@@ -79,8 +79,8 @@ const queryVentasPorRuta = async (inicio, fin) => {
       COUNT(DISTINCT o.customer_code) AS cant_clientes
     FROM ordenes o
     JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE o.campania_id = 5           -- ✅
-      AND o.status IN (2)             -- ✅
+    WHERE o.campania_id = 5
+      AND o.status IN (2)
       AND o.fecha_creacion >= :inicio
       AND o.fecha_creacion <  :fin
   `;
@@ -464,13 +464,13 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
 
 
-    // 5. Productos vendidos (solo del mes consultado) - FILTROS EXACTOS COMO DASHBOARD
+    // 5. Productos vendidos (solo del mes consultado) - SOLO HIELO (cat 28)
     const productosSQL = `
       SELECT descripcion AS producto,
              SUM(cantidad) AS unidades_vendidas,
              SUM(total)    AS monto_usd
       FROM (
-        -- MobilVendor: SOLO status IN ('2'), categoria 28
+        -- MobilVendor: status IN ('2'), SOLO HIELO
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
@@ -481,7 +481,7 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
         UNION ALL
 
-        -- Odoo: SOLO status IN ('2'), categoria 28
+        -- Odoo: status IN ('2'), SOLO HIELO
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
@@ -492,7 +492,7 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
         UNION ALL
 
-        -- Distrinter: SOLO status IN (2), categoria 28
+        -- Distrinter: status IN (2), SOLO HIELO
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM ordenes o
         JOIN detalle_documento dd ON dd.documento_code = o.code
