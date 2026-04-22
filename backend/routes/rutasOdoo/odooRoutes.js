@@ -4,7 +4,9 @@ const router = express.Router();
 const {  sincronizarOdoo } = require("../../controllers/controllerOdoo/odooController");
 const { obtenerVentasDescartableOdoo, obtenerClientesDescartableOdoo } = require("../../controllers/controllerOdoo/ventasDescartableOdooController");
 const { obtenerVentasBotellonOdoo } = require("../../controllers/controllerOdoo/ventasBotellonesOdooController");
-const { obtenerVentasHielo, obtenerClientesHieloOdoo, obtenerProductosClienteHielo } = require("../../controllers/controllerOdoo/ventasHieloController");
+const { obtenerVentasHielo, 
+    obtenerClientesHieloOdoo, 
+    obtenerProductosClienteHielo } = require("../../controllers/controllerOdoo/ventasHieloController");
 
 
 // POST /api/odoo/sync

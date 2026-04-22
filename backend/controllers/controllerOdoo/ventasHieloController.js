@@ -51,8 +51,8 @@ const queryMVHielo = async (inicio, fin) => {
      FROM facturas f
      LEFT JOIN detalle_documento dd ON f.code = dd.documento_code
      WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-       AND f.status IN ('2')             -- ✅ solo entregadas
-       AND f.fecha_creacion >= :inicio   -- ✅ campo correcto
+       AND f.status IN ('2')             -- 
+       AND f.fecha_creacion >= :inicio   -- 
        AND f.fecha_creacion <  :fin`,
     { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT }
   );
@@ -302,9 +302,9 @@ const obtenerClientesHieloOdoo = async (req, res) => {
     const R = { inicio, fin, antInicio, antFin, inicioAnio, finAnio };
 
     // ── Filtros base reutilizables ─────────────────────────────────────────────
-    // MobilVendor: facturas con seller_code H% / 10 / h3, fecha por fecha_entrega
+    // MobilVendor: facturas con seller_code H% / 10 / h3, fecha por fecha_creacion
     // Odoo:        facturas con origen_sistema='ODOO', fecha por fecha_creacion
-    //              (fecha_entrega en Odoo guarda invoice_date_due, no delivery real)
+    //              (fecha_creacion en Odoo guarda invoice_date_due, no delivery real)
     const mvWhere = `(seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3')) AND status IN ('2','4','5')`;
     const odooWhere = `origen_sistema = 'ODOO' AND status IN ('2','4','5')`;
 
@@ -329,7 +329,7 @@ const obtenerClientesHieloOdoo = async (req, res) => {
     SELECT customer_code, customer_address_code::TEXT AS customer_address_code
     FROM facturas
     WHERE ${mvWhere}
-      AND fecha_entrega >= :inicioAnio AND fecha_entrega < :finAnio
+      AND fecha_creacion >= :inicioAnio AND fecha_creacion < :finAnio
 
     UNION
 
@@ -365,7 +365,7 @@ const obtenerClientesHieloOdoo = async (req, res) => {
     SUM(CASE WHEN fecha >= :inicio    AND fecha < :fin    THEN cantidad ELSE 0 END) AS cantidad_actual
   FROM (
     SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
-           f.fecha_entrega AS fecha, dd.total, dd.cantidad
+           f.fecha_creacion AS fecha, dd.total, dd.cantidad
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE ${mvWhere}
@@ -399,11 +399,11 @@ const obtenerClientesHieloOdoo = async (req, res) => {
            DATE_TRUNC('month', fecha) AS mes, SUM(total) AS consumo_mes
     FROM (
       SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
-             f.fecha_entrega AS fecha, dd.total
+             f.fecha_creacion AS fecha, dd.total
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE ${mvWhere}
-        AND f.fecha_entrega >= :inicioAnio AND f.fecha_entrega < :finAnio
+        AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
 
       UNION ALL
 
@@ -439,7 +439,7 @@ const obtenerClientesHieloOdoo = async (req, res) => {
   SELECT customer_code, customer_address_code, MAX(fecha) AS ultima_factura
   FROM (
     SELECT customer_code, customer_address_code::TEXT AS customer_address_code,
-           fecha_entrega AS fecha
+           fecha_creacion AS fecha
     FROM facturas WHERE ${mvWhere}
 
     UNION ALL
@@ -463,50 +463,75 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 `;
 
 
-    // ── 5. Productos vendidos (combinados) ────────────────────────────────────
 
+    // 5. Productos vendidos (solo del mes consultado) - FILTROS EXACTOS COMO DASHBOARD
     const productosSQL = `
-  SELECT descripcion AS producto,
-         SUM(cantidad) AS unidades_vendidas,
-         SUM(total)    AS monto_usd
-  FROM (
-    SELECT dd.descripcion, dd.cantidad, dd.total
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE ${mvWhere}
-      AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+      SELECT descripcion AS producto,
+             SUM(cantidad) AS unidades_vendidas,
+             SUM(total)    AS monto_usd
+      FROM (
+        -- MobilVendor: SOLO status IN ('2'), categoria 28
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
+          AND f.status IN ('2')
+          AND dd.codigo_categoria = '28'
+          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
 
-    UNION ALL
+        UNION ALL
 
-    SELECT dd.descripcion, dd.cantidad, dd.total
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE ${odooWhere} AND dd.codigo_categoria = '28'
-      AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
+        -- Odoo: SOLO status IN ('2'), categoria 28
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.origen_sistema = 'ODOO'
+          AND f.status IN ('2')
+          AND dd.codigo_categoria = '28'
+          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
 
-    UNION ALL
+        UNION ALL
 
-    SELECT dd.descripcion, dd.cantidad, dd.total
-    FROM ordenes o
-    JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE o.campania_id = 5
-      AND o.status IN (2)
-      AND dd.codigo_categoria = '28'
-      AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+        -- Distrinter: SOLO status IN (2), categoria 28
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.campania_id = 5
+          AND o.status IN (2)
+          AND dd.codigo_categoria = '28'
+          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+      ) comb
+      GROUP BY descripcion
+      ORDER BY unidades_vendidas DESC
+    `;
 
-  ) comb
-  GROUP BY descripcion
-  ORDER BY unidades_vendidas DESC
-`;
 
 
-    const [clientes, consumoData, maxConsumoData, ultimaData, productosVendidos] = await Promise.all([
+    const [clientes, consumoData, maxConsumoData, ultimaData, productosVendidosRaw] = await Promise.all([
       sequelize.query(clientesSQL, { replacements: R, type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(consumoSQL, { replacements: R, type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(maxConsumoSQL, { replacements: R, type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(ultimaSQL, { replacements: R, type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(productosSQL, { replacements: R, type: Sequelize.QueryTypes.SELECT }),
     ]);
+
+    // Agrupar productos por nombre limpio (sin código entre corchetes al inicio)
+    function limpiarNombreProducto(nombre) {
+      // Quita [código] al inicio, espacios extra
+      return nombre ? nombre.replace(/^\[[^\]]+\]\s*/, '').trim() : '';
+    }
+    const productosMap = new Map();
+    for (const prod of productosVendidosRaw) {
+      const nombreLimpio = limpiarNombreProducto(prod.producto);
+      if (!productosMap.has(nombreLimpio)) {
+        productosMap.set(nombreLimpio, { producto: nombreLimpio, unidades_vendidas: 0, monto_usd: 0 });
+      }
+      const p = productosMap.get(nombreLimpio);
+      p.unidades_vendidas += Number(prod.unidades_vendidas) || 0;
+      p.monto_usd += Number(prod.monto_usd) || 0;
+    }
+    // Convertir a array y ordenar igual
+    const productosVendidos = Array.from(productosMap.values()).sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
 
     const clave = (r) => `${r.customer_code}__${r.customer_address_code ?? ''}`;
 
@@ -627,7 +652,7 @@ const obtenerProductosClienteHielo = async (req, res) => {
         WHERE ${mvWhere}
           AND f.customer_code = :customerCode
           ${addrFilterMV}
-          AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
 
         UNION ALL
 
@@ -664,4 +689,8 @@ const obtenerProductosClienteHielo = async (req, res) => {
   }
 };
 
-module.exports = { obtenerVentasHielo, obtenerClientesHieloOdoo, obtenerProductosClienteHielo };
+module.exports = { 
+  obtenerVentasHielo, 
+  obtenerClientesHieloOdoo, 
+  obtenerProductosClienteHielo 
+};
