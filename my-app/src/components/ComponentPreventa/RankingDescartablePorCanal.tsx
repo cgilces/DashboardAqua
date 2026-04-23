@@ -519,12 +519,12 @@ const RankingDescartablePorCanal = ({
                 <span className="ml-1 text-[#046C5E]">{sortIndicator("dolares")}</span>
               </th>
 
-              {/* 👉 NUEVA COLUMNA */}
+              {/*  NUEVA COLUMNA */}
               <th
                 className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
                 onClick={() => toggleSort("precioPromedio")}
               >
-                Precio Prom
+                Precio Promedio	
                 <span className="ml-1 text-[#046C5E]">
                   {sortIndicator("precioPromedio")}
                 </span>
