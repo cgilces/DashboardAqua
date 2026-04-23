@@ -134,7 +134,7 @@ const sincronizarVentas = async (req, res) => {
           ? "Una o más fuentes terminaron con errores. Revisar logs."
           : null;
 
-        console.log(`\n📊 [SYNC] Resultado final:`);
+        console.log(`\n [SYNC] Resultado final:`);
         console.log(`   MobilVendor : ${syncState.mobilvendor.estado}`);
         console.log(`   Odoo        : ${syncState.odoo.estado}`);
 

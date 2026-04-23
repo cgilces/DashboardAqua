@@ -53,24 +53,34 @@ const obtenerVentasCOTTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
   const inicio = getFechaInicioMes(anioNum, mesNum);
   const fin = fechaFin || getFechaFinMes(anioNum, mesNum);
 
-  const sql = `
-    SELECT
-      COALESCE(f.route_code, 'SIN RUTA') AS ruta,
-      f.seller_code                       AS vendedor,
-      SUM(dd.cantidad)                    AS unidades,
-      SUM(dd.subtotal)                    AS subtotal,
-      SUM(dd.total)                       AS dolares,
-      COUNT(DISTINCT f.code)              AS cant_facturas,
-      COUNT(DISTINCT f.customer_code)     AS cant_clientes
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.company_id = ${COTTSA_COMPANY_ID}
-      AND f.status IN (0,2,3,4,5)
-      AND f.fecha_creacion >= '${inicio}'
-      AND f.fecha_creacion  < '${fin}'
-    GROUP BY f.route_code, f.seller_code
-    ORDER BY dolares DESC
-  `;
+const sql = `
+  SELECT
+    f.seller_code                       AS vendedor,
+    SUM(COALESCE(u.unidades, 0))        AS unidades,
+    SUM(f.subtotal)                     AS subtotal,
+    SUM(f.total)                        AS dolares,
+    COUNT(DISTINCT f.code)              AS cant_facturas,
+    COUNT(DISTINCT f.customer_code)     AS cant_clientes
+  FROM facturas f
+
+  LEFT JOIN (
+    SELECT 
+      documento_code,
+      SUM(cantidad) AS unidades
+    FROM detalle_documento
+    GROUP BY documento_code
+  ) u ON u.documento_code = f.code
+
+  WHERE f.company_id = ${COTTSA_COMPANY_ID}
+    AND f.fecha_entrega >= '${inicio}'
+    AND f.fecha_entrega  < '${fin}'
+    AND f.reversed_entry_id IS NULL
+    AND f.tipo_documento = '(01) Invoice'
+    AND f.status = 2
+
+  GROUP BY f.seller_code
+  ORDER BY dolares DESC
+`;
   return await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
 };
 
@@ -184,11 +194,11 @@ const obtenerDetalleRutaCOTTSA = async (req, res) => {
       return res.status(400).json({ error: 'Debe enviar (ruta o vendedor), anio y mes' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes, 10);
-    const inicio  = getFechaInicioMes(anioNum, mesNum);
-    const fin     = getFechaFinMes(anioNum, mesNum);
+    const mesNum = parseInt(mes, 10);
+    const inicio = getFechaInicioMes(anioNum, mesNum);
+    const fin = getFechaFinMes(anioNum, mesNum);
     const inicioAnio = `${anioNum}-01-01 00:00:00`;
-    const finAnio    = `${anioNum + 1}-01-01 00:00:00`;
+    const finAnio = `${anioNum + 1}-01-01 00:00:00`;
 
     const filtro = vendedor
       ? `f.seller_code = '${vendedor}'`
@@ -228,11 +238,11 @@ const obtenerDetalleRutaCOTTSA = async (req, res) => {
 
     const [productos, clientesData] = await Promise.all([
       sequelize.query(productosSql, { type: Sequelize.QueryTypes.SELECT }),
-      sequelize.query(clientesSql,  { type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(clientesSql, { type: Sequelize.QueryTypes.SELECT }),
     ]);
 
     const totalClientes = Number(clientesData[0]?.total_clientes || 0);
-    const conConsumo    = Number(clientesData[0]?.con_consumo    || 0);
+    const conConsumo = Number(clientesData[0]?.con_consumo || 0);
 
     return res.status(200).json({
       productos,
@@ -259,20 +269,20 @@ const obtenerClientesCOTTSA = async (req, res) => {
       return res.status(400).json({ error: 'Debe enviar ?anio=YYYY&mes=MM' });
 
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes, 10);
+    const mesNum = parseInt(mes, 10);
     if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
     const inicio = getFechaInicioMes(anioNum, mesNum);
-    const fin    = await getFechaFinQuery(anioNum, mesNum);
+    const fin = await getFechaFinQuery(anioNum, mesNum);
 
     let mesPrev = mesNum - 1, anioPrev = anioNum;
     if (mesPrev === 0) { mesPrev = 12; anioPrev--; }
     const antInicio = getFechaInicioMes(anioPrev, mesPrev);
-    const antFin    = getFechaFinMes(anioPrev, mesPrev);
+    const antFin = getFechaFinMes(anioPrev, mesPrev);
 
     const inicioAnio = `${anioNum}-01-01 00:00:00`;
-    const finAnio    = `${anioNum + 1}-01-01 00:00:00`;
+    const finAnio = `${anioNum + 1}-01-01 00:00:00`;
 
     // 1. Todos los clientes COTTSA activos en el año
     const clientesSQL = `
@@ -356,14 +366,14 @@ const obtenerClientesCOTTSA = async (req, res) => {
     `;
 
     const [clientes, consumoData, maxConsumoData, ultimasFacturas] = await Promise.all([
-      sequelize.query(clientesSQL,      { type: Sequelize.QueryTypes.SELECT }),
-      sequelize.query(consumoSQL,       { type: Sequelize.QueryTypes.SELECT }),
-      sequelize.query(maxConsumoSQL,    { type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(clientesSQL, { type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(consumoSQL, { type: Sequelize.QueryTypes.SELECT }),
+      sequelize.query(maxConsumoSQL, { type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(ultimaFacturaSQL, { type: Sequelize.QueryTypes.SELECT }),
     ]);
 
-    const mapConsumo    = new Map(consumoData.map(r    => [r.customer_code, r]));
-    const mapMaxConsumo = new Map(maxConsumoData.map(r  => [r.customer_code, r]));
+    const mapConsumo = new Map(consumoData.map(r => [r.customer_code, r]));
+    const mapMaxConsumo = new Map(maxConsumoData.map(r => [r.customer_code, r]));
     const mapUltimaFact = new Map(ultimasFacturas.map(r => [r.customer_code, r.ultima_factura]));
 
     const fmtFecha = (f) => {
@@ -375,40 +385,40 @@ const obtenerClientesCOTTSA = async (req, res) => {
 
     const nombreMes = (fecha) => {
       if (!fecha) return null;
-      const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
       return meses[new Date(fecha).getMonth()];
     };
 
     const resultado = clientes.map(c => {
-      const consumo = mapConsumo.get(c.customer_code)    || {};
-      const maxC    = mapMaxConsumo.get(c.customer_code) || {};
+      const consumo = mapConsumo.get(c.customer_code) || {};
+      const maxC = mapMaxConsumo.get(c.customer_code) || {};
       const ultFact = mapUltimaFact.get(c.customer_code) || null;
 
-      const consumoActual   = Number(consumo.consumo_actual)   || 0;
+      const consumoActual = Number(consumo.consumo_actual) || 0;
       const consumoAnterior = Number(consumo.consumo_anterior) || 0;
-      const varAbs  = consumoActual - consumoAnterior;
+      const varAbs = consumoActual - consumoAnterior;
       const varPorc = consumoAnterior > 0
         ? (varAbs / consumoAnterior) * 100
         : consumoActual > 0 ? 100 : 0;
 
       return {
-        codigo_cliente:         c.customer_code,
-        nombre_cliente:         c.nombre_cliente,
-        direccion_entrega:      c.direccion_cliente,
-        tipo_negocio:           c.tipo_negocio || 'SIN CLASIFICAR',
-        telefono_cliente:       c.telefono_cliente || '—',
-        latitud_cliente:        c.latitud_direccion_cliente  || '—',
-        longitud_cliente:       c.longitud_direccion_cliente || '—',
-        cantidad_productos:     Number(consumo.cantidad_actual) || 0,
-        consumo_actual:         consumoActual.toFixed(2),
-        max_consumo:            Number(maxC.consumo_mes || 0).toFixed(2),
+        codigo_cliente: c.customer_code,
+        nombre_cliente: c.nombre_cliente,
+        direccion_entrega: c.direccion_cliente,
+        tipo_negocio: c.tipo_negocio || 'SIN CLASIFICAR',
+        telefono_cliente: c.telefono_cliente || '—',
+        latitud_cliente: c.latitud_direccion_cliente || '—',
+        longitud_cliente: c.longitud_direccion_cliente || '—',
+        cantidad_productos: Number(consumo.cantidad_actual) || 0,
+        consumo_actual: consumoActual.toFixed(2),
+        max_consumo: Number(maxC.consumo_mes || 0).toFixed(2),
         mes_max_consumo_nombre: nombreMes(maxC.mes),
-        ultima_factura:         fmtFecha(ultFact),
-        ultima_visita:          fmtFecha(ultFact),
+        ultima_factura: fmtFecha(ultFact),
+        ultima_visita: fmtFecha(ultFact),
         vsMesAnterior: {
-          monto_anterior:  consumoAnterior.toFixed(2),
-          variacion_abs:   varAbs.toFixed(2),
-          variacion_porc:  `${varPorc.toFixed(2)}%`,
+          monto_anterior: consumoAnterior.toFixed(2),
+          variacion_abs: varAbs.toFixed(2),
+          variacion_porc: `${varPorc.toFixed(2)}%`,
         },
         tuvo_consumo: consumoActual > 0 ? 'Sí' : 'No',
       };
@@ -432,7 +442,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
     return res.json({
       clientes: resultado,
       resumen: {
-        totalClientes:      resultado.length,
+        totalClientes: resultado.length,
         clientesConConsumo: conConsumo,
         clientesSinConsumo: resultado.length - conConsumo,
       },
@@ -453,9 +463,9 @@ const diagnosticoCOTTSA = async (req, res) => {
   try {
     const { anio, mes } = req.query;
     const anioNum = parseInt(anio, 10);
-    const mesNum  = parseInt(mes,  10);
+    const mesNum = parseInt(mes, 10);
     const inicio = getFechaInicioMes(anioNum, mesNum);
-    const fin    = getFechaFinMes(anioNum, mesNum);
+    const fin = getFechaFinMes(anioNum, mesNum);
 
     const [porStatus, headerVsDetalle, porCompany] = await Promise.all([
       // ① Cuántas facturas hay por cada status (company_id=3)
@@ -496,7 +506,7 @@ const diagnosticoCOTTSA = async (req, res) => {
       `, { type: Sequelize.QueryTypes.SELECT }),
     ]);
 
-    return res.json({ periodo: `${anioNum}-${String(mesNum).padStart(2,'0')}`, porStatus, headerVsDetalle, porCompany });
+    return res.json({ periodo: `${anioNum}-${String(mesNum).padStart(2, '0')}`, porStatus, headerVsDetalle, porCompany });
   } catch (error) {
     console.error('❌ ERROR DIAGNÓSTICO COTTSA:', error);
     return res.status(500).json({ message: 'Error diagnóstico' });
@@ -511,7 +521,7 @@ const diagnosticoCOTTSA = async (req, res) => {
 const obtenerCottsaExtra = async (req, res) => {
   try {
     const anio = parseInt(req.query.anio, 10);
-    const mes  = parseInt(req.query.mes,  10);
+    const mes = parseInt(req.query.mes, 10);
     if (isNaN(anio) || isNaN(mes) || mes < 1 || mes > 12)
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
@@ -520,10 +530,10 @@ const obtenerCottsaExtra = async (req, res) => {
       anio,
       mes,
       unidades: reg ? Number(reg.unidades) : 0,
-      dolares:  reg ? Number(reg.dolares)  : 0,
+      dolares: reg ? Number(reg.dolares) : 0,
       facturas: reg ? Number(reg.facturas) : 0,
       actualizado_por: reg ? reg.actualizado_por : null,
-      updated_at:      reg ? reg.updated_at      : null,
+      updated_at: reg ? reg.updated_at : null,
     });
   } catch (err) {
     console.error('❌ obtenerCottsaExtra:', err);
@@ -533,10 +543,10 @@ const obtenerCottsaExtra = async (req, res) => {
 
 const guardarCottsaExtra = async (req, res) => {
   try {
-    const anio     = parseInt(req.body.anio, 10);
-    const mes      = parseInt(req.body.mes,  10);
+    const anio = parseInt(req.body.anio, 10);
+    const mes = parseInt(req.body.mes, 10);
     const unidades = Number(req.body.unidades) || 0;
-    const dolares  = Number(req.body.dolares)  || 0;
+    const dolares = Number(req.body.dolares) || 0;
     const facturas = parseInt(req.body.facturas, 10) || 0;
     const actualizado_por = (req.user?.username || req.user?.email || null);
 
@@ -551,9 +561,9 @@ const guardarCottsaExtra = async (req, res) => {
     });
 
     if (!creado) {
-      reg.unidades        = unidades;
-      reg.dolares         = dolares;
-      reg.facturas        = facturas;
+      reg.unidades = unidades;
+      reg.dolares = dolares;
+      reg.facturas = facturas;
       reg.actualizado_por = actualizado_por;
       await reg.save();
     }
@@ -562,10 +572,10 @@ const guardarCottsaExtra = async (req, res) => {
       anio,
       mes,
       unidades: Number(reg.unidades),
-      dolares:  Number(reg.dolares),
+      dolares: Number(reg.dolares),
       facturas: Number(reg.facturas),
       actualizado_por: reg.actualizado_por,
-      updated_at:      reg.updated_at,
+      updated_at: reg.updated_at,
     });
   } catch (err) {
     console.error('❌ guardarCottsaExtra:', err);

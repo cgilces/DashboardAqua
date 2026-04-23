@@ -211,45 +211,72 @@ const obtenerRankingRutasDescartable = async (anioNum, mesNum, metasPorPreventa,
   const finPrev    = getFechaFinMes(anioPrev, mesPrev);
 
   console.log(`📅 RankingR ${anioNum}-${mesNum}: ${inicio} → ${fin}`);
-
 const sqlActual = `
-  SELECT x.usuario, SUM(x.unidades) AS unidades, SUM(x.dolares) AS dolares,
-         SUM(x.cant_ordenes) AS cant_ordenes, SUM(x.cant_facturas) AS cant_facturas
+  SELECT x.usuario, 
+         SUM(x.unidades) AS unidades, 
+         SUM(x.dolares) AS dolares,
+         SUM(x.cant_ordenes) AS cant_ordenes, 
+         SUM(x.cant_facturas) AS cant_facturas
   FROM (
-    SELECT o.seller_code AS usuario, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
-           COUNT(DISTINCT o.code) AS cant_ordenes, 0::int AS cant_facturas
-    FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE dd.codigo_categoria='7' AND o.status IN(2,4,5)
-      AND (o.seller_code ILIKE 'R%' OR o.seller_code ILIKE 'PVR%')
-      AND o.fecha_creacion>='${inicio}' AND o.fecha_creacion<'${fin}'
+
+    -- =========================
+    -- ORDENES (SOLO PVR + STATUS 5)
+    -- =========================
+    SELECT 
+      o.seller_code AS usuario, 
+      SUM(dd.cantidad) AS unidades, 
+      SUM(dd.total) AS dolares,
+      COUNT(DISTINCT o.code) AS cant_ordenes, 
+      0::int AS cant_facturas
+    FROM ordenes o 
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE dd.codigo_categoria = '7'
+      AND o.status = 5
+      AND o.seller_code ILIKE 'PVR%'
+      AND o.fecha_entrega >= '${inicio}'
+      AND o.fecha_entrega < '${fin}'
     GROUP BY o.seller_code
+
     UNION ALL
-    SELECT f.seller_code AS usuario, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
-           0::int AS cant_ordenes, COUNT(DISTINCT f.code) AS cant_facturas
-    FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE dd.codigo_categoria='7' AND f.status IN(0,2,4,5)
-      AND (f.seller_code ILIKE 'R%' OR f.seller_code ILIKE 'PVR%')
-      AND f.fecha_creacion>='${inicio}' AND f.fecha_creacion<'${fin}'
+
+    -- =========================
+    -- FACTURAS (SOLO PVR + STATUS 5)
+    -- =========================
+    SELECT 
+      f.seller_code AS usuario, 
+      SUM(dd.cantidad) AS unidades, 
+      SUM(dd.total) AS dolares,
+      0::int AS cant_ordenes, 
+      COUNT(DISTINCT f.code) AS cant_facturas
+    FROM facturas f 
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE dd.codigo_categoria = '7'
+      AND f.status = 5
+      AND f.seller_code ILIKE 'PVR%'
+      AND f.fecha_entrega >= '${inicio}'
+      AND f.fecha_entrega < '${fin}'
     GROUP BY f.seller_code
-  ) x GROUP BY x.usuario ORDER BY dolares DESC;
+
+  ) x 
+  GROUP BY x.usuario 
+  ORDER BY dolares DESC;
 `;
 
+
 const sqlPrev = `
-  SELECT x.usuario, SUM(x.dolares) AS dolares, SUM(x.unidades) AS unidades FROM (
-    SELECT o.seller_code AS usuario, SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
-    FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE dd.codigo_categoria='7' AND o.status IN(2,4,5)
-      AND (o.seller_code ILIKE 'R%' OR o.seller_code ILIKE 'PVR%')
-      AND o.fecha_creacion>='${inicioPrev}' AND o.fecha_creacion<'${finPrev}'
-    GROUP BY o.seller_code
-    UNION ALL
-    SELECT f.seller_code AS usuario, SUM(dd.total) AS dolares, SUM(dd.cantidad) AS unidades
-    FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE dd.codigo_categoria='7' AND f.status IN(0,2,4,5)
-      AND (f.seller_code ILIKE 'R%' OR f.seller_code ILIKE 'PVR%')
-      AND f.fecha_creacion>='${inicioPrev}' AND f.fecha_creacion<'${finPrev}'
-    GROUP BY f.seller_code
-  ) x GROUP BY x.usuario;
+SELECT 
+  o.seller_code AS usuario, 
+  SUM(dd.cantidad) AS unidades, 
+  SUM(dd.total) AS dolares,
+  COUNT(DISTINCT o.code) AS cant_ordenes
+FROM ordenes o 
+JOIN detalle_documento dd ON dd.documento_code = o.code
+WHERE dd.codigo_categoria = '7'
+  AND o.status = 5
+  AND o.seller_code ILIKE 'PVR%'
+  AND o.fecha_entrega >= '${inicioPrev}'
+  AND o.fecha_entrega <  '${finPrev}'
+GROUP BY o.seller_code;
 `;
 
   const actual   = await sequelize.query(sqlActual, { type: Sequelize.QueryTypes.SELECT });
@@ -311,19 +338,55 @@ const obtenerVentasDescartablePorCanal = async (fechaInicio, fechaFin) => {
            ARRAY_AGG(DISTINCT o.customer_code) AS customer_codes,
            'FACTURA' AS origen
     FROM facturas o JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE (o.seller_code ILIKE 'A%' OR o.seller_code ILIKE 'V%' OR o.seller_code ILIKE 'M%')
+    WHERE (o.seller_code ILIKE 'A%' OR o.seller_code ILIKE 'M%')
       AND dd.codigo_categoria='7' AND o.status IN('2','4','5')
-      AND COALESCE(o.fecha_entrega, o.fecha_creacion)>='${fechaInicio}' AND COALESCE(o.fecha_entrega, o.fecha_creacion)<'${fechaFin}'
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion)>='${fechaInicio}'
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion)<'${fechaFin}'
     GROUP BY o.seller_code
+
     UNION ALL
+
+    -- VIP: Facturas V% + seller '18' → usa fecha_creacion (igual que tu query validado)
+    SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
+           COUNT(DISTINCT o.customer_code) AS clientes,
+           ARRAY_AGG(DISTINCT o.customer_code) AS customer_codes,
+           'FACTURA' AS origen
+    FROM facturas o JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE (o.seller_code ILIKE 'V%' OR o.seller_code = '18')
+      AND dd.codigo_categoria='7' AND o.status IN('2')
+      AND o.fecha_creacion>='${fechaInicio}'
+      AND o.fecha_creacion<'${fechaFin}'
+    GROUP BY o.seller_code
+
+    UNION ALL
+
+    -- Órdenes M% (sin cambio)
     SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
            COUNT(DISTINCT o.customer_code) AS clientes,
            ARRAY_AGG(DISTINCT o.customer_code) AS customer_codes,
            'ORDEN' AS origen
     FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE o.seller_code ILIKE 'M%' AND dd.codigo_categoria='7' AND o.status IN('2','4','5')
-      AND COALESCE(o.fecha_entrega, o.fecha_creacion)>='${fechaInicio}' AND COALESCE(o.fecha_entrega, o.fecha_creacion)<'${fechaFin}'
-    GROUP BY o.seller_code ORDER BY seller_code;
+    WHERE o.seller_code ILIKE 'M%'
+      AND dd.codigo_categoria='7' AND o.status IN('2','4','5')
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion)>='${fechaInicio}'
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion)<'${fechaFin}'
+    GROUP BY o.seller_code
+
+    UNION ALL
+
+    -- VIP: Órdenes V% + seller '18' → usa fecha_creacion
+    SELECT o.seller_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS dolares,
+           COUNT(DISTINCT o.customer_code) AS clientes,
+           ARRAY_AGG(DISTINCT o.customer_code) AS customer_codes,
+           'ORDEN' AS origen
+    FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE (o.seller_code ILIKE 'V%' OR o.seller_code = '18')
+      AND dd.codigo_categoria='7' AND o.status IN('2')
+      AND o.fecha_creacion>='${fechaInicio}'
+      AND o.fecha_creacion<'${fechaFin}'
+    GROUP BY o.seller_code
+
+    ORDER BY seller_code;
   `;
   return await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
 };
@@ -373,23 +436,68 @@ const MetasHistoricasDescartablePorCanal = async () => {
 // ================================================================
 const obtenerOdooDescartablePorCanal = async (fechaInicio, fechaFin) => {
   const sql = `
-    SELECT
-      COALESCE(o.equipo_ventas, 'SIN EQUIPO')   AS canal,
-      ROUND(SUM(dd.total)::NUMERIC, 2)             AS total_imponible,
-      COALESCE(SUM(dd.cantidad), 0)::bigint        AS total_unidades,
-      COUNT(DISTINCT o.code)                       AS rotacion,
-      COUNT(DISTINCT o.customer_code)              AS clientes,
-      ARRAY_AGG(DISTINCT o.customer_code)          AS customer_codes
-    FROM ordenes o
-    JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE o.origen_sistema = 'ODOO'
-      AND o.type    = 2
-      AND o.status  IN (2, 4, 5)
-      AND o.fecha_creacion >= '${fechaInicio}'
-      AND o.fecha_creacion  < '${fechaFin}'
-      AND dd.codigo_categoria = '7'
-    GROUP BY o.equipo_ventas
-    ORDER BY total_imponible DESC
+   SELECT
+        canal,
+        SUM(total_imponible)  AS total_imponible,
+        SUM(total_unidades)   AS total_unidades,
+        SUM(rotacion)         AS rotacion,
+        COUNT(DISTINCT customer_code) AS clientes
+      FROM (
+
+        -- ① ODOO por equipo_ventas (A%, V%, M%, etc.)
+        SELECT
+          COALESCE(o.equipo_ventas, 'SIN EQUIPO') AS canal,
+          ROUND(SUM(dd.total)::NUMERIC, 2)         AS total_imponible,
+          COALESCE(SUM(dd.cantidad), 0)::bigint    AS total_unidades,
+          COUNT(DISTINCT o.code)                   AS rotacion,
+          o.customer_code
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.origen_sistema   = 'ODOO'
+          AND o.type             = 2
+          AND o.status           IN (2)
+          AND o.fecha_creacion   >= '${fechaInicio}'
+          AND o.fecha_creacion   <  '${fechaFin}'
+          AND dd.codigo_categoria = '7'
+        GROUP BY o.equipo_ventas, o.customer_code
+
+        UNION ALL
+
+        -- ② Órdenes E% → canal 'Empresas'
+        SELECT
+          'Empresas'                               AS canal,
+          ROUND(SUM(dd.total)::NUMERIC, 2)         AS total_imponible,
+          COALESCE(SUM(dd.cantidad), 0)::bigint    AS total_unidades,
+          COUNT(DISTINCT o.code)                   AS rotacion,
+          o.customer_code
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.seller_code      LIKE 'E%'
+          AND dd.codigo_categoria = '7'
+          AND o.fecha_creacion   >= '${fechaInicio}'
+          AND o.fecha_creacion   <  '${fechaFin}'
+        GROUP BY o.customer_code
+
+        UNION ALL
+
+        -- ③ Facturas E% → canal 'Empresas'
+        SELECT
+          'Empresas'                               AS canal,
+          ROUND(SUM(dd.total)::NUMERIC, 2)         AS total_imponible,
+          COALESCE(SUM(dd.cantidad), 0)::bigint    AS total_unidades,
+          COUNT(DISTINCT f.code)                   AS rotacion,
+          f.customer_code
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.seller_code      LIKE 'E%'
+          AND dd.codigo_categoria = '7'
+          AND f.fecha_creacion   >= '${fechaInicio}'
+          AND f.fecha_creacion   <  '${fechaFin}'
+        GROUP BY f.customer_code
+
+      ) sub
+      GROUP BY canal
+      ORDER BY total_imponible DESC;
   `;
   return await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
 };
