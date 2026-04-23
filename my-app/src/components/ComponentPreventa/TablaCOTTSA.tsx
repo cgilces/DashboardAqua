@@ -28,7 +28,7 @@ const fetchExtra = async (anio: number | string, mes: number | string): Promise<
     const data = await res.json();
     return {
       unidades: Number(data.unidades) || 0,
-      dolares:  Number(data.dolares)  || 0,
+      dolares: Number(data.dolares) || 0,
       facturas: Number(data.facturas) || 0,
     };
   } catch {
@@ -50,7 +50,7 @@ const guardarExtraRemoto = async (
   const j = await res.json();
   return {
     unidades: Number(j.unidades) || 0,
-    dolares:  Number(j.dolares)  || 0,
+    dolares: Number(j.dolares) || 0,
     facturas: Number(j.facturas) || 0,
   };
 };
@@ -95,25 +95,25 @@ interface Props {
   }) => void;
 }
 
-const fmt    = (n: number) => n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (n: number) => n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n: number) => n.toLocaleString("es-EC");
 
 export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
-  const { user }   = useAuth();
-  const navigate   = useNavigate();
-  const isAdmin    = (user?.role ?? "").toUpperCase() === "ADMIN";
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const isAdmin = (user?.role ?? "").toUpperCase() === "ADMIN";
 
-  const [datos,    setDatos]    = useState<DatosCOTTSA | null>(null);
+  const [datos, setDatos] = useState<DatosCOTTSA | null>(null);
   const [cargando, setCargando] = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [extra,          setExtra]         = useState<ExtraCOTTSA>(EXTRA_VACIO);
-  const [mostrarModal,   setMostrarModal]  = useState(false);
-  const [formUnidades,   setFormUnidades]  = useState("");
-  const [formDolares,    setFormDolares]   = useState("");
-  const [formFacturas,   setFormFacturas]  = useState("");
-  const [guardando,      setGuardando]     = useState(false);
-  const [errorModal,     setErrorModal]    = useState<string | null>(null);
+  const [extra, setExtra] = useState<ExtraCOTTSA>(EXTRA_VACIO);
+  const [mostrarModal, setMostrarModal] = useState(false);
+  const [formUnidades, setFormUnidades] = useState("");
+  const [formDolares, setFormDolares] = useState("");
+  const [formFacturas, setFormFacturas] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [errorModal, setErrorModal] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelado = false;
@@ -125,11 +125,11 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
     if (!datos || !onTotalesLoaded) return;
     const ant = datos.totales.mesAnterior ?? datos.ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
     const hoyNow = new Date();
-    const esMes  = Number(anio) === hoyNow.getFullYear() && Number(mes) === hoyNow.getMonth() + 1;
-    const dolaresReal   = datos.totales.dolares    + extra.dolares;
+    const esMes = Number(anio) === hoyNow.getFullYear() && Number(mes) === hoyNow.getMonth() + 1;
+    const dolaresReal = datos.totales.dolares + extra.dolares;
     const proyeccionTot = datos.totales.proyeccion + extra.dolares;
     const montoComparar = esMes ? proyeccionTot : dolaresReal;
-    const varAbs        = montoComparar - ant;
+    const varAbs = montoComparar - ant;
     onTotalesLoaded({
       canal: "COTTSA - AGUA OK",
       monto: montoComparar,
@@ -144,7 +144,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
 
   const abrirModal = () => {
     setFormUnidades(extra.unidades ? String(extra.unidades) : "");
-    setFormDolares (extra.dolares  ? String(extra.dolares)  : "");
+    setFormDolares(extra.dolares ? String(extra.dolares) : "");
     setFormFacturas(extra.facturas ? String(extra.facturas) : "");
     setErrorModal(null);
     setMostrarModal(true);
@@ -153,7 +153,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
   const guardarModal = async () => {
     const nuevo: ExtraCOTTSA = {
       unidades: Number(formUnidades) || 0,
-      dolares:  Number(formDolares)  || 0,
+      dolares: Number(formDolares) || 0,
       facturas: Number(formFacturas) || 0,
     };
     setGuardando(true);
@@ -183,7 +183,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
     }
   };
 
-  const hoy         = new Date();
+  const hoy = new Date();
   const esMesActual = Number(anio) === hoy.getFullYear() && Number(mes) === hoy.getMonth() + 1;
 
   useEffect(() => {
@@ -217,47 +217,49 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
   const { totales, ranking } = datos;
 
   // Totales combinados (datos del sistema + datos externos cargados desde el modal)
-  const unidadesTotal   = totales.unidades      + extra.unidades;
-  const dolaresTotal    = totales.dolares       + extra.dolares;
-  const proyeccionTotal = totales.proyeccion    + extra.dolares;
-  const facturasTotal   = totales.cant_facturas + extra.facturas;
-  const hayExtra        = extra.unidades > 0 || extra.dolares > 0 || extra.facturas > 0;
+  const unidadesTotal = totales.unidades + extra.unidades;
+  const dolaresTotal = totales.dolares + extra.dolares;
+  const proyeccionTotal = totales.proyeccion + extra.dolares;
+  const facturasTotal = totales.cant_facturas + extra.facturas;
+  const hayExtra = extra.unidades > 0 || extra.dolares > 0 || extra.facturas > 0;
 
   // Variación del canal vs mes anterior
-  const totalAnterior    = totales.mesAnterior ?? ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
+  const totalAnterior = totales.mesAnterior ?? ranking.reduce((a, r) => a + r.vsMesAnterior.dolares_anterior, 0);
   const montoActualTabla = esMesActual ? proyeccionTotal : dolaresTotal;
-  const totalVariacion   = montoActualTabla - totalAnterior;
-  const porcVariacion    = totalAnterior > 0 ? (totalVariacion / totalAnterior) * 100 : null;
-  const esPositivo       = totalVariacion >= 0;
-  const sinDatos         = totalAnterior === 0;
+  const totalVariacion = montoActualTabla - totalAnterior;
+  const porcVariacion = totalAnterior > 0 ? (totalVariacion / totalAnterior) * 100 : null;
+  const esPositivo = totalVariacion >= 0;
+  const sinDatos = totalAnterior === 0;
 
   // Objetivo de gerencia del canal
-  const objetivo    = Number(totales.objetivo_gerencia          || 0);
+  const objetivo = Number(totales.objetivo_gerencia || 0);
   const objUnidades = Number(totales.objetivo_gerencia_unidades || 0);
 
   // Variación vs cupo (si hay objetivo configurado)
-  const variacionVsCupo     = objetivo > 0 ? montoActualTabla - objetivo : null;
+  const variacionVsCupo = objetivo > 0 ? montoActualTabla - objetivo : null;
   const porcVariacionVsCupo = objetivo > 0 && objetivo > 0
     ? (variacionVsCupo! / objetivo) * 100
     : null;
+
+  const precioPromedio = unidadesTotal > 0 ? dolaresTotal / unidadesTotal : 0;
 
   const exportarExcel = () => {
     if (!datos) return;
     try {
       const row = {
-        "Canal"          : "COTTSA - AGUA OK",
-        "Unidades"       : fmtInt(unidadesTotal),
-        "Dólares $"      : fmt(dolaresTotal),
-        "Proyección"     : fmt(proyeccionTotal),
-        "Cupo Gerencia"  : objetivo > 0 ? fmt(objetivo) : "—",
-        "Mes Anterior $" : sinDatos ? "Sin datos" : fmt(totalAnterior),
-        "Variación $"    : sinDatos ? "Sin datos" : fmt(totalVariacion),
-        "Variación %"    : sinDatos ? "Sin datos" : porcVariacion !== null ? `${porcVariacion >= 0 ? "+" : ""}${porcVariacion.toFixed(2)}%` : "–",
-        "Facturas"       : facturasTotal,
-        "Clientes"       : totales.cant_clientes,
-        "Extra Unidades" : extra.unidades,
-        "Extra Dólares"  : fmt(extra.dolares),
-        "Extra Facturas" : extra.facturas,
+        "Canal": "COTTSA - AGUA OK",
+        "Unidades": fmtInt(unidadesTotal),
+        "Dólares $": fmt(dolaresTotal),
+        "Proyección": fmt(proyeccionTotal),
+        "Cupo Gerencia": objetivo > 0 ? fmt(objetivo) : "—",
+        "Mes Anterior $": sinDatos ? "Sin datos" : fmt(totalAnterior),
+        "Variación $": sinDatos ? "Sin datos" : fmt(totalVariacion),
+        "Variación %": sinDatos ? "Sin datos" : porcVariacion !== null ? `${porcVariacion >= 0 ? "+" : ""}${porcVariacion.toFixed(2)}%` : "–",
+        "Facturas": facturasTotal,
+        "Clientes": totales.cant_clientes,
+        "Extra Unidades": extra.unidades,
+        "Extra Dólares": fmt(extra.dolares),
+        "Extra Facturas": extra.facturas,
       };
       const ws = XLSX.utils.json_to_sheet([]);
       XLSX.utils.sheet_add_aoa(ws, [[`COTTSA — VENTAS POR RUTA - ${mes}/${anio}`], []], { origin: "A1" });
@@ -304,6 +306,15 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               </p>
             )}
           </div>
+
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Precio Prom.</p>
+            <p className="text-base font-bold text-purple-300">
+              ${fmt(precioPromedio)}
+            </p>
+          </div>
+
+
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Facturas</p>
             <p className="text-base font-bold text-white">{facturasTotal}</p>
@@ -318,11 +329,10 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
             <button
               onClick={abrirModal}
               title="Agregar datos de sistema externo"
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-semibold active:scale-[0.98] transition-all ${
-                hayExtra
-                  ? "border-purple-400/70 bg-purple-500/25 text-purple-100 hover:bg-purple-500/35"
-                  : "border-purple-500/60 bg-purple-500/20 text-white hover:bg-purple-500/30"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-semibold active:scale-[0.98] transition-all ${hayExtra
+                ? "border-purple-400/70 bg-purple-500/25 text-purple-100 hover:bg-purple-500/35"
+                : "border-purple-500/60 bg-purple-500/20 text-white hover:bg-purple-500/30"
+                }`}
             >
               <BsPlusCircle size={16} className="shrink-0" />
               <span>{hayExtra ? "Editar externo" : "Añadir externo"}</span>
@@ -358,6 +368,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               <th className="px-4 py-3 text-left">Canal</th>
               <th className="px-4 py-3 text-right">Unidades</th>
               <th className="px-4 py-3 text-right">Dólares $</th>
+              <th className="px-4 py-3 text-right">Precio Promedio	</th>
               {esMesActual && <th className="px-4 py-3 text-right">Proyección</th>}
               <th className="px-4 py-3 text-right text-amber-300">Cupo</th>
               <th className="px-4 py-3 text-right">Variación</th>
@@ -371,10 +382,10 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
             <tr
               onClick={() => navigate(`/COTTSA/clientes/${anio}/${mes}`, {
                 state: {
-                  objetivo_gerencia:          objetivo,
+                  objetivo_gerencia: objetivo,
                   objetivo_gerencia_unidades: objUnidades,
-                  proyeccion:                 totales.proyeccion,
-                  monto:                      totales.dolares,
+                  proyeccion: totales.proyeccion,
+                  monto: totales.dolares,
                 },
               })}
               className="bg-[#013d32] cursor-pointer hover:bg-[#025940] border-l-4 border-transparent hover:border-green-400 transition-all duration-200"
@@ -412,6 +423,11 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                 )}
               </td>
 
+
+              <td className="px-4 py-3 text-right text-purple-300 font-bold">
+                ${fmt(precioPromedio)}
+              </td>
+
               {esMesActual && (
                 <td className="px-4 py-3 text-right font-bold text-emerald-400">
                   ${fmt(proyeccionTotal)}
@@ -424,11 +440,10 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               </td>
 
               {/* Variación — usa cupo si está configurado, si no usa mes anterior */}
-              <td className={`px-4 py-3 text-right font-bold ${
-                objetivo > 0
-                  ? variacionVsCupo! >= 0 ? "text-green-400" : "text-red-400"
-                  : sinDatos ? "" : esPositivo ? "text-green-400" : "text-red-400"
-              }`}>
+              <td className={`px-4 py-3 text-right font-bold ${objetivo > 0
+                ? variacionVsCupo! >= 0 ? "text-green-400" : "text-red-400"
+                : sinDatos ? "" : esPositivo ? "text-green-400" : "text-red-400"
+                }`}>
                 {objetivo > 0 ? (
                   <>
                     {variacionVsCupo! >= 0 ? "+" : "-"}${fmt(Math.abs(variacionVsCupo!))}
@@ -444,11 +459,10 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               </td>
 
               {/* % */}
-              <td className={`px-4 py-3 text-right font-bold ${
-                objetivo > 0
-                  ? porcVariacionVsCupo! >= 0 ? "text-green-400" : "text-red-400"
-                  : sinDatos ? "" : esPositivo ? "text-green-400" : "text-red-400"
-              }`}>
+              <td className={`px-4 py-3 text-right font-bold ${objetivo > 0
+                ? porcVariacionVsCupo! >= 0 ? "text-green-400" : "text-red-400"
+                : sinDatos ? "" : esPositivo ? "text-green-400" : "text-red-400"
+                }`}>
                 {objetivo > 0 ? (
                   porcVariacionVsCupo !== null
                     ? `${porcVariacionVsCupo >= 0 ? "+" : ""}${porcVariacionVsCupo.toFixed(2)}%`

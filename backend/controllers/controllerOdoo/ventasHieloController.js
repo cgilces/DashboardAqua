@@ -302,14 +302,13 @@ const obtenerClientesHieloOdoo = async (req, res) => {
     const R = { inicio, fin, antInicio, antFin, inicioAnio, finAnio };
 
     // ── Filtros base reutilizables ─────────────────────────────────────────────
-    // MobilVendor: facturas con seller_code H% / 10 / h3, fecha por fecha_creacion
-    // Odoo:        facturas con origen_sistema='ODOO', fecha por fecha_creacion
-    //              (fecha_creacion en Odoo guarda invoice_date_due, no delivery real)
-    const mvWhere = `(seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3')) AND status IN ('2','4','5')`;
-    const odooWhere = `origen_sistema = 'ODOO' AND status IN ('2','4','5')`;
+    // Replican EXACTAMENTE las dos fuentes de la tabla principal (HIELO — VENTAS EMPRESA):
+    //   ① MobilVendor: facturas con seller_code H% / 10 / h3, status='2', fecha_creacion
+    //   ② Distrinter:  ordenes con campania_id=5, status=2, fecha_creacion
+    // (sin filtro de categoría — la principal tampoco lo aplica)
+    const mvWhere = `(seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3')) AND status IN ('2')`;
 
-    // NOTA: customer_address_code es VARCHAR en facturas → se castea a TEXT
-    // para mantener compatibilidad con el resto del código.
+    // NOTA: customer_address_code es VARCHAR en facturas e INTEGER en ordenes → cast a TEXT.
 
     // ── 1. Un row por (customer_code, customer_address_code) del año ──────────
     const clientesSQL = `
@@ -333,21 +332,10 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
     UNION
 
-    SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE ${odooWhere}
-      AND dd.codigo_categoria = '28'
-      AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
-
-    UNION
-
     SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code
     FROM ordenes o
-    JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.campania_id = 5
       AND o.status IN (2)
-      AND dd.codigo_categoria = '28'
       AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
 
   ) src
@@ -372,21 +360,12 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
     UNION ALL
 
-    SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
-           f.fecha_creacion AS fecha, dd.total, dd.cantidad
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE ${odooWhere} AND dd.codigo_categoria = '28'
-
-    UNION ALL
-
     SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
            o.fecha_creacion AS fecha, dd.total, dd.cantidad
     FROM ordenes o
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.campania_id = 5
       AND o.status IN (2)
-      AND dd.codigo_categoria = '28'
 
   ) comb
   GROUP BY customer_code, customer_address_code
@@ -407,22 +386,12 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
       UNION ALL
 
-      SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
-             f.fecha_creacion AS fecha, dd.total
-      FROM facturas f
-      JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE ${odooWhere} AND dd.codigo_categoria = '28'
-        AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
-
-      UNION ALL
-
       SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
              o.fecha_creacion AS fecha, dd.total
       FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
       WHERE o.campania_id = 5
         AND o.status IN (2)
-        AND dd.codigo_categoria = '28'
         AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
 
     ) comb
@@ -444,19 +413,11 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
     UNION ALL
 
-    SELECT customer_code, customer_address_code::TEXT AS customer_address_code,
-           fecha_creacion AS fecha
-    FROM facturas WHERE ${odooWhere}
-
-    UNION ALL
-
     SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
            o.fecha_creacion AS fecha
     FROM ordenes o
-    JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.campania_id = 5
       AND o.status IN (2)
-      AND dd.codigo_categoria = '28'
 
   ) comb
   GROUP BY customer_code, customer_address_code
@@ -464,41 +425,29 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
 
 
-    // 5. Productos vendidos (solo del mes consultado) - SOLO HIELO (cat 28)
+    // 5. Productos vendidos (solo del mes consultado) — replica las DOS fuentes
+    //    de la tabla principal (MobilVendor + Distrinter), sin filtro de categoría.
     const productosSQL = `
       SELECT descripcion AS producto,
              SUM(cantidad) AS unidades_vendidas,
              SUM(total)    AS monto_usd
       FROM (
-        -- MobilVendor: status IN ('2'), SOLO HIELO
+        -- MobilVendor: facturas H%/10/h3 con status='2'
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
           AND f.status IN ('2')
-          AND dd.codigo_categoria = '28'
           AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
 
         UNION ALL
 
-        -- Odoo: status IN ('2'), SOLO HIELO
-        SELECT dd.descripcion, dd.cantidad, dd.total
-        FROM facturas f
-        JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.origen_sistema = 'ODOO'
-          AND f.status IN ('2')
-          AND dd.codigo_categoria = '28'
-          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
-
-        UNION ALL
-
-        -- Distrinter: status IN (2), SOLO HIELO
+        -- Distrinter: ordenes campania_id=5 con status=2
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM ordenes o
         JOIN detalle_documento dd ON dd.documento_code = o.code
         WHERE o.campania_id = 5
           AND o.status IN (2)
-          AND dd.codigo_categoria = '28'
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
       ) comb
       GROUP BY descripcion
