@@ -10,6 +10,14 @@ interface Props {
 const money = (v?: number) =>
   v != null ? `$${v.toLocaleString("es-EC", { minimumFractionDigits: 2 })}` : "$0,00";
 
+const precioPromedio = (dolares: number, unidades: number) =>
+  unidades > 0
+    ? (dolares / unidades).toLocaleString("es-EC", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+    : "0,00";
+
 const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false, datos }) => {
   const navigate = useNavigate();
   if (!datos) return null;
@@ -28,6 +36,8 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
 
   const irClientes = () => navigate(`/empresas-botellon/clientes/${anio}/${mes}`);
 
+  const precioProm = unidades > 0 ? dolares / unidades : 0;
+
   return (
     <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mb-6 md:mb-8 overflow-hidden">
       <div className="flex flex-col gap-3 md:gap-4 md:flex-row md:items-center md:justify-between px-3 sm:px-4 py-3 sm:py-4">
@@ -45,6 +55,15 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
             <p className="text-[10px] sm:text-xs text-gray-400">Dólares</p>
             <p className="text-sm sm:text-base font-bold text-white break-all">{money(dolares)}</p>
           </div>
+
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-2 sm:px-3 py-2 text-center">
+            <p className="text-[10px] sm:text-xs text-gray-400">Precio Promedio</p>
+            <p className="text-sm sm:text-base font-bold text-purple-300">
+              ${precioPromedio(dolares, unidades)}
+            </p>
+          </div>
+
+
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-2 sm:px-3 py-2 text-center">
             <p className="text-[10px] sm:text-xs text-gray-400">Proyección</p>
             <p className="text-sm sm:text-base font-bold text-emerald-400 break-all">{money(proyDolares)}</p>
@@ -67,6 +86,7 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
               <th className="px-4 py-3 text-left">CANAL</th>
               <th className="px-4 py-3 text-right">UNIDADES</th>
               <th className="px-4 py-3 text-right">DÓLARES</th>
+              <th className="px-4 py-3 text-right">PRECIO PROMEDIO</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN UNID.</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN USD $</th>
               <th className="px-4 py-3 text-right">VARIACIÓN</th>
@@ -77,23 +97,49 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
             <tr
               onClick={irClientes}
               className="bg-[#013d32] hover:bg-[#025940] cursor-pointer transition-all duration-200
-                         border-l-4 border-transparent hover:border-green-400 hover:shadow-lg"
+               border-l-4 border-transparent hover:border-green-400 hover:shadow-lg font-bold"
             >
-              <td className="px-4 py-3 font-bold text-blue-300">
+              <td className="px-4 py-3 text-blue-300">
                 EMPRESAS BOTELLÓN
-                <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
+                <span className="ml-2 text-[10px] text-gray-400 font-normal italic">
+                  Ver clientes →
+                </span>
               </td>
-              <td className="px-4 py-3 text-right text-green-400 font-bold">{unidades.toLocaleString("es-EC")}</td>
-              <td className="px-4 py-3 text-right text-blue-400 font-bold">{money(dolares)}</td>
-              <td className="px-4 py-3 text-right text-gray-300">{proyUnidades.toLocaleString("es-EC")}</td>
-              <td className="px-4 py-3 text-right text-emerald-400 font-bold">
+
+              <td className="px-4 py-3 text-right text-green-400">
+                {unidades.toLocaleString("es-EC")}
+              </td>
+
+              <td className="px-4 py-3 text-right text-blue-400">
+                {money(dolares)}
+              </td>
+
+              <td className="px-4 py-3 text-right text-purple-400">
+                {money(precioPromedio(dolares, unidades))}
+              </td>
+
+              <td className="px-4 py-3 text-right text-gray-300">
+                {proyUnidades.toLocaleString("es-EC")}
+              </td>
+
+              <td className="px-4 py-3 text-right text-emerald-400">
                 {esMesActual ? money(proyDolares) : money(dolares)}
               </td>
-              <td className={`px-4 py-3 text-right font-bold ${positivo ? "text-green-400" : "text-red-400"}`}>
-                {varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}
+
+              <td
+                className={`px-4 py-3 text-right ${positivo ? "text-green-400" : "text-red-400"
+                  }`}
+              >
+                {varAbs >= 0 ? "+" : "-"}
+                {money(Math.abs(varAbs))}
               </td>
-              <td className={`px-4 py-3 text-right font-bold ${positivo ? "text-green-400" : "text-red-400"}`}>
-                {varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%
+
+              <td
+                className={`px-4 py-3 text-right ${positivo ? "text-green-400" : "text-red-400"
+                  }`}
+              >
+                {varPorc >= 0 ? "+" : ""}
+                {varPorc.toFixed(2)}%
               </td>
             </tr>
           </tbody>
@@ -102,6 +148,9 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
               <td className="px-4 py-3 text-white">TOTAL GENERAL</td>
               <td className="px-4 py-3 text-right text-blue-300">{unidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-300">{money(dolares)}</td>
+              <td className="px-4 py-3 text-right text-purple-300">
+                ${precioPromedio(dolares, unidades)}
+              </td>
               <td className="px-4 py-3 text-right text-blue-300">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-300">{esMesActual ? money(proyDolares) : money(dolares)}</td>
               <td className={`px-4 py-3 text-right ${positivo ? "text-green-400" : "text-red-400"}`}>
@@ -117,31 +166,55 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
         <button
           onClick={irClientes}
           className="w-full bg-[#013d32] hover:bg-[#025940] active:bg-[#02492f] transition
-                     border border-[#046C5E] rounded-xl p-4 text-left"
+               border border-[#046C5E] rounded-xl p-4 text-left"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="font-bold text-blue-300 text-sm">EMPRESAS BOTELLÓN</span>
             <span className="text-[10px] text-emerald-300 italic">Ver clientes →</span>
           </div>
+
           <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+
             <dt className="text-gray-400">Unidades</dt>
-            <dd className="text-right text-green-400 font-semibold">{unidades.toLocaleString("es-EC")}</dd>
+            <dd className="text-right text-green-400 font-semibold">
+              {unidades.toLocaleString("es-EC")}
+            </dd>
+
             <dt className="text-gray-400">Dólares</dt>
-            <dd className="text-right text-blue-400 font-semibold">{money(dolares)}</dd>
+            <dd className="text-right text-blue-400 font-semibold">
+              {money(dolares)}
+            </dd>
+
+            {/*  PRECIO PROMEDIO */}
+            <dt className="text-gray-400">Precio Promedio</dt>
+            <dd className="text-right text-purple-300 font-semibold">
+              $
+              {(unidades > 0 ? dolares / unidades : 0).toLocaleString("es-EC", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </dd>
+
             <dt className="text-gray-400">Proy. Unid.</dt>
-            <dd className="text-right text-gray-200">{proyUnidades.toLocaleString("es-EC")}</dd>
+            <dd className="text-right text-gray-200">
+              {proyUnidades.toLocaleString("es-EC")}
+            </dd>
+
             <dt className="text-gray-400">Proy. USD</dt>
             <dd className="text-right text-emerald-400 font-semibold">
               {esMesActual ? money(proyDolares) : money(dolares)}
             </dd>
+
             <dt className="text-gray-400">Variación</dt>
             <dd className={`text-right font-semibold ${positivo ? "text-green-400" : "text-red-400"}`}>
               {varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}
             </dd>
+
             <dt className="text-gray-400">%</dt>
             <dd className={`text-right font-semibold ${positivo ? "text-green-400" : "text-red-400"}`}>
               {varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%
             </dd>
+
           </dl>
         </button>
       </div>

@@ -60,6 +60,9 @@ const RankingRutasInner = ({
   const totalProyeccion = sortedData.reduce((acc, r) => acc + Number(r.proyeccion || 0), 0);
   const totalVsMesAnterior = sortedData.reduce((acc, r) => acc + (r.vsMesAnterior?.variacion_abs || 0), 0);
 
+  const precioPromedioTotal =
+    totalUnidades > 0 ? totalUSD / totalUnidades : 0;
+
   const exportarTablaExcel = () => {
     if (!sortedData || sortedData.length === 0) return;
 
@@ -174,6 +177,15 @@ const RankingRutasInner = ({
             <p className="text-xs text-gray-400">Dólares</p>
             <p className="text-base font-bold text-white">${fmt(totalUSD)}</p>
           </div>
+
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+            <p className="text-xs text-gray-400">Precio Promedio</p>
+            <p className="text-base font-bold text-yellow-300">
+              ${fmt(precioPromedioTotal)}
+            </p>
+          </div>
+
+
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Meta</p>
             <p className="text-base font-bold text-white">${fmt(totalMeta)}</p>
@@ -211,124 +223,138 @@ const RankingRutasInner = ({
       </div>
 
       <div className="overflow-x-auto">
-      <table className="min-w-full text-sm">
-        <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-          <tr>
-            <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('N*')}>
-              N* <span className="text-green-300">{sortConfig.key === 'N*' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('usuario')}>
-              Usuario <span className="text-green-300">{sortConfig.key === 'usuario' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('unidades')}>
-              Unidades <span className="text-green-300">{sortConfig.key === 'unidades' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('dolares')}>
-              Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
-              CUPO <span className="text-amber-300">{sortConfig.key === 'objetivo_gerencia' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('proyeccion')}>
-              Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('vsMesAnterior')}>
-              Variación <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('vsMesAnterior')}>
-              % <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-            </th>
-          </tr>
-        </thead>
+        <table className="min-w-full text-sm">
+          <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+            <tr>
+              <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('N*')}>
+                N* <span className="text-green-300">{sortConfig.key === 'N*' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              </th>
+              <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('usuario')}>
+                Usuario <span className="text-green-300">{sortConfig.key === 'usuario' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('unidades')}>
+                Unidades <span className="text-green-300">{sortConfig.key === 'unidades' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('dolares')}>
+                Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              </th>
 
-        <tbody>
-          {sortedData.map((r, index) => {
-            const cupo = Number(r.objetivo_gerencia || 0);
-            const proy = Number(r.proyeccion || 0);
-            const variacionAbs = proy - cupo;
-            const variacionPorc = cupo > 0 ? (variacionAbs / cupo) * 100 : 0;
-            const tieneCupo = cupo > 0;
+              <th className="px-4 py-3 text-right">
+                Precio Promedio
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
+                CUPO <span className="text-amber-300">{sortConfig.key === 'objetivo_gerencia' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('proyeccion')}>
+                Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('vsMesAnterior')}>
+                Variación <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              </th>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('vsMesAnterior')}>
+                % <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              </th>
+            </tr>
+          </thead>
 
-            return (
-            <tr
-              key={index}
-              onClick={() => navigate(`/ruta/${r.usuario}?anio=${anio}&mes=${mes}`, {
-                state: {
-                  objetivo_gerencia:          r.objetivo_gerencia,
-                  objetivo_gerencia_unidades: r.objetivo_gerencia_unidades,
-                  proyeccion:                 r.proyeccion,
-                  monto:                      r.dolares,
-                  meta:                       r.meta,
-                }
-              })}
-              className={`transition-all duration-200 cursor-pointer
+          <tbody>
+            {sortedData.map((r, index) => {
+              const cupo = Number(r.objetivo_gerencia || 0);
+              const proy = Number(r.proyeccion || 0);
+              const variacionAbs = proy - cupo;
+              const variacionPorc = cupo > 0 ? (variacionAbs / cupo) * 100 : 0;
+              const tieneCupo = cupo > 0;
+
+              return (
+                <tr
+                  key={index}
+                  onClick={() => navigate(`/detalle-ruta/${r.usuario}/${anio}/${mes}`, {
+                    state: {
+                      objetivo_gerencia: r.objetivo_gerencia,
+                      objetivo_gerencia_unidades: r.objetivo_gerencia_unidades,
+                      proyeccion: r.proyeccion,
+                      monto: r.dolares,
+                      meta: r.meta,
+                    }
+                  })}
+                  className={`transition-all duration-200 cursor-pointer
                 ${index % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
                 hover:bg-[#025940] hover:shadow-lg hover:text-white
                 border-l-4 border-transparent hover:border-green-400
               `}
-            >
-              <td className="px-4 py-2 font-medium text-gray-100">{index + 1}</td>
-              <td className="px-4 py-2 text-blue-300 font-bold">{r.usuario}</td>
-              <td className="px-4 py-2 text-right text-green-400 font-bold">
-                {Number(r.unidades).toLocaleString()}
-              </td>
-              <td className="px-4 py-2 text-right text-blue-300 font-bold">
-                ${Number(r.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-              </td>
-              <td className="px-4 py-2 text-right font-bold text-amber-300">
-                {tieneCupo ? `$${fmt(cupo)}` : <span className="text-gray-500">—</span>}
-              </td>
-              <td className="px-4 py-2 text-right font-bold text-blue-300">
-                ${proy.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
-              </td>
-              {/* VARIACIÓN */}
-              <td className={`px-4 py-2 text-right font-bold ${!tieneCupo ? "text-gray-400" : variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
-                {!tieneCupo
-                  ? <span className="text-gray-500 text-xs italic">—</span>
-                  : <>{variacionAbs > 0 ? "+" : "-"}${Math.abs(variacionAbs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                }
-              </td>
-              {/* % */}
-              <td className={`px-4 py-2 text-right font-bold ${!tieneCupo ? "text-gray-400" : variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
-                {!tieneCupo
-                  ? <span className="text-gray-500 text-xs italic">—</span>
-                  : <>{variacionPorc > 0 ? "+" : ""}{variacionPorc.toFixed(2)}%</>
-                }
-              </td>
-            </tr>
-            );
-          })}
-        </tbody>
-
-        <tfoot className="bg-[#014434] font-bold text-gray-200 border-t border-[#046C5E]">
-          <tr>
-            <td className="px-4 py-3 text-left">Total</td>
-            <td className="px-4 py-3"></td>
-            <td className="px-4 py-3 text-right text-green-400">{totalUnidades.toLocaleString()}</td>
-            <td className="px-4 py-3 text-right text-blue-400">
-              ${totalUSD.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-            <td className="px-4 py-3 text-right text-amber-300">
-              {totalCupo > 0 ? `$${fmt(totalCupo)}` : "—"}
-            </td>
-            <td className="px-4 py-3 text-right text-blue-400">
-              ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-            {(() => {
-              const totalVar = totalProyeccion - totalCupo;
-              return (
-                <td className={`px-4 py-3 text-right ${totalVar >= 0 ? "text-green-400" : "text-red-400"}`}>
-                  {totalCupo > 0
-                    ? <>{totalVar >= 0 ? "+" : "-"}${Math.abs(totalVar).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                    : <span className="text-gray-400">—</span>
-                  }
-                </td>
+                >
+                  <td className="px-4 py-2 font-medium text-gray-100">{index + 1}</td>
+                  <td className="px-4 py-2 text-blue-300 font-bold">{r.usuario}</td>
+                  <td className="px-4 py-2 text-right text-green-400 font-bold">
+                    {Number(r.unidades).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 text-right text-blue-300 font-bold">
+                    ${Number(r.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-4 py-2 text-right text-yellow-300 font-bold">
+                    ${fmt(
+                      Number(r.unidades) > 0
+                        ? Number(r.dolares) / Number(r.unidades)
+                        : 0
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-right font-bold text-amber-300">
+                    {tieneCupo ? `$${fmt(cupo)}` : <span className="text-gray-500">—</span>}
+                  </td>
+                  <td className="px-4 py-2 text-right font-bold text-blue-300">
+                    ${proy.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
+                  </td>
+                  {/* VARIACIÓN */}
+                  <td className={`px-4 py-2 text-right font-bold ${!tieneCupo ? "text-gray-400" : variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
+                    {!tieneCupo
+                      ? <span className="text-gray-500 text-xs italic">—</span>
+                      : <>{variacionAbs > 0 ? "+" : "-"}${Math.abs(variacionAbs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                    }
+                  </td>
+                  {/* % */}
+                  <td className={`px-4 py-2 text-right font-bold ${!tieneCupo ? "text-gray-400" : variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
+                    {!tieneCupo
+                      ? <span className="text-gray-500 text-xs italic">—</span>
+                      : <>{variacionPorc > 0 ? "+" : ""}{variacionPorc.toFixed(2)}%</>
+                    }
+                  </td>
+                </tr>
               );
-            })()}
-            <td className="px-4 py-3 text-right text-gray-400">—</td>
-          </tr>
-        </tfoot>
-      </table>
+            })}
+          </tbody>
+
+          <tfoot className="bg-[#014434] font-bold text-gray-200 border-t border-[#046C5E]">
+            <tr>
+              <td className="px-4 py-3 text-left">Total</td>
+              <td className="px-4 py-3"></td>
+              <td className="px-4 py-3 text-right text-green-400">{totalUnidades.toLocaleString()}</td>
+              <td className="px-4 py-3 text-right text-blue-400">
+                ${totalUSD.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </td>
+              <td className="px-4 py-3 text-right text-yellow-300">
+                ${fmt(precioPromedioTotal)}
+              </td>
+              <td className="px-4 py-3 text-right text-amber-300">
+                {totalCupo > 0 ? `$${fmt(totalCupo)}` : "—"}
+              </td>
+              <td className="px-4 py-3 text-right text-blue-400">
+                ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </td>
+              {(() => {
+                const totalVar = totalProyeccion - totalCupo;
+                return (
+                  <td className={`px-4 py-3 text-right ${totalVar >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    {totalCupo > 0
+                      ? <>{totalVar >= 0 ? "+" : "-"}${Math.abs(totalVar).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                      : <span className="text-gray-400">—</span>
+                    }
+                  </td>
+                );
+              })()}
+              <td className="px-4 py-3 text-right text-gray-400">—</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );

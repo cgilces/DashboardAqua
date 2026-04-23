@@ -65,14 +65,68 @@ function getFiltroCanal(canal) {
   const c   = canal.toLowerCase();
   const cup = canal.toUpperCase();
 
-  if (cup === "VIP")       return { usaCombinado: true, filtroMobil: "f.seller_code ILIKE 'V%'", equipoOdoo: "Moderno" };
-  if (cup === "DOMICILIO") return { usaCombinado: true, filtroMobil: "f.seller_code ILIKE 'A%'", equipoOdoo: "Domicilio" };
-  if (cup === "MAYORISTA") return { tabla: "facturas", filtro: "f.seller_code ILIKE 'M%'", usaOrdenes: false, usaOdoo: false };
-  if (cup === "EMPRESAS")  return { tabla: "ordenes",  filtro: null, usaOrdenes: true,  usaOdoo: false };
+  // VIP (V% en mobil) + ODOO Moderno — replica EXACTA de la tabla principal:
+  //   facturas/ordenes WHERE seller_code ILIKE 'V%' AND status='2' AND fecha_creacion
+  if (cup === "VIP") return {
+    usaCombinado:      true,
+    filtroMobilFact:   "f.seller_code ILIKE 'V%'",
+    filtroMobilOrden:  "o.seller_code ILIKE 'V%'",
+    statusMobilFact:   "('2')",
+    statusMobilOrden:  "('2')",
+    fechaMobilFact:    "f.fecha_creacion",
+    fechaMobilOrden:   "o.fecha_creacion",
+    incluyeOrdenesMobil: true,
+    equipoOdoo:        "Moderno",
+  };
+
+  // DOMICILIO (A%) + ODOO Domicilio — replica EXACTA: solo facturas A% con status (2,4,5)
+  if (cup === "DOMICILIO") return {
+    usaCombinado:      true,
+    filtroMobilFact:   "f.seller_code ILIKE 'A%'",
+    filtroMobilOrden:  null,
+    statusMobilFact:   "('2','4','5')",
+    statusMobilOrden:  null,
+    fechaMobilFact:    "COALESCE(f.fecha_entrega, f.fecha_creacion)",
+    fechaMobilOrden:   null,
+    incluyeOrdenesMobil: false,
+    equipoOdoo:        "Domicilio",
+  };
+
+  // MAYORISTA (M%) — facturas M% + ordenes M% con status (2,4,5)
+  if (cup === "MAYORISTA") return {
+    tabla: "facturas",
+    filtro:           "f.seller_code ILIKE 'M%'",
+    filtroOrden:      "o.seller_code ILIKE 'M%'",
+    statusFact:       "('2','4','5')",
+    statusOrden:      "('2','4','5')",
+    fechaFact:        "COALESCE(f.fecha_entrega, f.fecha_creacion)",
+    fechaOrden:       "COALESCE(o.fecha_entrega, o.fecha_creacion)",
+    incluyeOrdenes:   true,
+    usaOrdenes:       false,
+    usaOdoo:          false,
+  };
+
+  if (cup === "EMPRESAS") return { tabla: "ordenes", filtro: null, usaOrdenes: true, usaOdoo: false };
+
+  // OTRO — el frontend clasifica como OTRO todo seller_code que no empiece por A/V/M.
+  // El backend principal solo retorna sellers A%/V%/M%/'18', por lo que OTRO = seller_code '18'.
+  // Aplica los mismos filtros que VIP (status='2', fecha_creacion, facturas + ordenes).
+  if (cup === "OTRO") return {
+    tabla: "facturas",
+    filtro:           "f.seller_code = '18'",
+    filtroOrden:      "o.seller_code = '18'",
+    statusFact:       "('2')",
+    statusOrden:      "('2')",
+    fechaFact:        "f.fecha_creacion",
+    fechaOrden:       "o.fecha_creacion",
+    incluyeOrdenes:   true,
+    usaOrdenes:       false,
+    usaOdoo:          false,
+  };
 
   // Canales ODOO (por equipo_ventas)
   const equipoVentas = ODOO_CANAL_MAP[c];
-  if (equipoVentas)        return { usaOrdenes: false, usaOdoo: true, equipoVentas };
+  if (equipoVentas) return { usaOrdenes: false, usaOdoo: true, equipoVentas };
 
   return null;
 }
@@ -94,7 +148,7 @@ const obtenerClientesCanal = async (req, res) => {
 
     const config = getFiltroCanal(canal);
     if (!config)
-      return res.status(400).json({ error: "Canal no válido. Use VIP, DOMICILIO o EMPRESAS" });
+      return res.status(400).json({ error: "Canal no válido. Use VIP, DOMICILIO, MAYORISTA, EMPRESAS, OTRO o un canal ODOO" });
 
     const inicio    = getFechaInicioMes(anioNum, mesNum);
     const fin       = getFechaFinMes(anioNum, mesNum);
@@ -105,46 +159,117 @@ const obtenerClientesCanal = async (req, res) => {
     let clientes = [];
 
     if (config.usaCombinado) {
-      // ── DOMICILIO combinado: Mobilvendor (A%) + ODOO Domicilio ───────────
-      const filtro      = config.filtroMobil;
+      // ── Mobilvendor (V%/'18' o A%) + ODOO equivalente ────────────────────
+      const filtroF      = config.filtroMobilFact;
+      const filtroO      = config.filtroMobilOrden;
+      const statusF      = config.statusMobilFact;
+      const statusO      = config.statusMobilOrden;
+      const fechaF       = config.fechaMobilFact;
+      const fechaO       = config.fechaMobilOrden;
       const equipoVentas = config.equipoOdoo.replace(/'/g, "''");
+      const incluyeOrd   = config.incluyeOrdenesMobil;
+
+      // CTE direcciones activas (clientes con actividad desde mes anterior)
+      // NOTA: facturas.customer_address_code es VARCHAR y ordenes.customer_address_code es INTEGER.
+      // Casteamos a TEXT en ambos lados para que el UNION sea válido.
+      const cteDirActivas = incluyeOrd
+        ? `direcciones_activas AS (
+            SELECT customer_code, customer_address_code FROM (
+              SELECT DISTINCT f.customer_code, f.customer_address_code::text AS customer_address_code
+              FROM facturas f
+              WHERE ${filtroF} AND f.status IN ${statusF}
+                AND ${fechaF} >= '${antInicio}' AND f.customer_address_code IS NOT NULL
+              UNION
+              SELECT DISTINCT o.customer_code, o.customer_address_code::text AS customer_address_code
+              FROM ordenes o
+              WHERE ${filtroO} AND o.status IN ${statusO}
+                AND ${fechaO} >= '${antInicio}' AND o.customer_address_code IS NOT NULL
+            ) u
+          )`
+        : `direcciones_activas AS (
+            SELECT DISTINCT f.customer_code, f.customer_address_code::text AS customer_address_code
+            FROM facturas f
+            WHERE ${filtroF} AND f.status IN ${statusF}
+              AND ${fechaF} >= '${antInicio}' AND f.customer_address_code IS NOT NULL
+          )`;
+
+      const cteConsumoActual = incluyeOrd
+        ? `consumo_actual AS (
+            SELECT customer_code, customer_address_code, SUM(unidades) AS unidades, SUM(monto) AS monto
+            FROM (
+              SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS monto
+              FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+              WHERE ${filtroF} AND dd.codigo_categoria='7' AND f.status IN ${statusF}
+                AND ${fechaF} >= '${inicio}' AND ${fechaF} < '${fin}'
+              GROUP BY f.customer_code, f.customer_address_code
+              UNION ALL
+              SELECT o.customer_code, o.customer_address_code::text AS customer_address_code, SUM(dd.cantidad), SUM(dd.total)
+              FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+              WHERE ${filtroO} AND dd.codigo_categoria='7' AND o.status IN ${statusO}
+                AND ${fechaO} >= '${inicio}' AND ${fechaO} < '${fin}'
+              GROUP BY o.customer_code, o.customer_address_code
+            ) u
+            GROUP BY customer_code, customer_address_code
+          )`
+        : `consumo_actual AS (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS monto
+            FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+            WHERE ${filtroF} AND dd.codigo_categoria='7' AND f.status IN ${statusF}
+              AND ${fechaF} >= '${inicio}' AND ${fechaF} < '${fin}'
+            GROUP BY f.customer_code, f.customer_address_code
+          )`;
+
+      const cteConsumoAnterior = incluyeOrd
+        ? `consumo_anterior AS (
+            SELECT customer_code, customer_address_code, SUM(monto) AS monto
+            FROM (
+              SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, SUM(dd.total) AS monto
+              FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+              WHERE ${filtroF} AND dd.codigo_categoria='7' AND f.status IN ${statusF}
+                AND ${fechaF} >= '${antInicio}' AND ${fechaF} < '${antFin}'
+              GROUP BY f.customer_code, f.customer_address_code
+              UNION ALL
+              SELECT o.customer_code, o.customer_address_code::text AS customer_address_code, SUM(dd.total)
+              FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+              WHERE ${filtroO} AND dd.codigo_categoria='7' AND o.status IN ${statusO}
+                AND ${fechaO} >= '${antInicio}' AND ${fechaO} < '${antFin}'
+              GROUP BY o.customer_code, o.customer_address_code
+            ) u
+            GROUP BY customer_code, customer_address_code
+          )`
+        : `consumo_anterior AS (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, SUM(dd.total) AS monto
+            FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+            WHERE ${filtroF} AND dd.codigo_categoria='7' AND f.status IN ${statusF}
+              AND ${fechaF} >= '${antInicio}' AND ${fechaF} < '${antFin}'
+            GROUP BY f.customer_code, f.customer_address_code
+          )`;
+
+      const cteUltimaCompra = incluyeOrd
+        ? `ultima_compra AS (
+            SELECT customer_code, customer_address_code, MAX(ultima) AS ultima
+            FROM (
+              SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, MAX(${fechaF}) AS ultima
+              FROM facturas f WHERE ${filtroF} AND f.status IN ${statusF}
+              GROUP BY f.customer_code, f.customer_address_code
+              UNION ALL
+              SELECT o.customer_code, o.customer_address_code::text AS customer_address_code, MAX(${fechaO})
+              FROM ordenes o WHERE ${filtroO} AND o.status IN ${statusO}
+              GROUP BY o.customer_code, o.customer_address_code
+            ) u
+            GROUP BY customer_code, customer_address_code
+          )`
+        : `ultima_compra AS (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, MAX(${fechaF}) AS ultima
+            FROM facturas f WHERE ${filtroF} AND f.status IN ${statusF}
+            GROUP BY f.customer_code, f.customer_address_code
+          )`;
 
       const sqlMobil = `
-        WITH direcciones_activas AS (
-          SELECT DISTINCT f.customer_code, f.customer_address_code
-          FROM facturas f
-          WHERE ${filtro}
-            AND f.status IN ('0','2','4','5')
-            AND f.fecha_entrega >= '${antInicio}'
-            AND f.customer_address_code IS NOT NULL
-        ),
-        consumo_actual AS (
-          SELECT f.customer_code, f.customer_address_code,
-            SUM(dd.cantidad) AS unidades, SUM(dd.total) AS monto
-          FROM facturas f
-          JOIN detalle_documento dd ON dd.documento_code = f.code
-          WHERE ${filtro}
-            AND dd.codigo_categoria = '7'
-            AND f.status IN ('0','2','4','5')
-            AND f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
-          GROUP BY f.customer_code, f.customer_address_code
-        ),
-        consumo_anterior AS (
-          SELECT f.customer_code, f.customer_address_code, SUM(dd.total) AS monto
-          FROM facturas f
-          JOIN detalle_documento dd ON dd.documento_code = f.code
-          WHERE ${filtro}
-            AND dd.codigo_categoria = '7'
-            AND f.status IN ('0','2','4','5')
-            AND f.fecha_entrega >= '${antInicio}' AND f.fecha_entrega < '${antFin}'
-          GROUP BY f.customer_code, f.customer_address_code
-        ),
-        ultima_compra AS (
-          SELECT f.customer_code, f.customer_address_code, MAX(f.fecha_entrega) AS ultima
-          FROM facturas f
-          WHERE ${filtro} AND f.status IN ('0','2','4','5')
-          GROUP BY f.customer_code, f.customer_address_code
-        )
+        WITH ${cteDirActivas},
+        ${cteConsumoActual},
+        ${cteConsumoAnterior},
+        ${cteUltimaCompra}
         SELECT
           da.customer_code, da.customer_address_code,
           dc.descripcion_direccion_cliente   AS descripcion_direccion,
@@ -177,7 +302,7 @@ const obtenerClientesCanal = async (req, res) => {
           FROM ordenes o
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
-            AND o.type = 2 AND o.status IN (2, 4, 5)
+            AND o.type = 2 AND o.status IN (2)
             AND o.fecha_creacion >= '${antInicio}'
         ),
         consumo_actual AS (
@@ -187,7 +312,7 @@ const obtenerClientesCanal = async (req, res) => {
           JOIN detalle_documento dd ON dd.documento_code = o.code
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
-            AND o.type = 2 AND o.status IN (2, 4, 5)
+            AND o.type = 2 AND o.status IN (2)
             AND dd.codigo_categoria = '7'
             AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
           GROUP BY o.customer_code, o.customer_address_code
@@ -198,7 +323,7 @@ const obtenerClientesCanal = async (req, res) => {
           JOIN detalle_documento dd ON dd.documento_code = o.code
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
-            AND o.type = 2 AND o.status IN (2, 4, 5)
+            AND o.type = 2 AND o.status IN (2)
             AND dd.codigo_categoria = '7'
             AND o.fecha_creacion >= '${antInicio}' AND o.fecha_creacion < '${antFin}'
           GROUP BY o.customer_code, o.customer_address_code
@@ -208,7 +333,7 @@ const obtenerClientesCanal = async (req, res) => {
           FROM ordenes o
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
-            AND o.type = 2 AND o.status IN (2, 4, 5)
+            AND o.type = 2 AND o.status IN (2)
           GROUP BY o.customer_code, o.customer_address_code
         )
         SELECT
@@ -263,7 +388,7 @@ const obtenerClientesCanal = async (req, res) => {
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
             AND o.type   = 2
-            AND o.status IN (2, 4, 5)
+            AND o.status IN (2)
             AND o.fecha_creacion >= '${antInicio}'
         ),
         consumo_actual AS (
@@ -275,7 +400,7 @@ const obtenerClientesCanal = async (req, res) => {
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
             AND o.type   = 2
-            AND o.status IN (2, 4, 5)
+            AND o.status IN (2)
             AND dd.codigo_categoria = '7'
             AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
           GROUP BY o.customer_code, o.customer_address_code
@@ -288,7 +413,7 @@ const obtenerClientesCanal = async (req, res) => {
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
             AND o.type   = 2
-            AND o.status IN (2, 4, 5)
+            AND o.status IN (2)
             AND dd.codigo_categoria = '7'
             AND o.fecha_creacion >= '${antInicio}' AND o.fecha_creacion < '${antFin}'
           GROUP BY o.customer_code, o.customer_address_code
@@ -298,7 +423,7 @@ const obtenerClientesCanal = async (req, res) => {
           FROM ordenes o
           WHERE o.origen_sistema = 'ODOO'
             AND o.equipo_ventas  = '${equipoVentas}'
-            AND o.type = 2 AND o.status IN (2, 4, 5)
+            AND o.type = 2 AND o.status IN (2)
           GROUP BY o.customer_code, o.customer_address_code
         )
         SELECT
@@ -341,49 +466,114 @@ const obtenerClientesCanal = async (req, res) => {
       clientes = await db.query(sql, { type: QueryTypes.SELECT });
 
     } else if (!config.usaOrdenes) {
-      // ── VIP o DOMICILIO — fuente: facturas ────────────────────
-      const filtro = config.filtro;
+      // ── MAYORISTA / OTRO — fuente: facturas (+ órdenes si aplica) ────────
+      const filtroF    = config.filtro;
+      const filtroO    = config.filtroOrden;
+      const statusF    = config.statusFact      || "('0','2','4','5')";
+      const statusO    = config.statusOrden     || "('0','2','4','5')";
+      const fechaF     = config.fechaFact       || "f.fecha_entrega";
+      const fechaO     = config.fechaOrden      || "o.fecha_entrega";
+      const incluyeOrd = !!config.incluyeOrdenes;
+
+      // Cast a TEXT en customer_address_code para que UNION con ordenes (INTEGER) sea válido
+      const cteDirActivas = incluyeOrd
+        ? `direcciones_activas AS (
+            SELECT customer_code, customer_address_code FROM (
+              SELECT DISTINCT f.customer_code, f.customer_address_code::text AS customer_address_code
+              FROM facturas f
+              WHERE ${filtroF} AND f.status IN ${statusF}
+                AND ${fechaF} >= '${antInicio}' AND f.customer_address_code IS NOT NULL
+              UNION
+              SELECT DISTINCT o.customer_code, o.customer_address_code::text AS customer_address_code
+              FROM ordenes o
+              WHERE ${filtroO} AND o.status IN ${statusO}
+                AND ${fechaO} >= '${antInicio}' AND o.customer_address_code IS NOT NULL
+            ) u
+          )`
+        : `direcciones_activas AS (
+            SELECT DISTINCT f.customer_code, f.customer_address_code::text AS customer_address_code
+            FROM facturas f
+            WHERE ${filtroF} AND f.status IN ${statusF}
+              AND ${fechaF} >= '${antInicio}' AND f.customer_address_code IS NOT NULL
+          )`;
+
+      const cteConsumoActual = incluyeOrd
+        ? `consumo_actual AS (
+            SELECT customer_code, customer_address_code, SUM(unidades) AS unidades, SUM(monto) AS monto
+            FROM (
+              SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS monto
+              FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+              WHERE ${filtroF} AND dd.codigo_categoria='7' AND f.status IN ${statusF}
+                AND ${fechaF} >= '${inicio}' AND ${fechaF} < '${fin}'
+              GROUP BY f.customer_code, f.customer_address_code
+              UNION ALL
+              SELECT o.customer_code, o.customer_address_code::text AS customer_address_code, SUM(dd.cantidad), SUM(dd.total)
+              FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+              WHERE ${filtroO} AND dd.codigo_categoria='7' AND o.status IN ${statusO}
+                AND ${fechaO} >= '${inicio}' AND ${fechaO} < '${fin}'
+              GROUP BY o.customer_code, o.customer_address_code
+            ) u
+            GROUP BY customer_code, customer_address_code
+          )`
+        : `consumo_actual AS (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, SUM(dd.cantidad) AS unidades, SUM(dd.total) AS monto
+            FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+            WHERE ${filtroF} AND dd.codigo_categoria='7' AND f.status IN ${statusF}
+              AND ${fechaF} >= '${inicio}' AND ${fechaF} < '${fin}'
+            GROUP BY f.customer_code, f.customer_address_code
+          )`;
+
+      const cteConsumoAnterior = incluyeOrd
+        ? `consumo_anterior AS (
+            SELECT customer_code, customer_address_code, SUM(monto) AS monto
+            FROM (
+              SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, SUM(dd.total) AS monto
+              FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+              WHERE ${filtroF} AND dd.codigo_categoria='7' AND f.status IN ${statusF}
+                AND ${fechaF} >= '${antInicio}' AND ${fechaF} < '${antFin}'
+              GROUP BY f.customer_code, f.customer_address_code
+              UNION ALL
+              SELECT o.customer_code, o.customer_address_code::text AS customer_address_code, SUM(dd.total)
+              FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+              WHERE ${filtroO} AND dd.codigo_categoria='7' AND o.status IN ${statusO}
+                AND ${fechaO} >= '${antInicio}' AND ${fechaO} < '${antFin}'
+              GROUP BY o.customer_code, o.customer_address_code
+            ) u
+            GROUP BY customer_code, customer_address_code
+          )`
+        : `consumo_anterior AS (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, SUM(dd.total) AS monto
+            FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+            WHERE ${filtroF} AND dd.codigo_categoria='7' AND f.status IN ${statusF}
+              AND ${fechaF} >= '${antInicio}' AND ${fechaF} < '${antFin}'
+            GROUP BY f.customer_code, f.customer_address_code
+          )`;
+
+      const cteUltimaCompra = incluyeOrd
+        ? `ultima_compra AS (
+            SELECT customer_code, customer_address_code, MAX(ultima) AS ultima
+            FROM (
+              SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, MAX(${fechaF}) AS ultima
+              FROM facturas f WHERE ${filtroF} AND f.status IN ${statusF}
+              GROUP BY f.customer_code, f.customer_address_code
+              UNION ALL
+              SELECT o.customer_code, o.customer_address_code::text AS customer_address_code, MAX(${fechaO})
+              FROM ordenes o WHERE ${filtroO} AND o.status IN ${statusO}
+              GROUP BY o.customer_code, o.customer_address_code
+            ) u
+            GROUP BY customer_code, customer_address_code
+          )`
+        : `ultima_compra AS (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code, MAX(${fechaF}) AS ultima
+            FROM facturas f WHERE ${filtroF} AND f.status IN ${statusF}
+            GROUP BY f.customer_code, f.customer_address_code
+          )`;
 
       const sql = `
-        WITH direcciones_activas AS (
-          -- Una fila por (cliente, dirección) que tuvo actividad desde el mes anterior
-          SELECT DISTINCT f.customer_code, f.customer_address_code
-          FROM facturas f
-          WHERE ${filtro}
-            AND f.status IN ('0','2','4','5')
-            AND f.fecha_entrega >= '${antInicio}'
-            AND f.customer_address_code IS NOT NULL
-        ),
-        consumo_actual AS (
-          SELECT f.customer_code, f.customer_address_code,
-            SUM(dd.cantidad) AS unidades,
-            SUM(dd.total)    AS monto
-          FROM facturas f
-          JOIN detalle_documento dd ON dd.documento_code = f.code
-          WHERE ${filtro}
-            AND dd.codigo_categoria = '7'
-            AND f.status IN ('0','2','4','5')
-            AND f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
-          GROUP BY f.customer_code, f.customer_address_code
-        ),
-        consumo_anterior AS (
-          SELECT f.customer_code, f.customer_address_code,
-            SUM(dd.total) AS monto
-          FROM facturas f
-          JOIN detalle_documento dd ON dd.documento_code = f.code
-          WHERE ${filtro}
-            AND dd.codigo_categoria = '7'
-            AND f.status IN ('0','2','4','5')
-            AND f.fecha_entrega >= '${antInicio}' AND f.fecha_entrega < '${antFin}'
-          GROUP BY f.customer_code, f.customer_address_code
-        ),
-        ultima_compra AS (
-          SELECT f.customer_code, f.customer_address_code,
-                 MAX(f.fecha_entrega) AS ultima
-          FROM facturas f
-          WHERE ${filtro} AND f.status IN ('0','2','4','5')
-          GROUP BY f.customer_code, f.customer_address_code
-        )
+        WITH ${cteDirActivas},
+        ${cteConsumoActual},
+        ${cteConsumoAnterior},
+        ${cteUltimaCompra}
         SELECT
           da.customer_code,
           da.customer_address_code,
@@ -539,20 +729,38 @@ const obtenerClientesCanal = async (req, res) => {
     // ── Productos vendidos del mes ───────────────────────────────
     let productosVendidos = [];
     if (config.usaCombinado) {
-      const filtro       = config.filtroMobil;
+      const filtroF      = config.filtroMobilFact;
+      const filtroO      = config.filtroMobilOrden;
+      const statusF      = config.statusMobilFact;
+      const statusO      = config.statusMobilOrden;
+      const fechaF       = config.fechaMobilFact;
+      const fechaO       = config.fechaMobilOrden;
       const equipoVentas = config.equipoOdoo.replace(/'/g, "''");
-      const sqlProdMobil = `
+
+      const sqlProdMobilFact = `
         SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
                SUM(dd.cantidad) AS unidades_vendidas,
                SUM(dd.total)    AS monto_usd
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE ${filtro}
+        WHERE ${filtroF}
           AND dd.codigo_categoria = '7'
-          AND f.status IN ('0','2','4','5')
-          AND f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
+          AND f.status IN ${statusF}
+          AND ${fechaF} >= '${inicio}' AND ${fechaF} < '${fin}'
         GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
       `;
+      const sqlProdMobilOrden = config.incluyeOrdenesMobil ? `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE ${filtroO}
+          AND dd.codigo_categoria = '7'
+          AND o.status IN ${statusO}
+          AND ${fechaO} >= '${inicio}' AND ${fechaO} < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      ` : null;
       const sqlProdOdoo = `
         SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
                SUM(dd.cantidad) AS unidades_vendidas,
@@ -561,18 +769,20 @@ const obtenerClientesCanal = async (req, res) => {
         JOIN detalle_documento dd ON dd.documento_code = o.code
         WHERE o.origen_sistema = 'ODOO'
           AND o.equipo_ventas  = '${equipoVentas}'
-          AND o.type = 2 AND o.status IN (2, 4, 5)
+          AND o.type = 2 AND o.status IN (2)
           AND dd.codigo_categoria = '7'
           AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
         GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
       `;
-      const [prodsMobil, prodsOdoo] = await Promise.all([
-        db.query(sqlProdMobil, { type: QueryTypes.SELECT }),
-        db.query(sqlProdOdoo,  { type: QueryTypes.SELECT }),
-      ]);
+      const queries = [
+        db.query(sqlProdMobilFact, { type: QueryTypes.SELECT }),
+        db.query(sqlProdOdoo,      { type: QueryTypes.SELECT }),
+      ];
+      if (sqlProdMobilOrden) queries.push(db.query(sqlProdMobilOrden, { type: QueryTypes.SELECT }));
+      const resultados = await Promise.all(queries);
       // Fusionar por nombre de producto
       const mapaProds = {};
-      [...prodsMobil, ...prodsOdoo].forEach((p) => {
+      resultados.flat().forEach((p) => {
         if (!mapaProds[p.producto]) {
           mapaProds[p.producto] = { producto: p.producto, unidades_vendidas: 0, monto_usd: 0 };
         }
@@ -591,7 +801,7 @@ const obtenerClientesCanal = async (req, res) => {
         WHERE o.origen_sistema = 'ODOO'
           AND o.equipo_ventas  = '${equipoVentas}'
           AND o.type   = 2
-          AND o.status IN (2, 4, 5)
+          AND o.status IN (2)
           AND dd.codigo_categoria = '7'
           AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
         GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
@@ -599,21 +809,51 @@ const obtenerClientesCanal = async (req, res) => {
       `;
       productosVendidos = await db.query(sqlProd, { type: QueryTypes.SELECT });
     } else if (!config.usaOrdenes) {
-      const filtro = config.filtro;
-      const sqlProd = `
+      const filtroF    = config.filtro;
+      const filtroO    = config.filtroOrden;
+      const statusF    = config.statusFact   || "('0','2','4','5')";
+      const statusO    = config.statusOrden  || "('0','2','4','5')";
+      const fechaF     = config.fechaFact    || "f.fecha_entrega";
+      const fechaO     = config.fechaOrden   || "o.fecha_entrega";
+      const incluyeOrd = !!config.incluyeOrdenes;
+
+      const sqlProdFact = `
         SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
                SUM(dd.cantidad) AS unidades_vendidas,
                SUM(dd.total)    AS monto_usd
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE ${filtro}
+        WHERE ${filtroF}
           AND dd.codigo_categoria = '7'
-          AND f.status IN ('0','2','4','5')
-          AND f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
+          AND f.status IN ${statusF}
+          AND ${fechaF} >= '${inicio}' AND ${fechaF} < '${fin}'
         GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
-        ORDER BY unidades_vendidas DESC
       `;
-      productosVendidos = await db.query(sqlProd, { type: QueryTypes.SELECT });
+      const sqlProdOrden = incluyeOrd ? `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE ${filtroO}
+          AND dd.codigo_categoria = '7'
+          AND o.status IN ${statusO}
+          AND ${fechaO} >= '${inicio}' AND ${fechaO} < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      ` : null;
+
+      const queries = [db.query(sqlProdFact, { type: QueryTypes.SELECT })];
+      if (sqlProdOrden) queries.push(db.query(sqlProdOrden, { type: QueryTypes.SELECT }));
+      const resultados = await Promise.all(queries);
+      const mapaProds = {};
+      resultados.flat().forEach((p) => {
+        if (!mapaProds[p.producto]) {
+          mapaProds[p.producto] = { producto: p.producto, unidades_vendidas: 0, monto_usd: 0 };
+        }
+        mapaProds[p.producto].unidades_vendidas += Number(p.unidades_vendidas) || 0;
+        mapaProds[p.producto].monto_usd         += Number(p.monto_usd) || 0;
+      });
+      productosVendidos = Object.values(mapaProds).sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
     } else {
       const rutasEsc = RUTAS_EMPRESAS.map(r => `'${r.replace(/'/g, "''")}'`).join(", ");
       const sqlProd = `
@@ -708,7 +948,7 @@ const obtenerProductosSucursal = async (req, res) => {
         WHERE o.origen_sistema = 'ODOO'
           AND o.equipo_ventas  = '${equipoVentas}'
           AND o.customer_code  = '${codEsc}'
-          AND o.type = 2 AND o.status IN (2, 4, 5)
+          AND o.type = 2 AND o.status IN (2)
           AND dd.codigo_categoria = '7'
           AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
         GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
@@ -734,24 +974,56 @@ const obtenerProductosSucursal = async (req, res) => {
       `;
       productos = await db.query(sql, { type: QueryTypes.SELECT });
     } else {
-      // Mobilvendor: buscar por customer_code + customer_address_code en facturas
-      const filtroCanal = config.filtroMobil || config.filtro || "1=1";
-      const sql = `
+      // Mobilvendor: facturas (+ órdenes si aplica) por customer_code + customer_address_code
+      const filtroF = config.filtroMobilFact || config.filtro || "1=1";
+      const filtroO = config.filtroMobilOrden || config.filtroOrden;
+      const statusF = config.statusMobilFact || config.statusFact || "('0','2','4','5')";
+      const statusO = config.statusMobilOrden || config.statusOrden || "('0','2','4','5')";
+      const fechaF  = config.fechaMobilFact  || config.fechaFact  || "f.fecha_entrega";
+      const fechaO  = config.fechaMobilOrden || config.fechaOrden || "o.fecha_entrega";
+      const incluyeOrd = !!(config.incluyeOrdenesMobil || config.incluyeOrdenes);
+
+      const sqlFact = `
         SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
                SUM(dd.cantidad) AS unidades_vendidas,
                SUM(dd.total)    AS monto_usd
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE ${filtroCanal}
+        WHERE ${filtroF}
           AND f.customer_code         = '${codEsc}'
           AND f.customer_address_code = '${addrEsc}'
           AND dd.codigo_categoria = '7'
-          AND f.status IN ('0','2','4','5')
-          AND f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
+          AND f.status IN ${statusF}
+          AND ${fechaF} >= '${inicio}' AND ${fechaF} < '${fin}'
         GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
-        ORDER BY unidades_vendidas DESC
       `;
-      productos = await db.query(sql, { type: QueryTypes.SELECT });
+      const sqlOrden = (incluyeOrd && filtroO) ? `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE ${filtroO}
+          AND o.customer_code         = '${codEsc}'
+          AND o.customer_address_code = '${addrEsc}'
+          AND dd.codigo_categoria = '7'
+          AND o.status IN ${statusO}
+          AND ${fechaO} >= '${inicio}' AND ${fechaO} < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      ` : null;
+
+      const queries = [db.query(sqlFact, { type: QueryTypes.SELECT })];
+      if (sqlOrden) queries.push(db.query(sqlOrden, { type: QueryTypes.SELECT }));
+      const resultados = await Promise.all(queries);
+      const mapaProds = {};
+      resultados.flat().forEach((p) => {
+        if (!mapaProds[p.producto]) {
+          mapaProds[p.producto] = { producto: p.producto, unidades_vendidas: 0, monto_usd: 0 };
+        }
+        mapaProds[p.producto].unidades_vendidas += Number(p.unidades_vendidas) || 0;
+        mapaProds[p.producto].monto_usd         += Number(p.monto_usd) || 0;
+      });
+      productos = Object.values(mapaProds).sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
     }
 
     return res.json({

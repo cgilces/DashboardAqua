@@ -62,13 +62,7 @@ export default function TablaCafe({ anio, mes }: Props) {
       .finally(() => setCargando(false));
   }, [anio, mes]);
 
-  if (cargando)
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-[#046C5E]" />
-        <span className="ml-3 text-gray-400">Cargando café IIBC...</span>
-      </div>
-    );
+  if (cargando) return null;
 
   if (error)
     return (
@@ -83,6 +77,11 @@ export default function TablaCafe({ anio, mes }: Props) {
   const esMesActual = periodo.esMesActual;
   const varDolPos   = totales.variacion_dolares.abs >= 0;
   const sinDatos    = totales.mes_anterior.dolares === 0;
+
+  // ✅ PRECIO PROMEDIO
+  const precioPromedio = totales.unidades > 0
+    ? totales.dolares / totales.unidades
+    : 0;
 
   const exportarExcel = () => {
     try {
@@ -114,40 +113,66 @@ export default function TablaCafe({ anio, mes }: Props) {
   return (
     <div className="mt-6 mb-10">
 
-      {/* KPI Cards */}
-      <KpisCafe totales={totales} esMesActual={esMesActual} tendencia6Meses={tendencia6Meses} anioFiltro={Number(anio)} mesFiltro={Number(mes)} />
+      <KpisCafe
+        totales={totales}
+        esMesActual={esMesActual}
+        tendencia6Meses={tendencia6Meses}
+        anioFiltro={Number(anio)}
+        mesFiltro={Number(mes)}
+      />
 
-      {/* Tabla */}
       <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
 
-        {/* Encabezado */}
+        {/* HEADER */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
           <h2 className="text-lg md:text-xl font-bold text-cyan-300">
             CAFÉ — IIBC S.A.
           </h2>
+
           <div className="flex gap-3 flex-wrap items-center">
             <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
               <p className="text-xs text-gray-400">Dólares $</p>
               <p className="text-base font-bold text-white">${fmt(totales.dolares)}</p>
             </div>
+
+            {/* ✅ NUEVO KPI */}
+            <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+              <p className="text-xs text-gray-400">Precio Prom.</p>
+              <p className="text-base font-bold text-purple-400">
+                ${fmt(precioPromedio)}
+              </p>
+            </div>
+
             {esMesActual && (
               <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
                 <p className="text-xs text-gray-400">Proyección</p>
-                <p className="text-base font-bold text-emerald-400">${fmt(totales.proyeccion_dolares)}</p>
+                <p className="text-base font-bold text-emerald-400">
+                  ${fmt(totales.proyeccion_dolares)}
+                </p>
               </div>
             )}
+
             <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
               <p className="text-xs text-gray-400">Unidades</p>
-              <p className="text-base font-bold text-cyan-300">{fmtInt(totales.unidades)}</p>
+              <p className="text-base font-bold text-cyan-300">
+                {fmtInt(totales.unidades)}
+              </p>
             </div>
+
             <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
               <p className="text-xs text-gray-400">Facturas</p>
-              <p className="text-base font-bold text-blue-300">{totales.cant_facturas}</p>
+              <p className="text-base font-bold text-blue-300">
+                {totales.cant_facturas}
+              </p>
             </div>
+
             <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
               <p className="text-xs text-gray-400">Clientes</p>
-              <p className="text-base font-bold text-amber-300">{totales.cant_clientes}</p>
+              <p className="text-base font-bold text-amber-300">
+                {totales.cant_clientes}
+              </p>
             </div>
+
             {isAdmin && (
               <button
                 onClick={exportarExcel}
@@ -160,64 +185,75 @@ export default function TablaCafe({ anio, mes }: Props) {
           </div>
         </div>
 
-        {/* Tabla */}
+        {/* TABLA */}
         <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-[#014434] text-green-300 uppercase text-xs">
-            <tr>
-              <th className="px-4 py-3 text-left">Canal</th>
-              <th className="px-4 py-3 text-right">Unidades</th>
-              <th className="px-4 py-3 text-right">Dólares $</th>
-              {esMesActual && <th className="px-4 py-3 text-right">Proyección</th>}
-              <th className="px-4 py-3 text-right">Variación</th>
-              <th className="px-4 py-3 text-right">%</th>
-              <th className="px-4 py-3 text-right">Facturas</th>
-              <th className="px-4 py-3 text-right">Clientes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Fila total — clickeable */}
-            <tr
-              className="bg-[#013d32] border-l-4 border-transparent cursor-pointer hover:bg-[#025940] transition"
-              onClick={() => navigate(`/cafe/clientes/${anio}/${mes}`)}
-            >
-              <td className="px-4 py-3 font-bold text-cyan-300">
-                CAFÉ — IIBC S.A.
-                <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
-              </td>
-              <td className="px-4 py-3 text-right text-green-400 font-bold">{fmtInt(totales.unidades)}</td>
-              <td className="px-4 py-3 text-right font-bold text-white">${fmt(totales.dolares)}</td>
-              {esMesActual && (
-                <td className="px-4 py-3 text-right font-bold text-emerald-400">
-                  ${fmt(totales.proyeccion_dolares)}
-                </td>
-              )}
-              <td className={`px-4 py-3 text-right font-bold ${varDolPos ? "text-green-400" : "text-red-400"}`}>
-                {sinDatos ? (
-                  <span className="text-gray-500 font-normal">Sin datos</span>
-                ) : (
-                  <>
-                    <span className="block text-gray-300 font-normal text-xs">${fmt(totales.mes_anterior.dolares)}</span>
-                    {varDolPos ? "+" : "-"}${fmt(Math.abs(totales.variacion_dolares.abs))}
-                  </>
-                )}
-              </td>
-              <td className={`px-4 py-3 text-right font-bold ${varDolPos ? "text-green-400" : "text-red-400"}`}>
-                {sinDatos ? (
-                  <span className="text-gray-500 font-normal">—</span>
-                ) : (
-                  totales.variacion_dolares.porcentaje !== null
-                    ? `${totales.variacion_dolares.porcentaje >= 0 ? "+" : ""}${totales.variacion_dolares.porcentaje.toFixed(2)}%`
-                    : "–"
-                )}
-              </td>
-              <td className="px-4 py-3 text-right text-blue-300">{totales.cant_facturas}</td>
-              <td className="px-4 py-3 text-right text-amber-300 font-bold">{totales.cant_clientes}</td>
-            </tr>
+          <table className="min-w-full text-sm">
+            <thead className="bg-[#014434] text-green-300 uppercase text-xs">
+              <tr>
+                <th className="px-4 py-3 text-left">Canal</th>
+                <th className="px-4 py-3 text-right">Unidades</th>
+                <th className="px-4 py-3 text-right">Dólares $</th>
+                <th className="px-4 py-3 text-right">Precio Prom.</th> {/* ✅ */}
+                {esMesActual && <th className="px-4 py-3 text-right">Proyección</th>}
+                <th className="px-4 py-3 text-right">Variación</th>
+                <th className="px-4 py-3 text-right">%</th>
+                <th className="px-4 py-3 text-right">Facturas</th>
+                <th className="px-4 py-3 text-right">Clientes</th>
+              </tr>
+            </thead>
 
-          </tbody>
-        </table>
+            <tbody>
+              <tr
+                className="bg-[#013d32] border-l-4 border-transparent cursor-pointer hover:bg-[#025940] transition"
+                onClick={() => navigate(`/cafe/clientes/${anio}/${mes}`)}
+              >
+                <td className="px-4 py-3 font-bold text-cyan-300">
+                  CAFÉ — IIBC S.A.
+                  <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
+                </td>
+
+                <td className="px-4 py-3 text-right text-green-400 font-bold">
+                  {fmtInt(totales.unidades)}
+                </td>
+
+                <td className="px-4 py-3 text-right font-bold text-white">
+                  ${fmt(totales.dolares)}
+                </td>
+
+                {/* ✅ NUEVO */}
+                <td className="px-4 py-3 text-right font-bold text-purple-400">
+                  ${fmt(precioPromedio)}
+                </td>
+
+                {esMesActual && (
+                  <td className="px-4 py-3 text-right font-bold text-emerald-400">
+                    ${fmt(totales.proyeccion_dolares)}
+                  </td>
+                )}
+
+                <td className={`px-4 py-3 text-right font-bold ${varDolPos ? "text-green-400" : "text-red-400"}`}>
+                  {sinDatos ? "—" : `${varDolPos ? "+" : "-"}${fmt(Math.abs(totales.variacion_dolares.abs))}`}
+                </td>
+
+                <td className={`px-4 py-3 text-right font-bold ${varDolPos ? "text-green-400" : "text-red-400"}`}>
+                  {sinDatos ? "—" :
+                    totales.variacion_dolares.porcentaje !== null
+                      ? `${totales.variacion_dolares.porcentaje >= 0 ? "+" : ""}${totales.variacion_dolares.porcentaje.toFixed(2)}%`
+                      : "–"}
+                </td>
+
+                <td className="px-4 py-3 text-right text-blue-300 font-bold">
+                  {totales.cant_facturas}
+                </td>
+
+                <td className="px-4 py-3 text-right text-amber-300 font-bold">
+                  {totales.cant_clientes}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
+
       </div>
     </div>
   );

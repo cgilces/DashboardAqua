@@ -338,7 +338,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
       return res.status(400).json({ error: 'Parámetros inválidos' });
 
     const inicio = getFechaInicioMes(anioNum, mesNum);
-    const fin = await getFechaFinQuery(anioNum, mesNum);
+    const fin = getFechaFinMes(anioNum, mesNum);
 
     let mesPrev = mesNum - 1, anioPrev = anioNum;
     if (mesPrev === 0) { mesPrev = 12; anioPrev--; }
@@ -552,7 +552,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
     ON dd.documento_code = f.code
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
-    AND f.status IN (0,2)
+    AND f.status IN (0,2,3,4,5)
     AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
     AND f.fecha_entrega >= '${inicio}'
     AND f.fecha_entrega <  '${fin}'

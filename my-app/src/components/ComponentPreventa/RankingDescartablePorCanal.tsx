@@ -50,6 +50,8 @@ interface CanalAgregado {
   variacion_porc: number | null;
   clientes: number;
   codigos: Set<string>;
+  precioPromedio?: number; //  NUEVO
+
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -64,17 +66,17 @@ const obtenerCanalPreventa = (seller_code: string): string => {
 
 const SLUG_PREVENTA: Record<string, string> = {
   DOMICILIO: "domicilio",
-  VIP:       "vip",
+  VIP: "vip",
   MAYORISTA: "mayorista",
-  OTRO:      "otro",
+  OTRO: "otro",
 };
 
 const SLUG_ODOO: Record<string, string> = {
-  Moderno:        "moderno",
+  Moderno: "moderno",
   Distribuidores: "distribuidores",
-  Quito:          "quito",
-  Empresas:       "empresas-odoo",
-  Domicilio:      "domicilio-odoo",
+  Quito: "quito",
+  Empresas: "empresas-odoo",
+  Domicilio: "domicilio-odoo",
 };
 
 const fmtNum = (n: number) =>
@@ -98,10 +100,11 @@ const RankingDescartablePorCanal = ({
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const navigate = useNavigate();
-  const [sortKey, setSortKey] = useState<string | null>(null);
+  type SortKey = keyof CanalAgregado;
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const toggleSort = (key: string) => {
+  const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir(prev => (prev === "asc" ? "desc" : "asc"));
     } else {
@@ -110,12 +113,16 @@ const RankingDescartablePorCanal = ({
     }
   };
 
-  const sortIndicator = (key: string) =>
-    sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : " ↕";
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return " ↕";
+    return sortDir === "asc" ? " ↑" : " ↓";
+  };
 
   if (!data && !odooData) {
     return (
-      <p className="text-gray-400 text-center mt-4">No hay datos para mostrar.</p>
+      <p className="text-gray-400 text-center mt-4">
+        No hay datos para mostrar.
+      </p>
     );
   }
 
@@ -134,10 +141,10 @@ const RankingDescartablePorCanal = ({
       };
     }
     const g = preventaMap[canal];
-    g.unidades      += Number(r.unidades  ?? 0);
-    g.dolares       += Number(r.dolares   ?? 0);
-    g.proyeccion    += Number(r.proyeccion ?? 0);
-    g.variacion_abs += Number(r.vsMesAnterior?.variacion_abs  ?? 0);
+    g.unidades += Number(r.unidades ?? 0);
+    g.dolares += Number(r.dolares ?? 0);
+    g.proyeccion += Number(r.proyeccion ?? 0);
+    g.variacion_abs += Number(r.vsMesAnterior?.variacion_abs ?? 0);
     g.monto_anterior += Number(r.vsMesAnterior?.monto_anterior ?? 0);
     (r.customer_codes ?? []).forEach(code => { if (code) g.codigos.add(code); });
   });
@@ -145,13 +152,13 @@ const RankingDescartablePorCanal = ({
   const canalesPreventa: CanalAgregado[] = Object.entries(preventaMap).map(
     ([canal, g]) => ({
       canal,
-      slug:          SLUG_PREVENTA[canal] ?? canal.toLowerCase(),
-      fuente:        "preventa" as const,
-      unidades:      g.unidades,
-      dolares:       g.dolares,
-      proyeccion:    g.proyeccion,
-      clientes:      g.codigos.size,
-      codigos:       g.codigos,
+      slug: SLUG_PREVENTA[canal] ?? canal.toLowerCase(),
+      fuente: "preventa" as const,
+      unidades: g.unidades,
+      dolares: g.dolares,
+      proyeccion: g.proyeccion,
+      clientes: g.codigos.size,
+      codigos: g.codigos,
       variacion_abs: g.variacion_abs,
       variacion_porc:
         g.monto_anterior > 0
@@ -164,49 +171,49 @@ const RankingDescartablePorCanal = ({
   const canalesOdoo: CanalAgregado[] = (odooData ?? []).map((o) => {
     const codigos = new Set<string>((o.customer_codes ?? []).filter(Boolean));
     return {
-      canal:          o.canal,
-      slug:           SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
-      fuente:         "odoo" as const,
-      unidades:       Number(o.total_unidades ?? 0),
-      dolares:        Number(o.total_imponible ?? 0),
-      proyeccion:     Number(o.proyeccion ?? 0),
-      variacion_abs:  o.vsMesAnterior ? Number(o.vsMesAnterior.variacion_abs) : null,
+      canal: o.canal,
+      slug: SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
+      fuente: "odoo" as const,
+      unidades: Number(o.total_unidades ?? 0),
+      dolares: Number(o.total_imponible ?? 0),
+      proyeccion: Number(o.proyeccion ?? 0),
+      variacion_abs: o.vsMesAnterior ? Number(o.vsMesAnterior.variacion_abs) : null,
       variacion_porc: o.vsMesAnterior ? o.vsMesAnterior.variacion_porc : null,
-      clientes:       codigos.size > 0 ? codigos.size : Number(o.clientes ?? 0),
+      clientes: codigos.size > 0 ? codigos.size : Number(o.clientes ?? 0),
       codigos,
     };
   }).sort((a, b) => b.dolares - a.dolares);
 
   // ── Fusionar DOMICILIO Mobilvendor + ODOO Domicilio ──────────────────────
   const mobilDom = canalesPreventa.find(c => c.canal === "DOMICILIO");
-  const ooooDom  = canalesOdoo.find(c => c.canal === "Domicilio");
+  const ooooDom = canalesOdoo.find(c => c.canal === "Domicilio");
 
   let canalesPreventaFinal = canalesPreventa;
-  let canalesOdooFinal     = canalesOdoo;
+  let canalesOdooFinal = canalesOdoo;
 
   if (mobilDom && ooooDom) {
     canalesPreventaFinal = canalesPreventa.filter(c => c.canal !== "DOMICILIO");
-    canalesOdooFinal     = canalesOdoo.filter(c => c.canal !== "Domicilio");
+    canalesOdooFinal = canalesOdoo.filter(c => c.canal !== "Domicilio");
 
-    const varAbsTotal   = (mobilDom.variacion_abs ?? 0) + (ooooDom.variacion_abs ?? 0);
+    const varAbsTotal = (mobilDom.variacion_abs ?? 0) + (ooooDom.variacion_abs ?? 0);
     const montoAntMobil = mobilDom.dolares - (mobilDom.variacion_abs ?? 0);
-    const montoAntOdoo  = ooooDom.dolares  - (ooooDom.variacion_abs  ?? 0);
+    const montoAntOdoo = ooooDom.dolares - (ooooDom.variacion_abs ?? 0);
     const montoAntTotal = montoAntMobil + montoAntOdoo;
-    const codigosDom    = new Set<string>([...mobilDom.codigos, ...ooooDom.codigos]);
+    const codigosDom = new Set<string>([...mobilDom.codigos, ...ooooDom.codigos]);
 
     const combinado: CanalAgregado = {
-      canal:          "DOMICILIO",
-      slug:           "domicilio",
-      fuente:         "combinado",
-      unidades:       mobilDom.unidades  + ooooDom.unidades,
-      dolares:        mobilDom.dolares   + ooooDom.dolares,
-      proyeccion:     mobilDom.proyeccion + ooooDom.proyeccion,
-      variacion_abs:  varAbsTotal,
+      canal: "DOMICILIO",
+      slug: "domicilio",
+      fuente: "combinado",
+      unidades: mobilDom.unidades + ooooDom.unidades,
+      dolares: mobilDom.dolares + ooooDom.dolares,
+      proyeccion: mobilDom.proyeccion + ooooDom.proyeccion,
+      variacion_abs: varAbsTotal,
       variacion_porc: montoAntTotal > 0
         ? Number(((varAbsTotal / montoAntTotal) * 100).toFixed(2))
         : null,
-      clientes:       codigosDom.size > 0 ? codigosDom.size : (mobilDom.clientes + ooooDom.clientes),
-      codigos:        codigosDom,
+      clientes: codigosDom.size > 0 ? codigosDom.size : (mobilDom.clientes + ooooDom.clientes),
+      codigos: codigosDom,
     };
 
     canalesPreventaFinal = [...canalesPreventaFinal, combinado].sort((a, b) => b.dolares - a.dolares);
@@ -214,72 +221,83 @@ const RankingDescartablePorCanal = ({
     // Solo Mobilvendor, no hay ODOO Domicilio — sin cambios
   } else if (!mobilDom && ooooDom) {
     // Solo ODOO, moverlo a sección Mobilvendor como combinado
-    canalesOdooFinal     = canalesOdoo.filter(c => c.canal !== "Domicilio");
+    canalesOdooFinal = canalesOdoo.filter(c => c.canal !== "Domicilio");
     canalesPreventaFinal = [...canalesPreventaFinal, { ...ooooDom, canal: "DOMICILIO", slug: "domicilio", fuente: "combinado" as const }]
       .sort((a, b) => b.dolares - a.dolares);
   }
 
   // ── Fusionar VIP + ODOO Moderno en una sola fila ─────────────────────────
-  const mobilVip    = canalesPreventaFinal.find(c => c.canal === "VIP");
+  const mobilVip = canalesPreventaFinal.find(c => c.canal === "VIP");
   const odooModerno = canalesOdooFinal.find(c => c.canal === "Moderno");
 
   if (mobilVip && odooModerno) {
     canalesPreventaFinal = canalesPreventaFinal.filter(c => c.canal !== "VIP");
-    canalesOdooFinal     = canalesOdooFinal.filter(c => c.canal !== "Moderno");
+    canalesOdooFinal = canalesOdooFinal.filter(c => c.canal !== "Moderno");
 
-    const varAbsVip   = (mobilVip.variacion_abs  ?? 0) + (odooModerno.variacion_abs  ?? 0);
-    const montoAntVip = mobilVip.dolares  - (mobilVip.variacion_abs  ?? 0);
+    const varAbsVip = (mobilVip.variacion_abs ?? 0) + (odooModerno.variacion_abs ?? 0);
+    const montoAntVip = mobilVip.dolares - (mobilVip.variacion_abs ?? 0);
     const montoAntMod = odooModerno.dolares - (odooModerno.variacion_abs ?? 0);
     const montoAntTot = montoAntVip + montoAntMod;
-    const codigosVip  = new Set<string>([...mobilVip.codigos, ...odooModerno.codigos]);
+    const codigosVip = new Set<string>([...mobilVip.codigos, ...odooModerno.codigos]);
 
     const vipCombinado: CanalAgregado = {
-      canal:          "VIP",
-      slug:           "vip",
-      fuente:         "combinado",
-      unidades:       mobilVip.unidades   + odooModerno.unidades,
-      dolares:        mobilVip.dolares    + odooModerno.dolares,
-      proyeccion:     mobilVip.proyeccion + odooModerno.proyeccion,
-      variacion_abs:  varAbsVip,
+      canal: "VIP",
+      slug: "vip",
+      fuente: "combinado",
+      unidades: mobilVip.unidades + odooModerno.unidades,
+      dolares: mobilVip.dolares + odooModerno.dolares,
+      proyeccion: mobilVip.proyeccion + odooModerno.proyeccion,
+      variacion_abs: varAbsVip,
       variacion_porc: montoAntTot > 0
         ? Number(((varAbsVip / montoAntTot) * 100).toFixed(2))
         : null,
-      clientes:       codigosVip.size > 0 ? codigosVip.size : (mobilVip.clientes + odooModerno.clientes),
-      codigos:        codigosVip,
+      clientes: codigosVip.size > 0 ? codigosVip.size : (mobilVip.clientes + odooModerno.clientes),
+      codigos: codigosVip,
     };
 
     canalesPreventaFinal = [...canalesPreventaFinal, vipCombinado]
       .sort((a, b) => b.dolares - a.dolares);
   } else if (!mobilVip && odooModerno) {
     // Solo ODOO Moderno, mostrarlo en Mobilvendor como VIP
-    canalesOdooFinal     = canalesOdooFinal.filter(c => c.canal !== "Moderno");
+    canalesOdooFinal = canalesOdooFinal.filter(c => c.canal !== "Moderno");
     canalesPreventaFinal = [...canalesPreventaFinal, { ...odooModerno, canal: "VIP", slug: "vip", fuente: "combinado" as const }]
       .sort((a, b) => b.dolares - a.dolares);
   }
 
   // ── Lista unificada de canales (sin distinción de fuente) ────────────────
   const canalesBase: CanalAgregado[] = [...canalesPreventaFinal, ...canalesOdooFinal]
+    .map(c => ({
+      ...c,
+      precioPromedio: c.unidades > 0 ? c.dolares / c.unidades : 0
+    }))
     .sort((a, b) => b.dolares - a.dolares);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const canalesTodos = useMemo(() => {
     if (!sortKey) return canalesBase;
+
     return [...canalesBase].sort((a, b) => {
       if (sortKey === "canal") {
-        return sortDir === "asc" ? a.canal.localeCompare(b.canal) : b.canal.localeCompare(a.canal);
+        return sortDir === "asc"
+          ? a.canal.localeCompare(b.canal)
+          : b.canal.localeCompare(a.canal);
       }
-      const av = Number((a as any)[sortKey] ?? 0);
-      const bv = Number((b as any)[sortKey] ?? 0);
-      return sortDir === "asc" ? av - bv : bv - av;
+
+      const av = a[sortKey] ?? 0;
+      const bv = b[sortKey] ?? 0;
+
+      return sortDir === "asc"
+        ? Number(av) - Number(bv)
+        : Number(bv) - Number(av);
     });
   }, [canalesBase, sortKey, sortDir]);
 
   // ── Totales ───────────────────────────────────────────────────────────────
   const totP = canalesPreventaFinal.reduce(
     (acc, c) => ({
-      unidades:     acc.unidades  + c.unidades,
-      dolares:      acc.dolares   + c.dolares,
-      proyeccion:   acc.proyeccion + c.proyeccion,
+      unidades: acc.unidades + c.unidades,
+      dolares: acc.dolares + c.dolares,
+      proyeccion: acc.proyeccion + c.proyeccion,
       variacion_abs: acc.variacion_abs + (c.variacion_abs ?? 0),
     }),
     { unidades: 0, dolares: 0, proyeccion: 0, variacion_abs: 0 }
@@ -287,9 +305,9 @@ const RankingDescartablePorCanal = ({
 
   const totO = canalesOdooFinal.reduce(
     (acc, c) => ({
-      unidades:     acc.unidades     + c.unidades,
-      dolares:      acc.dolares      + c.dolares,
-      proyeccion:   acc.proyeccion   + c.proyeccion,
+      unidades: acc.unidades + c.unidades,
+      dolares: acc.dolares + c.dolares,
+      proyeccion: acc.proyeccion + c.proyeccion,
       variacion_abs: acc.variacion_abs + (c.variacion_abs ?? 0),
     }),
     { unidades: 0, dolares: 0, proyeccion: 0, variacion_abs: 0 }
@@ -302,6 +320,7 @@ const RankingDescartablePorCanal = ({
       Canal: c.canal,
       Unidades: c.unidades,
       USD: c.dolares,
+      "Precio Promedio": c.precioPromedio ?? 0,
       Proyección: c.proyeccion || "—",
       "Variación $": c.variacion_abs ?? "—",
       "%": c.variacion_porc != null ? `${c.variacion_porc}%` : "—",
@@ -311,6 +330,8 @@ const RankingDescartablePorCanal = ({
     XLSX.utils.book_append_sheet(wb, ws, "CanalDescartable");
     XLSX.writeFile(wb, `ranking_canal_${mes}_${anio}.xlsx`);
   };
+
+
 
   // ── Render fila ───────────────────────────────────────────────────────────
   const renderFila = (c: CanalAgregado, idx: number) => {
@@ -322,18 +343,21 @@ const RankingDescartablePorCanal = ({
       c.variacion_abs == null
         ? "text-gray-400"
         : c.variacion_abs >= 0
-        ? "text-green-400"
-        : "text-red-400";
+          ? "text-green-400"
+          : "text-red-400";
+
+    const precioPromedio = c.precioPromedio ?? 0;
 
     return (
       <tr
-        key={`${c.fuente}-${c.canal}`}
+        // key={`${c.fuente}-${c.canal}`}
+        key={`${c.slug}-${idx}`}
         onClick={onClick}
-        className={`${
-          idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
-        } hover:bg-[#025940] cursor-pointer transition-all duration-200`}
+        className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
+      hover:bg-[#025940] cursor-pointer transition-all duration-200`}
       >
         <td className="px-4 py-2 text-gray-300">{idx + 1}</td>
+
         <td className="px-4 py-2">
           <span className="font-bold text-white">{c.canal}</span>
           {c.clientes > 0 && (
@@ -342,22 +366,32 @@ const RankingDescartablePorCanal = ({
             </span>
           )}
         </td>
+
         <td className="px-4 py-2 text-right text-green-400">
           {fmtInt(c.unidades)}
         </td>
+
         <td className="px-4 py-2 text-right text-blue-300 font-semibold">
           ${fmtNum(c.dolares)}
         </td>
+
+        {/* ✅ NUEVA COLUMNA */}
+        <td className="px-4 py-2 text-right text-yellow-300 font-semibold">
+          ${fmtNum(precioPromedio)}
+        </td>
+
         {isAdmin && (
           <td className="px-4 py-2 text-right text-emerald-400">
             {c.proyeccion ? `$${fmtNum(c.proyeccion)}` : "—"}
           </td>
         )}
+
         <td className={`px-4 py-2 text-right font-bold ${varColor}`}>
           {c.variacion_abs == null
             ? "—"
             : `${c.variacion_abs >= 0 ? "+" : ""}$${fmtNum(Math.abs(c.variacion_abs))}`}
         </td>
+
         <td className={`px-4 py-2 text-right font-bold ${varColor}`}>
           {c.variacion_porc == null
             ? "—"
@@ -367,76 +401,165 @@ const RankingDescartablePorCanal = ({
     );
   };
 
-  const totalGenUnidades   = totP.unidades   + totO.unidades;
-  const totalGenDolares    = totP.dolares    + totO.dolares;
+  const totalGenUnidades = totP.unidades + totO.unidades;
+  const totalGenDolares = totP.dolares + totO.dolares;
   const totalGenProyeccion = totP.proyeccion + totO.proyeccion;
-  const totalGenVariacion  = totP.variacion_abs + totO.variacion_abs;
+  const totalGenVariacion = totP.variacion_abs + totO.variacion_abs;
 
   return (
     <div className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6">
 
       {/* HEADER */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
-        <div>
-          <h2 className="text-lg md:text-xl font-bold text-blue-300">
-            RANKING DESCARTABLE POR CANAL
-          </h2>
-          <p className="text-sm text-green-300 mt-1 tracking-wide">
-            · Domicilio · VIP · Mayorista · Distribuidores · Empresas · Quito ·
-          </p>
-        </div>
-        <div className="flex gap-3 flex-wrap items-center">
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-            <p className="text-xs text-gray-400">Unidades</p>
-            <p className="text-base font-bold text-green-400">{fmtInt(totalGenUnidades)}</p>
-          </div>
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-            <p className="text-xs text-gray-400">Dólares</p>
-            <p className="text-base font-bold text-white">${fmtNum(totalGenDolares)}</p>
-          </div>
-          {isAdmin && (
-            <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-              <p className="text-xs text-gray-400">Proyección</p>
-              <p className="text-base font-bold text-emerald-400">${fmtNum(totalGenProyeccion)}</p>
-            </div>
-          )}
-          {isAdmin && (
-            <button
-              onClick={exportarExcel}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
-            >
-              <BsDownload size={16} />
-              <span>Exportar</span>
-            </button>
-          )}
-        </div>
+  <div>
+    <h2 className="text-lg md:text-xl font-bold text-blue-300">
+      RANKING DESCARTABLE POR CANAL
+    </h2>
+    <p className="text-sm text-green-300 mt-1 tracking-wide">
+      · Domicilio · VIP · Mayorista · Distribuidores · Empresas · Quito ·
+    </p>
+  </div>
+
+  <div className="flex gap-3 flex-wrap items-center">
+
+    {/* UNIDADES */}
+    <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+      <p className="text-xs text-gray-400">Unidades</p>
+      <p className="text-base font-bold text-green-400">
+        {fmtInt(totalGenUnidades)}
+      </p>
+    </div>
+
+    {/* DÓLARES */}
+    <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+      <p className="text-xs text-gray-400">Dólares</p>
+      <p className="text-base font-bold text-white">
+        ${fmtNum(totalGenDolares)}
+      </p>
+    </div>
+
+    {/* 💡 PRECIO PROMEDIO */}
+    <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+      <p className="text-xs text-gray-400">Precio Promedio</p>
+      <p className="text-base font-bold text-yellow-300">
+        $
+        {fmtNum(
+          totalGenUnidades > 0
+            ? totalGenDolares / totalGenUnidades
+            : 0
+        )}
+      </p>
+    </div>
+
+    {/* VARIACIÓN */}
+    <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+      <p className="text-xs text-gray-400">Variación</p>
+      <p
+        className={`text-base font-bold ${
+          totalGenVariacion >= 0 ? "text-green-400" : "text-red-400"
+        }`}
+      >
+        {totalGenVariacion >= 0 ? "+" : ""}
+        ${fmtNum(Math.abs(totalGenVariacion))}
+      </p>
+    </div>
+
+    {/* PROYECCIÓN */}
+    {isAdmin && (
+      <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+        <p className="text-xs text-gray-400">Proyección</p>
+        <p className="text-base font-bold text-emerald-400">
+          ${fmtNum(totalGenProyeccion)}
+        </p>
       </div>
+    )}
+
+    {/* EXPORTAR */}
+    {isAdmin && (
+      <button
+        onClick={exportarExcel}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
+      >
+        <BsDownload size={16} />
+        <span>Exportar</span>
+      </button>
+    )}
+  </div>
+</div>
 
       {/* TABLA */}
+
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-[#014434] text-green-300 uppercase text-xs select-none">
             <tr>
               <th className="px-4 py-3 text-left w-10">N°</th>
-              <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("canal")}>
-                Canal<span className="ml-1 text-[#046C5E]">{sortIndicator("canal")}</span>
+
+              <th
+                className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors"
+                onClick={() => toggleSort("canal")}
+              >
+                Canal
+                <span className="ml-1 text-[#046C5E]">{sortIndicator("canal")}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("unidades")}>
-                Unidades<span className="ml-1 text-[#046C5E]">{sortIndicator("unidades")}</span>
+
+              <th
+                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                onClick={() => toggleSort("unidades")}
+              >
+                Unidades
+                <span className="ml-1 text-[#046C5E]">{sortIndicator("unidades")}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("dolares")}>
-                USD<span className="ml-1 text-[#046C5E]">{sortIndicator("dolares")}</span>
+
+              <th
+                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                onClick={() => toggleSort("dolares")}
+              >
+                USD
+                <span className="ml-1 text-[#046C5E]">{sortIndicator("dolares")}</span>
               </th>
+
+              {/* 👉 NUEVA COLUMNA */}
+              <th
+                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                onClick={() => toggleSort("precioPromedio")}
+              >
+                Precio Prom
+                <span className="ml-1 text-[#046C5E]">
+                  {sortIndicator("precioPromedio")}
+                </span>
+              </th>
+
               {isAdmin && (
-                <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("proyeccion")}>
-                  Proyección<span className="ml-1 text-[#046C5E]">{sortIndicator("proyeccion")}</span>
+                <th
+                  className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                  onClick={() => toggleSort("proyeccion")}
+                >
+                  Proyección
+                  <span className="ml-1 text-[#046C5E]">
+                    {sortIndicator("proyeccion")}
+                  </span>
                 </th>
               )}
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("variacion_abs")}>
-                Variación $<span className="ml-1 text-[#046C5E]">{sortIndicator("variacion_abs")}</span>
+
+              <th
+                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                onClick={() => toggleSort("variacion_abs")}
+              >
+                Variación $
+                <span className="ml-1 text-[#046C5E]">
+                  {sortIndicator("variacion_abs")}
+                </span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort("variacion_porc")}>
-                %<span className="ml-1 text-[#046C5E]">{sortIndicator("variacion_porc")}</span>
+
+              <th
+                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                onClick={() => toggleSort("variacion_porc")}
+              >
+                %
+                <span className="ml-1 text-[#046C5E]">
+                  {sortIndicator("variacion_porc")}
+                </span>
               </th>
             </tr>
           </thead>
@@ -444,7 +567,11 @@ const RankingDescartablePorCanal = ({
           <tbody>
             {canalesTodos.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-gray-400 text-sm">
+                {/* 👇 AJUSTE DE COLSPAN */}
+                <td
+                  colSpan={isAdmin ? 8 : 7}
+                  className="px-4 py-8 text-center text-gray-400 text-sm"
+                >
                   No hay datos para mostrar.
                 </td>
               </tr>
@@ -456,18 +583,48 @@ const RankingDescartablePorCanal = ({
           {/* TOTAL GENERAL */}
           <tfoot className="bg-[#014434] font-bold text-sm border-t-2 border-[#0db48b]">
             <tr>
-              <td colSpan={2} className="px-4 py-3 text-right text-white">TOTAL GENERAL</td>
-              <td className="px-4 py-3 text-right text-green-400">{fmtInt(totalGenUnidades)}</td>
-              <td className="px-4 py-3 text-right text-blue-300">${fmtNum(totalGenDolares)}</td>
-              {isAdmin && <td className="px-4 py-3 text-right text-emerald-400">${fmtNum(totalGenProyeccion)}</td>}
-              <td className={`px-4 py-3 text-right ${totalGenVariacion >= 0 ? "text-green-400" : "text-red-400"}`}>
-                {totalGenVariacion >= 0 ? "+" : ""}${fmtNum(Math.abs(totalGenVariacion))}
+              <td colSpan={2} className="px-4 py-3 text-right text-white">
+                TOTAL GENERAL
               </td>
+
+              <td className="px-4 py-3 text-right text-green-400">
+                {fmtInt(totalGenUnidades)}
+              </td>
+
+              <td className="px-4 py-3 text-right text-blue-300">
+                ${fmtNum(totalGenDolares)}
+              </td>
+
+              {/* 👉 PRECIO PROMEDIO TOTAL */}
+              <td className="px-4 py-3 text-right text-yellow-300">
+                $
+                {fmtNum(
+                  totalGenUnidades > 0
+                    ? totalGenDolares / totalGenUnidades
+                    : 0
+                )}
+              </td>
+
+              {isAdmin && (
+                <td className="px-4 py-3 text-right text-emerald-400">
+                  ${fmtNum(totalGenProyeccion)}
+                </td>
+              )}
+
+              <td
+                className={`px-4 py-3 text-right ${totalGenVariacion >= 0 ? "text-green-400" : "text-red-400"
+                  }`}
+              >
+                {totalGenVariacion >= 0 ? "+" : ""}
+                ${fmtNum(Math.abs(totalGenVariacion))}
+              </td>
+
               <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>
         </table>
       </div>
+
     </div>
   );
 };
