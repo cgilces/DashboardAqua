@@ -288,7 +288,7 @@ const TablaVentasBase: React.FC<Props> = ({
                         </p>
                     </div>
 
-                    {/* 🔥 NUEVO: PRECIO PROMEDIO */}
+                    {/*  NUEVO: PRECIO PROMEDIO */}
                     <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
                         <p className="text-xs text-gray-400">Precio Prom.</p>
                         <p className="text-base font-bold text-purple-400">
