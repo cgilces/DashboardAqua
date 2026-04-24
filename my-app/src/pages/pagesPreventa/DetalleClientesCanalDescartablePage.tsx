@@ -382,13 +382,15 @@ export default function DetalleClientesCanalDescartablePage() {
         {/* Cabecera */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6 border-b border-[#046C5E]/50 pb-4">
           <div>
-            {/* Botón volver: sucursales → lista clientes → tipo cards → atrás */}
+            {/* Botón volver: sucursales → lista → tipo cards → fuente cards → atrás */}
             <button
               onClick={() => {
                 if (clienteSeleccionado !== null) {
                   setClienteSeleccionado(null); setClienteIdentificacion(""); setBusqueda(""); setFiltro("todos"); setPagina(1);
                 } else if (esVip && tipoSeleccionado !== null) {
-                  setTipoSeleccionado(null); setFuenteSeleccionada(null); setBusqueda(""); setFiltro("todos"); setPagina(1);
+                  setTipoSeleccionado(null); setBusqueda(""); setFiltro("todos"); setPagina(1);
+                } else if (esVip && fuenteSeleccionada !== null) {
+                  setFuenteSeleccionada(null); setBusqueda(""); setFiltro("todos"); setPagina(1);
                 } else {
                   navigate(-1);
                 }
@@ -399,6 +401,8 @@ export default function DetalleClientesCanalDescartablePage() {
               {clienteSeleccionado !== null
                 ? "Volver a clientes"
                 : esVip && tipoSeleccionado !== null
+                ? (fuenteSeleccionada ? "Volver a tipos" : "Volver a fuentes")
+                : esVip && fuenteSeleccionada !== null
                 ? "Volver a fuentes"
                 : "Volver"}
             </button>
@@ -425,7 +429,8 @@ export default function DetalleClientesCanalDescartablePage() {
             <p className="text-xs text-gray-400">
               {MESES[Number(mes)]} {anio}
               {clienteSeleccionado !== null && " · Sucursales / Direcciones de entrega"}
-              {!clienteSeleccionado && esVip && tipoSeleccionado === null && " · Selecciona una fuente para ver sus clientes"}
+              {!clienteSeleccionado && esVip && tipoSeleccionado === null && !fuenteSeleccionada && " · Selecciona una fuente para ver sus clientes"}
+              {!clienteSeleccionado && esVip && tipoSeleccionado === null && fuenteSeleccionada && " · Selecciona un tipo de negocio"}
             </p>
           </div>
           <button onClick={exportar}
@@ -528,8 +533,8 @@ export default function DetalleClientesCanalDescartablePage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 mb-8">
-                  {/* Cards de fuente (Mobilvendor VIP / ODOO Moderno) con el mismo diseño */}
-                  {fuentesDisponibles.length > 1 && [
+                  {/* Cards de fuente (Mobilvendor VIP / ODOO Moderno) — solo al nivel top */}
+                  {fuentesDisponibles.length > 1 && !fuenteSeleccionada && [
                     { fuente: "mobilvendor", label: "Mobilvendor VIP", badge: "Mobilvendor", borderClass: "border-blue-500/40 hover:border-blue-400/70",   badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/40" },
                     { fuente: "odoo",        label: "ODOO Moderno",    badge: "ODOO",        borderClass: "border-purple-500/40 hover:border-purple-400/70", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/40" },
                   ].map(({ fuente, label, badge, borderClass, badgeClass }) => {
@@ -546,7 +551,7 @@ export default function DetalleClientesCanalDescartablePage() {
                     return (
                       <div
                         key={fuente}
-                        onClick={() => { setFuenteSeleccionada(fuente); setTipoSeleccionado("TODOS"); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
+                        onClick={() => { setFuenteSeleccionada(fuente); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
                         className={`cursor-pointer bg-gradient-to-br from-[#012E24] to-[#014034]
                           border ${borderClass} rounded-2xl p-5 shadow-lg flex flex-col gap-3
                           hover:scale-[1.02] transition-all duration-200`}
@@ -602,7 +607,8 @@ export default function DetalleClientesCanalDescartablePage() {
                     );
                   })}
 
-                  {tipoCards.map(t => {
+                  {/* Tipo cards — dentro de una fuente, o cuando solo hay una fuente disponible */}
+                  {(fuentesDisponibles.length <= 1 || fuenteSeleccionada) && tipoCards.map(t => {
                     const sinConsumo = t.total - t.conConsumo;
                     const varMonto   = t.monto - t.anterior;
                     return (
