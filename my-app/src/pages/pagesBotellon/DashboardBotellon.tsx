@@ -442,6 +442,17 @@ export default function DashboardBotellon() {
                     }
                   />
 
+                  {/* Canal Quito */}
+                  <TablaQuitoBotellon
+                    anio={anioSeleccionado}
+                    mes={mesSeleccionado}
+                    datos={quitoData}
+                    esMesActual={
+                      Number(anioSeleccionado) === new Date().getFullYear() &&
+                      Number(mesSeleccionado) === new Date().getMonth() + 1
+                    }
+                  />
+
                   {/* Tablas MobilVendor */}
                   {mostrarTablas &&
                     SECCIONES.map((s) => {

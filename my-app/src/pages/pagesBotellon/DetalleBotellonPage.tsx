@@ -245,6 +245,7 @@ const DetalleBotellonPage: React.FC = () => {
                     <th className="px-4 py-3 text-left">Producto</th>
                     <th className="px-4 py-3 text-right">Unidades</th>
                     <th className="px-4 py-3 text-right">Dólares</th>
+                    <th className="px-4 py-3 text-right">Precio Promedio</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -253,13 +254,22 @@ const DetalleBotellonPage: React.FC = () => {
                       <td className="px-4 py-2">{p.descripcion}</td>
                       <td className="px-4 py-2 text-right text-green-400 font-semibold">{p.unidades.toLocaleString("es-EC")}</td>
                       <td className="px-4 py-2 text-right text-blue-400 font-semibold">${fmt(p.monto)}</td>
+                      <td className="px-4 py-2 text-right text-purple-400 font-semibold">${fmt(p.unidades > 0 ? p.monto / p.unidades : 0)}</td>
                     </tr>
                   ))}
-                  <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
-                    <td className="px-4 py-3 text-green-300 uppercase text-xs">Total</td>
-                    <td className="px-4 py-3 text-right text-green-400">{productos.reduce((a, p) => a + p.unidades, 0).toLocaleString("es-EC")}</td>
-                    <td className="px-4 py-3 text-right text-blue-400">${fmt(productos.reduce((a, p) => a + p.monto, 0))}</td>
-                  </tr>
+                  {(() => {
+                    const totUni = productos.reduce((a, p) => a + p.unidades, 0);
+                    const totUSD = productos.reduce((a, p) => a + p.monto, 0);
+                    const promTotal = totUni > 0 ? totUSD / totUni : 0;
+                    return (
+                      <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
+                        <td className="px-4 py-3 text-green-300 uppercase text-xs">Total</td>
+                        <td className="px-4 py-3 text-right text-green-400">{totUni.toLocaleString("es-EC")}</td>
+                        <td className="px-4 py-3 text-right text-blue-400">${fmt(totUSD)}</td>
+                        <td className="px-4 py-3 text-right text-purple-300">${fmt(promTotal)}</td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>

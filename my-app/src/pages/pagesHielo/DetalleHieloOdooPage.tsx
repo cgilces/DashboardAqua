@@ -409,21 +409,36 @@ const DetalleHieloOdooPage: React.FC = () => {
                     <th className="px-4 py-3 text-left">Producto</th>
                     <th className="px-4 py-3 text-right">Unidades</th>
                     <th className="px-4 py-3 text-right">Ventas</th>
+                    <th className="px-4 py-3 text-right">Precio Promedio</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {productosGlobal.map((p, idx) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition-colors`}>
-                      <td className="px-4 py-2 text-white/80">{p.producto}</td>
-                      <td className="px-4 py-2 text-right text-green-400 font-semibold tabular-nums">{Number(p.unidades_vendidas).toLocaleString("es-EC")}</td>
-                      <td className="px-4 py-2 text-right text-blue-400 font-semibold tabular-nums">${fmt(Number(p.monto_usd))}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
-                    <td className="px-4 py-3 text-emerald-300/70 uppercase text-[11px]">Total</td>
-                    <td className="px-4 py-3 text-right text-green-400 tabular-nums">{productosGlobal.reduce((a, p) => a + Number(p.unidades_vendidas), 0).toLocaleString("es-EC")}</td>
-                    <td className="px-4 py-3 text-right text-blue-400 tabular-nums">${fmt(productosGlobal.reduce((a, p) => a + Number(p.monto_usd), 0))}</td>
-                  </tr>
+                  {productosGlobal.map((p, idx) => {
+                    const uni = Number(p.unidades_vendidas);
+                    const usd = Number(p.monto_usd);
+                    const prom = uni > 0 ? usd / uni : 0;
+                    return (
+                      <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition-colors`}>
+                        <td className="px-4 py-2 text-white/80">{p.producto}</td>
+                        <td className="px-4 py-2 text-right text-green-400 font-semibold tabular-nums">{uni.toLocaleString("es-EC")}</td>
+                        <td className="px-4 py-2 text-right text-blue-400 font-semibold tabular-nums">${fmt(usd)}</td>
+                        <td className="px-4 py-2 text-right text-purple-400 font-semibold tabular-nums">${fmt(prom)}</td>
+                      </tr>
+                    );
+                  })}
+                  {(() => {
+                    const totUni = productosGlobal.reduce((a, p) => a + Number(p.unidades_vendidas), 0);
+                    const totUSD = productosGlobal.reduce((a, p) => a + Number(p.monto_usd), 0);
+                    const promTotal = totUni > 0 ? totUSD / totUni : 0;
+                    return (
+                      <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
+                        <td className="px-4 py-3 text-emerald-300/70 uppercase text-[11px]">Total</td>
+                        <td className="px-4 py-3 text-right text-green-400 tabular-nums">{totUni.toLocaleString("es-EC")}</td>
+                        <td className="px-4 py-3 text-right text-blue-400 tabular-nums">${fmt(totUSD)}</td>
+                        <td className="px-4 py-3 text-right text-purple-300 tabular-nums">${fmt(promTotal)}</td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
