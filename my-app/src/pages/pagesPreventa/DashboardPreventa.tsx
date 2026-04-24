@@ -275,35 +275,96 @@ export default function DashboardPreventa() {
             })()}
 
             {/* ── Cards canal — solo ADMIN ── */}
-            {isAdmin && resumenVentasPorCanal && (
+            {isAdmin && resumenVentasPorCanal && (() => {
+              // Mismo merge del RANKING: DOMICILIO (preventa) + ODOO Domicilio  y  VIP (preventa) + ODOO Moderno.
+              const preventaArr = Object.values(resumenVentasPorCanal) as any[];
+              const odooArr     = (datos?.ventasDescartableOdoo || []) as any[];
+
+              const findP = (name: string) => preventaArr.find((c: any) => c.canal === name);
+              const findO = (name: string) => odooArr.find((o: any) => o.canal === name);
+
+              const domP = findP("DOMICILIO");
+              const domO = findO("Domicilio");
+              const vipP = findP("VIP");
+              const modO = findO("Moderno");
+
+              const cards: any[] = [];
+
+              // Preventa: excluir DOMICILIO/VIP si se van a combinar
+              preventaArr.forEach((c: any) => {
+                if (!(c.monto > 0 || c.unidades > 0)) return;
+                if (domO && c.canal === "DOMICILIO") return;
+                if (modO && c.canal === "VIP") return;
+                cards.push({
+                  canal: c.canal,
+                  _slug: (c.canal || "").toLowerCase(),
+                  monto: Number(c.monto || 0),
+                  montoReal: Number(c.montoReal ?? c.monto ?? 0),
+                  mesAnterior: Number(c.mesAnterior || 0),
+                  variacionAbs: Number(c.variacionAbs || 0),
+                  variacionPorc: Number(c.variacionPorc || 0),
+                  unidades: Number(c.unidades || 0),
+                  isPreventaRanking: ["DOMICILIO", "MAYORISTA", "VIP"].includes(c.canal),
+                });
+              });
+
+              // COTTSA
+              if (COTTSACard) cards.push(COTTSACard);
+
+              const combinar = (p: any, o: any, canalLabel: string, slug: string) => {
+                const monto        = Number(p?.monto || 0) + Number(o?.proyeccion ?? o?.total_imponible ?? 0);
+                const montoReal    = Number(p?.montoReal ?? p?.monto ?? 0) + Number(o?.total_imponible || 0);
+                const mesAnterior  = Number(p?.mesAnterior || 0) + Number(o?.vsMesAnterior?.monto_anterior || 0);
+                const variacionAbs = monto - mesAnterior;
+                const variacionPorc = mesAnterior > 0 ? (variacionAbs / mesAnterior) * 100 : 0;
+                const unidades     = Number(p?.unidades || 0) + Number(o?.total_unidades || 0);
+                return {
+                  canal: canalLabel, _slug: slug,
+                  monto, montoReal, mesAnterior, variacionAbs, variacionPorc, unidades,
+                  isCombinado: true,
+                };
+              };
+
+              // DOMICILIO combinado / solo ODOO
+              if (domP && domO)       cards.push(combinar(domP, domO, "DOMICILIO", "domicilio"));
+              else if (!domP && domO) cards.push(combinar(null, domO, "DOMICILIO", "domicilio"));
+
+              // VIP combinado / solo ODOO Moderno
+              if (vipP && modO)       cards.push(combinar(vipP, modO, "VIP", "vip"));
+              else if (!vipP && modO) cards.push(combinar(null, modO, "VIP", "vip"));
+
+              // Resto ODOO (Distribuidores, Quito, Empresas, etc.)
+              odooArr.forEach((o: any) => {
+                if (o.canal === "Domicilio" || o.canal === "Moderno") return;
+                cards.push({
+                  canal: `ODOO · ${o.canal}`,
+                  _slug: SLUG_ODOO[o.canal] ?? (o.canal || "").toLowerCase(),
+                  monto: Number(o.proyeccion ?? o.total_imponible ?? 0),
+                  montoReal: Number(o.total_imponible ?? 0),
+                  mesAnterior: Number(o.vsMesAnterior?.monto_anterior ?? 0),
+                  variacionAbs: Number(o.vsMesAnterior?.variacion_abs ?? 0),
+                  variacionPorc: Number(o.vsMesAnterior?.variacion_porc ?? 0),
+                  unidades: Number(o.total_unidades ?? 0),
+                  isOdooCanal: true,
+                });
+              });
+
+              return (
               <div className="mb-10">
                 <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-4 px-1">
                   Resumen por canal
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    ...Object.values(resumenVentasPorCanal).filter((c: any) => c.monto > 0 || c.unidades > 0),
-                    ...(COTTSACard ? [COTTSACard] : []),
-                    ...(datos?.ventasDescartableOdoo || []).map((o: any) => ({
-                      canal:        `ODOO · ${o.canal}`,
-                      _slug:        SLUG_ODOO[o.canal] ?? o.canal.toLowerCase(),
-                      monto:        Number(o.proyeccion ?? o.total_imponible ?? 0),
-                      montoReal:    Number(o.total_imponible ?? 0),
-                      mesAnterior:  Number(o.vsMesAnterior?.monto_anterior ?? 0),
-                      variacionAbs: Number(o.vsMesAnterior?.variacion_abs  ?? 0),
-                      variacionPorc: Number(o.vsMesAnterior?.variacion_porc ?? 0),
-                      unidades:     Number(o.total_unidades ?? 0),
-                      isOdooCanal:  true,
-                    })),
-                  ].map((canal: any) => {
+                  {cards.map((canal: any) => {
                     const positivo   = canal.variacionAbs >= 0;
                     const esCOTTSA   = canal.canal === "COTTSA - AGUA OK";
                     const esOdooCanal = canal.isOdooCanal === true;
+                    const esCombinado = canal.isCombinado === true;
 
                     const handleCardClick = () => {
                       if (esCOTTSA)
                         navigate(`/COTTSA/clientes/${anioSeleccionado}/${mesSeleccionado}`);
-                      else if (esOdooCanal)
+                      else if (esOdooCanal || esCombinado)
                         navigate(`/descartable-canal/${canal._slug}/clientes/${anioSeleccionado}/${mesSeleccionado}`);
                       else if (canal.canal === "RURAL")
                         activarSeccion("seccion-ranking-rutas-r");
@@ -376,9 +437,10 @@ export default function DashboardPreventa() {
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
-           
+
 
             {/* ── RankingPreventas — ADMIN + SUPERVISOR + VENDEDOR con PV* ── */}
             {puedeVerRanking && tieneRutasPV && (

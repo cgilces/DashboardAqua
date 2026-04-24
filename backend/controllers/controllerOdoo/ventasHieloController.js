@@ -580,15 +580,11 @@ const obtenerProductosClienteHielo = async (req, res) => {
     const inicio = getFechaInicioMes(anioNum, mesNum);
     const fin = getFechaFinQuery(anioNum, mesNum);
 
-    const placeholders = RUTAS_ODOO.map((_, i) => `:ruta${i}`).join(', ');
-    const rutaBindings = {};
-    RUTAS_ODOO.forEach((r, i) => { rutaBindings[`ruta${i}`] = r; });
-
-    const mvWhere = `(f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3')) AND f.status IN ('2','4','5')`;
-    const odooWhere = `o.type = 2 AND o.status IN (2,4,5) AND o.seller_nombre IN (${placeholders})`;
+    const mvWhere = `(f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3')) AND f.status IN ('2')`;
+    const distWhere = `o.campania_id = 5 AND o.status IN (2)`;
 
     const addrFilterMV = addressCode ? `AND f.customer_address_code::TEXT = :addressCode` : '';
-    const addrFilterOdoo = addressCode ? `AND o.customer_address_code::TEXT = :addressCode` : '';
+    const addrFilterOrden = addressCode ? `AND o.customer_address_code::TEXT = :addressCode` : '';
 
     const sql = `
       SELECT descripcion AS producto,
@@ -608,10 +604,9 @@ const obtenerProductosClienteHielo = async (req, res) => {
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM ordenes o
         JOIN detalle_documento dd ON dd.documento_code = o.code
-        WHERE ${odooWhere}
-          AND dd.codigo_categoria = '28'
+        WHERE ${distWhere}
           AND o.customer_code = :customerCode
-          ${addrFilterOdoo}
+          ${addrFilterOrden}
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
       ) comb
       GROUP BY descripcion
@@ -619,7 +614,6 @@ const obtenerProductosClienteHielo = async (req, res) => {
     `;
 
     const replacements = {
-      ...rutaBindings,
       customerCode,
       addressCode: addressCode || null,
       inicio,
