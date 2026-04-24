@@ -122,7 +122,7 @@ const obtenerDetalleRuta = async (req, res) => {
         ON dd.documento_code = f.code
       WHERE f.seller_code = :ruta
         AND f.status = 2
-        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
         AND f.fecha_creacion >= :inicio
         AND f.fecha_creacion <  :fin
 
@@ -164,7 +164,7 @@ FROM (
       ON dd.documento_code = f.code
     WHERE f.seller_code = '${rutaUpper}'
       AND f.status = 2
-      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
       AND f.fecha_creacion >= '${fInicio}'
       AND f.fecha_creacion <  '${fFin}'
 
@@ -229,7 +229,7 @@ FROM (
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
       AND f.status = 2
-      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
 
     UNION ALL
 
@@ -273,7 +273,7 @@ WITH movimientos AS (
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
       AND f.status = 2
-      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
       AND f.fecha_creacion >= :inicioAnio
       AND f.fecha_creacion <  :finAnio
 
@@ -371,7 +371,7 @@ FROM (
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
       AND f.status = 2
-      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
       AND f.fecha_creacion >= :inicio
       AND f.fecha_creacion <  :fin
 
@@ -399,7 +399,7 @@ FROM (
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
       AND f.status = 2
-      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
 
     UNION ALL
 

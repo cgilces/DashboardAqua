@@ -482,16 +482,23 @@ export default function DetalleClientesCanalDescartablePage() {
                     <th className="px-4 py-3 text-left">Producto</th>
                     <th className="px-4 py-3 text-right">Unidades</th>
                     <th className="px-4 py-3 text-right">Dólares</th>
+                    <th className="px-4 py-3 text-right">Precio Promedio</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {productos.map((p, idx) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition`}>
-                      <td className="px-4 py-2">{p.producto || <em className="text-gray-400 text-xs">Sin descripción</em>}</td>
-                      <td className="px-4 py-2 text-right text-green-400 font-semibold">{Number(p.unidades_vendidas).toLocaleString("es-EC")}</td>
-                      <td className="px-4 py-2 text-right text-blue-400 font-semibold">${fmt(Number(p.monto_usd))}</td>
-                    </tr>
-                  ))}
+                  {productos.map((p, idx) => {
+                    const uni = Number(p.unidades_vendidas);
+                    const usd = Number(p.monto_usd);
+                    const prom = uni > 0 ? usd / uni : 0;
+                    return (
+                      <tr key={idx} className={`${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940] transition`}>
+                        <td className="px-4 py-2">{p.producto || <em className="text-gray-400 text-xs">Sin descripción</em>}</td>
+                        <td className="px-4 py-2 text-right text-green-400 font-semibold">{uni.toLocaleString("es-EC")}</td>
+                        <td className="px-4 py-2 text-right text-blue-400 font-semibold">${fmt(usd)}</td>
+                        <td className="px-4 py-2 text-right text-purple-400 font-semibold">${fmt(prom)}</td>
+                      </tr>
+                    );
+                  })}
                   <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
                     <td className="px-4 py-3 text-green-300 uppercase text-xs">Total</td>
                     <td className="px-4 py-3 text-right text-green-400">
@@ -499,6 +506,9 @@ export default function DetalleClientesCanalDescartablePage() {
                     </td>
                     <td className="px-4 py-3 text-right text-blue-400">
                       ${fmt(totalMontoVip)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-purple-300">
+                      ${fmt(totalUndsVip > 0 ? totalMontoVip / totalUndsVip : 0)}
                     </td>
                   </tr>
                 </tbody>

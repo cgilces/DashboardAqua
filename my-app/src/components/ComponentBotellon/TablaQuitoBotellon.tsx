@@ -10,6 +10,11 @@ interface Props {
 const money = (v?: number) =>
   v != null ? `$${v.toLocaleString("es-EC", { minimumFractionDigits: 2 })}` : "$0,00";
 
+const price = (v?: number) =>
+  v != null
+    ? `$${v.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : "$0,00";
+
 const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = false }) => {
   const navigate = useNavigate();
   if (!datos) return null;
@@ -24,6 +29,7 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
   const varPorc = Number(total?.mesAnterior?.variacionPorc ?? 0);
   const proyDolares = detalle.reduce((s: number, r: any) => s + Number(r.proyeccion?.dolares || 0), 0);
   const proyUnidades = detalle.reduce((s: number, r: any) => s + Number(r.proyeccion?.unidades || 0), 0);
+  const precioPromedio = unidades > 0 ? dolares / unidades : 0;
   const positivo = varAbs >= 0;
 
   if (unidades === 0 && dolares === 0 && proyDolares === 0) return null;
@@ -48,6 +54,10 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
             <p className="text-sm sm:text-base font-bold text-white break-all">{money(dolares)}</p>
           </div>
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-2 sm:px-3 py-2 text-center">
+            <p className="text-[10px] sm:text-xs text-gray-400">Precio Prom.</p>
+            <p className="text-sm sm:text-base font-bold text-purple-400 break-all">{price(precioPromedio)}</p>
+          </div>
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-2 sm:px-3 py-2 text-center">
             <p className="text-[10px] sm:text-xs text-gray-400">Proyección</p>
             <p className="text-sm sm:text-base font-bold text-emerald-400 break-all">{money(proyDolares)}</p>
           </div>
@@ -69,6 +79,7 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
               <th className="px-4 py-3 text-left">CANAL</th>
               <th className="px-4 py-3 text-right">UNIDADES</th>
               <th className="px-4 py-3 text-right">DÓLARES</th>
+              <th className="px-4 py-3 text-right">PRECIO PROMEDIO</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN UNID.</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN USD $</th>
               <th className="px-4 py-3 text-right">VARIACIÓN</th>
@@ -87,6 +98,7 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
               </td>
               <td className="px-4 py-3 text-right text-green-400 font-bold">{unidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-400 font-bold">{money(dolares)}</td>
+              <td className="px-4 py-3 text-right text-purple-400 font-bold">{price(precioPromedio)}</td>
               <td className="px-4 py-3 text-right text-gray-300">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-emerald-400 font-bold">
                 {esMesActual ? money(proyDolares) : money(dolares)}
@@ -104,6 +116,7 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
               <td className="px-4 py-3 text-white">TOTAL GENERAL</td>
               <td className="px-4 py-3 text-right text-blue-300">{unidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-300">{money(dolares)}</td>
+              <td className="px-4 py-3 text-right text-purple-300">{price(precioPromedio)}</td>
               <td className="px-4 py-3 text-right text-blue-300">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-300">{esMesActual ? money(proyDolares) : money(dolares)}</td>
               <td className={`px-4 py-3 text-right ${positivo ? "text-green-400" : "text-red-400"}`}>
@@ -130,6 +143,8 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
             <dd className="text-right text-green-400 font-semibold">{unidades.toLocaleString("es-EC")}</dd>
             <dt className="text-gray-400">Dólares</dt>
             <dd className="text-right text-blue-400 font-semibold">{money(dolares)}</dd>
+            <dt className="text-gray-400">Precio Prom.</dt>
+            <dd className="text-right text-purple-400 font-semibold">{price(precioPromedio)}</dd>
             <dt className="text-gray-400">Proy. Unid.</dt>
             <dd className="text-right text-gray-200">{proyUnidades.toLocaleString("es-EC")}</dd>
             <dt className="text-gray-400">Proy. USD</dt>
