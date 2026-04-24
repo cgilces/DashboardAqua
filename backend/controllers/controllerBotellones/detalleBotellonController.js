@@ -118,26 +118,27 @@ const obtenerDetalleRuta = async (req, res) => {
       -- FACTURAS
       SELECT f.customer_code
       FROM facturas f
-      JOIN detalle_documento d
-        ON d.documento_code = f.code
+      JOIN detalle_documento dd
+        ON dd.documento_code = f.code
       WHERE f.seller_code = :ruta
-        AND f.status IN (0,2,3,4,5)
-        AND d.codigo_categoria = '5'
-        AND f.fecha_entrega >= :inicio
-        AND f.fecha_entrega <  :fin
+        AND f.status = 2
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND f.fecha_creacion >= :inicio
+        AND f.fecha_creacion <  :fin
 
       UNION
 
       -- ORDENES
       SELECT o.customer_code
       FROM ordenes o
-      JOIN detalle_documento d
-        ON d.documento_code = o.code
+      JOIN detalle_documento dd
+        ON dd.documento_code = o.code
       WHERE o.seller_code = :ruta
-        AND o.status IN (2, 4, 5)
-        AND d.codigo_categoria = '5'
-        AND o.fecha_entrega >= :inicio
-        AND o.fecha_entrega <  :fin
+        AND o.status = 2
+        AND o.origen_sistema = 'MOBILVENDOR'
+        AND dd.descripcion_categoria = 'BOTELLÓN'
+        AND o.fecha_creacion >= :inicio
+        AND o.fecha_creacion <  :fin
 
   ) AS movimientos
 `;
@@ -159,25 +160,26 @@ SELECT DISTINCT customer_code
 FROM (
     SELECT f.customer_code
     FROM facturas f
-    JOIN detalle_documento d
-      ON d.documento_code = f.code
+    JOIN detalle_documento dd
+      ON dd.documento_code = f.code
     WHERE f.seller_code = '${rutaUpper}'
-      AND f.status IN (0,2,3,4,5)
-      AND d.codigo_categoria = '5'
-      AND f.fecha_entrega >= '${fInicio}'
-      AND f.fecha_entrega <  '${fFin}'
+      AND f.status = 2
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND f.fecha_creacion >= '${fInicio}'
+      AND f.fecha_creacion <  '${fFin}'
 
     UNION
 
     SELECT o.customer_code
     FROM ordenes o
-    JOIN detalle_documento d
-      ON d.documento_code = o.code
+    JOIN detalle_documento dd
+      ON dd.documento_code = o.code
     WHERE o.seller_code = '${rutaUpper}'
-      AND o.status IN (2,4,5)
-      AND d.codigo_categoria = '5'
-      AND o.fecha_entrega >= '${fInicio}'
-      AND o.fecha_entrega <  '${fFin}'
+      AND o.status = 2
+      AND o.origen_sistema = 'MOBILVENDOR'
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND o.fecha_creacion >= '${fInicio}'
+      AND o.fecha_creacion <  '${fFin}'
 ) AS movimientos;
 `);
 
@@ -207,36 +209,37 @@ FROM (
 SELECT
     mov.customer_code,
     SUM(
-        CASE 
-            WHEN mov.fecha_entrega >= :inicio
-             AND mov.fecha_entrega <  :fin
+        CASE
+            WHEN mov.fecha_creacion >= :inicio
+             AND mov.fecha_creacion <  :fin
             THEN mov.total ELSE 0
         END
     ) AS consumo_actual,
     SUM(
-        CASE 
-            WHEN mov.fecha_entrega >= :antInicio
-             AND mov.fecha_entrega <  :antFin
+        CASE
+            WHEN mov.fecha_creacion >= :antInicio
+             AND mov.fecha_creacion <  :antFin
             THEN mov.total ELSE 0
         END
     ) AS consumo_anterior
 FROM (
 
-    SELECT f.customer_code, f.fecha_entrega, d.total
+    SELECT f.customer_code, f.fecha_creacion, dd.total
     FROM facturas f
-    JOIN detalle_documento d ON d.documento_code = f.code
+    JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
-      AND f.status IN (0,2,3,4,5)
-      AND d.codigo_categoria = '5'
+      AND f.status = 2
+      AND dd.descripcion_categoria = 'BOTELLÓN'
 
     UNION ALL
 
-    SELECT o.customer_code, o.fecha_entrega, d.total
+    SELECT o.customer_code, o.fecha_creacion, dd.total
     FROM ordenes o
-    JOIN detalle_documento d ON d.documento_code = o.code
+    JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.seller_code = :ruta
-      AND o.status IN (2,4,5)
-      AND d.codigo_categoria = '5'
+      AND o.status = 2
+      AND o.origen_sistema = 'MOBILVENDOR'
+      AND dd.descripcion_categoria = 'BOTELLÓN'
 
 ) mov
 GROUP BY mov.customer_code
@@ -265,34 +268,35 @@ GROUP BY mov.customer_code
     const consumoMaximoAnualSQL = `
 WITH movimientos AS (
 
-    SELECT f.customer_code, f.fecha_entrega, d.total
+    SELECT f.customer_code, f.fecha_creacion, dd.total
     FROM facturas f
-    JOIN detalle_documento d ON d.documento_code = f.code
+    JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
-      AND f.status IN (0,2,3,4,5)
-      AND d.codigo_categoria = '5'
-      AND f.fecha_entrega >= :inicioAnio
-      AND f.fecha_entrega <  :finAnio
+      AND f.status = 2
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND f.fecha_creacion >= :inicioAnio
+      AND f.fecha_creacion <  :finAnio
 
     UNION ALL
 
-    SELECT o.customer_code, o.fecha_entrega, d.total
+    SELECT o.customer_code, o.fecha_creacion, dd.total
     FROM ordenes o
-    JOIN detalle_documento d ON d.documento_code = o.code
+    JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.seller_code = :ruta
-      AND o.status IN (2,4,5)
-      AND d.codigo_categoria = '5'
-      AND o.fecha_entrega >= :inicioAnio
-      AND o.fecha_entrega <  :finAnio
+      AND o.status = 2
+      AND o.origen_sistema = 'MOBILVENDOR'
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND o.fecha_creacion >= :inicioAnio
+      AND o.fecha_creacion <  :finAnio
 ),
 
 consumo_mensual AS (
-    SELECT 
+    SELECT
         customer_code,
-        DATE_TRUNC('month', fecha_entrega) AS mes,
+        DATE_TRUNC('month', fecha_creacion) AS mes,
         SUM(total) AS consumo_mes
     FROM movimientos
-    GROUP BY customer_code, DATE_TRUNC('month', fecha_entrega)
+    GROUP BY customer_code, DATE_TRUNC('month', fecha_creacion)
 )
 
 SELECT DISTINCT ON (customer_code)
@@ -337,6 +341,9 @@ ORDER BY customer_code, consumo_mes DESC
 
     /* ========================================================
        4️ PRODUCTOS VENDIDOS
+       (Mismos filtros que la tabla principal de botellonesController:
+        status = 2, descripcion_categoria = 'BOTELLÓN',
+        ordenes MOBILVENDOR, rango por fecha_creacion)
     ======================================================== */
     const productosVendidosSQL = `
 SELECT
@@ -345,25 +352,30 @@ SELECT
     SUM(mov.total)    AS monto_usd
 FROM (
 
-    SELECT d.descripcion, d.cantidad, d.total, f.fecha_entrega
-    FROM facturas f
-    JOIN detalle_documento d ON d.documento_code = f.code
-    WHERE f.seller_code = :ruta
-      AND f.status IN (0,2,3,4,5)
-      AND d.codigo_categoria = '5'
+    /* ===== ORDENES ===== */
+    SELECT dd.descripcion, dd.cantidad, dd.total
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.seller_code = :ruta
+      AND o.status = 2
+      AND o.origen_sistema = 'MOBILVENDOR'
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND o.fecha_creacion >= :inicio
+      AND o.fecha_creacion <  :fin
 
     UNION ALL
 
-    SELECT d.descripcion, d.cantidad, d.total, o.fecha_entrega
-    FROM ordenes o
-    JOIN detalle_documento d ON d.documento_code = o.code
-    WHERE o.seller_code = :ruta
-      AND o.status IN (2,4,5)
-      AND d.codigo_categoria = '5'
+    /* ===== FACTURAS ===== */
+    SELECT dd.descripcion, dd.cantidad, dd.total
+    FROM facturas f
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE f.seller_code = :ruta
+      AND f.status = 2
+      AND dd.descripcion_categoria = 'BOTELLÓN'
+      AND f.fecha_creacion >= :inicio
+      AND f.fecha_creacion <  :fin
 
 ) mov
-WHERE mov.fecha_entrega >= :inicio
-  AND mov.fecha_entrega <  :fin
 GROUP BY mov.descripcion
 ORDER BY unidades_vendidas DESC
 `;
@@ -382,25 +394,26 @@ SELECT
     SUM(mov.cantidad) AS unidades_botellon
 FROM (
 
-    SELECT f.customer_code, d.cantidad, f.fecha_entrega
+    SELECT f.customer_code, dd.cantidad, f.fecha_creacion
     FROM facturas f
-    JOIN detalle_documento d ON d.documento_code = f.code
+    JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
-      AND f.status IN (0,2,3,4,5)
-      AND d.codigo_categoria = '5'
+      AND f.status = 2
+      AND dd.descripcion_categoria = 'BOTELLÓN'
 
     UNION ALL
 
-    SELECT o.customer_code, d.cantidad, o.fecha_entrega
+    SELECT o.customer_code, dd.cantidad, o.fecha_creacion
     FROM ordenes o
-    JOIN detalle_documento d ON d.documento_code = o.code
+    JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.seller_code = :ruta
-      AND o.status IN (2,4,5)
-      AND d.codigo_categoria = '5'
+      AND o.status = 2
+      AND o.origen_sistema = 'MOBILVENDOR'
+      AND dd.descripcion_categoria = 'BOTELLÓN'
 
 ) mov
-WHERE mov.fecha_entrega >= :inicio
-  AND mov.fecha_entrega <  :fin
+WHERE mov.fecha_creacion >= :inicio
+  AND mov.fecha_creacion <  :fin
 GROUP BY mov.customer_code
 `;
 
