@@ -124,6 +124,16 @@ function getFiltroCanal(canal) {
     usaOdoo:          false,
   };
 
+  // EMPRESAS (slug "empresas-odoo" del ranking principal)
+  // Replica EXACTA de obtenerOdooDescartablePorCanal: suma 3 fuentes UNION ALL
+  //   ① ORDENES ODOO equipo_ventas='Empresas' (type=2, status IN (2))
+  //   ② ORDENES seller_code LIKE 'E%' (sin status/type)
+  //   ③ FACTURAS seller_code LIKE 'E%' (sin status)
+  // Todas con dd.codigo_categoria='7' y fecha_creacion en el rango.
+  if (c === "empresas-odoo") return {
+    usaEmpresasE: true,
+  };
+
   // Canales ODOO (por equipo_ventas)
   const equipoVentas = ODOO_CANAL_MAP[c];
   if (equipoVentas) return { usaOrdenes: false, usaOdoo: true, equipoVentas };
@@ -376,6 +386,146 @@ const obtenerClientesCanal = async (req, res) => {
         db.query(sqlOdoo,  { type: QueryTypes.SELECT }),
       ]);
       clientes = [...clientesMobil, ...clientesOdoo];
+
+    } else if (config.usaEmpresasE) {
+      // ── EMPRESAS — réplica EXACTA del ranking principal (obtenerOdooDescartablePorCanal)
+      // Suma 3 fuentes: ORDENES ODOO equipo='Empresas' + ORDENES seller E% + FACTURAS seller E%
+      const sql = `
+        WITH direcciones_activas AS (
+          SELECT DISTINCT customer_code, customer_address_code FROM (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code
+            FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+            WHERE f.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+              AND f.fecha_creacion >= '${antInicio}'
+              AND f.customer_address_code IS NOT NULL
+            UNION ALL
+            SELECT o.customer_code, o.customer_address_code::text
+            FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+            WHERE o.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+              AND o.fecha_creacion >= '${antInicio}'
+              AND o.customer_address_code IS NOT NULL
+            UNION ALL
+            SELECT o.customer_code, o.customer_address_code::text
+            FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+            WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Empresas'
+              AND o.type = 2 AND o.status IN (2)
+              AND dd.codigo_categoria = '7'
+              AND o.fecha_creacion >= '${antInicio}'
+              AND o.customer_address_code IS NOT NULL
+          ) u
+        ),
+        consumo_actual AS (
+          SELECT customer_code, customer_address_code,
+            SUM(unidades) AS unidades, SUM(monto) AS monto
+          FROM (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code,
+              SUM(dd.cantidad) AS unidades, SUM(dd.total) AS monto
+            FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+            WHERE f.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+              AND f.fecha_creacion >= '${inicio}' AND f.fecha_creacion < '${fin}'
+            GROUP BY f.customer_code, f.customer_address_code
+            UNION ALL
+            SELECT o.customer_code, o.customer_address_code::text,
+              SUM(dd.cantidad), SUM(dd.total)
+            FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+            WHERE o.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+              AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+            GROUP BY o.customer_code, o.customer_address_code
+            UNION ALL
+            SELECT o.customer_code, o.customer_address_code::text,
+              SUM(dd.cantidad), SUM(dd.total)
+            FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+            WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Empresas'
+              AND o.type = 2 AND o.status IN (2)
+              AND dd.codigo_categoria = '7'
+              AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+            GROUP BY o.customer_code, o.customer_address_code
+          ) u
+          GROUP BY customer_code, customer_address_code
+        ),
+        consumo_anterior AS (
+          SELECT customer_code, customer_address_code, SUM(monto) AS monto
+          FROM (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code,
+              SUM(dd.total) AS monto
+            FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+            WHERE f.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+              AND f.fecha_creacion >= '${antInicio}' AND f.fecha_creacion < '${antFin}'
+            GROUP BY f.customer_code, f.customer_address_code
+            UNION ALL
+            SELECT o.customer_code, o.customer_address_code::text, SUM(dd.total)
+            FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+            WHERE o.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+              AND o.fecha_creacion >= '${antInicio}' AND o.fecha_creacion < '${antFin}'
+            GROUP BY o.customer_code, o.customer_address_code
+            UNION ALL
+            SELECT o.customer_code, o.customer_address_code::text, SUM(dd.total)
+            FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+            WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Empresas'
+              AND o.type = 2 AND o.status IN (2)
+              AND dd.codigo_categoria = '7'
+              AND o.fecha_creacion >= '${antInicio}' AND o.fecha_creacion < '${antFin}'
+            GROUP BY o.customer_code, o.customer_address_code
+          ) u
+          GROUP BY customer_code, customer_address_code
+        ),
+        ultima_compra AS (
+          SELECT customer_code, customer_address_code, MAX(ultima) AS ultima
+          FROM (
+            SELECT f.customer_code, f.customer_address_code::text AS customer_address_code,
+              MAX(f.fecha_creacion) AS ultima
+            FROM facturas f WHERE f.seller_code LIKE 'E%'
+            GROUP BY f.customer_code, f.customer_address_code
+            UNION ALL
+            SELECT o.customer_code, o.customer_address_code::text, MAX(o.fecha_creacion)
+            FROM ordenes o WHERE o.seller_code LIKE 'E%'
+            GROUP BY o.customer_code, o.customer_address_code
+            UNION ALL
+            SELECT o.customer_code, o.customer_address_code::text, MAX(o.fecha_creacion)
+            FROM ordenes o
+            WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Empresas'
+              AND o.type = 2 AND o.status IN (2)
+            GROUP BY o.customer_code, o.customer_address_code
+          ) u
+          GROUP BY customer_code, customer_address_code
+        )
+        SELECT
+          da.customer_code, da.customer_address_code,
+          COALESCE(dc.descripcion_direccion_cliente, dc2.descripcion_direccion_cliente) AS descripcion_direccion,
+          c.nombre_cliente,
+          c.identificacion_cliente,
+          tn.descripcion                    AS tipo_negocio,
+          COALESCE(dc.calle1_direccion_cliente, dc2.calle1_direccion_cliente)   AS direccion_entrega,
+          COALESCE(dc.telefono_direccion_cliente, dc2.telefono_direccion_cliente) AS telefono,
+          COALESCE(dc.latitud_direccion_cliente, dc2.latitud_direccion_cliente)   AS latitud,
+          COALESCE(dc.longitud_direccion_cliente, dc2.longitud_direccion_cliente) AS longitud,
+          COALESCE(ca.monto,    0)           AS consumo_actual,
+          COALESCE(ca.unidades, 0)           AS unidades_actual,
+          COALESCE(cp.monto,    0)           AS consumo_anterior,
+          uc.ultima                          AS ultima_compra
+        FROM direcciones_activas da
+        LEFT JOIN clientes c              ON c.codigo_cliente  = da.customer_code
+        LEFT JOIN tipos_negocio tn        ON tn.codigo         = c.codigo_tipo_negocio
+        LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente = da.customer_address_code
+                                          AND dc.codigo_cliente = da.customer_code
+        LEFT JOIN (
+          SELECT DISTINCT ON (codigo_cliente)
+            codigo_cliente, descripcion_direccion_cliente,
+            calle1_direccion_cliente, telefono_direccion_cliente,
+            latitud_direccion_cliente, longitud_direccion_cliente
+          FROM direcciones_clientes
+          ORDER BY codigo_cliente
+        ) dc2 ON dc2.codigo_cliente = da.customer_code
+        LEFT JOIN consumo_actual   ca     ON ca.customer_code           = da.customer_code
+                                          AND ca.customer_address_code   = da.customer_address_code
+        LEFT JOIN consumo_anterior cp     ON cp.customer_code           = da.customer_code
+                                          AND cp.customer_address_code   = da.customer_address_code
+        LEFT JOIN ultima_compra    uc     ON uc.customer_code           = da.customer_code
+                                          AND uc.customer_address_code   = da.customer_address_code
+        ORDER BY consumo_actual DESC;
+      `;
+
+      clientes = await db.query(sql, { type: QueryTypes.SELECT });
 
     } else if (config.usaOdoo) {
       // ── Canales ODOO — fuente: ordenes WHERE origen_sistema='ODOO' ─
@@ -790,6 +940,51 @@ const obtenerClientesCanal = async (req, res) => {
         mapaProds[p.producto].monto_usd         += Number(p.monto_usd) || 0;
       });
       productosVendidos = Object.values(mapaProds).sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
+    } else if (config.usaEmpresasE) {
+      // EMPRESAS — 3 fuentes: ODOO equipo='Empresas' + ORDENES E% + FACTURAS E%
+      const sqlProdFactE = `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+          AND f.fecha_creacion >= '${inicio}' AND f.fecha_creacion < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      `;
+      const sqlProdOrdenE = `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+          AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      `;
+      const sqlProdOdoo = `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Empresas'
+          AND o.type = 2 AND o.status IN (2)
+          AND dd.codigo_categoria = '7'
+          AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      `;
+      const resultados = await Promise.all([
+        db.query(sqlProdFactE,  { type: QueryTypes.SELECT }),
+        db.query(sqlProdOrdenE, { type: QueryTypes.SELECT }),
+        db.query(sqlProdOdoo,   { type: QueryTypes.SELECT }),
+      ]);
+      const mapaProds = {};
+      resultados.flat().forEach((p) => {
+        if (!mapaProds[p.producto]) {
+          mapaProds[p.producto] = { producto: p.producto, unidades_vendidas: 0, monto_usd: 0 };
+        }
+        mapaProds[p.producto].unidades_vendidas += Number(p.unidades_vendidas) || 0;
+        mapaProds[p.producto].monto_usd         += Number(p.monto_usd) || 0;
+      });
+      productosVendidos = Object.values(mapaProds).sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
     } else if (config.usaOdoo) {
       const equipoVentas = config.equipoVentas.replace(/'/g, "''");
       const sqlProd = `
@@ -879,6 +1074,56 @@ const obtenerClientesCanal = async (req, res) => {
     const totalConsumo        = clientesEnriquecidos.reduce((a, c) => a + c.consumo_actual, 0);
     const totalAnterior       = clientesEnriquecidos.reduce((a, c) => a + c.consumo_anterior, 0);
 
+    // ── Totales "oficiales" que cuadran con el ranking principal ──────────
+    // Para EMPRESAS se replica EXACTAMENTE obtenerOdooDescartablePorCanal
+    // (ROUND per customer_code + ::bigint per customer_code + UNION ALL 3 fuentes).
+    let totalesCanal = {
+      unidades: Number(clientesEnriquecidos.reduce((a, c) => a + c.unidades_actual, 0).toFixed(2)),
+      dolares : Number(totalConsumo.toFixed(2)),
+    };
+    if (config.usaEmpresasE) {
+      const sqlTotales = `
+        SELECT
+          COALESCE(SUM(unidades_por_cliente), 0) AS unidades,
+          COALESCE(SUM(dolares_por_cliente),  0) AS dolares
+        FROM (
+          -- ① ODOO equipo_ventas='Empresas'
+          SELECT
+            COALESCE(SUM(dd.cantidad), 0)::bigint AS unidades_por_cliente,
+            ROUND(SUM(dd.total)::NUMERIC, 2)      AS dolares_por_cliente
+          FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+          WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Empresas'
+            AND o.type = 2 AND o.status IN (2)
+            AND dd.codigo_categoria = '7'
+            AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+          GROUP BY o.equipo_ventas, o.customer_code
+          UNION ALL
+          -- ② Órdenes seller_code LIKE 'E%'
+          SELECT
+            COALESCE(SUM(dd.cantidad), 0)::bigint,
+            ROUND(SUM(dd.total)::NUMERIC, 2)
+          FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+          WHERE o.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+            AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+          GROUP BY o.customer_code
+          UNION ALL
+          -- ③ Facturas seller_code LIKE 'E%'
+          SELECT
+            COALESCE(SUM(dd.cantidad), 0)::bigint,
+            ROUND(SUM(dd.total)::NUMERIC, 2)
+          FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+          WHERE f.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+            AND f.fecha_creacion >= '${inicio}' AND f.fecha_creacion < '${fin}'
+          GROUP BY f.customer_code
+        ) sub
+      `;
+      const [row] = await db.query(sqlTotales, { type: QueryTypes.SELECT });
+      totalesCanal = {
+        unidades: Number(row?.unidades ?? 0),
+        dolares : Number(Number(row?.dolares ?? 0).toFixed(2)),
+      };
+    }
+
     return res.json({
       canal      : canal.toUpperCase(),
       anio       : anioNum,
@@ -891,6 +1136,7 @@ const obtenerClientesCanal = async (req, res) => {
         totalAnterior  : Number(totalAnterior.toFixed(2)),
         variacion_abs  : Number((totalConsumo - totalAnterior).toFixed(2)),
       },
+      totalesCanal,
       clientes        : clientesEnriquecidos,
       productosVendidos,
     });
@@ -930,13 +1176,65 @@ const obtenerProductosSucursal = async (req, res) => {
 
     // Determinar fuente de datos:
     // - Canal ODOO puro (config.usaOdoo): ordenes con equipo_ventas
+    // - Canal EMPRESAS E% (config.usaEmpresasE): facturas + ordenes seller_code LIKE 'E%'
     // - Canal combinado (config.usaCombinado): depende del param fuente
-    // - Canal EMPRESAS (config.usaOrdenes): ordenes con seller_nombre
+    // - Canal EMPRESAS legacy (config.usaOrdenes): ordenes con seller_nombre
     // - Resto: facturas
-    const esOdoo     = config.usaOdoo || fuente === "odoo";
-    const esEmpresas = !!config.usaOrdenes;
+    const esOdoo      = config.usaOdoo || fuente === "odoo";
+    const esEmpresasE = !!config.usaEmpresasE;
+    const esEmpresas  = !!config.usaOrdenes;
 
-    if (esOdoo) {
+    if (esEmpresasE) {
+      // EMPRESAS — 3 fuentes: FACTURAS E% + ORDENES E% + ORDENES ODOO equipo='Empresas'
+      const addrClauseF = addrEsc ? `AND f.customer_address_code = '${addrEsc}'` : "";
+      const addrClauseO = addrEsc ? `AND o.customer_address_code::text = '${addrEsc}'` : "";
+      const sqlFactE = `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+          AND f.customer_code = '${codEsc}' ${addrClauseF}
+          AND f.fecha_creacion >= '${inicio}' AND f.fecha_creacion < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      `;
+      const sqlOrdenE = `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.seller_code LIKE 'E%' AND dd.codigo_categoria = '7'
+          AND o.customer_code = '${codEsc}' ${addrClauseO}
+          AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      `;
+      const sqlOrdenOdoo = `
+        SELECT COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN') AS producto,
+               SUM(dd.cantidad) AS unidades_vendidas,
+               SUM(dd.total)    AS monto_usd
+        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Empresas'
+          AND o.type = 2 AND o.status IN (2)
+          AND dd.codigo_categoria = '7'
+          AND o.customer_code = '${codEsc}' ${addrClauseO}
+          AND o.fecha_creacion >= '${inicio}' AND o.fecha_creacion < '${fin}'
+        GROUP BY COALESCE(dd.descripcion, 'SIN DESCRIPCIÓN')
+      `;
+      const resultados = await Promise.all([
+        db.query(sqlFactE,     { type: QueryTypes.SELECT }),
+        db.query(sqlOrdenE,    { type: QueryTypes.SELECT }),
+        db.query(sqlOrdenOdoo, { type: QueryTypes.SELECT }),
+      ]);
+      const mapaProds = {};
+      resultados.flat().forEach((p) => {
+        if (!mapaProds[p.producto]) {
+          mapaProds[p.producto] = { producto: p.producto, unidades_vendidas: 0, monto_usd: 0 };
+        }
+        mapaProds[p.producto].unidades_vendidas += Number(p.unidades_vendidas) || 0;
+        mapaProds[p.producto].monto_usd         += Number(p.monto_usd) || 0;
+      });
+      productos = Object.values(mapaProds).sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
+    } else if (esOdoo) {
       // ODOO: buscar por customer_code en ordenes con equipo_ventas
       const equipoVentas = (config.equipoOdoo || config.equipoVentas || "").replace(/'/g, "''");
       const sql = `

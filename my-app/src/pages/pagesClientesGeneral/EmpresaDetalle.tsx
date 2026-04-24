@@ -525,46 +525,60 @@ export default function EmpresaDetalle() {
                       <ProdTh label="Producto"  col="nombre_producto"/>
                       <ProdTh label="Unidades"  col="total_unidades"  align="right"/>
                       <ProdTh label="Ventas"    col="total_ventas"    align="right"/>
+                      <th className="px-3 py-3 text-right text-xs">Precio Promedio</th>
                       <th className="px-3 py-3 text-right text-xs">% Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {prodSorted.map((p, idx) => (
-                      <tr key={`${p.nombre_producto}-${idx}`}
-                        className={`transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
-                        <td className="px-3 py-2 text-center text-white/40 text-xs">{idx + 1}</td>
-                        <td className="px-3 py-2 font-medium">{p.nombre_producto}</td>
-                        <td className="px-3 py-2 text-right text-green-400 font-bold tabular-nums">
-                          {p.total_unidades.toLocaleString("es-EC")}
-                        </td>
-                        <td className="px-3 py-2 text-right text-blue-400 font-bold tabular-nums">
-                          {money(p.total_ventas)}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-20 bg-white/10 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className="bg-emerald-400 h-full rounded-full"
-                                style={{ width: `${totalProd > 0 ? (p.total_ventas / totalProd) * 100 : 0}%` }}
-                              />
+                    {prodSorted.map((p, idx) => {
+                      const prom = p.total_unidades > 0 ? p.total_ventas / p.total_unidades : 0;
+                      return (
+                        <tr key={`${p.nombre_producto}-${idx}`}
+                          className={`transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
+                          <td className="px-3 py-2 text-center text-white/40 text-xs">{idx + 1}</td>
+                          <td className="px-3 py-2 font-medium">{p.nombre_producto}</td>
+                          <td className="px-3 py-2 text-right text-green-400 font-bold tabular-nums">
+                            {p.total_unidades.toLocaleString("es-EC")}
+                          </td>
+                          <td className="px-3 py-2 text-right text-blue-400 font-bold tabular-nums">
+                            {money(p.total_ventas)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-purple-400 font-bold tabular-nums">
+                            {money(prom)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="w-20 bg-white/10 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className="bg-emerald-400 h-full rounded-full"
+                                  style={{ width: `${totalProd > 0 ? (p.total_ventas / totalProd) * 100 : 0}%` }}
+                                />
+                              </div>
+                              <span className="text-white/50 text-xs w-10 text-right">
+                                {totalProd > 0 ? ((p.total_ventas / totalProd) * 100).toFixed(1) : "0.0"}%
+                              </span>
                             </div>
-                            <span className="text-white/50 text-xs w-10 text-right">
-                              {totalProd > 0 ? ((p.total_ventas / totalProd) * 100).toFixed(1) : "0.0"}%
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot className="bg-[#014434] border-t border-[#046C5E] font-bold">
-                    <tr>
-                      <td colSpan={2} className="px-3 py-3 text-green-300">TOTAL</td>
-                      <td className="px-3 py-3 text-right text-green-400 tabular-nums">
-                        {prodSorted.reduce((a, p) => a + p.total_unidades, 0).toLocaleString("es-EC")}
-                      </td>
-                      <td className="px-3 py-3 text-right text-blue-400 tabular-nums">{money(totalProd)}</td>
-                      <td className="px-3 py-3 text-right text-white/40 text-xs">100%</td>
-                    </tr>
+                    {(() => {
+                      const totUni = prodSorted.reduce((a, p) => a + p.total_unidades, 0);
+                      const promTotal = totUni > 0 ? totalProd / totUni : 0;
+                      return (
+                        <tr>
+                          <td colSpan={2} className="px-3 py-3 text-green-300">TOTAL</td>
+                          <td className="px-3 py-3 text-right text-green-400 tabular-nums">
+                            {totUni.toLocaleString("es-EC")}
+                          </td>
+                          <td className="px-3 py-3 text-right text-blue-400 tabular-nums">{money(totalProd)}</td>
+                          <td className="px-3 py-3 text-right text-purple-300 tabular-nums">{money(promTotal)}</td>
+                          <td className="px-3 py-3 text-right text-white/40 text-xs">100%</td>
+                        </tr>
+                      );
+                    })()}
                   </tfoot>
                 </table>
               </div>

@@ -63,6 +63,11 @@ interface Resumen {
   clientesSinConsumo: number;
 }
 
+interface TotalesCanal {
+  unidades: number;
+  dolares: number;
+}
+
 interface Producto {
   producto: string;
   unidades_vendidas: number;
@@ -125,6 +130,7 @@ export default function DetalleClientesCanalDescartablePage() {
   const [clientes,  setClientes]  = useState<Cliente[]>([]);
   const [resumen,   setResumen]   = useState<Resumen | null>(null);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [totalesCanal, setTotalesCanal] = useState<TotalesCanal | null>(null);
   const [cargando,  setCargando]  = useState(true);
   const [busqueda,  setBusqueda]  = useState("");
   const [filtro,    setFiltro]    = useState<"todos" | "con" | "sin">("todos");
@@ -188,6 +194,7 @@ export default function DetalleClientesCanalDescartablePage() {
         setClientes(data.clientes || []);
         setResumen(data.resumen || null);
         setProductos(data.productosVendidos || []);
+        setTotalesCanal(data.totalesCanal || null);
       })
       .catch(console.error)
       .finally(() => setCargando(false));
@@ -368,9 +375,12 @@ export default function DetalleClientesCanalDescartablePage() {
 
   const canalLabel = CANAL_LABELS[canal?.toLowerCase() ?? ""] ?? canal;
 
-  // Totales desde clientes (fuente de verdad para KPIs)
-  const totalMontoVip   = clientes.reduce((a, c) => a + c.consumo_actual,   0);
-  const totalUndsVip    = clientes.reduce((a, c) => a + c.unidades_actual,  0);
+  // Totales: preferimos los "oficiales" del backend (totalesCanal) que cuadran
+  // con el ranking principal. Fallback: suma de clientes.
+  const sumaMontoClientes = clientes.reduce((a, c) => a + c.consumo_actual,   0);
+  const sumaUndsClientes  = clientes.reduce((a, c) => a + c.unidades_actual,  0);
+  const totalMontoVip   = totalesCanal ? totalesCanal.dolares  : sumaMontoClientes;
+  const totalUndsVip    = totalesCanal ? totalesCanal.unidades : sumaUndsClientes;
   const totalAntVip     = clientes.reduce((a, c) => a + c.consumo_anterior, 0);
   const varAbsVip       = totalMontoVip - totalAntVip;
 

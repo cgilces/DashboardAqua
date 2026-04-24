@@ -40,7 +40,7 @@ const isMobileViewport = () =>
   typeof window !== "undefined" && window.matchMedia("(max-width: 1023.98px)").matches;
 
 export default function SidebarDashboards() {
-  const [isOpen, setIsOpen] = useState<boolean>(() => !isMobileViewport());
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const location = useLocation();
   const { user } = useAuth();
 
@@ -72,13 +72,10 @@ export default function SidebarDashboards() {
     if (isMobileViewport()) setIsOpen(false);
   }, [location.pathname]);
 
-  // Reajustar al cambiar de breakpoint
+  // Reajustar al cambiar de breakpoint: siempre cerrar, nunca abrir automáticamente
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023.98px)");
-    const handler = (e: MediaQueryListEvent) => {
-      if (!e.matches) setIsOpen(true); // al pasar a desktop: abrir
-      else setIsOpen(false); // al pasar a móvil: cerrar
-    };
+    const handler = () => setIsOpen(false);
     mq.addEventListener?.("change", handler);
     return () => mq.removeEventListener?.("change", handler);
   }, []);

@@ -3,7 +3,7 @@
 // Agrega 5 canales: PREVENTA, BOTELLONES, HIELO, COTTSA, DESCARTABLE ODOO
 
 const Sequelize = require('sequelize');
-const { sequelize } = require('../../models');
+const { sequelize, CottsaExtraMes } = require('../../models');
 const { getDiasHabiles } = require('../../utils/diasFestivos');
 
 // ================================================================
@@ -175,24 +175,54 @@ function qHielo(inicio, fin) {
 }
 
 // 5. COTTSA — facturas, company_id = 3
-// Usa f.total directamente para incluir IVA correcto
+// Misma lógica que dashboard preventa (obtenerVentasCOTTSAPorRuta):
+// - fecha_entrega (no fecha_creacion)
+// - filtra tipo_documento IN ('(01) Invoice','(04) Credit Note')
+// - dd.total con CASE: notas de crédito en negativo
 function qCOTTSA(inicio, fin) {
   return sequelize.query(`
     SELECT
-      COALESCE(SUM(f.total), 0) AS dolares,
-      COALESCE(SUM(dd_agg.cantidad_total), 0) AS unidades,
+      COALESCE(SUM(CASE
+        WHEN f.tipo_documento = '(01) Invoice'     THEN dd.total
+        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.total
+        ELSE 0 END), 0) AS dolares,
+      COALESCE(SUM(CASE
+        WHEN f.tipo_documento = '(01) Invoice'     THEN dd.cantidad
+        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.cantidad
+        ELSE 0 END), 0) AS unidades,
       COUNT(DISTINCT f.code)              AS docs,
       COUNT(DISTINCT f.customer_code)     AS clientes
     FROM facturas f
-    LEFT JOIN (
-      SELECT documento_code, SUM(cantidad) AS cantidad_total
-      FROM detalle_documento GROUP BY documento_code
-    ) dd_agg ON dd_agg.documento_code = f.code
+    JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.company_id = ${COTTSA_COMPANY_ID}
       AND f.status IN (0,2,3,4,5)
-      AND f.fecha_creacion >= :inicio
-      AND f.fecha_creacion <  :fin
+      AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
+      AND f.fecha_entrega >= :inicio
+      AND f.fecha_entrega <  :fin
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
+}
+
+// COTTSA — totales mensuales (tendencia 6 meses por empresa).
+// Usa la misma lógica que qCOTTSA para que el card "COTTSA S.A." coincida
+// con la tabla "COTTSA — VENTAS - AGUA OK" del dashboard preventa.
+function qCOTTSAPorMes(inicio6m, fin) {
+  return sequelize.query(`
+    SELECT
+      DATE_TRUNC('month', f.fecha_entrega) AS mes_truncado,
+      SUM(CASE
+        WHEN f.tipo_documento = '(01) Invoice'     THEN dd.total
+        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.total
+        ELSE 0 END) AS total
+    FROM facturas f
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE f.company_id = ${COTTSA_COMPANY_ID}
+      AND f.status IN (0,2,3,4,5)
+      AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
+      AND f.fecha_entrega >= :inicio6m
+      AND f.fecha_entrega <  :fin
+    GROUP BY DATE_TRUNC('month', f.fecha_entrega)
+    ORDER BY DATE_TRUNC('month', f.fecha_entrega)
+  `, { replacements: { inicio6m, fin }, type: Sequelize.QueryTypes.SELECT });
 }
 
 // 6. DESCARTABLE ODOO — ordenes, seller_nombre IN RUTAS_ODOO, categoria 7
@@ -478,6 +508,8 @@ const obtenerDashboardConsolidado = async (req, res) => {
       topProdRaw,
       topClientesRaw,
       porEmpresaRaw,
+      cottsaPorMesRaw,
+      cottsaExtrasRaw,
     ] = await Promise.all([
       qPreventa(inicio, fin),           qPreventa(antInicio, antFin),
       qBotellonesOrdenes(inicio, fin),  qBotellonesOrdenes(antInicio, antFin),
@@ -492,6 +524,13 @@ const obtenerDashboardConsolidado = async (req, res) => {
       qTopProductos(inicio, fin),
       qTopClientes(inicio, fin),
       qPorEmpresa(inicio6m, fin),
+      qCOTTSAPorMes(inicio6m, fin),
+      CottsaExtraMes.findAll({
+        where: {
+          [Sequelize.Op.or]: meses6.map(m => ({ anio: m.anio, mes: m.mes })),
+        },
+        raw: true,
+      }),
     ]);
 
     // ── Unir botellones (ordenes + facturas) ──────────────────
@@ -505,12 +544,40 @@ const obtenerDashboardConsolidado = async (req, res) => {
       dolares: Number(botOAnt?.dolares||0) + Number(botFAnt?.dolares||0),
     };
 
+    // ── Extras COTTSA por mes (igual que la tabla COTTSA del dashboard preventa) ──
+    const cottsaExtrasMap = new Map();
+    for (const r of cottsaExtrasRaw) {
+      const k = `${r.anio}-${String(r.mes).padStart(2,'0')}`;
+      cottsaExtrasMap.set(k, {
+        dolares:  Number(r.dolares)  || 0,
+        unidades: Number(r.unidades) || 0,
+        facturas: Number(r.facturas) || 0,
+      });
+    }
+    const mesActKey = `${anioNum}-${String(mesNum).padStart(2, '0')}`;
+    const mesAntKey = `${anioPrev}-${String(mesPrev).padStart(2, '0')}`;
+    const extraActCOTTSA = cottsaExtrasMap.get(mesActKey) || { dolares: 0, unidades: 0, facturas: 0 };
+    const extraAntCOTTSA = cottsaExtrasMap.get(mesAntKey) || { dolares: 0, unidades: 0, facturas: 0 };
+
+    const COTTSAActFinal = {
+      dolares:  Number(COTTSAAct?.dolares  || 0) + extraActCOTTSA.dolares,
+      unidades: Number(COTTSAAct?.unidades || 0) + extraActCOTTSA.unidades,
+      docs:     Number(COTTSAAct?.docs     || 0) + extraActCOTTSA.facturas,
+      clientes: Number(COTTSAAct?.clientes || 0),
+    };
+    const COTTSAAntFinal = {
+      dolares:  Number(COTTSAAnt?.dolares  || 0) + extraAntCOTTSA.dolares,
+      unidades: Number(COTTSAAnt?.unidades || 0) + extraAntCOTTSA.unidades,
+      docs:     Number(COTTSAAnt?.docs     || 0) + extraAntCOTTSA.facturas,
+      clientes: Number(COTTSAAnt?.clientes || 0),
+    };
+
     // ── Construir canales (para desglose) ─────────────────────
     const canales = [
       buildCanal('PREVENTA',      prevAct,  prevAnt,  diasT, diasL, esMesActual),
       buildCanal('BOTELLONES',    botAct,   botAnt,   diasT, diasL, esMesActual),
       buildCanal('HIELO',         hieloAct, hieloAnt, diasT, diasL, esMesActual),
-      buildCanal('COTTSA',         COTTSAAct, COTTSAAnt, diasT, diasL, esMesActual),
+      buildCanal('COTTSA',        COTTSAActFinal, COTTSAAntFinal, diasT, diasL, esMesActual),
       buildCanal('DESC. ODOO',    odooAct,  odooAnt,  diasT, diasL, esMesActual),
     ];
 
@@ -570,10 +637,18 @@ const obtenerDashboardConsolidado = async (req, res) => {
       empresaTendMaps.get(empId).set(mesKey, Number(row.total || 0));
     }
 
-    // Claves de mes actual y anterior
-    const mesActKey  = `${anioNum}-${String(mesNum).padStart(2, '0')}`;
-    const { anio: aAnt, mes: mAnt } = getMesPrevio(anioNum, mesNum);
-    const mesAntKey  = `${aAnt}-${String(mAnt).padStart(2, '0')}`;
+    // Sobrescribir COTTSA con la misma lógica que el dashboard preventa
+    // (fecha_entrega + tipo_documento + notas de crédito negativas + extras manuales).
+    const cottsaMesMap = new Map();
+    for (const row of cottsaPorMesRaw) {
+      const dt = new Date(row.mes_truncado);
+      const mesKey = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+      cottsaMesMap.set(mesKey, Number(row.total || 0));
+    }
+    for (const [mesKey, extra] of cottsaExtrasMap.entries()) {
+      cottsaMesMap.set(mesKey, (cottsaMesMap.get(mesKey) || 0) + extra.dolares);
+    }
+    empresaTendMaps.set(COTTSA_COMPANY_ID, cottsaMesMap);
 
     const porEmpresa = COMPANIES.map(emp => {
       const tendMap  = empresaTendMaps.get(emp.id) || new Map();
