@@ -29,13 +29,16 @@ export default function DetalleClientesEmpresasPage() {
   const { anio, mes } = useParams<{ anio: string; mes: string }>();
   const navigate = useNavigate();
 
+  const tipoProducto =
+    (localStorage.getItem("tipoProductoBotellon") as "todo" | "liquido" | "envase") ?? "todo";
+
   const [subcanales, setSubcanales] = useState<Subcanal[]>([]);
   const [productos,  setProductos]  = useState<Producto[]>([]);
   const [cargando,   setCargando]   = useState(true);
 
   useEffect(() => {
     setCargando(true);
-    fetch(`${API_BASE_URL}/api/botellones/empresas-subcanales?anio=${anio}&mes=${mes}`)
+    fetch(`${API_BASE_URL}/api/botellones/empresas-subcanales?anio=${anio}&mes=${mes}&tipoProducto=${tipoProducto}`)
       .then(r => r.json())
       .then(data => {
         setSubcanales(data.subcanales || []);
@@ -43,7 +46,7 @@ export default function DetalleClientesEmpresasPage() {
       })
       .catch(console.error)
       .finally(() => setCargando(false));
-  }, [anio, mes]);
+  }, [anio, mes, tipoProducto]);
 
   const totalClientes   = subcanales.reduce((a, s) => a + Number(s.total_clientes), 0);
   const totalConConsumo = subcanales.reduce((a, s) => a + Number(s.clientes_con_consumo), 0);
@@ -65,7 +68,20 @@ export default function DetalleClientesEmpresasPage() {
               ← Volver
             </button>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">Clientes Empresas — Botellón</h1>
-            <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio} · MobilVendor + Odoo · Selecciona un módulo</p>
+            <p className="text-xs text-gray-400">
+              {MESES[Number(mes)]} {anio} · MobilVendor + Odoo · Selecciona un módulo
+              {tipoProducto !== "todo" && (
+                <span
+                  className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    tipoProducto === "liquido"
+                      ? "text-blue-300 border-blue-400/40 bg-blue-500/10"
+                      : "text-amber-300 border-amber-400/40 bg-amber-500/10"
+                  }`}
+                >
+                  Filtro: {tipoProducto === "liquido" ? "Líquido" : "Envase"}
+                </span>
+              )}
+            </p>
           </div>
         </div>
 

@@ -51,6 +51,9 @@ const DetalleBotellonPage: React.FC = () => {
   const porcCupo    = cupoDolares > 0 ? (proyeccionDolares / cupoDolares) * 100 : null;
   const cupoSuperado = faltaCupo <= 0;
 
+  const tipoProducto =
+    (localStorage.getItem("tipoProductoBotellon") as "todo" | "liquido" | "envase") ?? "todo";
+
   const [productos,       setProductos]       = useState<any[]>([]);
   const [resumenClientes, setResumenClientes] = useState<any>(null);
   const [clientesRuta,    setClientesRuta]    = useState<any[]>([]);
@@ -79,7 +82,7 @@ const DetalleBotellonPage: React.FC = () => {
 
   useEffect(() => {
     setCargando(true);
-    fetch(`${API_BASE_URL}/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}`)
+    fetch(`${API_BASE_URL}/api/botellones/detalle-botellones/${usuario}/${anio}/${mes}?tipoProducto=${tipoProducto}`)
       .then(r => r.json())
       .then(data => {
         let clientes = data.clientesRuta || [];
@@ -92,7 +95,7 @@ const DetalleBotellonPage: React.FC = () => {
         setPagina(1);
       })
       .finally(() => setCargando(false));
-  }, [usuario, anio, mes, filtroConsumo]);
+  }, [usuario, anio, mes, filtroConsumo, tipoProducto]);
 
   const filtrados = clientesRuta.filter(c =>
     String(c?.nombre_cliente || "").toLowerCase().includes(busqueda.toLowerCase())
@@ -163,7 +166,20 @@ const DetalleBotellonPage: React.FC = () => {
           <div>
             <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">← Volver</button>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">Botellón — {usuario?.toUpperCase()}</h1>
-            <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio}</p>
+            <p className="text-xs text-gray-400">
+              {MESES[Number(mes)]} {anio}
+              {tipoProducto !== "todo" && (
+                <span
+                  className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    tipoProducto === "liquido"
+                      ? "text-blue-300 border-blue-400/40 bg-blue-500/10"
+                      : "text-amber-300 border-amber-400/40 bg-amber-500/10"
+                  }`}
+                >
+                  Filtro: {tipoProducto === "liquido" ? "Líquido" : "Envase"}
+                </span>
+              )}
+            </p>
           </div>
           <button onClick={exportar}
             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 transition-all self-start sm:self-auto">
