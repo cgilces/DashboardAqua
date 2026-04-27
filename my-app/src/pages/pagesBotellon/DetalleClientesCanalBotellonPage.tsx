@@ -61,6 +61,9 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
   const { anio, mes } = useParams<{ anio: string; mes: string }>();
   const navigate = useNavigate();
 
+  const tipoProducto =
+    (localStorage.getItem("tipoProductoBotellon") as "todo" | "liquido" | "envase") ?? "todo";
+
   const [clientes,   setClientes]   = useState<ClienteCanal[]>([]);
   const [resumen,    setResumen]    = useState<Resumen | null>(null);
   const [productos,  setProductos]  = useState<Producto[]>([]);
@@ -86,7 +89,7 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
 
   useEffect(() => {
     setCargando(true);
-    fetch(`${API_BASE_URL}/api/botellones/${endpoint}?anio=${anio}&mes=${mes}`)
+    fetch(`${API_BASE_URL}/api/botellones/${endpoint}?anio=${anio}&mes=${mes}&tipoProducto=${tipoProducto}`)
       .then(r => r.json())
       .then(data => {
         setClientes(data.clientes || []);
@@ -95,7 +98,7 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
       })
       .catch(console.error)
       .finally(() => setCargando(false));
-  }, [anio, mes, endpoint]);
+  }, [anio, mes, endpoint, tipoProducto]);
 
   const filtrados = clientes.filter(c => {
     const q = busqueda.toLowerCase();
@@ -159,7 +162,20 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
           <div>
             <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">← Volver</button>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">{titulo}</h1>
-            <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio}</p>
+            <p className="text-xs text-gray-400">
+              {MESES[Number(mes)]} {anio}
+              {tipoProducto !== "todo" && (
+                <span
+                  className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    tipoProducto === "liquido"
+                      ? "text-blue-300 border-blue-400/40 bg-blue-500/10"
+                      : "text-amber-300 border-amber-400/40 bg-amber-500/10"
+                  }`}
+                >
+                  Filtro: {tipoProducto === "liquido" ? "Líquido" : "Envase"}
+                </span>
+              )}
+            </p>
           </div>
           <button onClick={exportar}
             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 transition-all self-start sm:self-auto">

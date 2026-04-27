@@ -46,6 +46,9 @@ export default function EmpresasDetalleClientePage() {
   const navigate = useNavigate();
   const codigo = decodeURIComponent(clienteCode || "");
 
+  const tipoProducto =
+    (localStorage.getItem("tipoProductoBotellon") as "todo" | "liquido" | "envase") ?? "todo";
+
   const [cliente,    setCliente]    = useState<ClienteInfo | null>(null);
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [cargando,   setCargando]   = useState(true);
@@ -63,7 +66,7 @@ export default function EmpresasDetalleClientePage() {
 
   useEffect(() => {
     setCargando(true);
-    fetch(`${API_BASE_URL}/api/botellones/empresas-cliente-detalle?clienteCode=${encodeURIComponent(codigo)}&anio=${anio}&mes=${mes}`)
+    fetch(`${API_BASE_URL}/api/botellones/empresas-cliente-detalle?clienteCode=${encodeURIComponent(codigo)}&anio=${anio}&mes=${mes}&tipoProducto=${tipoProducto}`)
       .then(r => r.json())
       .then(data => {
         setCliente(data.cliente || null);
@@ -71,7 +74,7 @@ export default function EmpresasDetalleClientePage() {
       })
       .catch(console.error)
       .finally(() => setCargando(false));
-  }, [clienteCode, anio, mes]);
+  }, [clienteCode, anio, mes, tipoProducto]);
 
   const totalMonto = sucursales.reduce((a, s) => a + Number(s.consumo_actual), 0);
   const totalAnt   = sucursales.reduce((a, s) => a + Number(s.consumo_anterior), 0);

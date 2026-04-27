@@ -5,6 +5,33 @@ const Sequelize = require("sequelize");
    🧩 HELPERS
 ======================================================== */
 
+// Filtro por tipo de producto (líquido / envase / todo)
+function normalizarTipoProducto(raw) {
+  const v = String(raw || "").toLowerCase().trim();
+  if (v === "liquido" || v === "líquido") return "liquido";
+  if (v === "envase") return "envase";
+  return "todo";
+}
+
+// Fragmento SQL para filas con dd.descripcion_categoria = 'BOTELLÓN'
+function buildFiltroProductoBotellon(tipoProducto, alias = "dd") {
+  if (tipoProducto === "liquido")
+    return ` AND ${alias}.descripcion NOT ILIKE '%ENVASE%' AND ${alias}.descripcion NOT ILIKE '%PET%' `;
+  if (tipoProducto === "envase")
+    return ` AND (${alias}.descripcion ILIKE '%ENVASE%' OR ${alias}.descripcion ILIKE '%PET%') `;
+  return "";
+}
+
+// Reemplazo del predicado IN ('BOTELLÓN','SUSCRIPCION') con el filtro aplicado.
+// SUSCRIPCION es 100% líquido → se incluye en liquido/todo y se excluye en envase.
+function buildFiltroBotellonOSuscripcion(tipoProducto, alias = "dd") {
+  if (tipoProducto === "liquido")
+    return `((${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.descripcion NOT ILIKE '%ENVASE%' AND ${alias}.descripcion NOT ILIKE '%PET%') OR ${alias}.descripcion_categoria = 'SUSCRIPCION')`;
+  if (tipoProducto === "envase")
+    return `(${alias}.descripcion_categoria = 'BOTELLÓN' AND (${alias}.descripcion ILIKE '%ENVASE%' OR ${alias}.descripcion ILIKE '%PET%'))`;
+  return `${alias}.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')`;
+}
+
 // Formatear fecha YYYY-MM-DD
 function formatFecha(fecha) {
   if (!fecha) return null;
@@ -47,6 +74,7 @@ const obtenerDetalleRuta = async (req, res) => {
 
   try {
     const { ruta, anio, mes } = req.params;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
 
     if (!ruta || !anio || !mes) {
       return res.status(400).json({ error: "Debe enviar /ruta/anio/mes" });
@@ -63,6 +91,9 @@ const obtenerDetalleRuta = async (req, res) => {
     const { inicio: antInicio, fin: antFin } = obtenerRangoMesAnterior(anioNum, mesNum);
 
     const rutaUpper = ruta.trim().toUpperCase();
+
+    const filtroDD = buildFiltroProductoBotellon(tipoProducto, "dd");
+    const filtroBotellonOSusc = buildFiltroBotellonOSuscripcion(tipoProducto, "dd");
 
     /* ========================================================
         CLIENTES ASIGNADOS A LA RUTA
@@ -122,7 +153,7 @@ const obtenerDetalleRuta = async (req, res) => {
         ON dd.documento_code = f.code
       WHERE f.seller_code = :ruta
         AND f.status = 2
-        AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
+        AND ${filtroBotellonOSusc}
         AND f.fecha_creacion >= :inicio
         AND f.fecha_creacion <  :fin
 
@@ -137,6 +168,7 @@ const obtenerDetalleRuta = async (req, res) => {
         AND o.status = 2
         AND o.origen_sistema = 'MOBILVENDOR'
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroDD}
         AND o.fecha_creacion >= :inicio
         AND o.fecha_creacion <  :fin
 
@@ -229,7 +261,7 @@ FROM (
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
       AND f.status = 2
-      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
+      AND ${filtroBotellonOSusc}
 
     UNION ALL
 
@@ -240,6 +272,7 @@ FROM (
       AND o.status = 2
       AND o.origen_sistema = 'MOBILVENDOR'
       AND dd.descripcion_categoria = 'BOTELLÓN'
+      ${filtroDD}
 
 ) mov
 GROUP BY mov.customer_code
@@ -273,7 +306,7 @@ WITH movimientos AS (
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
       AND f.status = 2
-      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
+      AND ${filtroBotellonOSusc}
       AND f.fecha_creacion >= :inicioAnio
       AND f.fecha_creacion <  :finAnio
 
@@ -286,6 +319,7 @@ WITH movimientos AS (
       AND o.status = 2
       AND o.origen_sistema = 'MOBILVENDOR'
       AND dd.descripcion_categoria = 'BOTELLÓN'
+      ${filtroDD}
       AND o.fecha_creacion >= :inicioAnio
       AND o.fecha_creacion <  :finAnio
 ),
@@ -360,6 +394,7 @@ FROM (
       AND o.status = 2
       AND o.origen_sistema = 'MOBILVENDOR'
       AND dd.descripcion_categoria = 'BOTELLÓN'
+      ${filtroDD}
       AND o.fecha_creacion >= :inicio
       AND o.fecha_creacion <  :fin
 
@@ -371,7 +406,7 @@ FROM (
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
       AND f.status = 2
-      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
+      AND ${filtroBotellonOSusc}
       AND f.fecha_creacion >= :inicio
       AND f.fecha_creacion <  :fin
 
@@ -399,7 +434,7 @@ FROM (
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.seller_code = :ruta
       AND f.status = 2
-      AND dd.descripcion_categoria IN ('BOTELLÓN', 'SUSCRIPCION')
+      AND ${filtroBotellonOSusc}
 
     UNION ALL
 
@@ -410,6 +445,7 @@ FROM (
       AND o.status = 2
       AND o.origen_sistema = 'MOBILVENDOR'
       AND dd.descripcion_categoria = 'BOTELLÓN'
+      ${filtroDD}
 
 ) mov
 WHERE mov.fecha_creacion >= :inicio

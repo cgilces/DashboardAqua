@@ -66,6 +66,46 @@ const getRangoFechas = (anio, mes) => {
 };
 
 /* ======================================================
+   FILTRO POR TIPO DE PRODUCTO (LÍQUIDO / ENVASE / TODO)
+   - LÍQUIDO  → descripcion NO contiene 'ENVASE' ni 'PET'
+   - ENVASE   → descripcion contiene 'ENVASE' o 'PET'
+   - TODO     → sin filtro
+====================================================== */
+const normalizarTipoProducto = (raw) => {
+  const v = String(raw || '').toLowerCase().trim();
+  if (v === 'liquido' || v === 'líquido') return 'liquido';
+  if (v === 'envase') return 'envase';
+  return 'todo';
+};
+
+// Devuelve el fragmento extra a aplicar SOBRE registros ya filtrados por
+// dd.descripcion_categoria = 'BOTELLÓN'. Empieza con AND si aplica.
+const buildFiltroProductoBotellon = (tipoProducto, alias = 'dd') => {
+  if (tipoProducto === 'liquido') {
+    return ` AND ${alias}.descripcion NOT ILIKE '%ENVASE%' AND ${alias}.descripcion NOT ILIKE '%PET%' `;
+  }
+  if (tipoProducto === 'envase') {
+    return ` AND (${alias}.descripcion ILIKE '%ENVASE%' OR ${alias}.descripcion ILIKE '%PET%') `;
+  }
+  return '';
+};
+
+// Para queries DOMICILIO que combinan BOTELLÓN + SUSCRIPCION, devuelve el
+// predicado completo de categoría/descripcion entre paréntesis.
+//   - liquido: BOTELLÓN sin envase/pet  +  SUSCRIPCION (líquida)
+//   - envase:  solo BOTELLÓN con envase/pet  (suscripcion excluida)
+//   - todo:    BOTELLÓN o SUSCRIPCION
+const buildFiltroCategoriaBotellonOSuscripcion = (tipoProducto, alias = 'dd') => {
+  if (tipoProducto === 'liquido') {
+    return `((${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.descripcion NOT ILIKE '%ENVASE%' AND ${alias}.descripcion NOT ILIKE '%PET%') OR ${alias}.descripcion_categoria = 'SUSCRIPCION')`;
+  }
+  if (tipoProducto === 'envase') {
+    return `(${alias}.descripcion_categoria = 'BOTELLÓN' AND (${alias}.descripcion ILIKE '%ENVASE%' OR ${alias}.descripcion ILIKE '%PET%'))`;
+  }
+  return `(${alias}.descripcion_categoria = 'BOTELLÓN' OR ${alias}.descripcion_categoria = 'SUSCRIPCION')`;
+};
+
+/* ======================================================
    META HISTÓRICA BOTELLÓN (USD + MES)
 ====================================================== */
 const metaHistoricaBotellon = async () => {
@@ -169,7 +209,7 @@ const metaHistoricaBotellon = async () => {
    (lunes–sábado, excluyendo festivos nacionales)
 ====================================================== */
 
-const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}, rutasPermitidas = null) => {
+const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}, rutasPermitidas = null, tipoProducto = 'todo') => {
   const hoyDate = new Date();
   const esMesActual = hoyDate.getFullYear() === anio && hoyDate.getMonth() + 1 === mes;
 
@@ -185,6 +225,10 @@ const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {},
 
   const diasTrans = getDiasHabilesTranscurridos(anio, mes);
   const diasMes = getDiasLaborablesMes(anio, mes);
+
+  const filtroProductoBotellon = buildFiltroProductoBotellon(tipoProducto);
+  const filtroBotellonOSuscripcion = buildFiltroCategoriaBotellonOSuscripcion(tipoProducto);
+  const incluirSuscripcion = tipoProducto !== 'envase';
 
   const sql = `
   SELECT
@@ -213,6 +257,7 @@ FROM (
     o.status = 2
     AND o.origen_sistema = 'MOBILVENDOR'
     AND dd.descripcion_categoria = 'BOTELLÓN'
+    ${filtroProductoBotellon}
     AND (
       o.seller_code ILIKE 'M%'
       OR o.seller_code ILIKE 'TV%'
@@ -248,10 +293,7 @@ FROM (
     ON dd.documento_code = f.code
   WHERE
     f.status = 2
-    AND (
-      dd.descripcion_categoria = 'BOTELLÓN'
-      OR dd.descripcion_categoria = 'SUSCRIPCION'
-    )
+    AND ${filtroBotellonOSuscripcion}
     AND f.fecha_creacion >= :inicio
     AND f.fecha_creacion <  :fin
   GROUP BY grupo, f.seller_code
@@ -270,12 +312,13 @@ FROM (
   WHERE
     o.status = 2
     AND dd.descripcion_categoria = 'BOTELLÓN'
+    ${filtroProductoBotellon}
     AND o.equipo_ventas = 'Website'
     AND o.fecha_creacion >= :inicio
     AND o.fecha_creacion <  :fin
   GROUP BY o.seller_code
 
-  UNION ALL
+  ${incluirSuscripcion ? `UNION ALL
 
   /* ===================== SUSCRIPCION ===================== */
   SELECT
@@ -291,7 +334,7 @@ FROM (
     AND dd.descripcion_categoria = 'SUSCRIPCION'
     AND f.fecha_creacion >= :inicio
     AND f.fecha_creacion <  :fin
-  GROUP BY f.seller_code
+  GROUP BY f.seller_code` : ''}
 
 ) t
 WHERE grupo = :grupo
@@ -348,6 +391,7 @@ ORDER BY codigo;
           SELECT 1 FROM detalle_documento dd
           WHERE dd.documento_code = o.code
             AND dd.descripcion_categoria = 'BOTELLÓN'
+            ${filtroProductoBotellon}
         )
       GROUP BY grupo
 
@@ -379,6 +423,7 @@ ORDER BY codigo;
           SELECT 1 FROM detalle_documento dd
           WHERE dd.documento_code = f.code
             AND dd.descripcion_categoria = 'BOTELLÓN'
+            ${filtroProductoBotellon}
         )
       GROUP BY grupo
     ) t
@@ -505,7 +550,7 @@ ORDER BY codigo;
 /* ======================================================
    TENDENCIA 6 MESES BOTELLÓN (ordenes MV + facturas E/A/V/U1)
 ====================================================== */
-const tendencia6MesesBotellon = async (anioNum, mesNum) => {
+const tendencia6MesesBotellon = async (anioNum, mesNum, tipoProducto = 'todo') => {
   const NOMBRES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   let mesInicio = mesNum - 11, anioInicio = anioNum;
   while (mesInicio <= 0) { mesInicio += 12; anioInicio--; }
@@ -513,6 +558,8 @@ const tendencia6MesesBotellon = async (anioNum, mesNum) => {
   let mesFin = mesNum + 1, anioFin = anioNum;
   if (mesFin === 13) { mesFin = 1; anioFin++; }
   const fin6 = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
+
+  const filtroProductoBotellon = buildFiltroProductoBotellon(tipoProducto);
 
   const rows = await sequelize.query(`
     SELECT mes_periodo, SUM(dolares) AS dolares, SUM(unidades) AS unidades
@@ -524,6 +571,7 @@ const tendencia6MesesBotellon = async (anioNum, mesNum) => {
       WHERE o.status IN (2)
         AND o.origen_sistema = 'MOBILVENDOR'
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroProductoBotellon}
         AND o.fecha_creacion >= :inicio6 AND o.fecha_creacion < :fin6
       GROUP BY DATE_TRUNC('month', o.fecha_creacion)
 
@@ -535,6 +583,7 @@ const tendencia6MesesBotellon = async (anioNum, mesNum) => {
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.status IN (2)
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroProductoBotellon}
         AND f.fecha_entrega >= :inicio6 AND f.fecha_entrega < :fin6
       GROUP BY DATE_TRUNC('month', f.fecha_entrega)
     ) combinado
@@ -565,6 +614,7 @@ const tendencia6MesesBotellon = async (anioNum, mesNum) => {
 const obtenerDashboardBotellones = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
 
     if (!anio || !mes) {
       return res.status(400).json({ error: "anio y mes requeridos" });
@@ -601,11 +651,12 @@ const obtenerDashboardBotellones = async (req, res) => {
         anioNum,
         mesNum,
         metasConfigMap,
-        rutasPermitidas
+        rutasPermitidas,
+        tipoProducto
       );
     }
 
-    const tendencia6Meses = await tendencia6MesesBotellon(anioNum, mesNum);
+    const tendencia6Meses = await tendencia6MesesBotellon(anioNum, mesNum, tipoProducto);
 
     return res.json({
       anio: anioNum,
@@ -626,6 +677,7 @@ const obtenerDashboardBotellones = async (req, res) => {
 const obtenerClientesVipBotellon = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
 
     const anioNum = parseInt(anio, 10);
@@ -641,6 +693,13 @@ const obtenerClientesVipBotellon = async (req, res) => {
 
     const iniYear = `${anioNum}-01-01 00:00:00`;
     const finYear = `${anioNum + 1}-01-01 00:00:00`;
+
+    const filtroDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const filtroDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const filtroDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const filtroDD4 = buildFiltroProductoBotellon(tipoProducto, 'dd4');
+    const filtroDD5 = buildFiltroProductoBotellon(tipoProducto, 'dd5');
+    const filtroDD = buildFiltroProductoBotellon(tipoProducto, 'dd');
 
     const clientes = await sequelize.query(`
       SELECT
@@ -663,6 +722,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
         WHERE f0.codigo_tipo_negocio = '29'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD0}
           AND f0.status IN (2,4,5)
           AND f0.fecha_creacion >= :iniYear
           AND f0.fecha_creacion <  :finYear
@@ -689,6 +749,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         WHERE f2.customer_code = base.customer_code
           AND f2.codigo_tipo_negocio = '29'
           AND dd2.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD2}
           AND f2.status IN (2,4,5)
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
@@ -700,6 +761,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         WHERE f3.customer_code = base.customer_code
           AND f3.codigo_tipo_negocio = '29'
           AND dd3.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD3}
           AND f3.status IN (2,4,5)
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
@@ -711,6 +773,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         WHERE f4.customer_code = base.customer_code
           AND f4.codigo_tipo_negocio = '29'
           AND dd4.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD4}
           AND f4.status IN (2,4,5)
       ) mx ON true
       LEFT JOIN LATERAL (
@@ -720,6 +783,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         WHERE f5.customer_code = base.customer_code
           AND f5.codigo_tipo_negocio = '29'
           AND dd5.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD5}
           AND f5.status IN (2,4,5)
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
@@ -741,6 +805,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
       WHERE f.codigo_tipo_negocio = '29'
         AND f.status IN (0,2,3,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroDD}
         AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC
@@ -768,10 +833,12 @@ const RUTAS_ODOO_EMPRESAS = [
 ];
 
 /* Helper: totales consolidados Empresa (facturas E% + ordenes Odoo) */
-const queryTotalesEmpresas = async (inicio, fin) => {
+const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
   const rutasRepl = {};
   RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
   const rutasPH = RUTAS_ODOO_EMPRESAS.map((_, i) => `:re${i}`).join(', ');
+
+  const filtroProductoBotellon = buildFiltroProductoBotellon(tipoProducto);
 
   const rows = await sequelize.query(`
     SELECT COALESCE(SUM(sub.unidades), 0) AS unidades,
@@ -783,6 +850,7 @@ const queryTotalesEmpresas = async (inicio, fin) => {
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.seller_code ILIKE 'E%' AND f.status IN (0,2,3,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroProductoBotellon}
         AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
       UNION ALL
       -- Odoo: ordenes EMPRESA
@@ -792,6 +860,7 @@ const queryTotalesEmpresas = async (inicio, fin) => {
       WHERE o.seller_nombre IN (${rutasPH})
         AND o.type = 2 AND o.status IN (2,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroProductoBotellon}
         AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
     ) sub
   `, {
@@ -810,6 +879,7 @@ const queryTotalesEmpresas = async (inicio, fin) => {
             SELECT 1 FROM detalle_documento dd
             WHERE dd.documento_code = f.code
               AND dd.descripcion_categoria = 'BOTELLÓN'
+              ${filtroProductoBotellon}
           )
       ), 0) AS num_facturas,
       COALESCE((
@@ -822,6 +892,7 @@ const queryTotalesEmpresas = async (inicio, fin) => {
             SELECT 1 FROM detalle_documento dd
             WHERE dd.documento_code = o.code
               AND dd.descripcion_categoria = 'BOTELLÓN'
+              ${filtroProductoBotellon}
           )
       ), 0) AS num_ordenes
   `, {
@@ -844,6 +915,7 @@ const queryTotalesEmpresas = async (inicio, fin) => {
 const obtenerEmpresasConsolidado = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
 
     const anioNum = parseInt(anio, 10);
@@ -867,8 +939,8 @@ const obtenerEmpresasConsolidado = async (req, res) => {
     const diasMes = getDiasLaborablesMes(anioNum, mesNum);
 
     const [actual, anterior] = await Promise.all([
-      queryTotalesEmpresas(inicio, fin),
-      queryTotalesEmpresas(inicioAnt, finAnt),
+      queryTotalesEmpresas(inicio, fin, tipoProducto),
+      queryTotalesEmpresas(inicioAnt, finAnt, tipoProducto),
     ]);
 
     const proyDolares = esMesActualEmp && diasTrans > 0
@@ -919,6 +991,7 @@ const obtenerEmpresasConsolidado = async (req, res) => {
 const obtenerClientesDomicilioBotellon = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
 
     const anioNum = parseInt(anio, 10);
@@ -934,6 +1007,14 @@ const obtenerClientesDomicilioBotellon = async (req, res) => {
 
     const iniYear = `${anioNum}-01-01 00:00:00`;
     const finYear = `${anioNum + 1}-01-01 00:00:00`;
+
+    const incluirSuscripcion = tipoProducto !== 'envase';
+    const fDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const fDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const fDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const fDD4 = buildFiltroProductoBotellon(tipoProducto, 'dd4');
+    const fDD5 = buildFiltroProductoBotellon(tipoProducto, 'dd5');
+    const fDD = buildFiltroProductoBotellon(tipoProducto, 'dd');
 
     const clientes = await sequelize.query(`
 SELECT
@@ -970,9 +1051,9 @@ FROM (
 
   WHERE
   (
-    (f0.seller_code ILIKE 'A%' AND dd0.descripcion_categoria = 'BOTELLÓN')
-    OR dd0.descripcion_categoria = 'SUSCRIPCION'
-    OR (f0.equipo_ventas = 'Website' AND dd0.descripcion_categoria = 'BOTELLÓN')
+    (f0.seller_code ILIKE 'A%' AND dd0.descripcion_categoria = 'BOTELLÓN' ${fDD0})
+    ${incluirSuscripcion ? "OR dd0.descripcion_categoria = 'SUSCRIPCION'" : ''}
+    OR (f0.equipo_ventas = 'Website' AND dd0.descripcion_categoria = 'BOTELLÓN' ${fDD0})
   )
   AND f0.status IN (0,2,3,4,5)
   AND f0.fecha_creacion >= :inicio
@@ -1014,9 +1095,9 @@ LEFT JOIN LATERAL (
   JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
   WHERE f2.customer_code = base.customer_code
     AND (
-      (f2.seller_code ILIKE 'A%' AND dd2.descripcion_categoria = 'BOTELLÓN')
-      OR dd2.descripcion_categoria = 'SUSCRIPCION'
-      OR (f2.equipo_ventas = 'Website' AND dd2.descripcion_categoria = 'BOTELLÓN')
+      (f2.seller_code ILIKE 'A%' AND dd2.descripcion_categoria = 'BOTELLÓN' ${fDD2})
+      ${incluirSuscripcion ? "OR dd2.descripcion_categoria = 'SUSCRIPCION'" : ''}
+      OR (f2.equipo_ventas = 'Website' AND dd2.descripcion_categoria = 'BOTELLÓN' ${fDD2})
     )
     AND f2.status IN (0,2,3,4,5)
     AND f2.fecha_creacion >= :inicio
@@ -1031,9 +1112,9 @@ LEFT JOIN LATERAL (
   JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
   WHERE f3.customer_code = base.customer_code
     AND (
-      (f3.seller_code ILIKE 'A%' AND dd3.descripcion_categoria = 'BOTELLÓN')
-      OR dd3.descripcion_categoria = 'SUSCRIPCION'
-      OR (f3.equipo_ventas = 'Website' AND dd3.descripcion_categoria = 'BOTELLÓN')
+      (f3.seller_code ILIKE 'A%' AND dd3.descripcion_categoria = 'BOTELLÓN' ${fDD3})
+      ${incluirSuscripcion ? "OR dd3.descripcion_categoria = 'SUSCRIPCION'" : ''}
+      OR (f3.equipo_ventas = 'Website' AND dd3.descripcion_categoria = 'BOTELLÓN' ${fDD3})
     )
     AND f3.status IN (0,2,3,4,5)
     AND f3.fecha_creacion >= :iniAnt
@@ -1048,9 +1129,9 @@ LEFT JOIN LATERAL (
   JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
   WHERE f4.customer_code = base.customer_code
     AND (
-      (f4.seller_code ILIKE 'A%' AND dd4.descripcion_categoria = 'BOTELLÓN')
-      OR dd4.descripcion_categoria = 'SUSCRIPCION'
-      OR (f4.equipo_ventas = 'Website' AND dd4.descripcion_categoria = 'BOTELLÓN')
+      (f4.seller_code ILIKE 'A%' AND dd4.descripcion_categoria = 'BOTELLÓN' ${fDD4})
+      ${incluirSuscripcion ? "OR dd4.descripcion_categoria = 'SUSCRIPCION'" : ''}
+      OR (f4.equipo_ventas = 'Website' AND dd4.descripcion_categoria = 'BOTELLÓN' ${fDD4})
     )
     AND f4.status IN (0,2,3,4,5)
 ) mx ON true
@@ -1063,9 +1144,9 @@ LEFT JOIN LATERAL (
   JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
   WHERE f5.customer_code = base.customer_code
     AND (
-      (f5.seller_code ILIKE 'A%' AND dd5.descripcion_categoria = 'BOTELLÓN')
-      OR dd5.descripcion_categoria = 'SUSCRIPCION'
-      OR (f5.equipo_ventas = 'Website' AND dd5.descripcion_categoria = 'BOTELLÓN')
+      (f5.seller_code ILIKE 'A%' AND dd5.descripcion_categoria = 'BOTELLÓN' ${fDD5})
+      ${incluirSuscripcion ? "OR dd5.descripcion_categoria = 'SUSCRIPCION'" : ''}
+      OR (f5.equipo_ventas = 'Website' AND dd5.descripcion_categoria = 'BOTELLÓN' ${fDD5})
     )
     AND f5.status IN (0,2,3,4,5)
 ) ult ON true
@@ -1090,14 +1171,11 @@ WITH base AS (
     dd.cantidad,
     dd.total
   FROM facturas f
-  JOIN detalle_documento dd 
+  JOIN detalle_documento dd
     ON dd.documento_code = f.code
   WHERE
     f.status = 2
-    AND (
-      dd.descripcion_categoria = 'BOTELLÓN'
-      OR dd.descripcion_categoria = 'SUSCRIPCION'
-    )
+    AND ${buildFiltroCategoriaBotellonOSuscripcion(tipoProducto, 'dd')}
     AND f.fecha_creacion >= :inicio
     AND f.fecha_creacion <  :fin
     AND f.seller_code IN ('A1','A2','A3','A4.1','A5','A6','A7','TA2')
@@ -1111,16 +1189,17 @@ WITH base AS (
     dd.cantidad,
     dd.total
   FROM ordenes o
-  JOIN detalle_documento dd 
+  JOIN detalle_documento dd
     ON dd.documento_code = o.code
   WHERE
     o.status = 2
     AND o.equipo_ventas = 'Website'
     AND dd.descripcion_categoria = 'BOTELLÓN'
+    ${fDD}
     AND o.fecha_creacion >= :inicio
     AND o.fecha_creacion <  :fin
 
-  UNION ALL
+  ${incluirSuscripcion ? `UNION ALL
 
   /* ================= SUSCRIPCIÓN (FORMA EXACTA DEL QUERY PRINCIPAL) ================= */
   SELECT
@@ -1129,13 +1208,13 @@ WITH base AS (
     COUNT(DISTINCT dd.id_detalle) AS cantidad,
     SUM(dd.total) AS total
   FROM facturas f
-  JOIN detalle_documento dd 
+  JOIN detalle_documento dd
     ON dd.documento_code = f.code
   WHERE
     f.status = 2
     AND dd.descripcion_categoria = 'SUSCRIPCION'
     AND f.fecha_creacion >= :inicio
-    AND f.fecha_creacion <  :fin
+    AND f.fecha_creacion <  :fin` : ''}
 
 )
 
@@ -1174,6 +1253,7 @@ ORDER BY unidades_vendidas DESC;
 const obtenerClientesEmpresasBotellon = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
 
     const anioNum = parseInt(anio, 10);
@@ -1193,6 +1273,13 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
     const rutasRepl = {};
     RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
     const rutasPH = RUTAS_ODOO_EMPRESAS.map((_, i) => `:re${i}`).join(', ');
+
+    const fDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const fDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const fDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const fDD4 = buildFiltroProductoBotellon(tipoProducto, 'dd4');
+    const fDD5 = buildFiltroProductoBotellon(tipoProducto, 'dd5');
+    const fDD = buildFiltroProductoBotellon(tipoProducto, 'dd');
 
     const clientes = await sequelize.query(`
       SELECT
@@ -1215,6 +1302,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
           WHERE f0.seller_code ILIKE 'E%' AND f0.status IN (2,4,5)
             AND dd0.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0}
             AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear
           UNION
           -- Odoo ordenes empresa
@@ -1223,6 +1311,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           WHERE o0.seller_nombre IN (${rutasPH})
             AND o0.type = 2 AND o0.status IN (2,4,5)
             AND dd0.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0}
             AND o0.fecha_creacion >= :iniYear AND o0.fecha_creacion < :finYear
         ) src
       ) base
@@ -1245,7 +1334,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           SELECT dd2.cantidad, dd2.total FROM facturas f2
           JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
           WHERE f2.customer_code = base.customer_code AND f2.seller_code ILIKE 'E%'
-            AND dd2.descripcion_categoria = 'BOTELLÓN' AND f2.status IN (2,4,5)
+            AND dd2.descripcion_categoria = 'BOTELLÓN' ${fDD2} AND f2.status IN (2,4,5)
             AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
           UNION ALL
           SELECT dd2.cantidad, dd2.total FROM ordenes o2
@@ -1254,6 +1343,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
             AND o2.seller_nombre IN (${rutasPH})
             AND o2.type = 2 AND o2.status IN (2,4,5)
             AND dd2.descripcion_categoria = 'BOTELLÓN'
+            ${fDD2}
             AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
         ) sub
       ) act ON true
@@ -1263,7 +1353,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           SELECT dd3.total FROM facturas f3
           JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
           WHERE f3.customer_code = base.customer_code AND f3.seller_code ILIKE 'E%'
-            AND dd3.descripcion_categoria = 'BOTELLÓN' AND f3.status IN (2,4,5)
+            AND dd3.descripcion_categoria = 'BOTELLÓN' ${fDD3} AND f3.status IN (2,4,5)
             AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
           UNION ALL
           SELECT dd3.total FROM ordenes o3
@@ -1272,6 +1362,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
             AND o3.seller_nombre IN (${rutasPH})
             AND o3.type = 2 AND o3.status IN (2,4,5)
             AND dd3.descripcion_categoria = 'BOTELLÓN'
+            ${fDD3}
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
         ) sub
       ) ant ON true
@@ -1281,7 +1372,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           SELECT dd4.total FROM facturas f4
           JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
           WHERE f4.customer_code = base.customer_code AND f4.seller_code ILIKE 'E%'
-            AND dd4.descripcion_categoria = 'BOTELLÓN' AND f4.status IN (2,4,5)
+            AND dd4.descripcion_categoria = 'BOTELLÓN' ${fDD4} AND f4.status IN (2,4,5)
           UNION ALL
           SELECT dd4.total FROM ordenes o4
           JOIN detalle_documento dd4 ON dd4.documento_code = o4.code
@@ -1289,6 +1380,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
             AND o4.seller_nombre IN (${rutasPH})
             AND o4.type = 2 AND o4.status IN (2,4,5)
             AND dd4.descripcion_categoria = 'BOTELLÓN'
+            ${fDD4}
         ) sub
       ) mx ON true
       LEFT JOIN LATERAL (
@@ -1296,13 +1388,13 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           (SELECT MAX(f5.fecha_creacion)::date FROM facturas f5
            JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
            WHERE f5.customer_code = base.customer_code AND f5.seller_code ILIKE 'E%'
-             AND dd5.descripcion_categoria = 'BOTELLÓN' AND f5.status IN (2,4,5)),
+             AND dd5.descripcion_categoria = 'BOTELLÓN' ${fDD5} AND f5.status IN (2,4,5)),
           (SELECT MAX(o5.fecha_creacion)::date FROM ordenes o5
            JOIN detalle_documento dd5 ON dd5.documento_code = o5.code
            WHERE o5.customer_code = base.customer_code
              AND o5.seller_nombre IN (${rutasPH})
              AND o5.type = 2 AND o5.status IN (2,4,5)
-             AND dd5.descripcion_categoria = 'BOTELLÓN')
+             AND dd5.descripcion_categoria = 'BOTELLÓN' ${fDD5})
         ) AS ultima_factura
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
@@ -1327,6 +1419,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
         JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE f.seller_code ILIKE 'E%' AND f.status IN (0,2,3,4,5)
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${fDD}
           AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
         UNION ALL
         SELECT dd.descripcion, dd.cantidad, dd.total
@@ -1335,6 +1428,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
         WHERE o.seller_nombre IN (${rutasPH})
           AND o.type = 2 AND o.status IN (2,4,5)
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${fDD}
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
       ) sub
       GROUP BY sub.descripcion
@@ -1366,6 +1460,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
 const obtenerVipSubcanales = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
     const mesNum = parseInt(mes, 10);
@@ -1379,6 +1474,11 @@ const obtenerVipSubcanales = async (req, res) => {
     );
     const iniYear = `${anioNum}-01-01 00:00:00`;
     const finYear = `${anioNum + 1}-01-01 00:00:00`;
+
+    const fDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const fDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const fDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const fDD = buildFiltroProductoBotellon(tipoProducto, 'dd');
 
     /*
      * Clientes VIP identificados directamente por f.codigo_tipo_negocio y f.codigo_subcanal
@@ -1403,6 +1503,7 @@ const obtenerVipSubcanales = async (req, res) => {
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
         WHERE f0.codigo_tipo_negocio = '29'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
+          ${fDD0}
           AND f0.status IN (2,4,5)
           AND f0.fecha_creacion >= :iniYear
           AND f0.fecha_creacion <  :finYear
@@ -1419,6 +1520,7 @@ const obtenerVipSubcanales = async (req, res) => {
         WHERE f2.customer_code = base.customer_code
           AND f2.codigo_tipo_negocio = '29'
           AND dd2.descripcion_categoria = 'BOTELLÓN'
+          ${fDD2}
           AND f2.status IN (2,4,5)
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
@@ -1431,6 +1533,7 @@ const obtenerVipSubcanales = async (req, res) => {
         WHERE f3.customer_code = base.customer_code
           AND f3.codigo_tipo_negocio = '29'
           AND dd3.descripcion_categoria = 'BOTELLÓN'
+          ${fDD3}
           AND f3.status IN (2,4,5)
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
@@ -1451,6 +1554,7 @@ const obtenerVipSubcanales = async (req, res) => {
       WHERE f.codigo_tipo_negocio = '29'
         AND f.status IN (2,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${fDD}
         AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC
@@ -1470,6 +1574,7 @@ const obtenerVipSubcanales = async (req, res) => {
 const obtenerVipClientesPorTipo = async (req, res) => {
   try {
     const { tipo, anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
     const mesNum = parseInt(mes, 10);
@@ -1483,6 +1588,13 @@ const obtenerVipClientesPorTipo = async (req, res) => {
     );
     const iniYear = `${anioNum}-01-01 00:00:00`;
     const finYear = `${anioNum + 1}-01-01 00:00:00`;
+
+    const fDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const fDD0b = buildFiltroProductoBotellon(tipoProducto, 'dd0b');
+    const fDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const fDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const fDD4 = buildFiltroProductoBotellon(tipoProducto, 'dd4');
+    const fDD5 = buildFiltroProductoBotellon(tipoProducto, 'dd5');
 
     const clientes = await sequelize.query(`
       SELECT
@@ -1504,6 +1616,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
         WHERE f0.codigo_tipo_negocio = '29'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
+          ${fDD0}
           AND f0.status IN (2,4,5)
           AND f0.fecha_creacion >= :iniYear
           AND f0.fecha_creacion <  :finYear
@@ -1527,6 +1640,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         JOIN detalle_documento dd0b ON dd0b.documento_code = f0b.code
         WHERE f0b.customer_code = base.customer_code
           AND dd0b.descripcion_categoria = 'BOTELLÓN'
+          ${fDD0b}
           AND f0b.status IN (2,4,5)
       ) nsuc ON true
       -- Consumo mes actual — por customer_code, sin filtrar seller
@@ -1537,6 +1651,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
         WHERE f2.customer_code = base.customer_code
           AND dd2.descripcion_categoria = 'BOTELLÓN'
+          ${fDD2}
           AND f2.status IN (2,4,5)
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
@@ -1548,6 +1663,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
         WHERE f3.customer_code = base.customer_code
           AND dd3.descripcion_categoria = 'BOTELLÓN'
+          ${fDD3}
           AND f3.status IN (2,4,5)
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
@@ -1559,6 +1675,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
         WHERE f4.customer_code = base.customer_code
           AND dd4.descripcion_categoria = 'BOTELLÓN'
+          ${fDD4}
           AND f4.status IN (2,4,5)
       ) mx ON true
       -- Última factura — por customer_code
@@ -1568,6 +1685,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
         WHERE f5.customer_code = base.customer_code
           AND dd5.descripcion_categoria = 'BOTELLÓN'
+          ${fDD5}
           AND f5.status IN (2,4,5)
       ) ult ON true
       WHERE COALESCE(sc.descripcion_subcanal, 'Sin Clasificar') = :tipo
@@ -1591,6 +1709,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
 const obtenerVipDetalleCliente = async (req, res) => {
   try {
     const { clienteCode, anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!clienteCode || !anio || !mes)
       return res.status(400).json({ error: 'clienteCode, anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
@@ -1603,6 +1722,11 @@ const obtenerVipDetalleCliente = async (req, res) => {
       mesNum === 1 ? anioNum - 1 : anioNum,
       mesNum === 1 ? 12 : mesNum - 1
     );
+
+    const fDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const fDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const fDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const fDD5 = buildFiltroProductoBotellon(tipoProducto, 'dd5');
 
     const clienteInfo = await sequelize.query(`
       SELECT c.nombre_cliente,
@@ -1637,6 +1761,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
         WHERE f0.customer_code = :clienteCode
           AND f0.codigo_tipo_negocio = '29'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
+          ${fDD0}
           AND f0.status IN (2,4,5)
       ) base
       LEFT JOIN direcciones_clientes dc
@@ -1651,6 +1776,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
           AND f2.customer_address_code = base.customer_address_code
           AND f2.codigo_tipo_negocio = '29'
           AND dd2.descripcion_categoria = 'BOTELLÓN'
+          ${fDD2}
           AND f2.status IN (2,4,5)
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
@@ -1663,6 +1789,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
           AND f3.customer_address_code = base.customer_address_code
           AND f3.codigo_tipo_negocio = '29'
           AND dd3.descripcion_categoria = 'BOTELLÓN'
+          ${fDD3}
           AND f3.status IN (2,4,5)
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
@@ -1675,6 +1802,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
           AND f5.customer_address_code = base.customer_address_code
           AND f5.codigo_tipo_negocio = '29'
           AND dd5.descripcion_categoria = 'BOTELLÓN'
+          ${fDD5}
           AND f5.status IN (2,4,5)
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
@@ -1700,6 +1828,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
 const obtenerEmpresasSubcanales = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
     const mesNum = parseInt(mes, 10);
@@ -1718,6 +1847,11 @@ const obtenerEmpresasSubcanales = async (req, res) => {
     RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
     const rutasPH = RUTAS_ODOO_EMPRESAS.map((_, i) => `:re${i}`).join(', ');
 
+    const fDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const fDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const fDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const fDD = buildFiltroProductoBotellon(tipoProducto, 'dd');
+
     const subcanales = await sequelize.query(`
       SELECT
         COALESCE(tn.descripcion, 'EMPRESA')                                     AS tipo_negocio,
@@ -1733,6 +1867,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
           JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
           WHERE f0.seller_code ILIKE 'E%' AND f0.status IN (2,4,5)
             AND dd0.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0}
             AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear
           UNION
           SELECT o0.customer_code FROM ordenes o0
@@ -1740,6 +1875,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
           WHERE o0.seller_nombre IN (${rutasPH})
             AND o0.type = 2 AND o0.status IN (2,4,5)
             AND dd0.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0}
             AND o0.fecha_creacion >= :iniYear AND o0.fecha_creacion < :finYear
         ) src
       ) base
@@ -1752,7 +1888,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
           SELECT dd2.cantidad, dd2.total FROM facturas f2
           JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
           WHERE f2.customer_code = base.customer_code AND f2.seller_code ILIKE 'E%'
-            AND dd2.descripcion_categoria = 'BOTELLÓN' AND f2.status IN (2,4,5)
+            AND dd2.descripcion_categoria = 'BOTELLÓN' ${fDD2} AND f2.status IN (2,4,5)
             AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
           UNION ALL
           SELECT dd2.cantidad, dd2.total FROM ordenes o2
@@ -1761,6 +1897,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
             AND o2.seller_nombre IN (${rutasPH})
             AND o2.type = 2 AND o2.status IN (2,4,5)
             AND dd2.descripcion_categoria = 'BOTELLÓN'
+            ${fDD2}
             AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
         ) sub
       ) act ON true
@@ -1770,7 +1907,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
           SELECT dd3.total FROM facturas f3
           JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
           WHERE f3.customer_code = base.customer_code AND f3.seller_code ILIKE 'E%'
-            AND dd3.descripcion_categoria = 'BOTELLÓN' AND f3.status IN (2,4,5)
+            AND dd3.descripcion_categoria = 'BOTELLÓN' ${fDD3} AND f3.status IN (2,4,5)
             AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
           UNION ALL
           SELECT dd3.total FROM ordenes o3
@@ -1779,6 +1916,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
             AND o3.seller_nombre IN (${rutasPH})
             AND o3.type = 2 AND o3.status IN (2,4,5)
             AND dd3.descripcion_categoria = 'BOTELLÓN'
+            ${fDD3}
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
         ) sub
       ) ant ON true
@@ -1799,6 +1937,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
         JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE f.seller_code ILIKE 'E%' AND f.status IN (0,2,3,4,5)
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${fDD}
           AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
         UNION ALL
         SELECT dd.descripcion, dd.cantidad, dd.total
@@ -1807,6 +1946,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
         WHERE o.seller_nombre IN (${rutasPH})
           AND o.type = 2 AND o.status IN (2,4,5)
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${fDD}
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
       ) sub
       GROUP BY sub.descripcion
@@ -1827,6 +1967,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
 const obtenerEmpresasClientesPorTipo = async (req, res) => {
   try {
     const { tipo, anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
     const mesNum = parseInt(mes, 10);
@@ -1844,6 +1985,13 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
     const rutasRepl = {};
     RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
     const rutasPH = RUTAS_ODOO_EMPRESAS.map((_, i) => `:re${i}`).join(', ');
+
+    const fDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const fDD0b = buildFiltroProductoBotellon(tipoProducto, 'dd0b');
+    const fDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const fDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const fDD4 = buildFiltroProductoBotellon(tipoProducto, 'dd4');
+    const fDD5 = buildFiltroProductoBotellon(tipoProducto, 'dd5');
 
     const clientes = await sequelize.query(`
       SELECT
@@ -1863,6 +2011,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
           WHERE f0.seller_code ILIKE 'E%' AND f0.status IN (2,4,5)
             AND dd0.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0}
             AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear
           UNION
           SELECT o0.customer_code FROM ordenes o0
@@ -1870,6 +2019,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           WHERE o0.seller_nombre IN (${rutasPH})
             AND o0.type = 2 AND o0.status IN (2,4,5)
             AND dd0.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0}
             AND o0.fecha_creacion >= :iniYear AND o0.fecha_creacion < :finYear
         ) src
       ) base
@@ -1891,6 +2041,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           WHERE f0b.customer_code = base.customer_code
             AND f0b.seller_code ILIKE 'E%'
             AND dd0b.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0b}
             AND f0b.status IN (2,4,5)
           UNION
           SELECT o0b.customer_address_code::text AS suc_code
@@ -1900,6 +2051,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
             AND o0b.seller_nombre IN (${rutasPH})
             AND o0b.type = 2 AND o0b.status IN (2,4,5)
             AND dd0b.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0b}
         ) suc_all
         WHERE suc_code IS NOT NULL
       ) nsuc ON true
@@ -1910,7 +2062,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           SELECT dd2.cantidad, dd2.total FROM facturas f2
           JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
           WHERE f2.customer_code = base.customer_code AND f2.seller_code ILIKE 'E%'
-            AND dd2.descripcion_categoria = 'BOTELLÓN' AND f2.status IN (2,4,5)
+            AND dd2.descripcion_categoria = 'BOTELLÓN' ${fDD2} AND f2.status IN (2,4,5)
             AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
           UNION ALL
           SELECT dd2.cantidad, dd2.total FROM ordenes o2
@@ -1919,6 +2071,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
             AND o2.seller_nombre IN (${rutasPH})
             AND o2.type = 2 AND o2.status IN (2,4,5)
             AND dd2.descripcion_categoria = 'BOTELLÓN'
+            ${fDD2}
             AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
         ) sub
       ) act ON true
@@ -1928,7 +2081,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           SELECT dd3.total FROM facturas f3
           JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
           WHERE f3.customer_code = base.customer_code AND f3.seller_code ILIKE 'E%'
-            AND dd3.descripcion_categoria = 'BOTELLÓN' AND f3.status IN (2,4,5)
+            AND dd3.descripcion_categoria = 'BOTELLÓN' ${fDD3} AND f3.status IN (2,4,5)
             AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
           UNION ALL
           SELECT dd3.total FROM ordenes o3
@@ -1937,6 +2090,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
             AND o3.seller_nombre IN (${rutasPH})
             AND o3.type = 2 AND o3.status IN (2,4,5)
             AND dd3.descripcion_categoria = 'BOTELLÓN'
+            ${fDD3}
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
         ) sub
       ) ant ON true
@@ -1946,7 +2100,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           SELECT dd4.total FROM facturas f4
           JOIN detalle_documento dd4 ON dd4.documento_code = f4.code
           WHERE f4.customer_code = base.customer_code AND f4.seller_code ILIKE 'E%'
-            AND dd4.descripcion_categoria = 'BOTELLÓN' AND f4.status IN (2,4,5)
+            AND dd4.descripcion_categoria = 'BOTELLÓN' ${fDD4} AND f4.status IN (2,4,5)
           UNION ALL
           SELECT dd4.total FROM ordenes o4
           JOIN detalle_documento dd4 ON dd4.documento_code = o4.code
@@ -1954,6 +2108,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
             AND o4.seller_nombre IN (${rutasPH})
             AND o4.type = 2 AND o4.status IN (2,4,5)
             AND dd4.descripcion_categoria = 'BOTELLÓN'
+            ${fDD4}
         ) sub
       ) mx ON true
       LEFT JOIN LATERAL (
@@ -1961,13 +2116,13 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           (SELECT MAX(f5.fecha_creacion)::date FROM facturas f5
            JOIN detalle_documento dd5 ON dd5.documento_code = f5.code
            WHERE f5.customer_code = base.customer_code AND f5.seller_code ILIKE 'E%'
-             AND dd5.descripcion_categoria = 'BOTELLÓN' AND f5.status IN (2,4,5)),
+             AND dd5.descripcion_categoria = 'BOTELLÓN' ${fDD5} AND f5.status IN (2,4,5)),
           (SELECT MAX(o5.fecha_creacion)::date FROM ordenes o5
            JOIN detalle_documento dd5 ON dd5.documento_code = o5.code
            WHERE o5.customer_code = base.customer_code
              AND o5.seller_nombre IN (${rutasPH})
              AND o5.type = 2 AND o5.status IN (2,4,5)
-             AND dd5.descripcion_categoria = 'BOTELLÓN')
+             AND dd5.descripcion_categoria = 'BOTELLÓN' ${fDD5})
         ) AS ultima_factura
       ) ult ON true
       WHERE COALESCE(tn.descripcion, 'EMPRESA') = :tipo
@@ -1991,6 +2146,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
 const obtenerEmpresasDetalleCliente = async (req, res) => {
   try {
     const { clienteCode, anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!clienteCode || !anio || !mes)
       return res.status(400).json({ error: 'clienteCode, anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
@@ -2007,6 +2163,11 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
     const rutasRepl = {};
     RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
     const rutasPH = RUTAS_ODOO_EMPRESAS.map((_, i) => `:re${i}`).join(', ');
+
+    const fDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+    const fDD2 = buildFiltroProductoBotellon(tipoProducto, 'dd2');
+    const fDD3 = buildFiltroProductoBotellon(tipoProducto, 'dd3');
+    const fDD5 = buildFiltroProductoBotellon(tipoProducto, 'dd5');
 
     const clienteInfo = await sequelize.query(`
       SELECT c.nombre_cliente,
@@ -2043,6 +2204,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           WHERE f0.customer_code = :clienteCode
             AND f0.seller_code ILIKE 'E%'
             AND dd0.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0}
             AND f0.status IN (2,4,5)
           UNION
           SELECT o0.customer_address_code::text AS suc_code
@@ -2052,6 +2214,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
             AND o0.seller_nombre IN (${rutasPH})
             AND o0.type = 2 AND o0.status IN (2,4,5)
             AND dd0.descripcion_categoria = 'BOTELLÓN'
+            ${fDD0}
         ) suc_src
         WHERE suc_code IS NOT NULL
       ) base
@@ -2067,7 +2230,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           WHERE f2.customer_code = :clienteCode
             AND f2.customer_address_code = base.customer_address_code
             AND f2.seller_code ILIKE 'E%'
-            AND dd2.descripcion_categoria = 'BOTELLÓN' AND f2.status IN (2,4,5)
+            AND dd2.descripcion_categoria = 'BOTELLÓN' ${fDD2} AND f2.status IN (2,4,5)
             AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
           UNION ALL
           SELECT dd2.cantidad, dd2.total FROM ordenes o2
@@ -2077,6 +2240,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
             AND o2.seller_nombre IN (${rutasPH})
             AND o2.type = 2 AND o2.status IN (2,4,5)
             AND dd2.descripcion_categoria = 'BOTELLÓN'
+            ${fDD2}
             AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
         ) sub
       ) act ON true
@@ -2088,7 +2252,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           WHERE f3.customer_code = :clienteCode
             AND f3.customer_address_code = base.customer_address_code
             AND f3.seller_code ILIKE 'E%'
-            AND dd3.descripcion_categoria = 'BOTELLÓN' AND f3.status IN (2,4,5)
+            AND dd3.descripcion_categoria = 'BOTELLÓN' ${fDD3} AND f3.status IN (2,4,5)
             AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
           UNION ALL
           SELECT dd3.total FROM ordenes o3
@@ -2098,6 +2262,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
             AND o3.seller_nombre IN (${rutasPH})
             AND o3.type = 2 AND o3.status IN (2,4,5)
             AND dd3.descripcion_categoria = 'BOTELLÓN'
+            ${fDD3}
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
         ) sub
       ) ant ON true
@@ -2109,6 +2274,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           AND f5.customer_address_code = base.customer_address_code
           AND f5.seller_code ILIKE 'E%'
           AND dd5.descripcion_categoria = 'BOTELLÓN'
+          ${fDD5}
           AND f5.status IN (2,4,5)
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
@@ -2131,7 +2297,9 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
    QUITO CONSOLIDADO (MV U1 + Odoo equipo_ventas='Quito')
    GET /api/botellones/quito-consolidado?anio=YYYY&mes=MM
 ====================================================== */
-const queryTotalesQuito = async (inicio, fin) => {
+const queryTotalesQuito = async (inicio, fin, tipoProducto = 'todo') => {
+  const filtroProductoBotellon = buildFiltroProductoBotellon(tipoProducto);
+
   const rows = await sequelize.query(`
     SELECT COALESCE(SUM(sub.unidades), 0) AS unidades,
            COALESCE(SUM(sub.dolares),  0) AS dolares
@@ -2142,6 +2310,7 @@ const queryTotalesQuito = async (inicio, fin) => {
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.seller_code = 'U1' AND f.status IN (0,2,3,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroProductoBotellon}
         AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
         AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
       UNION ALL
@@ -2152,6 +2321,7 @@ const queryTotalesQuito = async (inicio, fin) => {
       WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
         AND o.status IN (2,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroProductoBotellon}
         AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
         AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
     ) sub
@@ -2169,6 +2339,7 @@ const queryTotalesQuito = async (inicio, fin) => {
             SELECT 1 FROM detalle_documento dd
             WHERE dd.documento_code = f.code
               AND dd.descripcion_categoria = 'BOTELLÓN'
+              ${filtroProductoBotellon}
           )
       ), 0) AS num_facturas,
       COALESCE((
@@ -2182,6 +2353,7 @@ const queryTotalesQuito = async (inicio, fin) => {
             SELECT 1 FROM detalle_documento dd
             WHERE dd.documento_code = o.code
               AND dd.descripcion_categoria = 'BOTELLÓN'
+              ${filtroProductoBotellon}
           )
       ), 0) AS num_ordenes
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
@@ -2194,7 +2366,9 @@ const queryTotalesQuito = async (inicio, fin) => {
   };
 };
 
-const queryTotalesWebsite = async (inicio, fin) => {
+const queryTotalesWebsite = async (inicio, fin, tipoProducto = 'todo') => {
+  const filtroProductoBotellon = buildFiltroProductoBotellon(tipoProducto);
+
   const rows = await sequelize.query(`
     SELECT COALESCE(SUM(dd.cantidad), 0) AS unidades,
            COALESCE(SUM(dd.total),   0) AS dolares
@@ -2203,6 +2377,7 @@ const queryTotalesWebsite = async (inicio, fin) => {
     WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
       AND o.status IN (2,4,5)
       AND dd.descripcion_categoria = 'BOTELLÓN'
+      ${filtroProductoBotellon}
       AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
       AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
@@ -2218,6 +2393,7 @@ const queryTotalesWebsite = async (inicio, fin) => {
         SELECT 1 FROM detalle_documento dd
         WHERE dd.documento_code = o.code
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${filtroProductoBotellon}
       )
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 
@@ -2269,6 +2445,7 @@ const buildConsolidadoResponse = (actual, anterior, esMesActual, diasTrans, dias
 const obtenerQuitoConsolidado = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
     const mesNum = parseInt(mes, 10);
@@ -2288,8 +2465,8 @@ const obtenerQuitoConsolidado = async (req, res) => {
     const diasMes = getDiasLaborablesMes(anioNum, mesNum);
 
     const [actual, anterior] = await Promise.all([
-      queryTotalesQuito(inicio, fin),
-      queryTotalesQuito(inicioAnt, finAnt),
+      queryTotalesQuito(inicio, fin, tipoProducto),
+      queryTotalesQuito(inicioAnt, finAnt, tipoProducto),
     ]);
 
     return res.json(buildConsolidadoResponse(actual, anterior, esMesActualQ, diasTrans, diasMes));
@@ -2302,6 +2479,7 @@ const obtenerQuitoConsolidado = async (req, res) => {
 const obtenerWebsiteConsolidado = async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
     const mesNum = parseInt(mes, 10);
@@ -2321,8 +2499,8 @@ const obtenerWebsiteConsolidado = async (req, res) => {
     const diasMes = getDiasLaborablesMes(anioNum, mesNum);
 
     const [actual, anterior] = await Promise.all([
-      queryTotalesWebsite(inicio, fin),
-      queryTotalesWebsite(inicioAnt, finAnt),
+      queryTotalesWebsite(inicio, fin, tipoProducto),
+      queryTotalesWebsite(inicioAnt, finAnt, tipoProducto),
     ]);
 
     return res.json(buildConsolidadoResponse(actual, anterior, esMesActualW, diasTrans, diasMes));
@@ -2339,6 +2517,7 @@ const obtenerWebsiteConsolidado = async (req, res) => {
 const buildClientesOdooBotellon = (fuenteQuery) => async (req, res) => {
   try {
     const { anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
     const anioNum = parseInt(anio, 10);
     const mesNum = parseInt(mes, 10);
@@ -2351,7 +2530,7 @@ const buildClientesOdooBotellon = (fuenteQuery) => async (req, res) => {
       mesNum === 1 ? 12 : mesNum - 1
     );
 
-    const { clientesSql, productosSql, replacements } = fuenteQuery({ inicio, fin, iniAnt, finAnt, anioNum });
+    const { clientesSql, productosSql, replacements } = fuenteQuery({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto });
 
     const clientes = await sequelize.query(clientesSql, {
       replacements, type: Sequelize.QueryTypes.SELECT,
@@ -2376,9 +2555,11 @@ const buildClientesOdooBotellon = (fuenteQuery) => async (req, res) => {
   }
 };
 
-const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
+const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'todo' }) => {
   const iniYear = `${anioNum}-01-01 00:00:00`;
   const finYear = `${anioNum + 1}-01-01 00:00:00`;
+  const filtroDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+  const filtroDD = buildFiltroProductoBotellon(tipoProducto, 'dd');
   return {
     replacements: { inicio, fin, iniAnt, finAnt, iniYear, finYear },
     clientesSql: `
@@ -2389,6 +2570,7 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
         JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
         WHERE f0.seller_code = 'U1'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD0}
           AND f0.status IN (2,4,5)
           AND COALESCE(f0.fecha_entrega, f0.fecha_creacion) >= :iniYear
           AND COALESCE(f0.fecha_entrega, f0.fecha_creacion) <  :finYear
@@ -2399,6 +2581,7 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
         JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
         WHERE o0.origen_sistema = 'ODOO' AND o0.equipo_ventas = 'Quito'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD0}
           AND o0.status IN (2,4,5)
           AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) >= :iniYear
           AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) <  :finYear
@@ -2425,6 +2608,7 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
           WHERE f.customer_code = base.customer_code
             AND f.seller_code = 'U1'
             AND dd.descripcion_categoria = 'BOTELLÓN'
+            ${filtroDD}
             AND f.status IN (2,4,5)
             AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
             AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
@@ -2434,6 +2618,7 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
           WHERE o.customer_code = base.customer_code
             AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
             AND dd.descripcion_categoria = 'BOTELLÓN'
+            ${filtroDD}
             AND o.status IN (2,4,5)
             AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
             AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
@@ -2446,6 +2631,7 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
           WHERE f.customer_code = base.customer_code
             AND f.seller_code = 'U1'
             AND dd.descripcion_categoria = 'BOTELLÓN'
+            ${filtroDD}
             AND f.status IN (2,4,5)
             AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :iniAnt
             AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :finAnt
@@ -2455,6 +2641,7 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
           WHERE o.customer_code = base.customer_code
             AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
             AND dd.descripcion_categoria = 'BOTELLÓN'
+            ${filtroDD}
             AND o.status IN (2,4,5)
             AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :iniAnt
             AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :finAnt
@@ -2465,13 +2652,15 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
           SELECT f.fecha_creacion AS fecha
           FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
           WHERE f.customer_code = base.customer_code AND f.seller_code = 'U1'
-            AND dd.descripcion_categoria = 'BOTELLÓN' AND f.status IN (2,4,5)
+            AND dd.descripcion_categoria = 'BOTELLÓN' ${filtroDD}
+            AND f.status IN (2,4,5)
           UNION ALL
           SELECT o.fecha_creacion
           FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
           WHERE o.customer_code = base.customer_code
             AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
-            AND dd.descripcion_categoria = 'BOTELLÓN' AND o.status IN (2,4,5)
+            AND dd.descripcion_categoria = 'BOTELLÓN' ${filtroDD}
+            AND o.status IN (2,4,5)
         ) s
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
@@ -2483,6 +2672,7 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
         FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE f.seller_code = 'U1' AND f.status IN (2,4,5)
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD}
           AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
           AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
         GROUP BY dd.descripcion
@@ -2492,6 +2682,7 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
         WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
           AND o.status IN (2,4,5)
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD}
           AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
           AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
         GROUP BY dd.descripcion
@@ -2502,9 +2693,11 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
   };
 };
 
-const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
+const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'todo' }) => {
   const iniYear = `${anioNum}-01-01 00:00:00`;
   const finYear = `${anioNum + 1}-01-01 00:00:00`;
+  const filtroDD0 = buildFiltroProductoBotellon(tipoProducto, 'dd0');
+  const filtroDD = buildFiltroProductoBotellon(tipoProducto, 'dd');
   return {
     replacements: { inicio, fin, iniAnt, finAnt, iniYear, finYear },
     clientesSql: `
@@ -2514,6 +2707,7 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
         JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
         WHERE o0.origen_sistema = 'ODOO' AND o0.equipo_ventas = 'Website'
           AND dd0.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD0}
           AND o0.status IN (2,4,5)
           AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) >= :iniYear
           AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) <  :finYear
@@ -2539,6 +2733,7 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
         WHERE o.customer_code = base.customer_code
           AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD}
           AND o.status IN (2,4,5)
           AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
           AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
@@ -2549,6 +2744,7 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
         WHERE o.customer_code = base.customer_code
           AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
           AND dd.descripcion_categoria = 'BOTELLÓN'
+          ${filtroDD}
           AND o.status IN (2,4,5)
           AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :iniAnt
           AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :finAnt
@@ -2558,7 +2754,8 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
         FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
         WHERE o.customer_code = base.customer_code
           AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
-          AND dd.descripcion_categoria = 'BOTELLÓN' AND o.status IN (2,4,5)
+          AND dd.descripcion_categoria = 'BOTELLÓN' ${filtroDD}
+          AND o.status IN (2,4,5)
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
     `,
@@ -2571,6 +2768,7 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum }) => {
       WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
         AND o.status IN (2,4,5)
         AND dd.descripcion_categoria = 'BOTELLÓN'
+        ${filtroDD}
         AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
         AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
       GROUP BY dd.descripcion

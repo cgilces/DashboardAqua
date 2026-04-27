@@ -31,6 +31,9 @@ export default function VipClientesPorTipoPage() {
   const navigate = useNavigate();
   const tipoDecoded = decodeURIComponent(tipo || "");
 
+  const tipoProducto =
+    (localStorage.getItem("tipoProductoBotellon") as "todo" | "liquido" | "envase") ?? "todo";
+
   const [clientes,   setClientes]   = useState<ClienteTipo[]>([]);
   const [cargando,   setCargando]   = useState(true);
   const [busqueda,   setBusqueda]   = useState("");
@@ -42,12 +45,12 @@ export default function VipClientesPorTipoPage() {
 
   useEffect(() => {
     setCargando(true);
-    fetch(`${API_BASE_URL}/api/botellones/vip-clientes-tipo?tipo=${encodeURIComponent(tipoDecoded)}&anio=${anio}&mes=${mes}`)
+    fetch(`${API_BASE_URL}/api/botellones/vip-clientes-tipo?tipo=${encodeURIComponent(tipoDecoded)}&anio=${anio}&mes=${mes}&tipoProducto=${tipoProducto}`)
       .then(r => r.json())
       .then(data => setClientes(data.clientes || []))
       .catch(console.error)
       .finally(() => setCargando(false));
-  }, [tipo, anio, mes]);
+  }, [tipo, anio, mes, tipoProducto]);
 
   const requestSort = (key: string) => {
     const dir = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
