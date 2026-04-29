@@ -115,7 +115,9 @@ const TablaVentasBase: React.FC<Props> = ({
         | "cupo_dolares"
         | "proyeccion_dolares"
         | "proyeccion_unidades"
-        | "vsMesAnterior";
+        | "vsMesAnterior"
+        | "vsMesAnterior_abs"
+        | "vsMesAnterior_porc";
 
     const [sortConfig, setSortConfig] = useState<{
         key: SortKey;
@@ -150,7 +152,11 @@ const TablaVentasBase: React.FC<Props> = ({
                     return Number(item.cupo?.cupo_dolares || 0);
 
                 case "vsMesAnterior":
+                case "vsMesAnterior_abs":
                     return Number(item.vsMesAnterior?.variacion_abs || 0);
+
+                case "vsMesAnterior_porc":
+                    return Number(item.vsMesAnterior?.variacion_porc || 0);
 
                 case "proyeccion_dolares":
                     return Number(item.proyeccion?.dolares || 0);

@@ -24,7 +24,7 @@ interface DatosDescartableOdoo {
 interface Props {
   anio: number | string;
   mes: number | string;
-  onTotalesLoaded?: (totales: { canal: string; monto: number; mesAnterior: number; variacionAbs: number; variacionPorc: number; unidades: number }) => void;
+  onTotalesLoaded?: (totales: { canal: string; monto: number; montoReal?: number; mesAnterior: number; variacionAbs: number; variacionPorc: number; unidades: number }) => void;
 }
 
 const fmt    = (n: number) => n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

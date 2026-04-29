@@ -24,6 +24,50 @@ const toNumber = (val) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// ========================================================
+// HELPERS — extracción / normalización de "RUTA XXX"
+// Para empresa COTTSA (id=3). El seller_code esperado en
+// reportes es 'RUTA 131', 'RUTA 113', etc. (sin decimales).
+// ========================================================
+const extraerRuta = (str) => {
+  if (!str) return null;
+  const match = String(str).match(/RUTA\s*\d+/i);
+  return match ? match[0].toUpperCase().replace(/\s+/g, ' ') : null;
+};
+
+const normalizarRuta = (val) => {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim();
+  if (!s) return null;
+  if (/^RUTA\s/i.test(s)) return s.toUpperCase().replace(/\s+/g, ' ').replace(/^(RUTA \d+).*/, '$1');
+  if (/^\d+(\.\d+)?$/.test(s)) return `RUTA ${s.split('.')[0]}`;
+  return null;
+};
+
+// Mapeo de punto de emisión SRI → ruta COTTSA POS.
+// Cada caja POS tiene su propia serie fiscal:
+//   001-026-XXX → POS RUTA 113
+//   001-027-XXX → POS RUTA 131
+//   001-028-XXX → RUTA 132.1
+//
+// Estas rutas POS se reportan SEPARADAS de las rutas de preventa
+// ('RUTA 113', 'RUTA 131', 'RUTA 132') en el dashboard. Por eso llevan
+// prefijo "POS" — para que el filtro estricto del dashboard no las mezcle
+// con la preventa (que es lo que gerencia consolida como ventas de ruta).
+// El bloque "POS - Kenny Navas" del dashboard agrupa estas 3 series.
+const SERIE_A_RUTA_POS_COTTSA = {
+  '001-026': 'POS RUTA 113',
+  '001-027': 'POS RUTA 131',
+  '001-028': 'RUTA 132.1',
+};
+
+const extraerRutaPOSPorSerie = (code) => {
+  if (!code) return null;
+  const m = String(code).match(/(001-\d{3})/);
+  if (!m) return null;
+  return SERIE_A_RUTA_POS_COTTSA[m[1]] || null;
+};
+
 const logErrorsToFile = (errores, filename = "errores_odoo.txt") => {
   const logFilePath = path.join(__dirname, filename);
   const timestamp = new Date().toISOString();
@@ -465,7 +509,7 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
       }
 
       await t.commit();
-      console.log(`✅ Pedido: ${orden.name} (${lineas.length} líneas)`);
+      console.log(` Pedido: ${orden.name} (${lineas.length} líneas)`);
 
     } catch (err) {
       await t.rollback();
@@ -625,8 +669,13 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
         equipoVentasNombre = orden?.team_id?.[1] || null;
       }
 
-      await Factura.upsert({
+      const companyId = Array.isArray(factura.company_id)
+        ? factura.company_id[0]
+        : (factura.company_id || null);
+
+      const facturaPayload = {
         code: factura.name,
+        odoo_id: factura.id,
         origen_sistema: "ODOO",
         type: tipoDocId,
         tipo_movimiento: factura.move_type, //
@@ -648,20 +697,8 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
           ? String(factura.partner_id[0])
           : null,
 
-        // ✅ AQUÍ USAS direccion correctamente
+        //  AQUÍ USAS direccion correctamente
         customer_address_code: direccion,
-
-        // En Odoo el invoice_user_id es solo el facturador (ID numérico),
-        // NO el vendedor/ruta. El código real de ruta/tienda vive en
-        // x_studio_ruta del cliente. Para que los queries de reportes
-        // agrupen igual que en MobilVendor, guardamos la ruta como
-        // seller_code cuando existe; si no, caemos al invoice_user_id.
-        // seller_code: cliente?.x_studio_ruta
-        //   || (factura.invoice_user_id?.[0]
-        //     ? String(factura.invoice_user_id[0])
-        //     : null),
-
-        // route_code: cliente?.x_studio_ruta || null,
 
         total: toNumber(factura.amount_total),
         subtotal: toNumber(factura.amount_untaxed),
@@ -679,9 +716,7 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
           ? factura.reversed_entry_id[0]
           : (factura.reversed_entry_id || null),
 
-        company_id: Array.isArray(factura.company_id)
-          ? factura.company_id[0]
-          : (factura.company_id || null),
+        company_id: companyId,
 
         notes: factura.narration || null,
 
@@ -689,7 +724,41 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
         codigo_tipo_negocio: clienteLocal?.codigo_tipo_negocio || null,
         codigo_subcanal: clienteLocal?.codigo_subcanal || null,
 
-      }, { transaction: t });
+      };
+
+      // seller_code: solo se setea para company_id === 3 (Odoo COTTSA).
+      // Para el resto se omite del payload para conservar el valor existente
+      // (p.ej. el que viene de MobilVendor) y no sobreescribirlo en el upsert.
+      //
+      // Detección preventa vs POS via invoice_user_id (vendedor):
+      //   - Preventa: invoice_user_id contiene "RUTA XXX - Vendedor" → 'RUTA XXX'
+      //   - POS:      invoice_user_id es nombre del cajero (sin patrón RUTA)
+      //               → mapear por serie con prefijo POS ('POS RUTA 113',
+      //                 'POS RUTA 131', 'RUTA 132.1')
+      //
+      // No usar equipo_ventas porque en COTTSA tanto preventa como POS
+      // usan team_id 'Point of Sale'.
+      // No usar serie como detector porque preventa también emite con
+      // series 001-026/027/028.
+      if (companyId === 3) {
+        const rutaPreventa = extraerRuta(factura.invoice_user_id?.[1]);
+        let sellerCode;
+        if (rutaPreventa) {
+          // Vendedor de preventa identificado → ruta limpia
+          sellerCode = rutaPreventa;
+        } else {
+          // Sin "RUTA XXX" en el vendedor → POS o caso raro
+          // Usamos la serie fiscal con prefijo POS, y si no matchea
+          // recién caemos al fallback de equipo_ventas / x_studio_ruta.
+          sellerCode =
+            extraerRutaPOSPorSerie(factura.name) ||
+            extraerRuta(equipoVentasNombre) ||
+            normalizarRuta(cliente?.x_studio_ruta);
+        }
+        facturaPayload.seller_code = sellerCode;
+      }
+
+      await Factura.upsert(facturaPayload, { transaction: t });
 
       // líneas
       const lineas = lineasMap[factura.id] || [];
@@ -749,7 +818,7 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
       }
 
       await t.commit();
-      console.log(`✅ Factura: ${factura.name} (${lineas.length} líneas)`);
+      console.log(` Factura: ${factura.name} (${lineas.length} líneas)`);
 
     } catch (err) {
       await t.rollback();
@@ -808,7 +877,16 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
     const chunksPedidos = chunkArray(pedidos, 50);
     for (let i = 0; i < chunksPedidos.length; i++) {
       console.log(`\n⚙️  Pedidos — Chunk ${i + 1}/${chunksPedidos.length} (${chunksPedidos[i].length} pedidos)...`);
-      await procesarChunkPedidos(uid, chunksPedidos[i], errores, contadores);
+      try {
+        await procesarChunkPedidos(uid, chunksPedidos[i], errores, contadores);
+      } catch (err) {
+        // Un chunk fallido NO debe matar la sincronización entera.
+        // Logueamos el detalle, agregamos al contador de errores y seguimos.
+        const detalle = err?.message || err?.toString() || String(err);
+        const ids = chunksPedidos[i].map(p => p.id || p.name).join(',');
+        console.error(`❌ Chunk pedidos ${i + 1}/${chunksPedidos.length} FALLÓ → "${detalle}" | ids=${ids}`);
+        errores.push({ doc: `CHUNK_PEDIDOS_${i + 1}`, error: detalle, ids });
+      }
     }
 
     // ── 2. FACTURAS ────────────────────────────────────────────
@@ -841,7 +919,39 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
     const chunksFacturas = chunkArray(facturas, 50);
     for (let i = 0; i < chunksFacturas.length; i++) {
       console.log(`\n⚙️  Facturas — Chunk ${i + 1}/${chunksFacturas.length} (${chunksFacturas[i].length} facturas)...`);
-      await procesarChunkFacturas(uid, chunksFacturas[i], errores, contadores);
+      try {
+        await procesarChunkFacturas(uid, chunksFacturas[i], errores, contadores);
+      } catch (err) {
+        // Un chunk fallido NO debe matar la sincronización entera.
+        // Logueamos el detalle (con ids para diagnóstico) y seguimos.
+        const detalle = err?.message || err?.toString() || String(err);
+        const ids = chunksFacturas[i].map(f => `${f.id}:${f.name}`).join(',');
+        console.error(`❌ Chunk facturas ${i + 1}/${chunksFacturas.length} FALLÓ → "${detalle}"`);
+        console.error(`   IDs en el chunk: ${ids}`);
+        errores.push({ doc: `CHUNK_FACTURAS_${i + 1}`, error: detalle, ids });
+      }
+    }
+
+    // ── Post-step: heredar seller_code en notas de crédito ─────
+    // Las NotCr POS de COTTSA llegan con seller_code numérico o vacío
+    // porque el invoice_user_id no trae "RUTA XXX". Las enlazamos con su
+    // factura original (reversed_entry_id ↔ odoo_id) y copiamos su ruta.
+    try {
+      const [, meta] = await sequelize.query(`
+        UPDATE facturas notcr
+        SET seller_code = orig.seller_code
+        FROM facturas orig
+        WHERE notcr.tipo_movimiento = 'out_refund'
+          AND notcr.company_id = 3
+          AND notcr.reversed_entry_id IS NOT NULL
+          AND orig.odoo_id = notcr.reversed_entry_id
+          AND orig.seller_code LIKE 'RUTA %'
+          AND (notcr.seller_code IS NULL OR notcr.seller_code NOT LIKE 'RUTA %')
+      `);
+      const filasActualizadas = meta?.rowCount ?? 0;
+      console.log(`🔗 NotCr heredando seller_code de su factura original: ${filasActualizadas} filas`);
+    } catch (err) {
+      console.error("⚠️ Error en post-update de seller_code para NotCr:", err.message);
     }
 
     // ── Finalizar ──────────────────────────────────────────────
@@ -858,7 +968,7 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
     if (totalErrores) logErrorsToFile(errores);
 
     console.log("\n====================================");
-    console.log("✅ SINCRONIZACIÓN ODOO COMPLETADA");
+    console.log(" SINCRONIZACIÓN ODOO COMPLETADA");
     console.log(`   → Pedidos   : ${pedidos.length}`);
     console.log(`   → Facturas  : ${facturas.length}`);
     console.log(`   → Clientes  : ${contadores.clientes}`);
