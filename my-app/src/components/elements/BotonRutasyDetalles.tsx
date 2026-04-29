@@ -101,7 +101,7 @@ const BotonRutasyDetalles = () => {
         )}
       </div>
 
-      <style jsx>{`
+      <style>{`
         /* Estilo para el spinner (círculo giratorio) */
         .spinner-border {
           width: 3rem;

@@ -2,12 +2,21 @@
 const { sequelize, MetaPreventa, CottsaExtraMes } = require('../../models');
 const Sequelize = require('sequelize');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { object: odooObject, loginOdoo } = require('../../services/odooServicio/odooConexion');
 
 CottsaExtraMes.sync().catch(err =>
   console.error('⚠️ sync CottsaExtraMes:', err.message)
 );
 
 const COTTSA_COMPANY_ID = 3;
+
+// Rutas COTTSA reportadas. Se usa filtro ESTRICTO (igualdad exacta) para
+// excluir variantes como 'RUTA 132.1' que operativamente son cajas POS
+// distintas y se reportan aparte. El sync (extraerRutaPorSerie) garantiza
+// que las facturas/NotCr lleguen ya con uno de estos 3 valores literales,
+// o con 'RUTA 132.1' / null cuando corresponde excluirlas del reporte.
+const COTTSA_SELLER_CODES = ['RUTA 113', 'RUTA 131', 'RUTA 132'];
+const COTTSA_SELLER_FILTER = `f.seller_code IN (${COTTSA_SELLER_CODES.map(c => `'${c}'`).join(', ')})`;
 
 // ================================================================
 // HELPERS
@@ -60,28 +69,18 @@ const obtenerVentasCOTTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
   const inicio = getFechaInicioMes(anioNum, mesNum);
   const fin = fechaFin || getFechaFinMes(anioNum, mesNum);
 
+  // Filtro estricto: solo entran 'RUTA 113', 'RUTA 131', 'RUTA 132'.
+  // Los POS RUTA 132.1 quedan fuera (gerencia los reporta aparte).
+  // SOLO Facts: las NotCr/reembolsos se manejan en una fila de "ajustes"
+  // aparte para que el desglose muestre valores brutos por ruta.
   const sql = `
     SELECT
       f.seller_code AS vendedor,
-      f.route_code AS ruta,
+      f.seller_code AS ruta,
 
-      SUM(CASE 
-        WHEN f.tipo_documento = '(01) Invoice' THEN dd.cantidad
-        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.cantidad
-        ELSE 0 END
-      ) AS unidades,
-
-      SUM(CASE 
-        WHEN f.tipo_documento = '(01) Invoice' THEN dd.subtotal
-        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.subtotal
-        ELSE 0 END
-      ) AS subtotal,
-
-      SUM(CASE 
-        WHEN f.tipo_documento = '(01) Invoice' THEN dd.total
-        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.total
-        ELSE 0 END
-      ) AS dolares,
+      SUM(dd.cantidad) AS unidades,
+      SUM(dd.subtotal) AS subtotal,
+      SUM(dd.total)    AS dolares,
 
       COUNT(DISTINCT f.code) AS cant_facturas,
       COUNT(DISTINCT f.customer_code) AS cant_clientes
@@ -90,16 +89,119 @@ const obtenerVentasCOTTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
     JOIN detalle_documento dd ON dd.documento_code = f.code
 
     WHERE f.company_id = ${COTTSA_COMPANY_ID}
+      AND ${COTTSA_SELLER_FILTER}
       AND f.fecha_entrega >= '${inicio}'
       AND f.fecha_entrega < '${fin}'
       AND f.status IN (0,2,3,4,5)
-      AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
+      AND f.tipo_documento = '(01) Invoice'
 
-    GROUP BY f.seller_code, f.route_code
+    GROUP BY f.seller_code
     ORDER BY dolares DESC;
   `;
 
   return sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
+};
+
+// ================================================================
+// VENTAS POS COTTSA (kenny navas — todas las cajas POS agrupadas)
+// Suma Facts y resta NotCr de las series POS:
+//   POS RUTA 113 / POS RUTA 131 / RUTA 132.1
+// Devuelve UNA sola fila con el agregado.
+// ================================================================
+const COTTSA_POS_SELLER_CODES = ['POS RUTA 113', 'POS RUTA 131', 'RUTA 132.1'];
+const COTTSA_POS_FILTER = `f.seller_code IN (${COTTSA_POS_SELLER_CODES.map(c => `'${c}'`).join(', ')})`;
+
+const obtenerVentasPOSCOTTSA = async (anioNum, mesNum, fechaFin = null) => {
+  const inicio = getFechaInicioMes(anioNum, mesNum);
+  const fin = fechaFin || getFechaFinMes(anioNum, mesNum);
+
+  // POS NETO = Facts de cajas POS  −  TODAS las NotCr de COTTSA del período.
+  // Sumamos todas las NotCr (sin filtrar seller_code) porque históricamente
+  // algunas NotCr POS quedaron tageadas como 'RUTA 113'/'RUTA 131' por bugs
+  // del post-update y queremos consolidar todos los reembolsos en Kenny Navas.
+  const sql = `
+    WITH pos_facts AS (
+      SELECT
+        COALESCE(SUM(dd.cantidad), 0) AS unidades,
+        COALESCE(SUM(dd.subtotal), 0) AS subtotal,
+        COALESCE(SUM(dd.total), 0)    AS dolares,
+        COUNT(DISTINCT f.code)        AS cant_facturas,
+        COUNT(DISTINCT f.customer_code) AS cant_clientes
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND ${COTTSA_POS_FILTER}
+        AND f.fecha_entrega >= '${inicio}'
+        AND f.fecha_entrega < '${fin}'
+        AND f.status IN (0,2,3,4,5)
+        AND f.tipo_documento = '(01) Invoice'
+    ),
+    all_notcr AS (
+      SELECT
+        COALESCE(SUM(dd.cantidad), 0) AS unidades,
+        COALESCE(SUM(dd.subtotal), 0) AS subtotal,
+        COALESCE(SUM(dd.total), 0)    AS dolares,
+        COUNT(DISTINCT f.code)        AS cant_facturas
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND f.fecha_entrega >= '${inicio}'
+        AND f.fecha_entrega < '${fin}'
+        AND f.status IN (0,2,3,4,5)
+        AND f.tipo_documento = '(04) Credit Note'
+    )
+    SELECT
+      (pos_facts.unidades - all_notcr.unidades)     AS unidades,
+      (pos_facts.subtotal - all_notcr.subtotal)     AS subtotal,
+      (pos_facts.dolares  - all_notcr.dolares)      AS dolares,
+      (pos_facts.cant_facturas + all_notcr.cant_facturas) AS cant_facturas,
+      pos_facts.cant_clientes                       AS cant_clientes
+    FROM pos_facts, all_notcr;
+  `;
+
+  const rows = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
+  return rows[0] || { unidades: 0, subtotal: 0, dolares: 0, cant_facturas: 0, cant_clientes: 0 };
+};
+
+// ================================================================
+// HUÉRFANOS COTTSA — pos.order de Odoo con account_move=false (reembolsos
+// POS sin facturar). Se suman a Kenny Navas como descuento aunque todavía
+// no estén en la BD para que el total cuadre con Odoo desde el día 1.
+// ================================================================
+const obtenerHuerfanosTotalCOTTSA = async (anioNum, mesNum) => {
+  if (!process.env.ODOO_DB || !process.env.ODOO_API_KEY || !process.env.ODOO_URL) {
+    return { total: 0, cantidad: 0 };
+  }
+
+  const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
+  let mesFin = mesNum + 1;
+  let anioFin = anioNum;
+  if (mesFin === 13) { mesFin = 1; anioFin++; }
+  const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
+
+  try {
+    const uid = await loginOdoo();
+    const huerfanos = await odooExecuteCOTTSA([
+      process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+      'pos.order', 'search_read',
+      [[
+        ['company_id', '=', COTTSA_COMPANY_ID],
+        ['amount_total', '<', 0],
+        ['account_move', '=', false],
+        ['date_order', '>=', inicio],
+        ['date_order', '<', fin],
+      ]],
+      { fields: ['amount_total'], limit: 0 },
+    ]);
+    const total = huerfanos.reduce(
+      (sum, o) => sum + Math.abs(Number(o.amount_total) || 0),
+      0
+    );
+    return { total: Number(total.toFixed(2)), cantidad: huerfanos.length };
+  } catch (err) {
+    console.warn('⚠️ obtenerHuerfanosTotalCOTTSA:', err?.message || err);
+    return { total: 0, cantidad: 0 };
+  }
 };
 
 // ================================================================
@@ -138,9 +240,13 @@ const obtenerDashboardCOTTSA = async (req, res) => {
       anioPrev--;
     }
 
-    const [ventasActuales, ventasAnteriores, objetivos] = await Promise.all([
+    const [ventasActuales, ventasAnteriores, ventasPOS, ventasPOSAnt, huerfanosActuales, huerfanosAnt, objetivos] = await Promise.all([
       obtenerVentasCOTTSAPorRuta(anioNum, mesNum, fechaFin),
       obtenerVentasCOTTSAPorRuta(anioPrev, mesPrev),
+      obtenerVentasPOSCOTTSA(anioNum, mesNum, fechaFin),
+      obtenerVentasPOSCOTTSA(anioPrev, mesPrev),
+      obtenerHuerfanosTotalCOTTSA(anioNum, mesNum),
+      obtenerHuerfanosTotalCOTTSA(anioPrev, mesPrev),
       obtenerObjetivosGerencia(anioNum, mesNum),
     ]);
 
@@ -197,15 +303,57 @@ const obtenerDashboardCOTTSA = async (req, res) => {
       };
     });
 
-    const totales = {
-      unidades: ranking.reduce((a, r) => a + r.unidades, 0),
-      dolares: ranking.reduce((a, r) => a + r.dolares, 0),
-      proyeccion: ranking.reduce((a, r) => a + r.proyeccion, 0),
-      cant_facturas: ranking.reduce((a, r) => a + r.cant_facturas, 0),
-      cant_clientes: ranking.reduce((a, r) => a + r.cant_clientes, 0),
+    // Bloque POS — Kenny Navas (NETO consolidado).
+    // El query SQL ya entrega Facts POS − todas las NotCr COTTSA (BD).
+    // Acá le restamos también los reembolsos huérfanos (pos.order sin
+    // factura en Odoo) para que el total cuadre con el reporte Odoo,
+    // aunque esos huérfanos no existan todavía como account.move en BD.
+    const posDolaresBD = Number(ventasPOS.dolares) || 0;
+    const posUnidadesBD = Number(ventasPOS.unidades) || 0;
+    const posSubtotalBD = Number(ventasPOS.subtotal) || 0;
+    const huerfanosTotal = Number(huerfanosActuales?.total) || 0;
+    const huerfanosCant = Number(huerfanosActuales?.cantidad) || 0;
+
+    const posDolares = posDolaresBD - huerfanosTotal;
+    const posUnidades = posUnidadesBD; // huérfanos no traen unidades
+    const posSubtotal = posSubtotalBD - huerfanosTotal;
+    const posCantFacturas = (Number(ventasPOS.cant_facturas) || 0) + huerfanosCant;
+    const posCantClientes = Number(ventasPOS.cant_clientes) || 0;
+
+    const huerfanosTotalAnt = Number(huerfanosAnt?.total) || 0;
+    const posDolaresAntBD = Number(ventasPOSAnt.dolares) || 0;
+    const posDolaresAnt = posDolaresAntBD - huerfanosTotalAnt;
+    const posVarAbs = posDolares - posDolaresAnt;
+    const posVarPorc = posDolaresAnt !== 0
+      ? (posVarAbs / Math.abs(posDolaresAnt)) * 100
+      : null;
+
+    const pos = {
+      label: 'POS - Kenny Navas',
+      unidades: posUnidades,
+      subtotal: Number(posSubtotal.toFixed(2)),
+      dolares: Number(posDolares.toFixed(2)),
+      cant_facturas: posCantFacturas,
+      cant_clientes: posCantClientes,
+      huerfanos: { total: huerfanosTotal, cantidad: huerfanosCant },
+      vsMesAnterior: {
+        dolares_anterior: Number(posDolaresAnt.toFixed(2)),
+        variacion_abs: Number(posVarAbs.toFixed(2)),
+        variacion_porc: posVarPorc !== null ? Number(posVarPorc.toFixed(2)) : null,
+      },
     };
 
-    return res.json({ ranking, totales });
+    // Totales: ranking (3 rutas preventa, brutos) + POS (NETO con huérfanos).
+    // Esto cuadra con Total general de Odoo: 145,997.71 en el ejemplo de marzo.
+    const totales = {
+      unidades: ranking.reduce((a, r) => a + r.unidades, 0) + posUnidades,
+      dolares: ranking.reduce((a, r) => a + r.dolares, 0) + posDolares,
+      proyeccion: ranking.reduce((a, r) => a + r.proyeccion, 0) + posDolares,
+      cant_facturas: ranking.reduce((a, r) => a + r.cant_facturas, 0) + posCantFacturas,
+      cant_clientes: ranking.reduce((a, r) => a + r.cant_clientes, 0) + posCantClientes,
+    };
+
+    return res.json({ ranking, pos, totales });
 
   } catch (error) {
     console.error('❌ DASHBOARD:', error);
@@ -232,9 +380,12 @@ const obtenerDetalleRutaCOTTSA = async (req, res) => {
     const inicioAnio = `${anioNum}-01-01 00:00:00`;
     const finAnio = `${anioNum + 1}-01-01 00:00:00`;
 
+    // Igualdad estricta — el seller_code llega exacto desde la tabla principal
+    // ('RUTA 113' / 'RUTA 131' / 'RUTA 132'). Sanitizamos comillas para
+    // evitar inyección SQL.
     const filtro = vendedor
-      ? `f.seller_code = '${vendedor}'`
-      : `f.route_code = '${ruta}'`;
+      ? `f.seller_code = '${String(vendedor).replace(/'/g, "''")}'`
+      : `f.route_code = '${String(ruta).replace(/'/g, "''")}'`;
 
     // ============================
     //  PRODUCTOS (CORREGIDO)
@@ -272,6 +423,7 @@ const obtenerDetalleRutaCOTTSA = async (req, res) => {
       JOIN detalle_documento dd ON dd.documento_code = f.code
 
       WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND ${COTTSA_SELLER_FILTER}
         AND f.status IN (0,2)
         AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
         AND ${filtro}
@@ -294,6 +446,7 @@ const obtenerDetalleRutaCOTTSA = async (req, res) => {
           THEN f.customer_code END) AS con_consumo
       FROM facturas f
       WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND ${COTTSA_SELLER_FILTER}
         AND f.status IN (0,2)
         AND ${filtro}
         AND f.fecha_entrega >= '${inicioAnio}'
@@ -375,6 +528,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
         LIMIT 1
       ) best_dc ON true
       WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND ${COTTSA_SELLER_FILTER}
         AND f.status IN (0,2,3,4,5)
         AND f.fecha_entrega >= '${inicioAnio}'
         AND f.fecha_entrega  < '${finAnio}'
@@ -413,10 +567,11 @@ const obtenerClientesCOTTSA = async (req, res) => {
     ) AS cantidad_actual
 
   FROM facturas f
-  JOIN detalle_documento dd 
+  JOIN detalle_documento dd
     ON dd.documento_code = f.code
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
+    AND ${COTTSA_SELLER_FILTER}
     AND f.status IN (0,2,3,4,5)
     AND f.fecha_entrega >= '${inicioAnio}'
     AND f.fecha_entrega < '${finAnio}'
@@ -432,16 +587,17 @@ const obtenerClientesCOTTSA = async (req, res) => {
       DATE_TRUNC('month', f.fecha_entrega) AS mes,
       SUM(dd.total) AS consumo_mes
     FROM facturas f
-    JOIN detalle_documento dd 
+    JOIN detalle_documento dd
       ON dd.documento_code = f.code
 
     WHERE f.company_id = ${COTTSA_COMPANY_ID}
+      AND ${COTTSA_SELLER_FILTER}
       AND f.status IN (0,2,3,4,5)
       AND f.fecha_entrega >= '${inicioAnio}'
       AND f.fecha_entrega < '${finAnio}'
 
-    GROUP BY 
-      f.customer_code, 
+    GROUP BY
+      f.customer_code,
       DATE_TRUNC('month', f.fecha_entrega)
   )
   SELECT DISTINCT ON (customer_code)
@@ -460,6 +616,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
   FROM facturas f
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
+    AND ${COTTSA_SELLER_FILTER}
     AND f.status IN (0,2,3,4,5)
 
   GROUP BY f.customer_code
@@ -548,10 +705,11 @@ const obtenerClientesCOTTSA = async (req, res) => {
     ) AS monto_usd
 
   FROM facturas f
-  JOIN detalle_documento dd 
+  JOIN detalle_documento dd
     ON dd.documento_code = f.code
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
+    AND ${COTTSA_SELLER_FILTER}
     AND f.status IN (0,2,3,4,5)
     AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
     AND f.fecha_entrega >= '${inicio}'
@@ -722,6 +880,293 @@ const guardarCottsaExtra = async (req, res) => {
   }
 };
 
+// ================================================================
+// ENDPOINT REEMBOLSOS HUÉRFANOS (POS sin facturar en Odoo)
+// GET /api/COTTSA/reembolsos-huerfanos?anio=YYYY&mes=MM
+//
+// Lee directo de Odoo los pos.order de COTTSA con monto negativo
+// (reembolsos) que quedaron en estado 'paid' SIN account_move.
+// Esos no llegan al sync porque no existen como nota de crédito fiscal.
+// El frontend usa esto para mostrar un banner de alerta en la tabla.
+// ================================================================
+const odooExecuteCOTTSA = (params) =>
+  new Promise((resolve, reject) => {
+    odooObject.methodCall('execute_kw', params, (err, result) => {
+      if (err) return reject(err);
+      resolve(result);
+    });
+  });
+
+const obtenerReembolsosHuerfanos = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+
+    if (!anio || !mes) {
+      return res.status(400).json({ error: 'Debe enviar anio y mes' });
+    }
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum = parseInt(mes, 10);
+
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12) {
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+    }
+
+    // Rango del mes (formato Odoo: 'YYYY-MM-DD HH:MM:SS')
+    const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
+    let mesFin = mesNum + 1;
+    let anioFin = anioNum;
+    if (mesFin === 13) { mesFin = 1; anioFin++; }
+    const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
+
+    // Si no hay credenciales Odoo configuradas, devolvemos vacío (no romper UI)
+    if (!process.env.ODOO_DB || !process.env.ODOO_API_KEY || !process.env.ODOO_URL) {
+      return res.json({ cantidad: 0, total: 0, reembolsos: [], advertencia: 'Odoo no configurado' });
+    }
+
+    const uid = await loginOdoo();
+
+    const huerfanos = await odooExecuteCOTTSA([
+      process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+      'pos.order', 'search_read',
+      [[
+        ['company_id', '=', COTTSA_COMPANY_ID],
+        ['amount_total', '<', 0],
+        ['account_move', '=', false],
+        ['date_order', '>=', inicio],
+        ['date_order', '<', fin],
+      ]],
+      {
+        fields: ['id', 'name', 'pos_reference', 'state', 'amount_total', 'partner_id', 'date_order'],
+        limit: 0,
+        order: 'date_order desc',
+      },
+    ]);
+
+    const total = huerfanos.reduce(
+      (sum, o) => sum + Math.abs(Number(o.amount_total) || 0),
+      0
+    );
+
+    const reembolsos = huerfanos.map(o => {
+      const rutaMatch = String(o.name || '').match(/RUTA\s*\d+(\.\d+)?/i);
+      return {
+        id: o.id,
+        name: o.name,
+        pos_reference: o.pos_reference,
+        cliente: Array.isArray(o.partner_id) ? o.partner_id[1] : '—',
+        monto: Number((Math.abs(Number(o.amount_total) || 0)).toFixed(2)),
+        fecha: o.date_order,
+        ruta: rutaMatch ? rutaMatch[0].toUpperCase().replace(/\s+/g, ' ') : '—',
+        estado: o.state,
+      };
+    });
+
+    return res.json({
+      cantidad: reembolsos.length,
+      total: Number(total.toFixed(2)),
+      reembolsos,
+    });
+  } catch (err) {
+    console.error('❌ obtenerReembolsosHuerfanos:', err);
+    return res.status(500).json({
+      error: 'Error al consultar reembolsos huérfanos en Odoo',
+      detalle: err?.message || String(err),
+    });
+  }
+};
+
+// ================================================================
+// ENDPOINT POS DETALLE — todo lo que cae bajo "Kenny Navas"
+// GET /api/COTTSA/pos-detalle?anio=YYYY&mes=MM
+//
+// Lee directo de Odoo TODOS los pos.order de COTTSA del período
+// (Facts, NotCr, facturados y huérfanos) para mostrar en un modal
+// el detalle completo del bloque POS - Kenny Navas.
+// ================================================================
+const obtenerPOSDetalleCOTTSA = async (req, res) => {
+  try {
+    const { anio, mes } = req.query;
+
+    if (!anio || !mes) {
+      return res.status(400).json({ error: 'Debe enviar anio y mes' });
+    }
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum = parseInt(mes, 10);
+
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12) {
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+    }
+
+    if (!process.env.ODOO_DB || !process.env.ODOO_API_KEY || !process.env.ODOO_URL) {
+      return res.json({
+        items: [],
+        totales: { facts: 0, notcr: 0, huerfanos: 0, neto: 0,
+                   cantidad_total: 0, cantidad_facturados: 0, cantidad_huerfanos: 0 },
+      });
+    }
+
+    const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
+    let mesFin = mesNum + 1;
+    let anioFin = anioNum;
+    if (mesFin === 13) { mesFin = 1; anioFin++; }
+    const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
+
+    // 1) Buscar en BD los facturas que cuentan en "Kenny Navas":
+    //    - Facts del bucket POS (POS RUTA 113 / POS RUTA 131 / RUTA 132.1)
+    //    - TODAS las NotCr de COTTSA (sin filtrar seller_code, captura las
+    //      que pueden estar mal etiquetadas como 'RUTA 113'/'RUTA 131')
+    const inicioBD = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
+    const finBD = fin; // mismo formato YYYY-MM-DD HH:MM:SS
+
+    const docsBD = await sequelize.query(`
+      SELECT f.odoo_id, f.code, f.total, f.seller_code, f.tipo_documento, f.customer_code
+      FROM facturas f
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND f.fecha_entrega >= '${inicioBD}'
+        AND f.fecha_entrega < '${finBD}'
+        AND f.status IN (0,2,3,4,5)
+        AND (
+          (f.tipo_documento = '(01) Invoice' AND ${COTTSA_POS_FILTER})
+          OR f.tipo_documento = '(04) Credit Note'
+        )
+    `, { type: Sequelize.QueryTypes.SELECT });
+
+    const odooIdsKennyNavas = docsBD.map(d => d.odoo_id).filter(Boolean);
+
+    const uid = await loginOdoo();
+
+    // 2) Traer las pos.order que tienen account_move enlazado a esos docs.
+    let posOrdersFacturados = [];
+    if (odooIdsKennyNavas.length) {
+      posOrdersFacturados = await odooExecuteCOTTSA([
+        process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+        'pos.order', 'search_read',
+        [[
+          ['company_id', '=', COTTSA_COMPANY_ID],
+          ['account_move', 'in', odooIdsKennyNavas],
+        ]],
+        {
+          fields: [
+            'id', 'name', 'pos_reference', 'date_order',
+            'amount_total', 'partner_id', 'account_move',
+            'session_id', 'state',
+          ],
+          limit: 0,
+          order: 'date_order desc',
+        },
+      ]);
+    }
+
+    // 3) Traer huérfanos (pos.order con account_move=false en el período).
+    const posOrdersHuerfanos = await odooExecuteCOTTSA([
+      process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+      'pos.order', 'search_read',
+      [[
+        ['company_id', '=', COTTSA_COMPANY_ID],
+        ['amount_total', '<', 0],
+        ['account_move', '=', false],
+        ['date_order', '>=', inicio],
+        ['date_order', '<', fin],
+      ]],
+      {
+        fields: [
+          'id', 'name', 'pos_reference', 'date_order',
+          'amount_total', 'partner_id', 'account_move',
+          'session_id', 'state',
+        ],
+        limit: 0,
+        order: 'date_order desc',
+      },
+    ]);
+
+    // 4) Combinar y deduplicar por id
+    const seen = new Set();
+    const posOrders = [...posOrdersFacturados, ...posOrdersHuerfanos]
+      .filter(o => {
+        if (seen.has(o.id)) return false;
+        seen.add(o.id);
+        return true;
+      })
+      .sort((a, b) => String(b.date_order || '').localeCompare(String(a.date_order || '')));
+
+    let totalFacts = 0;
+    let totalNotCr = 0;
+    let totalHuerfanos = 0;
+    let cantFacturados = 0;
+    let cantHuerfanos = 0;
+
+    const items = posOrders.map(o => {
+      const monto = Number(o.amount_total) || 0;
+      const docName = Array.isArray(o.account_move) ? o.account_move[1] : null;
+      const docId = Array.isArray(o.account_move) ? o.account_move[0] : null;
+      const cliente = Array.isArray(o.partner_id) ? o.partner_id[1] : '—';
+      const facturado = Boolean(docId);
+      const sesion = Array.isArray(o.session_id) ? o.session_id[1] : null;
+
+      // Identificar el tipo: si monto < 0 es reembolso (NotCr esperada),
+      // si >= 0 es venta (Fact esperada)
+      let tipo;
+      if (monto < 0) {
+        if (facturado) {
+          totalNotCr += Math.abs(monto);
+          cantFacturados++;
+          tipo = 'NotCr';
+        } else {
+          totalHuerfanos += Math.abs(monto);
+          cantHuerfanos++;
+          tipo = 'NotCr (huérfano)';
+        }
+      } else {
+        totalFacts += monto;
+        if (facturado) cantFacturados++;
+        tipo = 'Fact';
+      }
+
+      // Extraer ruta del nombre del POS (ej. "RUTA 131/7340 REEMBOLSO" → "RUTA 131")
+      const rutaMatch = String(o.name || '').match(/RUTA\s*\d+(\.\d+)?/i);
+      const ruta = rutaMatch ? rutaMatch[0].toUpperCase().replace(/\s+/g, ' ') : '—';
+
+      return {
+        id: o.id,
+        caja: o.name,                    // "RUTA 131/7340 REEMBOLSO"
+        pos_reference: o.pos_reference,  // "POS/32960"
+        sesion,                           // "POS/32960" (también del session_id)
+        ruta,                             // "RUTA 131"
+        date_order: o.date_order,
+        cliente,
+        monto: Number(monto.toFixed(2)),
+        documento: docName,               // "NotCr 001-027-000000930" o null
+        tipo,                             // 'Fact' | 'NotCr' | 'NotCr (huérfano)'
+        facturado,
+        es_reembolso: monto < 0,
+      };
+    });
+
+    const neto = totalFacts - totalNotCr - totalHuerfanos;
+
+    return res.json({
+      items,
+      totales: {
+        facts: Number(totalFacts.toFixed(2)),
+        notcr: Number(totalNotCr.toFixed(2)),
+        huerfanos: Number(totalHuerfanos.toFixed(2)),
+        neto: Number(neto.toFixed(2)),
+        cantidad_total: items.length,
+        cantidad_facturados: cantFacturados,
+        cantidad_huerfanos: cantHuerfanos,
+      },
+    });
+  } catch (err) {
+    console.error('❌ obtenerPOSDetalleCOTTSA:', err);
+    return res.status(500).json({
+      error: 'Error al consultar detalle POS',
+      detalle: err?.message || String(err),
+    });
+  }
+};
+
 module.exports = {
   obtenerDashboardCOTTSA,
   obtenerDetalleRutaCOTTSA,
@@ -729,4 +1174,6 @@ module.exports = {
   diagnosticoCOTTSA,
   obtenerCottsaExtra,
   guardarCottsaExtra,
+  obtenerReembolsosHuerfanos,
+  obtenerPOSDetalleCOTTSA,
 };

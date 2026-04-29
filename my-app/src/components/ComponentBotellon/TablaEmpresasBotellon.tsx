@@ -115,7 +115,7 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
               </td>
 
               <td className="px-4 py-3 text-right text-purple-400">
-                {money(precioPromedio(dolares, unidades))}
+                ${precioPromedio(dolares, unidades)}
               </td>
 
               <td className="px-4 py-3 text-right text-gray-300">
