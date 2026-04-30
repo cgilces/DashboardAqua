@@ -111,52 +111,34 @@ const obtenerVentasCOTTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
 const COTTSA_POS_SELLER_CODES = ['POS RUTA 113', 'POS RUTA 131', 'RUTA 132.1'];
 const COTTSA_POS_FILTER = `f.seller_code IN (${COTTSA_POS_SELLER_CODES.map(c => `'${c}'`).join(', ')})`;
 
+// Filtro combinado: preventa + POS — para listas que deben mostrar TODOS
+// los clientes/productos de COTTSA (ej. /clientes), alineado con el total
+// "COTTSA — AGUA OK" del dashboard.
+const COTTSA_TODOS_SELLER_CODES = [...COTTSA_SELLER_CODES, ...COTTSA_POS_SELLER_CODES];
+const COTTSA_TODOS_FILTER = `f.seller_code IN (${COTTSA_TODOS_SELLER_CODES.map(c => `'${c}'`).join(', ')})`;
+
 const obtenerVentasPOSCOTTSA = async (anioNum, mesNum, fechaFin = null) => {
   const inicio = getFechaInicioMes(anioNum, mesNum);
   const fin = fechaFin || getFechaFinMes(anioNum, mesNum);
 
-  // POS NETO = Facts de cajas POS  −  TODAS las NotCr de COTTSA del período.
-  // Sumamos todas las NotCr (sin filtrar seller_code) porque históricamente
-  // algunas NotCr POS quedaron tageadas como 'RUTA 113'/'RUTA 131' por bugs
-  // del post-update y queremos consolidar todos los reembolsos en Kenny Navas.
+  // SOLO Facts del bucket POS (POS RUTA 113 / POS RUTA 131 / RUTA 132.1).
+  // Las NotCr/reembolsos vienen aparte desde Odoo (obtenerResumenReembolsosCOTTSA)
+  // para evitar que NotCr facturadas tarde con fecha_entrega corrida queden fuera.
   const sql = `
-    WITH pos_facts AS (
-      SELECT
-        COALESCE(SUM(dd.cantidad), 0) AS unidades,
-        COALESCE(SUM(dd.subtotal), 0) AS subtotal,
-        COALESCE(SUM(dd.total), 0)    AS dolares,
-        COUNT(DISTINCT f.code)        AS cant_facturas,
-        COUNT(DISTINCT f.customer_code) AS cant_clientes
-      FROM facturas f
-      JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = ${COTTSA_COMPANY_ID}
-        AND ${COTTSA_POS_FILTER}
-        AND f.fecha_entrega >= '${inicio}'
-        AND f.fecha_entrega < '${fin}'
-        AND f.status IN (0,2,3,4,5)
-        AND f.tipo_documento = '(01) Invoice'
-    ),
-    all_notcr AS (
-      SELECT
-        COALESCE(SUM(dd.cantidad), 0) AS unidades,
-        COALESCE(SUM(dd.subtotal), 0) AS subtotal,
-        COALESCE(SUM(dd.total), 0)    AS dolares,
-        COUNT(DISTINCT f.code)        AS cant_facturas
-      FROM facturas f
-      JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = ${COTTSA_COMPANY_ID}
-        AND f.fecha_entrega >= '${inicio}'
-        AND f.fecha_entrega < '${fin}'
-        AND f.status IN (0,2,3,4,5)
-        AND f.tipo_documento = '(04) Credit Note'
-    )
     SELECT
-      (pos_facts.unidades - all_notcr.unidades)     AS unidades,
-      (pos_facts.subtotal - all_notcr.subtotal)     AS subtotal,
-      (pos_facts.dolares  - all_notcr.dolares)      AS dolares,
-      (pos_facts.cant_facturas + all_notcr.cant_facturas) AS cant_facturas,
-      pos_facts.cant_clientes                       AS cant_clientes
-    FROM pos_facts, all_notcr;
+      COALESCE(SUM(dd.cantidad), 0) AS unidades,
+      COALESCE(SUM(dd.subtotal), 0) AS subtotal,
+      COALESCE(SUM(dd.total), 0)    AS dolares,
+      COUNT(DISTINCT f.code)        AS cant_facturas,
+      COUNT(DISTINCT f.customer_code) AS cant_clientes
+    FROM facturas f
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE f.company_id = ${COTTSA_COMPANY_ID}
+      AND ${COTTSA_POS_FILTER}
+      AND f.fecha_entrega >= '${inicio}'
+      AND f.fecha_entrega < '${fin}'
+      AND f.status IN (0,2,3,4,5)
+      AND f.tipo_documento = '(01) Invoice';
   `;
 
   const rows = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
@@ -164,13 +146,20 @@ const obtenerVentasPOSCOTTSA = async (anioNum, mesNum, fechaFin = null) => {
 };
 
 // ================================================================
-// HUÉRFANOS COTTSA — pos.order de Odoo con account_move=false (reembolsos
-// POS sin facturar). Se suman a Kenny Navas como descuento aunque todavía
-// no estén en la BD para que el total cuadre con Odoo desde el día 1.
+// REEMBOLSOS COTTSA — TODOS los pos.order negativos del período
+// (facturados como NotCr + huérfanos sin account_move).
+//
+// Se queryan directo a Odoo en lugar de la BD porque las NotCr
+// facturadas tarde tienen fecha_entrega corrida (ej. NotCr de marzo
+// facturada en abril → fecha_entrega = abril → NO match en BD).
+// El pos.order siempre tiene la fecha real del POS (date_order) que
+// sí cuadra con el mes que el usuario consulta.
 // ================================================================
-const obtenerHuerfanosTotalCOTTSA = async (anioNum, mesNum) => {
+const obtenerResumenReembolsosCOTTSA = async (anioNum, mesNum) => {
+  const vacio = { total: 0, cantidad: 0, huerfanosTotal: 0, huerfanosCantidad: 0 };
+
   if (!process.env.ODOO_DB || !process.env.ODOO_API_KEY || !process.env.ODOO_URL) {
-    return { total: 0, cantidad: 0 };
+    return vacio;
   }
 
   const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
@@ -181,26 +170,42 @@ const obtenerHuerfanosTotalCOTTSA = async (anioNum, mesNum) => {
 
   try {
     const uid = await loginOdoo();
-    const huerfanos = await odooExecuteCOTTSA([
+    const reembolsos = await odooExecuteCOTTSA([
       process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
       'pos.order', 'search_read',
       [[
         ['company_id', '=', COTTSA_COMPANY_ID],
         ['amount_total', '<', 0],
-        ['account_move', '=', false],
         ['date_order', '>=', inicio],
         ['date_order', '<', fin],
+        ['state', 'in', ['paid', 'invoiced', 'done']],
       ]],
-      { fields: ['amount_total'], limit: 0 },
+      { fields: ['amount_total', 'account_move'], limit: 0 },
     ]);
-    const total = huerfanos.reduce(
-      (sum, o) => sum + Math.abs(Number(o.amount_total) || 0),
-      0
-    );
-    return { total: Number(total.toFixed(2)), cantidad: huerfanos.length };
+
+    let total = 0;
+    let huerfanosTotal = 0;
+    let huerfanosCantidad = 0;
+
+    for (const o of reembolsos) {
+      const monto = Math.abs(Number(o.amount_total) || 0);
+      total += monto;
+      const tieneAccMove = Array.isArray(o.account_move) && Number.isFinite(Number(o.account_move?.[0]));
+      if (!tieneAccMove) {
+        huerfanosTotal += monto;
+        huerfanosCantidad++;
+      }
+    }
+
+    return {
+      total: Number(total.toFixed(2)),
+      cantidad: reembolsos.length,
+      huerfanosTotal: Number(huerfanosTotal.toFixed(2)),
+      huerfanosCantidad,
+    };
   } catch (err) {
-    console.warn('⚠️ obtenerHuerfanosTotalCOTTSA:', err?.message || err);
-    return { total: 0, cantidad: 0 };
+    console.warn('⚠️ obtenerResumenReembolsosCOTTSA:', err?.message || err);
+    return vacio;
   }
 };
 
@@ -240,13 +245,13 @@ const obtenerDashboardCOTTSA = async (req, res) => {
       anioPrev--;
     }
 
-    const [ventasActuales, ventasAnteriores, ventasPOS, ventasPOSAnt, huerfanosActuales, huerfanosAnt, objetivos] = await Promise.all([
+    const [ventasActuales, ventasAnteriores, ventasPOS, ventasPOSAnt, reembolsosActuales, reembolsosAnt, objetivos] = await Promise.all([
       obtenerVentasCOTTSAPorRuta(anioNum, mesNum, fechaFin),
       obtenerVentasCOTTSAPorRuta(anioPrev, mesPrev),
       obtenerVentasPOSCOTTSA(anioNum, mesNum, fechaFin),
       obtenerVentasPOSCOTTSA(anioPrev, mesPrev),
-      obtenerHuerfanosTotalCOTTSA(anioNum, mesNum),
-      obtenerHuerfanosTotalCOTTSA(anioPrev, mesPrev),
+      obtenerResumenReembolsosCOTTSA(anioNum, mesNum),
+      obtenerResumenReembolsosCOTTSA(anioPrev, mesPrev),
       obtenerObjetivosGerencia(anioNum, mesNum),
     ]);
 
@@ -303,26 +308,32 @@ const obtenerDashboardCOTTSA = async (req, res) => {
       };
     });
 
-    // Bloque POS — Kenny Navas (NETO consolidado).
-    // El query SQL ya entrega Facts POS − todas las NotCr COTTSA (BD).
-    // Acá le restamos también los reembolsos huérfanos (pos.order sin
-    // factura en Odoo) para que el total cuadre con el reporte Odoo,
-    // aunque esos huérfanos no existan todavía como account.move en BD.
-    const posDolaresBD = Number(ventasPOS.dolares) || 0;
-    const posUnidadesBD = Number(ventasPOS.unidades) || 0;
-    const posSubtotalBD = Number(ventasPOS.subtotal) || 0;
-    const huerfanosTotal = Number(huerfanosActuales?.total) || 0;
-    const huerfanosCant = Number(huerfanosActuales?.cantidad) || 0;
-
-    const posDolares = posDolaresBD - huerfanosTotal;
-    const posUnidades = posUnidadesBD; // huérfanos no traen unidades
-    const posSubtotal = posSubtotalBD - huerfanosTotal;
-    const posCantFacturas = (Number(ventasPOS.cant_facturas) || 0) + huerfanosCant;
+    // Bloque POS — Kenny Navas (NETO consolidado real).
+    //   Facts POS (BD)         viene de obtenerVentasPOSCOTTSA → solo Facts.
+    //   Reembolsos (Odoo)      viene de obtenerResumenReembolsosCOTTSA, que
+    //                          captura TODAS las pos.order negativas del mes
+    //                          (facturadas + huérfanas), independiente de
+    //                          fecha_entrega en BD.
+    //   Neto = Facts − Reembolsos
+    const posFactsDolares = Number(ventasPOS.dolares) || 0;
+    const posFactsUnidades = Number(ventasPOS.unidades) || 0;
+    const posFactsSubtotal = Number(ventasPOS.subtotal) || 0;
+    const posFactsCantFacturas = Number(ventasPOS.cant_facturas) || 0;
     const posCantClientes = Number(ventasPOS.cant_clientes) || 0;
 
-    const huerfanosTotalAnt = Number(huerfanosAnt?.total) || 0;
+    const reembolsosTotal = Number(reembolsosActuales?.total) || 0;
+    const reembolsosCantidad = Number(reembolsosActuales?.cantidad) || 0;
+    const huerfanosTotal = Number(reembolsosActuales?.huerfanosTotal) || 0;
+    const huerfanosCant = Number(reembolsosActuales?.huerfanosCantidad) || 0;
+
+    const posDolares = posFactsDolares - reembolsosTotal;
+    const posUnidades = posFactsUnidades; // pos.order sólo trae monto, no unidades por línea
+    const posSubtotal = posFactsSubtotal - reembolsosTotal;
+    const posCantFacturas = posFactsCantFacturas + reembolsosCantidad;
+
+    const reembolsosTotalAnt = Number(reembolsosAnt?.total) || 0;
     const posDolaresAntBD = Number(ventasPOSAnt.dolares) || 0;
-    const posDolaresAnt = posDolaresAntBD - huerfanosTotalAnt;
+    const posDolaresAnt = posDolaresAntBD - reembolsosTotalAnt;
     const posVarAbs = posDolares - posDolaresAnt;
     const posVarPorc = posDolaresAnt !== 0
       ? (posVarAbs / Math.abs(posDolaresAnt)) * 100
@@ -528,7 +539,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
         LIMIT 1
       ) best_dc ON true
       WHERE f.company_id = ${COTTSA_COMPANY_ID}
-        AND ${COTTSA_SELLER_FILTER}
+        AND ${COTTSA_TODOS_FILTER}
         AND f.status IN (0,2,3,4,5)
         AND f.fecha_entrega >= '${inicioAnio}'
         AND f.fecha_entrega  < '${finAnio}'
@@ -537,31 +548,45 @@ const obtenerClientesCOTTSA = async (req, res) => {
 
 
 
-    // 2. Consumo actual + anterior + cantidad por cliente
+    // 2. Consumo actual + anterior + cantidad por cliente.
+    //    Las NotCr se restan dentro del CASE (mismo criterio que el dashboard
+    //    para que el "consumo" del cliente refleje su NETO real).
     const consumoSQL = `
   SELECT
     f.customer_code,
 
     SUM(
-      CASE 
-        WHEN f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
-          THEN dd.total
+      CASE
+        WHEN f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}' THEN
+          CASE
+            WHEN f.tipo_documento = '(01) Invoice'     THEN  dd.total
+            WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.total
+            ELSE 0
+          END
         ELSE 0
       END
     ) AS consumo_actual,
 
     SUM(
-      CASE 
-        WHEN f.fecha_entrega >= '${antInicio}' AND f.fecha_entrega < '${antFin}'
-          THEN dd.total
+      CASE
+        WHEN f.fecha_entrega >= '${antInicio}' AND f.fecha_entrega < '${antFin}' THEN
+          CASE
+            WHEN f.tipo_documento = '(01) Invoice'     THEN  dd.total
+            WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.total
+            ELSE 0
+          END
         ELSE 0
       END
     ) AS consumo_anterior,
 
     SUM(
-      CASE 
-        WHEN f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}'
-          THEN dd.cantidad
+      CASE
+        WHEN f.fecha_entrega >= '${inicio}' AND f.fecha_entrega < '${fin}' THEN
+          CASE
+            WHEN f.tipo_documento = '(01) Invoice'     THEN  dd.cantidad
+            WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.cantidad
+            ELSE 0
+          END
         ELSE 0
       END
     ) AS cantidad_actual
@@ -571,28 +596,36 @@ const obtenerClientesCOTTSA = async (req, res) => {
     ON dd.documento_code = f.code
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
-    AND ${COTTSA_SELLER_FILTER}
+    AND ${COTTSA_TODOS_FILTER}
     AND f.status IN (0,2,3,4,5)
     AND f.fecha_entrega >= '${inicioAnio}'
     AND f.fecha_entrega < '${finAnio}'
+    AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
 
   GROUP BY f.customer_code
 `;
 
-    // 3. Máximo consumo mensual del año por cliente
+    // 3. Máximo consumo mensual del año por cliente (con NotCr restadas).
     const maxConsumoSQL = `
   WITH consumo_mensual AS (
     SELECT
       f.customer_code,
       DATE_TRUNC('month', f.fecha_entrega) AS mes,
-      SUM(dd.total) AS consumo_mes
+      SUM(
+        CASE
+          WHEN f.tipo_documento = '(01) Invoice'     THEN  dd.total
+          WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.total
+          ELSE 0
+        END
+      ) AS consumo_mes
     FROM facturas f
     JOIN detalle_documento dd
       ON dd.documento_code = f.code
 
     WHERE f.company_id = ${COTTSA_COMPANY_ID}
-      AND ${COTTSA_SELLER_FILTER}
+      AND ${COTTSA_TODOS_FILTER}
       AND f.status IN (0,2,3,4,5)
+      AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
       AND f.fecha_entrega >= '${inicioAnio}'
       AND f.fecha_entrega < '${finAnio}'
 
@@ -608,7 +641,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
   ORDER BY customer_code, consumo_mes DESC
 `;
 
-    // 4. Última factura COTTSA por cliente
+    // 4. Última factura COTTSA por cliente (preventa + POS)
     const ultimaFacturaSQL = `
   SELECT
     f.customer_code,
@@ -616,19 +649,35 @@ const obtenerClientesCOTTSA = async (req, res) => {
   FROM facturas f
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
-    AND ${COTTSA_SELLER_FILTER}
+    AND ${COTTSA_TODOS_FILTER}
     AND f.status IN (0,2,3,4,5)
+    AND f.tipo_documento = '(01) Invoice'
 
   GROUP BY f.customer_code
 `;
 
 
-    const [clientes, consumoData, maxConsumoData, ultimasFacturas] = await Promise.all([
+    const [clientes, consumoData, maxConsumoData, ultimasFacturas, extraData, huerfanosResumen] = await Promise.all([
       sequelize.query(clientesSQL, { type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(consumoSQL, { type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(maxConsumoSQL, { type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(ultimaFacturaSQL, { type: Sequelize.QueryTypes.SELECT }),
+      // Extra (Aqua Premium NE) ingresado manualmente desde el modal externo
+      CottsaExtraMes.findOne({ where: { anio: anioNum, mes: mesNum }, raw: true }),
+      // Huérfanos (reembolsos POS sin facturar en Odoo) — para que el total
+      // de productos vendidos cuadre con el del dashboard.
+      obtenerResumenReembolsosCOTTSA(anioNum, mesNum)
+        .then(r => ({ total: r.huerfanosTotal || 0, cantidad: r.huerfanosCantidad || 0 }))
+        .catch(() => ({ total: 0, cantidad: 0 })),
     ]);
+
+    const extra = extraData
+      ? {
+          unidades: Number(extraData.unidades) || 0,
+          dolares: Number(extraData.dolares) || 0,
+          facturas: Number(extraData.facturas) || 0,
+        }
+      : { unidades: 0, dolares: 0, facturas: 0 };
 
     const mapConsumo = new Map(consumoData.map(r => [r.customer_code, r]));
     const mapMaxConsumo = new Map(maxConsumoData.map(r => [r.customer_code, r]));
@@ -709,7 +758,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
     ON dd.documento_code = f.code
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
-    AND ${COTTSA_SELLER_FILTER}
+    AND ${COTTSA_TODOS_FILTER}
     AND f.status IN (0,2,3,4,5)
     AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
     AND f.fecha_entrega >= '${inicio}'
@@ -727,6 +776,8 @@ const obtenerClientesCOTTSA = async (req, res) => {
         clientesSinConsumo: resultado.length - conConsumo,
       },
       productosVendidos,
+      extra,
+      huerfanos: huerfanosResumen,
     });
 
   } catch (error) {
@@ -1013,62 +1064,26 @@ const obtenerPOSDetalleCOTTSA = async (req, res) => {
     if (mesFin === 13) { mesFin = 1; anioFin++; }
     const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
 
-    // 1) Buscar en BD los facturas que cuentan en "Kenny Navas":
-    //    - Facts del bucket POS (POS RUTA 113 / POS RUTA 131 / RUTA 132.1)
-    //    - TODAS las NotCr de COTTSA (sin filtrar seller_code, captura las
-    //      que pueden estar mal etiquetadas como 'RUTA 113'/'RUTA 131')
-    const inicioBD = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
-    const finBD = fin; // mismo formato YYYY-MM-DD HH:MM:SS
-
-    const docsBD = await sequelize.query(`
-      SELECT f.odoo_id, f.code, f.total, f.seller_code, f.tipo_documento, f.customer_code
-      FROM facturas f
-      WHERE f.company_id = ${COTTSA_COMPANY_ID}
-        AND f.fecha_entrega >= '${inicioBD}'
-        AND f.fecha_entrega < '${finBD}'
-        AND f.status IN (0,2,3,4,5)
-        AND (
-          (f.tipo_documento = '(01) Invoice' AND ${COTTSA_POS_FILTER})
-          OR f.tipo_documento = '(04) Credit Note'
-        )
-    `, { type: Sequelize.QueryTypes.SELECT });
-
-    const odooIdsKennyNavas = docsBD.map(d => d.odoo_id).filter(Boolean);
-
+    // Estrategia:
+    //  1) Traemos TODAS las pos.order de COTTSA con date_order en el mes.
+    //     (Filtra por la fecha REAL del POS, no por fecha_entrega del move,
+    //      así capturamos reembolsos facturados tarde con fecha distinta.)
+    //  2) Cargamos los odoo_ids de los docs en BD que cuentan en Kenny Navas
+    //     (POS Facts del bucket POS + TODAS las NotCr COTTSA), con rango
+    //     amplio para no perder facturas con fecha_entrega corrida.
+    //  3) Filtramos las pos.order a sólo las que pertenecen a Kenny Navas:
+    //     - account_move IN (ids BD)            → reembolsos y ventas POS
+    //     - account_move = false AND monto < 0  → huérfanos (reembolsos sin facturar)
     const uid = await loginOdoo();
 
-    // 2) Traer las pos.order que tienen account_move enlazado a esos docs.
-    let posOrdersFacturados = [];
-    if (odooIdsKennyNavas.length) {
-      posOrdersFacturados = await odooExecuteCOTTSA([
-        process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
-        'pos.order', 'search_read',
-        [[
-          ['company_id', '=', COTTSA_COMPANY_ID],
-          ['account_move', 'in', odooIdsKennyNavas],
-        ]],
-        {
-          fields: [
-            'id', 'name', 'pos_reference', 'date_order',
-            'amount_total', 'partner_id', 'account_move',
-            'session_id', 'state',
-          ],
-          limit: 0,
-          order: 'date_order desc',
-        },
-      ]);
-    }
-
-    // 3) Traer huérfanos (pos.order con account_move=false en el período).
-    const posOrdersHuerfanos = await odooExecuteCOTTSA([
+    const allPosOrders = await odooExecuteCOTTSA([
       process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
       'pos.order', 'search_read',
       [[
         ['company_id', '=', COTTSA_COMPANY_ID],
-        ['amount_total', '<', 0],
-        ['account_move', '=', false],
         ['date_order', '>=', inicio],
         ['date_order', '<', fin],
+        ['state', 'in', ['paid', 'invoiced', 'done']],
       ]],
       {
         fields: [
@@ -1081,15 +1096,40 @@ const obtenerPOSDetalleCOTTSA = async (req, res) => {
       },
     ]);
 
-    // 4) Combinar y deduplicar por id
-    const seen = new Set();
-    const posOrders = [...posOrdersFacturados, ...posOrdersHuerfanos]
-      .filter(o => {
-        if (seen.has(o.id)) return false;
-        seen.add(o.id);
-        return true;
-      })
-      .sort((a, b) => String(b.date_order || '').localeCompare(String(a.date_order || '')));
+    // Cargar odoo_ids de docs Kenny Navas en BD (rango anual amplio para
+    // capturar NotCr con fecha_entrega desfasada, ej. facturadas tarde).
+    const inicioAnio = `${anioNum}-01-01 00:00:00`;
+    const finAnio = `${anioNum + 1}-01-01 00:00:00`;
+    const dbDocs = await sequelize.query(`
+      SELECT f.odoo_id
+      FROM facturas f
+      WHERE f.company_id = ${COTTSA_COMPANY_ID}
+        AND f.fecha_entrega >= '${inicioAnio}'
+        AND f.fecha_entrega < '${finAnio}'
+        AND f.status IN (0,2,3,4,5)
+        AND (
+          (f.tipo_documento = '(01) Invoice' AND ${COTTSA_POS_FILTER})
+          OR f.tipo_documento = '(04) Credit Note'
+        )
+    `, { type: Sequelize.QueryTypes.SELECT });
+    const kennyOdooIds = new Set(
+      dbDocs.map(d => Number(d.odoo_id)).filter(n => Number.isFinite(n))
+    );
+
+    const posOrders = allPosOrders.filter(o => {
+      const monto = Number(o.amount_total) || 0;
+      const accMoveId = Array.isArray(o.account_move) ? Number(o.account_move[0]) : null;
+
+      // Reembolsos (negativos): siempre incluir. Cubre tanto los huérfanos
+      // (sin account_move) como los facturados (con o sin odoo_id en BD).
+      // Esto es importante porque las NotCr facturadas tarde pueden tener
+      // odoo_id=null en BD si se sincronizaron antes del fix de odoo_id.
+      if (monto < 0) return true;
+
+      // Ventas (positivas): solo si su account_move está en bucket POS de BD.
+      // Así evitamos traer ventas POS de OTROS cajeros (no Kenny Navas).
+      return accMoveId && kennyOdooIds.has(accMoveId);
+    });
 
     let totalFacts = 0;
     let totalNotCr = 0;

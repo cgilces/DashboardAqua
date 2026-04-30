@@ -71,6 +71,8 @@ const DetalleCOTTSAPage: React.FC = () => {
   const [clientes,   setClientes]   = useState<Cliente[]>([]);
   const [resumen,    setResumen]    = useState<Resumen | null>(null);
   const [productos,  setProductos]  = useState<Producto[]>([]);
+  const [extra,      setExtra]      = useState<{ unidades: number; dolares: number; facturas: number }>({ unidades: 0, dolares: 0, facturas: 0 });
+  const [huerfanos,  setHuerfanos]  = useState<{ total: number; cantidad: number }>({ total: 0, cantidad: 0 });
   const [cargando,   setCargando]   = useState(false);
   const [busqueda,   setBusqueda]   = useState("");
   const [filtro,     setFiltro]     = useState<"Todos" | "Sí" | "No">("Todos");
@@ -103,6 +105,8 @@ const DetalleCOTTSAPage: React.FC = () => {
         setClientes(lista);
         setResumen(data.resumen);
         setProductos(data.productosVendidos || []);
+        setExtra(data.extra || { unidades: 0, dolares: 0, facturas: 0 });
+        setHuerfanos(data.huerfanos || { total: 0, cantidad: 0 });
         setPagina(1);
       })
       .catch(console.error)
@@ -311,12 +315,44 @@ const DetalleCOTTSAPage: React.FC = () => {
                       </tr>
                     );
                   })}
+
+                  {/* Reembolsos POS huérfanos (en Odoo, sin nota de crédito fiscal) */}
+                  {huerfanos.total > 0 && (
+                    <tr className="bg-amber-500/10 border-l-4 border-amber-500/40">
+                      <td className="px-4 py-2 text-amber-200">
+                        Reembolsos POS sin facturar
+                        <span className="text-gray-500 italic ml-1">({huerfanos.cantidad} huérfanos en Odoo)</span>
+                      </td>
+                      <td className="px-4 py-2 text-right text-amber-300/70">—</td>
+                      <td className="px-4 py-2 text-right text-amber-300 font-semibold">−${fmt(huerfanos.total)}</td>
+                      <td className="px-4 py-2 text-right text-gray-500">—</td>
+                    </tr>
+                  )}
+
+                  {/* Externo Aqua Premium NE */}
+                  {(extra.dolares > 0 || extra.unidades > 0) && (
+                    <tr className="bg-purple-500/10 border-l-4 border-purple-400/50">
+                      <td className="px-4 py-2 text-purple-200">
+                        Aqua Premium NE
+                        <span className="text-gray-500 italic ml-1">(sistema externo · ingresado manual)</span>
+                      </td>
+                      <td className="px-4 py-2 text-right text-purple-300/90 font-semibold">{extra.unidades.toLocaleString("es-EC")}</td>
+                      <td className="px-4 py-2 text-right text-purple-200 font-semibold">${fmt(extra.dolares)}</td>
+                      <td className="px-4 py-2 text-right text-purple-300 font-semibold">
+                        ${fmt(extra.unidades > 0 ? extra.dolares / extra.unidades : 0)}
+                      </td>
+                    </tr>
+                  )}
+
                   {(() => {
-                    const totUni = productos.reduce((a, p) => a + Number(p.unidades_vendidas), 0);
-                    const totUSD = productos.reduce((a, p) => a + Number(p.monto_usd), 0);
+                    const baseUni = productos.reduce((a, p) => a + Number(p.unidades_vendidas), 0);
+                    const baseUSD = productos.reduce((a, p) => a + Number(p.monto_usd), 0);
+                    // Total = productos BD - huérfanos + externo (cuadra con dashboard)
+                    const totUni = baseUni + (Number(extra.unidades) || 0);
+                    const totUSD = baseUSD - (Number(huerfanos.total) || 0) + (Number(extra.dolares) || 0);
                     const promTotal = totUni > 0 ? totUSD / totUni : 0;
                     return (
-                      <tr className="bg-[#014434] font-bold border-t border-[#046C5E]/30">
+                      <tr className="bg-[#014434] font-bold border-t-2 border-[#046C5E]/60">
                         <td className="px-4 py-3 text-green-300 uppercase text-xs">Total</td>
                         <td className="px-4 py-3 text-right text-green-400">{totUni.toLocaleString("es-EC")}</td>
                         <td className="px-4 py-3 text-right text-blue-400">${fmt(totUSD)}</td>
