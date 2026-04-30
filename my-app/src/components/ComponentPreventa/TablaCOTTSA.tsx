@@ -405,11 +405,6 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Dólares $</p>
             <p className="text-base font-bold text-white">${fmt(dolaresTotal)}</p>
-            {hayExtra && (
-              <p className="text-[10px] text-purple-300 italic mt-0.5">
-                +${fmt(extra.dolares)} externo
-              </p>
-            )}
           </div>
           {esMesActual && (
             <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
@@ -420,11 +415,6 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Unidades</p>
             <p className="text-base font-bold text-blue-300">{fmtInt(unidadesTotal)}</p>
-            {hayExtra && (
-              <p className="text-[10px] text-purple-300 italic mt-0.5">
-                +{fmtInt(extra.unidades)} externo
-              </p>
-            )}
           </div>
 
           <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
@@ -616,20 +606,10 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
 
               <td className="px-4 py-3 text-right text-green-400 font-bold">
                 {fmtInt(unidadesTotal)}
-                {hayExtra && (
-                  <span className="block text-[10px] text-purple-300 font-normal italic">
-                    +{fmtInt(extra.unidades)}
-                  </span>
-                )}
               </td>
 
               <td className="px-4 py-3 text-right font-bold text-white">
                 ${fmt(dolaresTotal)}
-                {hayExtra && (
-                  <span className="block text-[10px] text-purple-300 font-normal italic">
-                    +${fmt(extra.dolares)}
-                  </span>
-                )}
               </td>
 
 
@@ -687,11 +667,6 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
 
               <td className="px-4 py-3 text-right text-gray-300">
                 {facturasTotal}
-                {hayExtra && extra.facturas > 0 && (
-                  <span className="block text-[10px] text-purple-300 font-normal italic">
-                    +{extra.facturas}
-                  </span>
-                )}
               </td>
               <td className="px-4 py-3 text-right text-gray-300">{totales.cant_clientes}</td>
             </tr>
@@ -699,6 +674,28 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
             {/* ── Desglose por ruta + POS Kenny Navas ─────────────── */}
             {mostrarDesglose && datos && (
               <>
+                {hayExtra && (() => {
+                  const extPrecio = extra.unidades > 0 ? extra.dolares / extra.unidades : 0;
+                  return (
+                    <tr className="bg-purple-500/10 border-l-4 border-purple-400/60 text-xs">
+                      <td className="pl-10 pr-4 py-2 text-purple-200">
+                        <span className="opacity-60 mr-1">↳</span>
+                        <span className="font-semibold">Aqua Premium NE</span>
+                        <span className="text-gray-500 italic ml-1">(sistema externo · ingresado manual)</span>
+                      </td>
+                      <td className="px-4 py-2 text-right text-purple-300/90">{fmtInt(extra.unidades)}</td>
+                      <td className="px-4 py-2 text-right font-semibold text-purple-200">${fmt(extra.dolares)}</td>
+                      <td className="px-4 py-2 text-right text-purple-300">${fmt(extPrecio)}</td>
+                      {esMesActual && <td className="px-4 py-2 text-right text-gray-500">—</td>}
+                      <td className="px-4 py-2 text-right text-gray-500">—</td>
+                      <td className="px-4 py-2 text-right text-gray-500">—</td>
+                      <td className="px-4 py-2 text-right text-gray-500">—</td>
+                      <td className="px-4 py-2 text-right text-purple-300/80">{extra.facturas || "—"}</td>
+                      <td className="px-4 py-2 text-right text-gray-500">—</td>
+                    </tr>
+                  );
+                })()}
+
                 {datos.ranking.map((r, idx) => {
                   const rutaUnidades = Number(r.unidades) || 0;
                   const rutaPrecioProm = rutaUnidades > 0 ? r.dolares / rutaUnidades : 0;
@@ -710,7 +707,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                     <tr key={`desglose-${idx}`} className="bg-[#011f1a]/70 border-l-4 border-blue-400/40 text-xs">
                       <td className="pl-10 pr-4 py-2 text-blue-200">
                         <span className="opacity-60 mr-1">↳</span>
-                        {r.vendedor || r.ruta} <span className="text-gray-500 italic">(preventa)</span>
+                        {r.vendedor || r.ruta}
                       </td>
                       <td className="px-4 py-2 text-right text-green-400/90">{fmtInt(rutaUnidades)}</td>
                       <td className="px-4 py-2 text-right font-semibold text-white">${fmt(r.dolares)}</td>
@@ -988,13 +985,16 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                       {(() => {
                         // Contadores precalculados (sin depender del filtro actual)
                         const cFact = posDetalle.items.filter(it => it.tipo.startsWith("Fact")).length;
-                        const cNotCr = posDetalle.items.filter(it => it.tipo.startsWith("NotCr") && !it.tipo.includes("huérfano")).length;
+                        // "Reembolsos" muestra NotCr + Facts (para ver el neto Kenny Navas)
+                        const cNotCr = posDetalle.items.filter(
+                          it => it.tipo.startsWith("NotCr") || it.tipo.startsWith("Fact")
+                        ).length;
                         const cHuerfanos = posDetalle.items.filter(it => it.tipo.includes("huérfano")).length;
                         const cTodos = posDetalle.items.length;
                         const tabs = [
                           { key: "todos" as const, label: "Todos", count: cTodos, color: "orange" },
                           { key: "fact" as const, label: "Facturas", count: cFact, color: "emerald" },
-                          { key: "notcr" as const, label: "Reembolsos", count: cNotCr, color: "red" },
+                          { key: "notcr" as const, label: "Reembolsos (neto)", count: cNotCr, color: "red" },
                           { key: "huerfanos" as const, label: "Huérfanos", count: cHuerfanos, color: "amber" },
                         ];
                         return tabs.map(({ key, label, count, color }) => {
@@ -1036,8 +1036,12 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                   {(() => {
                     const q = posBusqueda.trim().toLowerCase();
                     const items = posDetalle.items.filter(it => {
+                      // "Reembolsos" incluye NotCr + Facts POS para mostrar el
+                      // neto Kenny Navas con la compensación de las ventas POS.
+                      if (posFiltroTipo === "notcr"
+                          && !it.tipo.startsWith("NotCr")
+                          && !it.tipo.startsWith("Fact")) return false;
                       if (posFiltroTipo === "fact" && !it.tipo.startsWith("Fact")) return false;
-                      if (posFiltroTipo === "notcr" && !it.tipo.startsWith("NotCr")) return false;
                       if (posFiltroTipo === "huerfanos" && !it.tipo.includes("huérfano")) return false;
                       if (!q) return true;
                       const hay = [it.caja, it.pos_reference, it.cliente, it.documento, it.ruta, it.sesion]
@@ -1045,12 +1049,10 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                       return hay.includes(q);
                     });
                     // Total de los items actualmente visibles (suma con signo).
-                    // Si el usuario filtra por "Reembolsos" verá la suma negativa
-                    // de las NotCr, no el neto global.
                     const totalFiltrado = items.reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
                     const filtroEtiqueta =
                       posFiltroTipo === "fact" ? "Total facturas"
-                      : posFiltroTipo === "notcr" ? "Total reembolsos"
+                      : posFiltroTipo === "notcr" ? "Neto Kenny Navas (NotCr + ventas POS)"
                       : posFiltroTipo === "huerfanos" ? "Total huérfanos"
                       : q ? "Total filtrado"
                       : "Total Kenny Navas";
@@ -1186,13 +1188,16 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                             </tbody>
                             <tfoot>
                               <tr className="bg-orange-500/15 border-t-2 border-orange-500/40">
-                                <td colSpan={4} className="px-3 py-2.5 text-right text-orange-200 uppercase text-[10px] font-bold tracking-wider">
+                                <td colSpan={4} className="px-3 py-2.5 text-right text-orange-200 uppercase text-[10px] font-bold tracking-wider whitespace-nowrap">
                                   {filtroEtiqueta} ({items.length} {items.length === 1 ? "registro" : "registros"})
                                 </td>
-                                <td className={`px-3 py-2.5 text-right font-extrabold tabular-nums text-base ${
+                                <td className={`px-3 py-2.5 text-right font-extrabold tabular-nums text-base whitespace-nowrap ${
                                   totalFiltrado < 0 ? "text-red-300" : totalFiltrado > 0 ? "text-emerald-300" : "text-gray-300"
                                 }`}>
-                                  {totalFiltrado < 0 ? "−" : ""}${fmt(Math.abs(totalFiltrado))}
+                                  <span className="inline-flex items-baseline justify-end gap-0">
+                                    {totalFiltrado < 0 && <span>−</span>}
+                                    <span>${fmt(Math.abs(totalFiltrado))}</span>
+                                  </span>
                                 </td>
                                 <td className="px-3 py-2.5"></td>
                               </tr>
