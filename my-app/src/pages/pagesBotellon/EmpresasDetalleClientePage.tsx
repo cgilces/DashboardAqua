@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { MapPin, Phone } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -105,7 +106,7 @@ export default function EmpresasDetalleClientePage() {
                 </span>
               )}
               {cliente?.telefono && (
-                <span className="text-[10px] text-gray-400">📞 {cliente.telefono}</span>
+                <span className="text-[10px] text-gray-400 inline-flex items-center gap-1"><Phone size={10} /> {cliente.telefono}</span>
               )}
               <span className="text-[10px] text-gray-500 font-mono">{codigo}</span>
             </div>
@@ -209,8 +210,8 @@ export default function EmpresasDetalleClientePage() {
                               {hasCoords(s.latitud, s.longitud) ? (
                                 <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
                                   target="_blank" rel="noreferrer"
-                                  className="text-blue-400/70 hover:text-blue-400" onClick={e => e.stopPropagation()}>
-                                  📍 Ver mapa
+                                  className="text-blue-400/70 hover:text-blue-400 inline-flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                  <MapPin size={10} /> Ver mapa
                                 </a>
                               ) : (
                                 <span className="italic text-white/30">Sin información de mapa</span>
@@ -277,8 +278,8 @@ export default function EmpresasDetalleClientePage() {
                               {hasCoords(s.latitud, s.longitud)
                                 ? <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
                                     target="_blank" rel="noreferrer"
-                                    className="text-[10px] text-blue-400/70 hover:text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded whitespace-nowrap">
-                                    📍 Mapa
+                                    className="text-[10px] text-blue-400/70 hover:text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded whitespace-nowrap inline-flex items-center gap-1">
+                                    <MapPin size={10} /> Mapa
                                   </a>
                                 : <span className="text-[10px] text-white/40 italic whitespace-nowrap">Sin información</span>
                               }

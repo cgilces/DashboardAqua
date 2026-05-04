@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { BsDownload, BsGear, BsPlusCircle, BsX } from "react-icons/bs";
+import { AlertTriangle, Lightbulb, ShoppingCart } from "lucide-react";
 import { useAuth } from "../../components/auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../../config";
@@ -479,7 +480,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
             className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-amber-500/15 transition-colors"
           >
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-amber-300 text-lg">⚠️</span>
+              <AlertTriangle size={20} className="text-amber-300 flex-shrink-0" />
               <div>
                 <p className="text-amber-200 font-semibold text-sm">
                   {huerfanos.cantidad} reembolso{huerfanos.cantidad !== 1 ? "s" : ""} POS sin facturar en Odoo
@@ -541,10 +542,11 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                   </tfoot>
                 </table>
               </div>
-              <p className="px-4 py-2 text-[11px] text-amber-300/80 italic">
-                💡 Estos reembolsos existen como pos.order en Odoo pero no tienen nota de crédito fiscal.
+              <p className="px-4 py-2 text-[11px] text-amber-300/80 italic flex items-start gap-1.5">
+                <Lightbulb size={12} className="mt-0.5 flex-shrink-0" />
+                <span>Estos reembolsos existen como pos.order en Odoo pero no tienen nota de crédito fiscal.
                 Para que entren al dashboard hay que facturarlos en Odoo (botón "Crear factura" en cada pedido)
-                o activar la auto-facturación en la configuración del POS.
+                o activar la auto-facturación en la configuración del POS.</span>
               </p>
             </div>
           )}
@@ -898,7 +900,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
             <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-orange-500/30 bg-gradient-to-r from-orange-500/15 to-transparent shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-10 h-10 rounded-lg bg-orange-500/20 border border-orange-400/40 flex items-center justify-center shrink-0">
-                  <span className="text-orange-300 text-xl">🛒</span>
+                  <ShoppingCart size={20} className="text-orange-300" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-base sm:text-lg font-bold text-orange-200 truncate">POS — Kenny Navas</h3>
@@ -926,8 +928,8 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               )}
 
               {posDetalleError && !posDetalleCargando && (
-                <div className="m-4 p-4 rounded-lg bg-red-900/30 border border-red-500/40 text-red-200 text-sm">
-                  ⚠️ {posDetalleError}
+                <div className="m-4 p-4 rounded-lg bg-red-900/30 border border-red-500/40 text-red-200 text-sm flex items-center gap-2">
+                  <AlertTriangle size={16} className="flex-shrink-0" /> {posDetalleError}
                 </div>
               )}
 
@@ -1110,8 +1112,8 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                                       {it.documento}
                                     </span>
                                   ) : (
-                                    <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-200 border border-amber-500/40 font-semibold">
-                                      ⚠ Sin facturar
+                                    <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-200 border border-amber-500/40 font-semibold inline-flex items-center gap-1">
+                                      <AlertTriangle size={10} /> Sin facturar
                                     </span>
                                   )}
                                 </div>
@@ -1177,8 +1179,8 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                                           {it.documento}
                                         </span>
                                       ) : (
-                                        <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-200 border border-amber-500/40 font-semibold">
-                                          ⚠ Sin facturar
+                                        <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-200 border border-amber-500/40 font-semibold inline-flex items-center gap-1">
+                                          <AlertTriangle size={10} /> Sin facturar
                                         </span>
                                       )}
                                     </td>
@@ -1213,8 +1215,9 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
 
             {/* Footer */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 px-4 sm:px-6 py-3 border-t border-orange-500/20 bg-[#011a14]/60 shrink-0">
-              <p className="text-[11px] text-gray-400 italic">
-                💡 Datos en vivo desde Odoo · Los <span className="text-amber-300 font-semibold">huérfanos</span> son reembolsos POS sin nota de crédito fiscal.
+              <p className="text-[11px] text-gray-400 italic flex items-center gap-1.5">
+                <Lightbulb size={12} className="flex-shrink-0" />
+                <span>Datos en vivo desde Odoo · Los <span className="text-amber-300 font-semibold">huérfanos</span> son reembolsos POS sin nota de crédito fiscal.</span>
               </p>
               <button
                 onClick={cerrarPOSDetalle}

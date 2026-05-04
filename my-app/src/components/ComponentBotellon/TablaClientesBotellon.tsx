@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 
 /* ============================
    TIPOS
@@ -188,8 +189,8 @@ export default function TablaClientesBotellon({
               />
               {terminoBusqueda && (
                 <button onClick={() => setTerminoBusqueda("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition text-sm leading-none">
-                  ✕
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition leading-none">
+                  <X size={14} />
                 </button>
               )}
             </div>

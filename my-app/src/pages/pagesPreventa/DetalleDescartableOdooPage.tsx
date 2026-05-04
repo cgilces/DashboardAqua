@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { BsDownload } from "react-icons/bs";
+import { MapPin } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -301,7 +302,7 @@ const DetalleDescartableOdooPage: React.FC = () => {
                             {(c.tipo_negocio || c.direccion_entrega || c.ultima_factura) && (
                               <div className="flex flex-wrap gap-2 pt-2 border-t border-[#046C5E]/20 mt-1 text-[10px] text-white/40">
                                 {c.tipo_negocio && <span>{c.tipo_negocio}</span>}
-                                {c.direccion_entrega && <span className="truncate">📍 {c.direccion_entrega}</span>}
+                                {c.direccion_entrega && <span className="truncate inline-flex items-center gap-1"><MapPin size={10} /> {c.direccion_entrega}</span>}
                                 {c.ultima_factura && <span className="ml-auto">{new Date(c.ultima_factura).toLocaleDateString("es-EC")}</span>}
                               </div>
                             )}
@@ -310,8 +311,8 @@ const DetalleDescartableOdooPage: React.FC = () => {
                               {hasCoords(c.latitud_cliente, c.longitud_cliente) ? (
                                 <a href={`https://maps.google.com/?q=${c.latitud_cliente},${c.longitud_cliente}`}
                                   target="_blank" rel="noreferrer"
-                                  className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap">
-                                  📍 Mapa
+                                  className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap inline-flex items-center gap-1">
+                                  <MapPin size={10} /> Mapa
                                 </a>
                               ) : (
                                 <span className="text-[10px] text-white/30 italic">Sin información</span>
@@ -387,8 +388,8 @@ const DetalleDescartableOdooPage: React.FC = () => {
                               {hasCoords(c.latitud_cliente, c.longitud_cliente)
                                 ? <a href={`https://maps.google.com/?q=${c.latitud_cliente},${c.longitud_cliente}`}
                                     target="_blank" rel="noreferrer"
-                                    className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap">
-                                    📍 Mapa
+                                    className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap inline-flex items-center gap-1">
+                                    <MapPin size={10} /> Mapa
                                   </a>
                                 : <span className="text-[10px] text-white/40 italic whitespace-nowrap">Sin información</span>
                               }

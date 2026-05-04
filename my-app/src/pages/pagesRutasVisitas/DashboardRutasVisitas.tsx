@@ -5,6 +5,7 @@ import { Header } from "../../components/common/Header";
 import BotonRutasyDetalles from "../../components/elements/BotonRutasyDetalles";
 import BotonHistorialRutas from "../../components/elements/BotonHistorialRutas";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import { Calendar, CalendarDays, CalendarRange } from "lucide-react";
 import { API_BASE_URL } from "../../config";
 
 /* ============================================================
@@ -273,36 +274,51 @@ export default function DashboardRutasVisitas() {
 
           {/* Selector periodo */}
           <div className="flex flex-wrap gap-2 items-center">
-            <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm" value={tipoPeriodo}
-              onChange={e => setTipoPeriodo(e.target.value as any)}>
-              <option value="dia">Día</option>
-              <option value="semana">Semana</option>
-              <option value="mes">Mes</option>
-            </select>
+            <div className="relative">
+              <CalendarRange size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+              <select className="bg-[#046C5E] text-white pl-8 pr-3 py-2 rounded-lg text-sm appearance-none" value={tipoPeriodo}
+                onChange={e => setTipoPeriodo(e.target.value as any)}>
+                <option value="dia">Día</option>
+                <option value="semana">Semana</option>
+                <option value="mes">Mes</option>
+              </select>
+            </div>
 
             {tipoPeriodo === "mes" && (
               <>
-                <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm" value={mesSeleccionado}
-                  onChange={e => setMesSeleccionado(e.target.value)}>
-                  {Object.entries(MESES_LARGOS).map(([n, v]) => (
-                    <option key={v} value={v}>{n}</option>
-                  ))}
-                </select>
-                <select className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm" value={anioSeleccionado}
-                  onChange={e => setAnioSeleccionado(e.target.value)}>
-                  {Array.from({ length: 5 }, (_, i) => anioActual + 1 - i).map(a => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <Calendar size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+                  <select className="bg-[#046C5E] text-white pl-8 pr-3 py-2 rounded-lg text-sm appearance-none" value={mesSeleccionado}
+                    onChange={e => setMesSeleccionado(e.target.value)}>
+                    {Object.entries(MESES_LARGOS).map(([n, v]) => (
+                      <option key={v} value={v}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="relative">
+                  <Calendar size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+                  <select className="bg-[#046C5E] text-white pl-8 pr-3 py-2 rounded-lg text-sm appearance-none" value={anioSeleccionado}
+                    onChange={e => setAnioSeleccionado(e.target.value)}>
+                    {Array.from({ length: 5 }, (_, i) => anioActual + 1 - i).map(a => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </div>
               </>
             )}
             {tipoPeriodo === "semana" && (
-              <input type="date" className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm"
-                value={fechaSemana} onChange={e => setFechaSemana(e.target.value)} />
+              <div className="relative">
+                <CalendarDays size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+                <input type="date" className="bg-[#046C5E] text-white pl-8 pr-3 py-2 rounded-lg text-sm"
+                  value={fechaSemana} onChange={e => setFechaSemana(e.target.value)} />
+              </div>
             )}
             {tipoPeriodo === "dia" && (
-              <input type="date" className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm"
-                value={fechaDia} onChange={e => setFechaDia(e.target.value)} />
+              <div className="relative">
+                <CalendarDays size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+                <input type="date" className="bg-[#046C5E] text-white pl-8 pr-3 py-2 rounded-lg text-sm"
+                  value={fechaDia} onChange={e => setFechaDia(e.target.value)} />
+              </div>
             )}
           </div>
         </header>

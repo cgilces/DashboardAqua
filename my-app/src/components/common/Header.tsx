@@ -1,5 +1,5 @@
 import React from "react";
-import { ExitIcon } from "./Icons";
+import { Shield, User, LogOut } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
 export const Header: React.FC = () => {
@@ -20,12 +20,14 @@ export const Header: React.FC = () => {
                         bg-[#012E24]/90 backdrop-blur border border-[#046C5E]/60 shadow-sm">
 
           {/* ROL */}
-          <span className="text-xs md:text-sm font-semibold uppercase bg-[#046C5E]/60 px-3 py-1 rounded-full tracking-wide">
+          <span className="inline-flex items-center gap-1.5 text-xs md:text-sm font-semibold uppercase bg-[#046C5E]/60 px-3 py-1 rounded-full tracking-wide">
+            <Shield size={12} />
             {rol}
           </span>
 
           {/* USUARIO */}
-          <span className="text-xs md:text-sm font-medium text-white/90">
+          <span className="inline-flex items-center gap-1.5 text-xs md:text-sm font-medium text-white/90">
+            <User size={14} />
             {user}
           </span>
 
@@ -36,7 +38,7 @@ export const Header: React.FC = () => {
                        px-3 md:px-4 py-1 md:py-1.5 rounded-md
                        border border-white/30 hover:bg-white/10 transition"
           >
-            <ExitIcon />
+            <LogOut size={14} />
             <span>Cerrar Sesión</span>
           </button>
 

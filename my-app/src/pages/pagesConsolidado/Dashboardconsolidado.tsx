@@ -4,7 +4,7 @@ import {
   PieChart, Pie, Cell,
   AreaChart, Area,
 } from "recharts";
-import { BarChart2, TrendingUp, TrendingDown, DollarSign, Package, Users, FileText } from "lucide-react";
+import { BarChart2, TrendingUp, TrendingDown, DollarSign, Package, Users, FileText, Calendar } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
@@ -201,22 +201,28 @@ export default function Dashboardconsolidado() {
             <BotonActualizarSincronizacion />
           </div>
           <div className="flex gap-2 flex-wrap items-center">
-            <select
-              className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium"
-              value={mesSeleccionado}
-              onChange={e => setMesSeleccionado(Number(e.target.value))}
-            >
-              {Object.entries(MESES).map(([n, v]) => <option key={v} value={v}>{n}</option>)}
-            </select>
-            <select
-              className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium"
-              value={anioSeleccionado}
-              onChange={e => setAnioSeleccionado(Number(e.target.value))}
-            >
-              {Array.from({ length: 5 }, (_, i) => hoy.getFullYear() - i).map(y =>
-                <option key={y} value={y}>{y}</option>
-              )}
-            </select>
+            <div className="relative">
+              <Calendar size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+              <select
+                className="bg-[#046C5E] text-white pl-8 pr-3 py-2 rounded-lg text-sm font-medium appearance-none"
+                value={mesSeleccionado}
+                onChange={e => setMesSeleccionado(Number(e.target.value))}
+              >
+                {Object.entries(MESES).map(([n, v]) => <option key={v} value={v}>{n}</option>)}
+              </select>
+            </div>
+            <div className="relative">
+              <Calendar size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+              <select
+                className="bg-[#046C5E] text-white pl-8 pr-3 py-2 rounded-lg text-sm font-medium appearance-none"
+                value={anioSeleccionado}
+                onChange={e => setAnioSeleccionado(Number(e.target.value))}
+              >
+                {Array.from({ length: 5 }, (_, i) => hoy.getFullYear() - i).map(y =>
+                  <option key={y} value={y}>{y}</option>
+                )}
+              </select>
+            </div>
           </div>
         </header>
 

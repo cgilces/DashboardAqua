@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 
 export default function ModalClientesNoVisitados({
     ruta,
@@ -98,8 +99,8 @@ export default function ModalClientesNoVisitados({
                 )}
 
                 {!cargando && !clientes.length && (
-                    <p className="text-green-400">
-                        🎉 Todos los clientes fueron visitados en este período
+                    <p className="text-green-400 flex items-center gap-2">
+                        <CheckCircle2 size={18} /> Todos los clientes fueron visitados en este período
                     </p>
                 )}
 

@@ -63,7 +63,7 @@ const BotonRutasyDetalles = () => {
     } catch (err: any) {
       console.error("❌ Error al iniciar sincronización:", err);
       setProgress(0);
-      alert("❌ Error: " + err.message);
+      alert("Error: " + err.message);
     } finally {
       setIsSyncing(false); // Finaliza la sincronización, habilitando el botón
     }

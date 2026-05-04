@@ -200,18 +200,27 @@ export default function DashboardGerencia() {
         {/* ── Cabecera ── */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-5 border-b border-[#046C5E]/50 pb-4 pt-4">
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-extrabold tracking-tight leading-tight">Dashboard Gerencial</h1>
+            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-extrabold tracking-tight leading-tight flex items-center gap-2">
+              <InsightsIcon className="text-emerald-400" />
+              Dashboard Gerencial
+            </h1>
             <p className="text-xs sm:text-sm text-gray-400 mt-1 truncate">Vista ejecutiva integral · Grupo AQUA S.A. · {MESES_LABEL[mes]} {anio}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <select value={anio} onChange={e=>setAnio(Number(e.target.value))}
-              className="bg-[#013d30] border border-[#046C5E]/40 text-white rounded-lg px-3 py-2 text-sm focus:outline-none flex-1 sm:flex-initial sm:min-w-[100px]">
-              {anios.map(a=><option key={a} value={a}>{a}</option>)}
-            </select>
-            <select value={mes} onChange={e=>setMes(Number(e.target.value))}
-              className="bg-[#013d30] border border-[#046C5E]/40 text-white rounded-lg px-3 py-2 text-sm focus:outline-none flex-1 sm:flex-initial sm:min-w-[120px]">
-              {MESES_LABEL.slice(1).map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}
-            </select>
+            <div className="relative flex-1 sm:flex-initial sm:min-w-[100px]">
+              <CalendarMonthIcon sx={{ fontSize: 16 }} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+              <select value={anio} onChange={e=>setAnio(Number(e.target.value))}
+                className="bg-[#013d30] border border-[#046C5E]/40 text-white rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none w-full appearance-none">
+                {anios.map(a=><option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+            <div className="relative flex-1 sm:flex-initial sm:min-w-[120px]">
+              <CalendarMonthIcon sx={{ fontSize: 16 }} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+              <select value={mes} onChange={e=>setMes(Number(e.target.value))}
+                className="bg-[#013d30] border border-[#046C5E]/40 text-white rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none w-full appearance-none">
+                {MESES_LABEL.slice(1).map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}
+              </select>
+            </div>
             <button onClick={fetchAll} disabled={loading}
               className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition flex items-center justify-center gap-1.5 w-full sm:w-auto">
               <InsightsIcon sx={{fontSize:15}}/> {loading ? "Cargando…" : "Actualizar"}

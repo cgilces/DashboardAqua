@@ -191,10 +191,11 @@ const obtenerDetallePorVendedor = async (codigoVendedor, anioNum, mesNum) => {
 };
 
 // ======================================================
-// RANKING RUTAS R (R%)
+// RANKING RUTAS R (R% / PVR%)
 // ✅ Mes actual  → fecha fin = día siguiente a última sync
 // ✅ Mes cerrado → fecha fin = fin de mes completo
 // El mes anterior siempre usa fin de mes completo
+// Cutoff: hasta marzo 2026 → autoventa R%; desde abril 2026 → prevendedores PVR%
 // ======================================================
 const obtenerRankingRutasDescartable = async (anioNum, mesNum, metasPorPreventa, diasTranscurridos, diasLaborablesMes) => {
   const hoy = new Date();
@@ -210,29 +211,43 @@ const obtenerRankingRutasDescartable = async (anioNum, mesNum, metasPorPreventa,
   const inicioPrev = getFechaInicioMes(anioPrev, mesPrev);
   const finPrev    = getFechaFinMes(anioPrev, mesPrev);
 
-  console.log(`📅 RankingR ${anioNum}-${mesNum}: ${inicio} → ${fin}`);
+  // Hasta marzo 2026 inclusive → autoventa (R%) + prevendedores (PVR%).
+  // Desde abril 2026 → solo prevendedores (PVR%).
+  const soloPVR = (a, m) => (a > 2026) || (a === 2026 && m >= 4);
+  const buildSellerFilter = (alias, a, m) => soloPVR(a, m)
+    ? `${alias}.seller_code ILIKE 'PVR%'`
+    : `(${alias}.seller_code ILIKE 'R%' OR ${alias}.seller_code ILIKE 'PVR%')`;
+
+  const filtroOActual = buildSellerFilter('o', anioNum,  mesNum);
+  const filtroFActual = buildSellerFilter('f', anioNum,  mesNum);
+  const filtroOPrev   = buildSellerFilter('o', anioPrev, mesPrev);
+  const filtroFPrev   = buildSellerFilter('f', anioPrev, mesPrev);
+  const etiqActual    = soloPVR(anioNum,  mesNum)  ? 'PVR%'      : 'R%+PVR%';
+  const etiqPrev      = soloPVR(anioPrev, mesPrev) ? 'PVR%'      : 'R%+PVR%';
+
+  console.log(`📅 RankingR ${anioNum}-${mesNum}: ${inicio} → ${fin} (filtro=${etiqActual}, prev=${etiqPrev})`);
 const sqlActual = `
-  SELECT x.usuario, 
-         SUM(x.unidades) AS unidades, 
+  SELECT x.usuario,
+         SUM(x.unidades) AS unidades,
          SUM(x.dolares) AS dolares,
-         SUM(x.cant_ordenes) AS cant_ordenes, 
+         SUM(x.cant_ordenes) AS cant_ordenes,
          SUM(x.cant_facturas) AS cant_facturas
   FROM (
 
     -- =========================
-    -- ORDENES (SOLO PVR + STATUS 5)
+    -- ORDENES (${etiqActual} + STATUS 5)
     -- =========================
-    SELECT 
-      o.seller_code AS usuario, 
-      SUM(dd.cantidad) AS unidades, 
+    SELECT
+      o.seller_code AS usuario,
+      SUM(dd.cantidad) AS unidades,
       SUM(dd.total) AS dolares,
-      COUNT(DISTINCT o.code) AS cant_ordenes, 
+      COUNT(DISTINCT o.code) AS cant_ordenes,
       0::int AS cant_facturas
-    FROM ordenes o 
+    FROM ordenes o
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE dd.codigo_categoria = '7'
       AND o.status = 5
-      AND o.seller_code ILIKE 'PVR%'
+      AND ${filtroOActual}
       AND o.fecha_entrega >= '${inicio}'
       AND o.fecha_entrega < '${fin}'
     GROUP BY o.seller_code
@@ -240,43 +255,66 @@ const sqlActual = `
     UNION ALL
 
     -- =========================
-    -- FACTURAS (SOLO PVR + STATUS 5)
+    -- FACTURAS (${etiqActual} + STATUS 5)
     -- =========================
-    SELECT 
-      f.seller_code AS usuario, 
-      SUM(dd.cantidad) AS unidades, 
+    SELECT
+      f.seller_code AS usuario,
+      SUM(dd.cantidad) AS unidades,
       SUM(dd.total) AS dolares,
-      0::int AS cant_ordenes, 
+      0::int AS cant_ordenes,
       COUNT(DISTINCT f.code) AS cant_facturas
-    FROM facturas f 
+    FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE dd.codigo_categoria = '7'
       AND f.status = 5
-      AND f.seller_code ILIKE 'PVR%'
+      AND ${filtroFActual}
       AND f.fecha_entrega >= '${inicio}'
       AND f.fecha_entrega < '${fin}'
     GROUP BY f.seller_code
 
-  ) x 
-  GROUP BY x.usuario 
+  ) x
+  GROUP BY x.usuario
   ORDER BY dolares DESC;
 `;
 
 
 const sqlPrev = `
-SELECT 
-  o.seller_code AS usuario, 
-  SUM(dd.cantidad) AS unidades, 
-  SUM(dd.total) AS dolares,
-  COUNT(DISTINCT o.code) AS cant_ordenes
-FROM ordenes o 
-JOIN detalle_documento dd ON dd.documento_code = o.code
-WHERE dd.codigo_categoria = '7'
-  AND o.status = 5
-  AND o.seller_code ILIKE 'PVR%'
-  AND o.fecha_entrega >= '${inicioPrev}'
-  AND o.fecha_entrega <  '${finPrev}'
-GROUP BY o.seller_code;
+  SELECT x.usuario,
+         SUM(x.unidades) AS unidades,
+         SUM(x.dolares) AS dolares,
+         SUM(x.cant_ordenes) AS cant_ordenes
+  FROM (
+    SELECT
+      o.seller_code AS usuario,
+      SUM(dd.cantidad) AS unidades,
+      SUM(dd.total) AS dolares,
+      COUNT(DISTINCT o.code) AS cant_ordenes
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE dd.codigo_categoria = '7'
+      AND o.status = 5
+      AND ${filtroOPrev}
+      AND o.fecha_entrega >= '${inicioPrev}'
+      AND o.fecha_entrega <  '${finPrev}'
+    GROUP BY o.seller_code
+
+    UNION ALL
+
+    SELECT
+      f.seller_code AS usuario,
+      SUM(dd.cantidad) AS unidades,
+      SUM(dd.total) AS dolares,
+      0::int AS cant_ordenes
+    FROM facturas f
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE dd.codigo_categoria = '7'
+      AND f.status = 5
+      AND ${filtroFPrev}
+      AND f.fecha_entrega >= '${inicioPrev}'
+      AND f.fecha_entrega <  '${finPrev}'
+    GROUP BY f.seller_code
+  ) x
+  GROUP BY x.usuario;
 `;
 
   const actual   = await sequelize.query(sqlActual, { type: Sequelize.QueryTypes.SELECT });
