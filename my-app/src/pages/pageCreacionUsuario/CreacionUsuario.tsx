@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { X } from "lucide-react";
 import { Card } from "../../components/common/Card";
 import Button from "../../components/elements/Button";
 import PanelButtons from "../../components/elements/PanelButtons";
@@ -400,7 +401,9 @@ const CreacionUsuario: React.FC = () => {
                       transition-all duration-200"/>
                                     {searchTerm && (
                                         <button onClick={() => setSearchTerm("")}
-                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#5fa88a]/60 hover:text-white transition text-sm leading-none">✕</button>
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#5fa88a]/60 hover:text-white transition leading-none">
+                                            <X size={14} />
+                                        </button>
                                     )}
                                 </div>
                             </div>

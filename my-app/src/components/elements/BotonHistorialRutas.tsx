@@ -41,9 +41,9 @@ const BotonHistorialRutas = () => {
 
       if (!res.ok) throw new Error("Error al sincronizar");
 
-      alert("✅ Sincronización completada");
+      alert("Sincronización completada");
     } catch (err: any) {
-      alert("❌ Error: " + err.message);
+      alert("Error: " + err.message);
     } finally {
       setIsSyncing(false);
     }

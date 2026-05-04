@@ -71,7 +71,7 @@ const BotonActualizarSincronizacion = () => {
             console.warn("⏱️ Timeout alcanzado (30 min)");
             clearInterval(interval);
             setIsSyncing(false);
-            alert("⚠️ La sincronización está tardando más de lo esperado.");
+            alert("La sincronización está tardando más de lo esperado.");
             return;
           }
 
@@ -92,7 +92,7 @@ const BotonActualizarSincronizacion = () => {
 
             setTimeout(() => {
               console.log("🔄 Recargando pantalla...");
-              alert("✅ Sincronización completada, Actualizar");
+              alert("Sincronización completada, Actualizar");
               window.location.reload();
             }, 800);
           }
@@ -147,7 +147,7 @@ const BotonActualizarSincronizacion = () => {
       console.error("❌ Error al iniciar sincronización:", err);
       setIsSyncing(false);
       setProgress(0);
-      alert("❌ Error: " + err.message);
+      alert("Error: " + err.message);
     }
   };
 

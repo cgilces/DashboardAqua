@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { Zap, FileText, BarChart3, Lightbulb, Check, Clock } from "lucide-react";
 import { useAuth } from "../../components/auth/AuthContext";
 import { API_BASE_URL } from '../../config';
 
@@ -26,7 +27,7 @@ const PDF_TTL_MS         = 30 * 60 * 1000;
 
 const MSG_BIENVENIDA: Mensaje = {
   tipo: "bot",
-  texto: "Hola 👋 Soy el asistente del ERP Grupo Aqua. Puedo responder consultas y generar **reportes PDF**. ¿En qué te puedo ayudar?",
+  texto: "Hola, soy el asistente del ERP Grupo Aqua. Puedo responder consultas y generar **reportes PDF**. ¿En qué te puedo ayudar?",
   timestamp: new Date().toISOString(),
 };
 
@@ -40,22 +41,22 @@ const PLACEHOLDERS = [
 ];
 
 // Sugerencias agrupadas por categoría para mejor descubrimiento
-const SUGERENCIAS_POR_CATEGORIA: { nombre: string; icono: string; color: string; items: string[] }[] = [
+const SUGERENCIAS_POR_CATEGORIA: { nombre: string; Icono: React.ComponentType<{ size?: number; className?: string }>; color: string; items: string[] }[] = [
   {
     nombre: "Consultas rápidas",
-    icono: "⚡",
+    Icono: Zap,
     color: "emerald",
     items: ["Ventas de hoy", "Top productos del mes", "Top clientes", "Clientes sin comprar"],
   },
   {
     nombre: "Reportes PDF",
-    icono: "📄",
+    Icono: FileText,
     color: "amber",
     items: ["Reporte ventas del mes", "Reporte por vendedor", "Reporte cartera vencida", "Cumplimiento de metas"],
   },
   {
     nombre: "Análisis",
-    icono: "📊",
+    Icono: BarChart3,
     color: "cyan",
     items: ["Efectividad de visitas", "Cobertura de rutas", "Margen por vendedor", "Comparativo mes anterior"],
   },
@@ -172,7 +173,7 @@ const PDFCard: React.FC<{
 
   if (expirado) return (
     <div className="mt-2 rounded-xl border border-red-800/40 bg-red-950/30 px-3 py-2.5">
-      <p className="text-red-400 text-xs font-medium">⏱ Este reporte expiró (30 min)</p>
+      <p className="text-red-400 text-xs font-medium flex items-center gap-1.5"><Clock size={12} /> Este reporte expiró (30 min)</p>
       <p className="text-gray-500 text-[11px] mt-0.5">Vuelve a solicitarlo para regenerarlo.</p>
     </div>
   );
@@ -214,7 +215,7 @@ const PDFCard: React.FC<{
               : "bg-gradient-to-r from-[#D2B858] to-[#b89e3f] text-black hover:from-[#e8cc6a] disabled:opacity-60"}`}>
           {descargando ? (
             <><span className="w-3 h-3 border-2 border-black/40 border-t-black rounded-full animate-spin"/>Descargando...</>
-          ) : descargado ? <>✓ Descargado</> : <><PDFIcon/>Descargar Reporte</>}
+          ) : descargado ? <><Check size={14} /> Descargado</> : <><PDFIcon/>Descargar Reporte</>}
         </button>
       </div>
     </div>
@@ -351,7 +352,7 @@ const ChatFlotante: React.FC = () => {
       }
     } catch {
       setMensajes(prev => [...prev, {
-        tipo: "bot", texto: "⚠️ No pude conectarme con el servidor.",
+        tipo: "bot", texto: "No pude conectarme con el servidor.",
         timestamp: new Date().toISOString(),
       }]);
     } finally { setCargando(false); }
@@ -467,7 +468,7 @@ const ChatFlotante: React.FC = () => {
                   {m.tipo === "bot" && (
                     <button onClick={() => copiarMensaje(m.texto, i)} title="Copiar respuesta"
                       className="copy-btn absolute top-2 right-2 p-1 rounded text-gray-500 hover:text-emerald-300 hover:bg-white/10 transition">
-                      {copiado === i ? <span className="text-[10px] text-emerald-400 font-bold">✓</span> : <CopyIcon/>}
+                      {copiado === i ? <Check size={12} className="text-emerald-400" /> : <CopyIcon/>}
                     </button>
                   )}
                 </div>
@@ -486,8 +487,8 @@ const ChatFlotante: React.FC = () => {
           {/* SUGERENCIAS — agrupadas por categoría (solo admin) */}
           {isAdmin && mostrarSugerencias && (
             <div className="px-3 pb-2 flex-shrink-0 border-t border-[#1a4a3a]/60 bg-[#081a14]/40 max-h-[210px] overflow-y-auto">
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold pt-2 pb-1 px-1 sticky top-0 bg-[#081a14]/90 backdrop-blur-sm">
-                💡 Prueba con estas consultas
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold pt-2 pb-1 px-1 sticky top-0 bg-[#081a14]/90 backdrop-blur-sm flex items-center gap-1.5">
+                <Lightbulb size={11} /> Prueba con estas consultas
               </p>
               <div className="space-y-2 pb-1">
                 {SUGERENCIAS_POR_CATEGORIA.map(cat => {
@@ -497,10 +498,11 @@ const ChatFlotante: React.FC = () => {
                     cyan:    { text: "text-cyan-200",    border: "border-cyan-700/50",    bg: "bg-cyan-900/20",    hover: "hover:bg-cyan-800/40",    chip: "text-cyan-400"    },
                   };
                   const p = palette[cat.color] || palette.emerald;
+                  const Icono = cat.Icono;
                   return (
                     <div key={cat.nombre}>
                       <div className={`flex items-center gap-1.5 mb-1 px-1 ${p.chip}`}>
-                        <span className="text-[11px]">{cat.icono}</span>
+                        <Icono size={11} />
                         <span className="text-[10px] font-semibold uppercase tracking-wide">{cat.nombre}</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">

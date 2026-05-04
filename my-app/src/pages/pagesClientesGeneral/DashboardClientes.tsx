@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { BsDownload } from "react-icons/bs";
+import { X, Users, CalendarDays } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -448,7 +449,7 @@ export default function DashboardClientesTabla() {
   const Chip = ({ label, onRemove }: { label: string; onRemove: () => void }) => (
     <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/20 border border-emerald-500/40 rounded-full text-xs text-emerald-300 shrink-0">
       {label}
-      <button onClick={onRemove} className="ml-0.5 hover:text-white transition-colors leading-none">✕</button>
+      <button onClick={onRemove} className="ml-0.5 hover:text-white transition-colors leading-none"><X size={12} /></button>
     </span>
   );
 
@@ -530,7 +531,10 @@ export default function DashboardClientesTabla() {
         {/* Title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-5 sm:mb-6 gap-3 pt-4 sm:pt-0">
           <div className="flex items-center gap-3 flex-wrap min-w-0">
-            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold tracking-wide leading-tight">DASHBOARD CLIENTES</h1>
+            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold tracking-wide leading-tight flex items-center gap-2">
+              <Users className="text-emerald-400" size={28} />
+              DASHBOARD CLIENTES
+            </h1>
             {isFetching && (
               <span className="flex items-center gap-2 text-xs sm:text-sm text-emerald-400">
                 <span className="w-4 h-4 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"/>
@@ -626,15 +630,21 @@ export default function DashboardClientesTabla() {
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-white/40">Desde</span>
-                  <input type="date" value={draftDesde}
-                    onChange={e => { setDraftDesde(e.target.value); setActivePreset(""); }}
-                    className="bg-[#014434] border border-[#046C5E] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500/60 [color-scheme:dark]"/>
+                  <div className="relative">
+                    <CalendarDays size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                    <input type="date" value={draftDesde}
+                      onChange={e => { setDraftDesde(e.target.value); setActivePreset(""); }}
+                      className="bg-[#014434] border border-[#046C5E] rounded-lg pl-8 pr-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500/60 [color-scheme:dark]"/>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-white/40">Hasta</span>
-                  <input type="date" value={draftHasta}
-                    onChange={e => { setDraftHasta(e.target.value); setActivePreset(""); }}
-                    className="bg-[#014434] border border-[#046C5E] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500/60 [color-scheme:dark]"/>
+                  <div className="relative">
+                    <CalendarDays size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                    <input type="date" value={draftHasta}
+                      onChange={e => { setDraftHasta(e.target.value); setActivePreset(""); }}
+                      className="bg-[#014434] border border-[#046C5E] rounded-lg pl-8 pr-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500/60 [color-scheme:dark]"/>
+                  </div>
                 </div>
                 <button onClick={applyCustomDates}
                   disabled={!isDate(draftDesde) || !isDate(draftHasta)}
@@ -747,7 +757,7 @@ export default function DashboardClientesTabla() {
               className="w-full rounded-lg bg-[#013d32] border border-[#046C5E] pl-9 pr-8 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60"/>
             {inputQuery && (
               <button onClick={() => setInputQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white text-sm">✕</button>
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"><X size={14} /></button>
             )}
           </div>
           <span className="text-sm text-white/40">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { BsSave, BsClipboardCheck, BsPencilSquare, BsTrash, BsXCircle, BsCheckCircle, BsPlus } from "react-icons/bs";
+import { X, Calendar } from "lucide-react";
 import { API_BASE_URL } from '../../config';
 
 
@@ -214,18 +215,24 @@ export default function ConfigurarMetas() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-widest text-emerald-400/70 mb-1.5">Mes</label>
-                <select name="mes" value={form.mes} onChange={e => setForm({ ...form, mes: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/60 transition-all">
-                  <option value="" className="bg-[#012a20]">Seleccione…</option>
-                  {MESES.map((m, i) => <option key={i} value={i + 1} className="bg-[#012a20]">{m}</option>)}
-                </select>
+                <div className="relative">
+                  <Calendar size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                  <select name="mes" value={form.mes} onChange={e => setForm({ ...form, mes: e.target.value })}
+                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm appearance-none focus:outline-none focus:border-emerald-500/60 transition-all">
+                    <option value="" className="bg-[#012a20]">Seleccione…</option>
+                    {MESES.map((m, i) => <option key={i} value={i + 1} className="bg-[#012a20]">{m}</option>)}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-widest text-emerald-400/70 mb-1.5">Año</label>
-                <select name="anio" value={form.anio} onChange={e => setForm({ ...form, anio: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/60 transition-all">
-                  {años.map(y => <option key={y} value={y} className="bg-[#012a20]">{y}</option>)}
-                </select>
+                <div className="relative">
+                  <Calendar size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                  <select name="anio" value={form.anio} onChange={e => setForm({ ...form, anio: e.target.value })}
+                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm appearance-none focus:outline-none focus:border-emerald-500/60 transition-all">
+                    {años.map(y => <option key={y} value={y} className="bg-[#012a20]">{y}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -274,30 +281,36 @@ export default function ConfigurarMetas() {
             <div className="flex items-center gap-3">
 
               {/* Selector Mes */}
-              <select
-                value={mesFiltro}
-                onChange={(e) => setMesFiltro(Number(e.target.value))}
-                className="bg-[#021f18] border border-white/10 text-white text-xs rounded-lg px-2 py-1"
-              >
-                {MESES.map((mes, i) => (
-                  <option key={i} value={i + 1}>
-                    {mes}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <Calendar size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                <select
+                  value={mesFiltro}
+                  onChange={(e) => setMesFiltro(Number(e.target.value))}
+                  className="bg-[#021f18] border border-white/10 text-white text-xs rounded-lg pl-7 pr-2 py-1 appearance-none"
+                >
+                  {MESES.map((mes, i) => (
+                    <option key={i} value={i + 1}>
+                      {mes}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {/* Selector Año */}
-              <select
-                value={anioFiltro}
-                onChange={(e) => setAnioFiltro(Number(e.target.value))}
-                className="bg-[#021f18] border border-white/10 text-white text-xs rounded-lg px-2 py-1"
-              >
-                {anios.map((anio) => (
-                  <option key={anio} value={anio}>
-                    {anio}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <Calendar size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                <select
+                  value={anioFiltro}
+                  onChange={(e) => setAnioFiltro(Number(e.target.value))}
+                  className="bg-[#021f18] border border-white/10 text-white text-xs rounded-lg pl-7 pr-2 py-1 appearance-none"
+                >
+                  {anios.map((anio) => (
+                    <option key={anio} value={anio}>
+                      {anio}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
             </div>
             <div className="flex items-center gap-2">
@@ -392,8 +405,8 @@ export default function ConfigurarMetas() {
                 <h3 className="text-base font-bold text-white">Editar Meta</h3>
               </div>
               <button onClick={() => setEditando(null)}
-                className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition flex items-center justify-center text-sm">
-                ✕
+                className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition flex items-center justify-center">
+                <X size={14} />
               </button>
             </div>
 

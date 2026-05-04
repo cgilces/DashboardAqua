@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { MapPin, Phone, CalendarDays } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -471,15 +472,21 @@ export default function EmpresaDetalle() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs text-white/40">Desde</span>
-              <input type="date" value={draftDesde}
-                onChange={e => { setDraftDesde(e.target.value); setActivePreset(""); }}
-                className="bg-[#014434] border border-[#046C5E] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500/60 [color-scheme:dark]"/>
+              <div className="relative">
+                <CalendarDays size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                <input type="date" value={draftDesde}
+                  onChange={e => { setDraftDesde(e.target.value); setActivePreset(""); }}
+                  className="bg-[#014434] border border-[#046C5E] rounded-lg pl-8 pr-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500/60 [color-scheme:dark]"/>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-white/40">Hasta</span>
-              <input type="date" value={draftHasta}
-                onChange={e => { setDraftHasta(e.target.value); setActivePreset(""); }}
-                className="bg-[#014434] border border-[#046C5E] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500/60 [color-scheme:dark]"/>
+              <div className="relative">
+                <CalendarDays size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                <input type="date" value={draftHasta}
+                  onChange={e => { setDraftHasta(e.target.value); setActivePreset(""); }}
+                  className="bg-[#014434] border border-[#046C5E] rounded-lg pl-8 pr-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500/60 [color-scheme:dark]"/>
+              </div>
             </div>
             <button onClick={applyCustomDates}
               disabled={!isDateStr(draftDesde) || !isDateStr(draftHasta)}
@@ -635,9 +642,9 @@ export default function EmpresaDetalle() {
                           <a
                             href={`tel:${s.telefono}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="text-[10px] text-blue-400 hover:underline mt-0.5 inline-block"
+                            className="text-[10px] text-blue-400 hover:underline mt-0.5 inline-flex items-center gap-1"
                           >
-                            📞 {s.telefono}
+                            <Phone size={10} /> {s.telefono}
                           </a>
                         )}
                       </div>
@@ -665,9 +672,9 @@ export default function EmpresaDetalle() {
                           target="_blank"
                           rel="noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap shrink-0"
+                          className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap shrink-0 inline-flex items-center gap-1"
                         >
-                          📍 Mapa
+                          <MapPin size={10} /> Mapa
                         </a>
                       ) : (
                         <span className="text-[10px] text-white/30 italic whitespace-nowrap shrink-0">Sin información</span>
@@ -767,8 +774,8 @@ export default function EmpresaDetalle() {
                             {hasCoords(s.latitud, s.longitud)
                               ? <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
                                   target="_blank" rel="noreferrer"
-                                  className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap">
-                                  📍 Mapa
+                                  className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap inline-flex items-center gap-1">
+                                  <MapPin size={10} /> Mapa
                                 </a>
                               : <span className="text-[10px] text-white/40 italic whitespace-nowrap">Sin información</span>
                             }

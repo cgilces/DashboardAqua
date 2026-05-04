@@ -1216,4 +1216,9 @@ module.exports = {
   guardarCottsaExtra,
   obtenerReembolsosHuerfanos,
   obtenerPOSDetalleCOTTSA,
+  // Helpers reutilizados por el consolidado para que el card COTTSA cuadre
+  // con el total mostrado en el dashboard descartable.
+  obtenerVentasCOTTSAPorRuta,
+  obtenerVentasPOSCOTTSA,
+  obtenerResumenReembolsosCOTTSA,
 };

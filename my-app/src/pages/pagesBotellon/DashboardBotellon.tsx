@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { Droplets, Calendar } from "lucide-react";
 import logo from "../../assets/imagen-botellon-v01.png";
 import { useAuth } from "../../components/auth/AuthContext";
 import DashboardLayout from "../../layout/DashboardLayout";
@@ -260,7 +261,7 @@ export default function DashboardBotellon() {
             />
 
             <div>
-              <h1 className="text-xl md:text-3xl font-bold tracking-wide whitespace-nowrap">
+              <h1 className="text-xl md:text-3xl font-bold tracking-wide whitespace-nowrap flex items-center gap-2">
                 DASHBOARD BOTELLÓN
               </h1>
 
@@ -303,18 +304,24 @@ export default function DashboardBotellon() {
           </div>
 
           <div className="flex gap-3 w-full md:w-auto flex-wrap">
-            <select className="bg-[#046C5E] px-4 py-2 rounded-lg flex-1 min-w-[120px]" value={mesSeleccionado}
-              onChange={(e) => setMesSeleccionado(e.target.value)}>
-              {Object.entries(meses).map(([nombre, valor]) => (
-                <option key={valor} value={valor}>{nombre}</option>
-              ))}
-            </select>
-            <select className="bg-[#046C5E] px-4 py-2 rounded-lg flex-1 min-w-[120px]" value={anioSeleccionado}
-              onChange={(e) => setAnioSeleccionado(e.target.value)}>
-              {Array.from({ length: 5 }, (_, i) => anioActual + 1 - i).map((anio) => (
-                <option key={anio} value={anio}>{anio}</option>
-              ))}
-            </select>
+            <div className="relative flex-1 min-w-[120px]">
+              <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+              <select className="bg-[#046C5E] text-white pl-9 pr-4 py-2 rounded-lg w-full appearance-none" value={mesSeleccionado}
+                onChange={(e) => setMesSeleccionado(e.target.value)}>
+                {Object.entries(meses).map(([nombre, valor]) => (
+                  <option key={valor} value={valor}>{nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div className="relative flex-1 min-w-[120px]">
+              <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+              <select className="bg-[#046C5E] text-white pl-9 pr-4 py-2 rounded-lg w-full appearance-none" value={anioSeleccionado}
+                onChange={(e) => setAnioSeleccionado(e.target.value)}>
+                {Array.from({ length: 5 }, (_, i) => anioActual + 1 - i).map((anio) => (
+                  <option key={anio} value={anio}>{anio}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </header>
 

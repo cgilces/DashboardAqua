@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { BsDownload } from "react-icons/bs";
+import { MapPin } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -326,8 +327,8 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
                               {hasCoords(c.latitud, c.longitud) ? (
                                 <a href={`https://maps.google.com/?q=${c.latitud},${c.longitud}`}
                                   target="_blank" rel="noreferrer"
-                                  className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap">
-                                  📍 Mapa
+                                  className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap inline-flex items-center gap-1">
+                                  <MapPin size={10} /> Mapa
                                 </a>
                               ) : (
                                 <span className="text-[10px] text-white/30 italic">Sin información</span>
@@ -402,8 +403,8 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
                               {hasCoords(c.latitud, c.longitud)
                                 ? <a href={`https://maps.google.com/?q=${c.latitud},${c.longitud}`}
                                     target="_blank" rel="noreferrer"
-                                    className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap">
-                                    📍 Mapa
+                                    className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap inline-flex items-center gap-1">
+                                    <MapPin size={10} /> Mapa
                                   </a>
                                 : <span className="text-[10px] text-white/40 italic whitespace-nowrap">Sin información</span>
                               }

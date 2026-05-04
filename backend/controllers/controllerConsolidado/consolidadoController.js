@@ -5,6 +5,11 @@
 const Sequelize = require('sequelize');
 const { sequelize, CottsaExtraMes } = require('../../models');
 const { getDiasHabiles } = require('../../utils/diasFestivos');
+const {
+  obtenerVentasCOTTSAPorRuta,
+  obtenerVentasPOSCOTTSA,
+  obtenerResumenReembolsosCOTTSA,
+} = require('../controllerCotxa/cotsaController');
 
 // ================================================================
 // CONSTANTES DE CANALES
@@ -174,55 +179,40 @@ function qHielo(inicio, fin) {
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 }
 
-// 5. COTTSA — facturas, company_id = 3
-// Misma lógica que dashboard preventa (obtenerVentasCOTTSAPorRuta):
-// - fecha_entrega (no fecha_creacion)
-// - filtra tipo_documento IN ('(01) Invoice','(04) Credit Note')
-// - dd.total con CASE: notas de crédito en negativo
-function qCOTTSA(inicio, fin) {
-  return sequelize.query(`
-    SELECT
-      COALESCE(SUM(CASE
-        WHEN f.tipo_documento = '(01) Invoice'     THEN dd.total
-        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.total
-        ELSE 0 END), 0) AS dolares,
-      COALESCE(SUM(CASE
-        WHEN f.tipo_documento = '(01) Invoice'     THEN dd.cantidad
-        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.cantidad
-        ELSE 0 END), 0) AS unidades,
-      COUNT(DISTINCT f.code)              AS docs,
-      COUNT(DISTINCT f.customer_code)     AS clientes
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.company_id = ${COTTSA_COMPANY_ID}
-      AND f.status IN (0,2,3,4,5)
-      AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
-      AND f.fecha_entrega >= :inicio
-      AND f.fecha_entrega <  :fin
-  `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
-}
+// 5. COTTSA — Misma lógica que el dashboard descartable
+// (obtenerDashboardCOTTSA del cotsaController):
+//   ranking preventa (Facts seller_code IN ['RUTA 113','RUTA 131','RUTA 132'])
+// + POS Kenny Navas    (Facts seller_code IN ['POS RUTA 113','POS RUTA 131','RUTA 132.1'])
+// − Reembolsos Odoo    (TODOS los pos.order amount_total<0 del mes,
+//                       incluyendo huérfanos sin facturar)
+// Esto garantiza que el card "COTTSA S.A." del consolidado cuadre con
+// el total "COTTSA — AGUA OK" mostrado en el descartable.
+async function calcularCOTTSAMes(anioNum, mesNum) {
+  const [ventasRuta, ventasPOS, reembolsos] = await Promise.all([
+    obtenerVentasCOTTSAPorRuta(anioNum, mesNum),
+    obtenerVentasPOSCOTTSA(anioNum, mesNum),
+    obtenerResumenReembolsosCOTTSA(anioNum, mesNum),
+  ]);
 
-// COTTSA — totales mensuales (tendencia 6 meses por empresa).
-// Usa la misma lógica que qCOTTSA para que el card "COTTSA S.A." coincida
-// con la tabla "COTTSA — VENTAS - AGUA OK" del dashboard preventa.
-function qCOTTSAPorMes(inicio6m, fin) {
-  return sequelize.query(`
-    SELECT
-      DATE_TRUNC('month', f.fecha_entrega) AS mes_truncado,
-      SUM(CASE
-        WHEN f.tipo_documento = '(01) Invoice'     THEN dd.total
-        WHEN f.tipo_documento = '(04) Credit Note' THEN -dd.total
-        ELSE 0 END) AS total
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.company_id = ${COTTSA_COMPANY_ID}
-      AND f.status IN (0,2,3,4,5)
-      AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
-      AND f.fecha_entrega >= :inicio6m
-      AND f.fecha_entrega <  :fin
-    GROUP BY DATE_TRUNC('month', f.fecha_entrega)
-    ORDER BY DATE_TRUNC('month', f.fecha_entrega)
-  `, { replacements: { inicio6m, fin }, type: Sequelize.QueryTypes.SELECT });
+  const dolaresPreventa  = ventasRuta.reduce((a, r) => a + (Number(r.dolares)       || 0), 0);
+  const unidadesPreventa = ventasRuta.reduce((a, r) => a + (Number(r.unidades)      || 0), 0);
+  const facturasPreventa = ventasRuta.reduce((a, r) => a + (Number(r.cant_facturas) || 0), 0);
+  const clientesPreventa = ventasRuta.reduce((a, r) => a + (Number(r.cant_clientes) || 0), 0);
+
+  const reembolsosTotal    = Number(reembolsos?.total)    || 0;
+  const reembolsosCantidad = Number(reembolsos?.cantidad) || 0;
+
+  const dolaresPOS  = (Number(ventasPOS?.dolares)       || 0) - reembolsosTotal;
+  const unidadesPOS = Number(ventasPOS?.unidades)       || 0;
+  const facturasPOS = (Number(ventasPOS?.cant_facturas) || 0) + reembolsosCantidad;
+  const clientesPOS = Number(ventasPOS?.cant_clientes)  || 0;
+
+  return {
+    dolares:  dolaresPreventa  + dolaresPOS,
+    unidades: unidadesPreventa + unidadesPOS,
+    docs:     facturasPreventa + facturasPOS,
+    clientes: clientesPreventa + clientesPOS,
+  };
 }
 
 // 6. DESCARTABLE ODOO — ordenes, seller_nombre IN RUTAS_ODOO, categoria 7
@@ -499,7 +489,6 @@ const obtenerDashboardConsolidado = async (req, res) => {
       [botOAct],  [botOAnt],
       [botFAct],  [botFAnt],
       [hieloAct], [hieloAnt],
-      [COTTSAAct], [COTTSAAnt],
       [odooAct],  [odooAnt],
       [totOrdAct],  [totOrdAnt],
       [totFactAct], [totFactAnt],
@@ -508,14 +497,17 @@ const obtenerDashboardConsolidado = async (req, res) => {
       topProdRaw,
       topClientesRaw,
       porEmpresaRaw,
-      cottsaPorMesRaw,
+      // Tendencia COTTSA 6 meses con la misma lógica que el dashboard
+      // descartable (ranking preventa + POS Kenny Navas − reembolsos Odoo).
+      // El mes actual y el anterior se reusan de este mismo array para
+      // evitar repetir las llamadas a Odoo.
+      cottsaPorMesArr,
       cottsaExtrasRaw,
     ] = await Promise.all([
       qPreventa(inicio, fin),           qPreventa(antInicio, antFin),
       qBotellonesOrdenes(inicio, fin),  qBotellonesOrdenes(antInicio, antFin),
       qBotellonesFacturas(inicio, fin), qBotellonesFacturas(antInicio, antFin),
       qHielo(inicio, fin),              qHielo(antInicio, antFin),
-      qCOTTSA(inicio, fin),             qCOTTSA(antInicio, antFin),
       qOdoo(inicio, fin),               qOdoo(antInicio, antFin),
       qTotalOrdenes(inicio, fin),       qTotalOrdenes(antInicio, antFin),
       qTotalFacturas(inicio, fin),      qTotalFacturas(antInicio, antFin),
@@ -524,7 +516,7 @@ const obtenerDashboardConsolidado = async (req, res) => {
       qTopProductos(inicio, fin),
       qTopClientes(inicio, fin),
       qPorEmpresa(inicio6m, fin),
-      qCOTTSAPorMes(inicio6m, fin),
+      Promise.all(meses6.map(m => calcularCOTTSAMes(m.anio, m.mes))),
       CottsaExtraMes.findAll({
         where: {
           [Sequelize.Op.or]: meses6.map(m => ({ anio: m.anio, mes: m.mes })),
@@ -532,6 +524,15 @@ const obtenerDashboardConsolidado = async (req, res) => {
         raw: true,
       }),
     ]);
+
+    // ── COTTSA actual y anterior se sacan del array de 6 meses (siempre
+    // incluyen mes actual y mes anterior, ver get6Meses).
+    const idxAct = meses6.findIndex(m => m.anio === anioNum  && m.mes === mesNum);
+    const idxAnt = meses6.findIndex(m => m.anio === anioPrev && m.mes === mesPrev);
+    const COTTSAAct = cottsaPorMesArr[idxAct] || { dolares: 0, unidades: 0, docs: 0, clientes: 0 };
+    const COTTSAAnt = idxAnt >= 0
+      ? cottsaPorMesArr[idxAnt]
+      : { dolares: 0, unidades: 0, docs: 0, clientes: 0 };
 
     // ── Unir botellones (ordenes + facturas) ──────────────────
     const botAct = {
@@ -637,14 +638,14 @@ const obtenerDashboardConsolidado = async (req, res) => {
       empresaTendMaps.get(empId).set(mesKey, Number(row.total || 0));
     }
 
-    // Sobrescribir COTTSA con la misma lógica que el dashboard preventa
-    // (fecha_entrega + tipo_documento + notas de crédito negativas + extras manuales).
+    // Sobrescribir COTTSA con la misma lógica que el dashboard descartable
+    // (ranking preventa + POS Kenny Navas − reembolsos Odoo + extras manuales).
+    // cottsaPorMesArr es paralelo a meses6.
     const cottsaMesMap = new Map();
-    for (const row of cottsaPorMesRaw) {
-      const dt = new Date(row.mes_truncado);
-      const mesKey = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
-      cottsaMesMap.set(mesKey, Number(row.total || 0));
-    }
+    meses6.forEach((m, i) => {
+      const mesKey = `${m.anio}-${String(m.mes).padStart(2, '0')}`;
+      cottsaMesMap.set(mesKey, Number(cottsaPorMesArr[i]?.dolares || 0));
+    });
     for (const [mesKey, extra] of cottsaExtrasMap.entries()) {
       cottsaMesMap.set(mesKey, (cottsaMesMap.get(mesKey) || 0) + extra.dolares);
     }

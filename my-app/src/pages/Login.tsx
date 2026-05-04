@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
+import { AlertTriangle, User, Lock, LogIn } from 'lucide-react';
 import { Spinner } from '../components/common/Spinner';
 import { useAuth } from '../components/auth/AuthContext';
 import { AquaLogo } from '../components/common/Icons';
-import Input from '../components/elements/Input';
 import Button from '../components/elements/Button';
 
 const LoginScreen: React.FC = () => {
@@ -56,34 +56,42 @@ const LoginScreen: React.FC = () => {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-xs font-semibold text-emerald-300/80 uppercase tracking-wider mb-1.5">
-              Usuario
+            <label className="block text-xs font-semibold text-emerald-300/80 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <User size={12} /> Usuario
             </label>
-            <Input
-              type="text"
-              value={usuario}
-              onChange={(e) => setUsuario(e.target.value)}
-              placeholder="Ingresa tu usuario"
-              required
-            />
+            <div className="relative">
+              <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500/60 pointer-events-none" />
+              <input
+                type="text"
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
+                placeholder="Ingresa tu usuario"
+                required
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#0a1f18] border border-[#1a4a3a] text-white text-sm placeholder-white/30 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              />
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-emerald-300/80 uppercase tracking-wider mb-1.5">
-              Contraseña
+            <label className="block text-xs font-semibold text-emerald-300/80 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <Lock size={12} /> Contraseña
             </label>
-            <Input
-              type="password"
-              value={clave}
-              onChange={(e) => setClave(e.target.value)}
-              placeholder="Ingresa tu contraseña"
-              required
-            />
+            <div className="relative">
+              <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500/60 pointer-events-none" />
+              <input
+                type="password"
+                value={clave}
+                onChange={(e) => setClave(e.target.value)}
+                placeholder="Ingresa tu contraseña"
+                required
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#0a1f18] border border-[#1a4a3a] text-white text-sm placeholder-white/30 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              />
+            </div>
           </div>
 
           {error && (
             <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 text-sm p-3 rounded-xl">
-              <span className="text-base">⚠</span>
+              <AlertTriangle size={16} className="flex-shrink-0" />
               {error}
             </div>
           )}
@@ -98,7 +106,7 @@ const LoginScreen: React.FC = () => {
               boxShadow: loading ? 'none' : '0 4px 16px rgba(0,200,150,0.35)',
             }}
           >
-            {loading ? <Spinner /> : 'Iniciar Sesión'}
+            {loading ? <Spinner /> : <><LogIn size={16} /> Iniciar Sesión</>}
           </Button>
         </form>
 

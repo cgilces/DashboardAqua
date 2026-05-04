@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { BsDownload } from "react-icons/bs";
+import { MapPin } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -789,8 +790,8 @@ const DetalleHieloOdooPage: React.FC = () => {
                                 {d.latitud_cliente && d.latitud_cliente !== "—" && d.longitud_cliente && d.longitud_cliente !== "—"
                                   ? <a href={`https://maps.google.com/?q=${d.latitud_cliente},${d.longitud_cliente}`}
                                       target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                                      className="text-[10px] text-blue-400/70 hover:text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded">
-                                      📍
+                                      className="text-[10px] text-blue-400/70 hover:text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded inline-flex items-center">
+                                      <MapPin size={10} />
                                     </a>
                                   : <span className="text-white/40 text-[10px] italic whitespace-nowrap">Sin información</span>
                                 }

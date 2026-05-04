@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useLocation } from "react-router-dom";
+import { Check, Zap, AlertTriangle } from "lucide-react";
 import { API_BASE_URL } from '../../config';
 
 const fmt    = (v: number) => v.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -130,7 +131,7 @@ const DetalleRuta = () => {
                     </div>
 
                     {/* Mensaje contextual */}
-                    <div className={`rounded-xl px-4 py-3 text-sm font-semibold border ${
+                    <div className={`rounded-xl px-4 py-3 text-sm font-semibold border flex items-start gap-2 ${
                         superado
                             ? "bg-green-500/10 border-green-500/25 text-green-300"
                             : porcObjetivo! >= 80
@@ -138,10 +139,10 @@ const DetalleRuta = () => {
                             : "bg-red-500/10 border-red-500/25 text-red-300"
                     }`}>
                         {superado
-                            ? `✓ ${usuario} ha superado el objetivo de gerencia. Proyección ${porcObjetivo!.toFixed(1)}% del objetivo.`
+                            ? <><Check size={16} className="mt-0.5 flex-shrink-0" /><span>{usuario} ha superado el objetivo de gerencia. Proyección {porcObjetivo!.toFixed(1)}% del objetivo.</span></>
                             : porcObjetivo! >= 80
-                            ? `⚡ ${usuario} está cerca del objetivo. Con $${fmt(faltaUSD)} más se alcanza la meta de gerencia.`
-                            : `⚠ ${usuario} necesita $${fmt(faltaUSD)} adicionales para cumplir el objetivo de gerencia (${porcObjetivo!.toFixed(1)}% alcanzado).`
+                            ? <><Zap size={16} className="mt-0.5 flex-shrink-0" /><span>{usuario} está cerca del objetivo. Con ${fmt(faltaUSD)} más se alcanza la meta de gerencia.</span></>
+                            : <><AlertTriangle size={16} className="mt-0.5 flex-shrink-0" /><span>{usuario} necesita ${fmt(faltaUSD)} adicionales para cumplir el objetivo de gerencia ({porcObjetivo!.toFixed(1)}% alcanzado).</span></>
                         }
                     </div>
                 </div>

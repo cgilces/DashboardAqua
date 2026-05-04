@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { BsDownload } from "react-icons/bs";
+import { MapPin } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -268,7 +269,7 @@ const DetalleHieloPage: React.FC = () => {
                             <div className="flex flex-wrap gap-2 pt-2 border-t border-[#046C5E]/20 text-[10px] text-white/40 mt-1">
                               {c.tipo_negocio && <span>{c.tipo_negocio}</span>}
                               {c.ultima_factura && <span>Últ: {c.ultima_factura}</span>}
-                              {c.direccion_entrega && <span className="truncate">📍 {c.direccion_entrega}</span>}
+                              {c.direccion_entrega && <span className="truncate inline-flex items-center gap-1"><MapPin size={10} /> {c.direccion_entrega}</span>}
                             </div>
                           )}
                         </div>
