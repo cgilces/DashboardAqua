@@ -1,7 +1,11 @@
-import React, { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import React, { useEffect, useRef, useState } from "react";
+import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "leaflet.markercluster";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
+import { createRoot, Root } from "react-dom/client";
 import {
   Map as MapIcon, Phone, MessageCircle, ChevronDown, ChevronUp, Crosshair,
 } from "lucide-react";
@@ -104,6 +108,68 @@ function AjustarViewport({ puntos }: { puntos: ClienteMapa[] }) {
   return null;
 }
 
+// Capa de marker cluster — agrupa pins cercanos en clusters numerados.
+// Usa leaflet.markercluster directo porque react-leaflet v5 no tiene wrapper.
+function CapaCluster({ puntos }: { puntos: ClienteMapa[] }) {
+  const map = useMap();
+  // Mantenemos referencias a los roots de React para limpieza
+  const rootsRef = useRef<Root[]>([]);
+
+  useEffect(() => {
+    // Crear cluster group con bonitos colores
+    const clusterGroup = (L as any).markerClusterGroup({
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      iconCreateFunction: (cluster: any) => {
+        const count = cluster.getChildCount();
+        const size = count < 10 ? 32 : count < 100 ? 40 : 48;
+        const color = count < 10 ? "#10b981" : count < 100 ? "#f59e0b" : "#dc2626";
+        return L.divIcon({
+          html: `<div style="
+            width: ${size}px; height: ${size}px;
+            background: ${color}cc;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-weight: 700; font-size: ${count < 100 ? 12 : 11}px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+          ">${count}</div>`,
+          className: "cluster-icon",
+          iconSize: [size, size],
+        });
+      },
+    });
+
+    // Agregar markers al cluster group
+    rootsRef.current = [];
+    puntos.forEach(p => {
+      const marker = L.marker([p.lat, p.lng], { icon: crearIcono(p.estado) });
+      // Popup con contenido React renderizado en un div
+      marker.bindPopup(() => {
+        const div = document.createElement("div");
+        const root = createRoot(div);
+        rootsRef.current.push(root);
+        root.render(<PopupContenido cliente={p} />);
+        return div;
+      }, { minWidth: 240 });
+      clusterGroup.addLayer(marker);
+    });
+
+    map.addLayer(clusterGroup);
+
+    return () => {
+      map.removeLayer(clusterGroup);
+      // Limpiar roots de React asincrónicamente para evitar warnings
+      const roots = rootsRef.current;
+      rootsRef.current = [];
+      setTimeout(() => roots.forEach(r => { try { r.unmount(); } catch {} }), 0);
+    };
+  }, [puntos, map]);
+
+  return null;
+}
+
 // ─── Componente principal ────────────────────────────────────────────────
 export default function MapaClientes() {
   const [estado, setEstado]       = useState("TODOS");
@@ -112,9 +178,10 @@ export default function MapaClientes() {
   const [data, setData]           = useState<ClienteMapa[]>([]);
   const [conteo, setConteo]       = useState<Record<string, number>>({});
   const [cargando, setCargando]   = useState(false);
-  const [expandido, setExpandido] = useState(true);
+  const [expandido, setExpandido] = useState(false);
 
   useEffect(() => {
+    if (!expandido) return;
     const ctrl = new AbortController();
     (async () => {
       setCargando(true);
@@ -133,7 +200,7 @@ export default function MapaClientes() {
       }
     })();
     return () => ctrl.abort();
-  }, [estado, prefijos, dias]);
+  }, [expandido, estado, prefijos, dias]);
 
   // Centro por defecto: Quito-ish (lo ajusta AjustarViewport cuando carga data)
   const centroDefault: [number, number] = [-0.18, -78.47];
@@ -250,13 +317,7 @@ export default function MapaClientes() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
               <AjustarViewport puntos={data} />
-              {data.map(c => (
-                <Marker key={c.codigo_cliente} position={[c.lat, c.lng]} icon={crearIcono(c.estado)}>
-                  <Popup minWidth={240}>
-                    <PopupContenido cliente={c} />
-                  </Popup>
-                </Marker>
-              ))}
+              <CapaCluster puntos={data} />
             </MapContainer>
           </div>
 

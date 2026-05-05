@@ -10,6 +10,35 @@ function validarFechaISO(str) {
   return typeof str === "string" && /^\d{4}-\d{2}-\d{2}$/.test(str);
 }
 
+// Construye el WHERE para filtro de prefijos de ruta (codigo_usuario_asignado_cliente).
+// Maneja la colisión PV/PVR: cuando se pide PV, excluye PVR explícitamente.
+// Devuelve { where: string, replacements: object, etiqueta: string }
+function buildPrefijoFilter(columnExpr, prefijosParam) {
+  const sinFiltro = !prefijosParam || prefijosParam === '*';
+  if (sinFiltro) {
+    return { where: 'TRUE', replacements: {}, etiqueta: '*', prefijos: [] };
+  }
+  const prefijos = String(prefijosParam)
+    .split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+
+  const replacements = {};
+  const ors = prefijos.map((p, i) => {
+    replacements[`pref${i}`] = `${p}%`;
+    // PV es ambiguo: incluye PVR. Si pidieron PV explícitamente, excluir PVR.
+    if (p === 'PV') {
+      replacements[`exclPVR${i}`] = 'PVR%';
+      return `(${columnExpr} LIKE :pref${i} AND ${columnExpr} NOT LIKE :exclPVR${i})`;
+    }
+    return `${columnExpr} LIKE :pref${i}`;
+  });
+  return {
+    where: ors.join(' OR '),
+    replacements,
+    etiqueta: prefijos.join(','),
+    prefijos,
+  };
+}
+
 // Mapeo de company_id → nombre (mismo que consolidado)
 const COMPANY_NAMES = {
   1: 'GRUPOAQUA S.A.',
@@ -731,7 +760,8 @@ exports.registrarContacto = async (req, res) => {
       'NO_CONTESTA',
       'PROMETIO_COMPRAR',
       'NO_INTERESADO',
-      'RECUPERADO',
+      'RECUPERADO',          // KPI de recuperación de inactivos totales
+      'CONSUMO_RECUPERADO',  // KPI distinto: cliente que recuperó volumen de consumo
     ];
     const resultadoFinal = RESULTADOS_VALIDOS.includes(resultado) ? resultado : 'CONTACTADO';
 
@@ -772,21 +802,9 @@ exports.obtenerSaludRutas = async (req, res) => {
     const diasRaw = parseInt(req.query.dias, 10);
     const dias    = Number.isFinite(diasRaw) && diasRaw > 0 ? diasRaw : 60;
 
-    // Prefijos de rutas a incluir. Si viene vacío o '*' → todas las rutas
-    const prefijosParam = typeof req.query.prefijos === 'string' ? req.query.prefijos.trim() : '';
-    const sinFiltroPrefijo = !prefijosParam || prefijosParam === '*';
-    const prefijosRaw = sinFiltroPrefijo
-      ? []
-      : prefijosParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-
-    // Construye OR de ILIKE para los prefijos (o pasa-todo si no hay filtro)
-    const filtroPrefijos = sinFiltroPrefijo
-      ? 'TRUE'
-      : prefijosRaw
-          .map((_, i) => `UPPER(c.codigo_usuario_asignado_cliente) LIKE :pref${i}`)
-          .join(' OR ');
-    const replacements = { dias };
-    prefijosRaw.forEach((p, i) => { replacements[`pref${i}`] = `${p}%`; });
+    const filtro = buildPrefijoFilter('UPPER(c.codigo_usuario_asignado_cliente)', req.query.prefijos);
+    const filtroPrefijos = filtro.where;
+    const replacements = { dias, ...filtro.replacements };
 
     const VENTANA_MESES = 6;
 
@@ -870,7 +888,7 @@ exports.obtenerSaludRutas = async (req, res) => {
     return res.json({
       ok: true,
       dias,
-      prefijos: sinFiltroPrefijo ? '*' : prefijosRaw,
+      prefijos: filtro.etiqueta,
       ventana_meses: VENTANA_MESES,
       totales,
       data: rows,
@@ -892,22 +910,12 @@ exports.obtenerClientesMapa = async (req, res) => {
     const diasRaw = parseInt(req.query.dias, 10);
     const dias    = Number.isFinite(diasRaw) && diasRaw > 0 ? diasRaw : 15;
 
-    const prefijosParam   = typeof req.query.prefijos === 'string' ? req.query.prefijos.trim() : '';
-    const sinFiltroPrefijo = !prefijosParam || prefijosParam === '*';
-    const prefijosRaw = sinFiltroPrefijo
-      ? []
-      : prefijosParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-
-    const filtroPrefijos = sinFiltroPrefijo
-      ? 'TRUE'
-      : prefijosRaw
-          .map((_, i) => `UPPER(c.codigo_usuario_asignado_cliente) LIKE :pref${i}`)
-          .join(' OR ');
+    const filtro = buildPrefijoFilter('UPPER(c.codigo_usuario_asignado_cliente)', req.query.prefijos);
+    const filtroPrefijos = filtro.where;
 
     const estadoFiltro = (req.query.estado || 'todos').toString().toUpperCase();
 
-    const replacements = { dias };
-    prefijosRaw.forEach((p, i) => { replacements[`pref${i}`] = `${p}%`; });
+    const replacements = { dias, ...filtro.replacements };
 
     const VENTANA_MESES = 6;
 
@@ -1022,7 +1030,7 @@ exports.obtenerClientesMapa = async (req, res) => {
     return res.json({
       ok: true,
       dias,
-      prefijos: sinFiltroPrefijo ? '*' : prefijosRaw,
+      prefijos: filtro.etiqueta,
       estado: estadoFiltro,
       total: filtrados.length,
       conteo,
@@ -1031,6 +1039,406 @@ exports.obtenerClientesMapa = async (req, res) => {
   } catch (error) {
     console.error('❌ obtenerClientesMapa:', error);
     return res.status(500).json({ ok: false, message: 'Error obteniendo clientes para el mapa' });
+  }
+};
+
+
+// ======================================================
+// GET /api/dashboard-clientes/declive-consumo?umbral=30&ventana=14&prefijos=*
+// MÓDULO 2 — Detector de caída de consumo activo
+// Compara baseline (últimos 90d) vs ventana reciente (14/21/28d) y devuelve
+// clientes cuya caída en unidades supera el umbral. Excluye clientes ya
+// gestionados como RECUPERADO/NO_INTERESADO/CONSUMO_RECUPERADO.
+// ======================================================
+exports.obtenerDeclieveConsumo = async (req, res) => {
+  try {
+    const umbralRaw = parseInt(req.query.umbral, 10);
+    const umbral    = Number.isFinite(umbralRaw) && umbralRaw > 0 ? umbralRaw : 30;
+
+    const ventanaRaw = parseInt(req.query.ventana, 10);
+    // Solo permitir 14, 21 o 28 (lo del brief). Default 14.
+    const ventana = [14, 21, 28].includes(ventanaRaw) ? ventanaRaw : 14;
+
+    const filtro = buildPrefijoFilter('UPPER(c.codigo_usuario_asignado_cliente)', req.query.prefijos);
+    const filtroPrefijos = filtro.where;
+
+    const replacements = { umbral, ventana, ...filtro.replacements };
+
+    const sql = `
+      WITH baseline AS (
+        -- Histórico 90 días por cliente. Filtro de calidad: ≥4 semanas con compras
+        SELECT
+          f.customer_code,
+          SUM(dd.cantidad)::numeric                                    AS unidades_90d,
+          SUM(f.total)::numeric                                        AS ventas_90d,
+          COUNT(DISTINCT f.code)::int                                  AS facturas_90d,
+          COUNT(DISTINCT DATE_TRUNC('week', f.fecha_creacion))::int    AS semanas_con_compra,
+          MIN(f.fecha_creacion)::date                                  AS primera_compra_90d,
+          MAX(f.company_id)                                            AS company_id
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.status IN (0,2,3,4,5)
+          AND f.fecha_creacion >= CURRENT_DATE - INTERVAL '90 days'
+        GROUP BY f.customer_code
+        HAVING COUNT(DISTINCT DATE_TRUNC('week', f.fecha_creacion)) >= 4
+      ),
+      reciente AS (
+        -- Ventana reciente: ≥2 pedidos para evitar ruido por vacaciones
+        SELECT
+          f.customer_code,
+          SUM(dd.cantidad)::numeric                                    AS unidades_reciente,
+          SUM(f.total)::numeric                                        AS ventas_reciente,
+          COUNT(DISTINCT f.code)::int                                  AS facturas_reciente,
+          MAX(f.fecha_creacion)::date                                  AS ultima_compra,
+          COUNT(DISTINCT DATE_TRUNC('week', f.fecha_creacion))::int    AS semanas_consecutivas_recientes
+        FROM facturas f
+        JOIN detalle_documento dd ON dd.documento_code = f.code
+        WHERE f.status IN (0,2,3,4,5)
+          AND f.fecha_creacion >= CURRENT_DATE - (:ventana || ' days')::interval
+        GROUP BY f.customer_code
+        HAVING COUNT(DISTINCT f.code) >= 2
+      ),
+      ultimo_contacto AS (
+        SELECT DISTINCT ON (group_key)
+          group_key, fecha_contacto, contactado_por, resultado
+        FROM contactos_recuperacion
+        ORDER BY group_key, fecha_contacto DESC
+      ),
+      calculado AS (
+        SELECT
+          c.codigo_cliente,
+          COALESCE(NULLIF(TRIM(c.identificacion_cliente), ''), c.codigo_cliente)
+            || '::' || COALESCE(b.company_id, 0)::text                 AS group_key,
+          COALESCE(NULLIF(TRIM(c.identificacion_cliente), ''), '')     AS ruc,
+          COALESCE(c.nombre_cliente, c.nombre_comercial_cliente, c.codigo_cliente) AS nombre_cliente,
+          UPPER(c.codigo_usuario_asignado_cliente)                     AS vendedor,
+          COALESCE(NULLIF(TRIM(c.telefono_cliente), ''), '')           AS telefono,
+          COALESCE(NULLIF(TRIM(c.email_cliente), ''), '')              AS email,
+          COALESCE(c.ciudad_cliente, '')                               AS ciudad,
+          COALESCE(tn.descripcion, 'SIN CLASIFICAR')                   AS tipo_negocio,
+          COALESCE(sub.descripcion_subcanal, '')                       AS canal_subcanal,
+          b.unidades_90d,
+          r.unidades_reciente,
+          b.ventas_90d,
+          r.ventas_reciente,
+          b.facturas_90d,
+          r.facturas_reciente,
+          r.ultima_compra,
+          (CURRENT_DATE - r.ultima_compra)::int                        AS dias_sin_compra,
+          b.semanas_con_compra                                          AS baseline_semanas,
+          -- Promedios semanales (casts a numeric porque ROUND no acepta double precision)
+          ROUND((b.unidades_90d / (90.0/7))::numeric, 2)                AS baseline_semanal_unidades,
+          ROUND((r.unidades_reciente / (:ventana::numeric/7))::numeric, 2) AS reciente_semanal_unidades,
+          -- Precio promedio histórico (lo que típicamente paga ese cliente por unidad)
+          CASE WHEN b.unidades_90d > 0
+               THEN ROUND((b.ventas_90d / b.unidades_90d)::numeric, 2)
+               ELSE 0::numeric END                                      AS precio_promedio,
+          -- Caída %
+          CASE WHEN b.unidades_90d > 0 THEN
+            ROUND(
+              (((b.unidades_90d / (90.0/7)) - (r.unidades_reciente / (:ventana::numeric/7)))
+              / (b.unidades_90d / (90.0/7))
+              * 100)::numeric, 1)
+          ELSE 0::numeric END                                           AS caida_porc,
+          -- Volumen $ en riesgo: (baseline_sem - reciente_sem) × precio × semanas_ventana
+          CASE WHEN b.unidades_90d > 0 THEN
+            GREATEST(0::numeric, ROUND(
+              (((b.unidades_90d / (90.0/7)) - (r.unidades_reciente / (:ventana::numeric/7)))
+              * (b.ventas_90d / NULLIF(b.unidades_90d, 0))
+              * (:ventana::numeric/7))::numeric
+            , 2))
+          ELSE 0::numeric END                                           AS volumen_riesgo,
+          uc.fecha_contacto                                             AS ultimo_contacto_fecha,
+          uc.contactado_por                                             AS ultimo_contacto_por,
+          uc.resultado                                                  AS ultimo_contacto_resultado
+        FROM clientes c
+        JOIN baseline b      ON b.customer_code = c.codigo_cliente
+        JOIN reciente r      ON r.customer_code = c.codigo_cliente
+        LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+        LEFT JOIN subcanales sub   ON sub.codigo_subcanal = c.codigo_subcanal
+        LEFT JOIN ultimo_contacto uc
+               ON uc.group_key = COALESCE(NULLIF(TRIM(c.identificacion_cliente), ''), c.codigo_cliente)
+                                  || '::' || COALESCE(b.company_id, 0)::text
+        WHERE (${filtroPrefijos})
+      )
+      SELECT *
+      FROM calculado
+      WHERE caida_porc >= :umbral
+        AND (
+          ultimo_contacto_resultado IS NULL
+          OR ultimo_contacto_resultado NOT IN ('RECUPERADO', 'NO_INTERESADO', 'CONSUMO_RECUPERADO')
+        )
+      ORDER BY volumen_riesgo DESC NULLS LAST
+    `;
+
+    const [rows] = await sequelize.query(sql, { replacements });
+
+    // KPIs
+    const totalClientes = rows.length;
+    const totalRiesgo   = rows.reduce((a, r) => a + Number(r.volumen_riesgo || 0), 0);
+    const caidaPromedio = totalClientes > 0
+      ? rows.reduce((a, r) => a + Number(r.caida_porc || 0), 0) / totalClientes
+      : 0;
+
+    // Contactos hechos en últimos 7 días con resultado CONSUMO_RECUPERADO
+    const [[stats]] = await sequelize.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE resultado = 'CONSUMO_RECUPERADO')::int  AS recuperados_7d,
+        COUNT(DISTINCT group_key) FILTER (
+          WHERE fecha_contacto >= CURRENT_DATE - INTERVAL '7 days'
+        )::int                                                          AS clientes_contactados_7d
+      FROM contactos_recuperacion
+      WHERE fecha_contacto >= CURRENT_DATE - INTERVAL '7 days'
+    `);
+
+    return res.json({
+      ok: true,
+      umbral,
+      ventana,
+      prefijos: filtro.etiqueta,
+      kpis: {
+        totalClientes,
+        totalRiesgo:           Number(totalRiesgo.toFixed(2)),
+        caidaPromedio:         Number(caidaPromedio.toFixed(1)),
+        recuperados7d:         stats?.recuperados_7d         || 0,
+        clientesContactados7d: stats?.clientes_contactados_7d || 0,
+      },
+      data: rows,
+    });
+  } catch (error) {
+    console.error('❌ obtenerDeclieveConsumo:', error);
+    return res.status(500).json({ ok: false, message: 'Error obteniendo declive de consumo' });
+  }
+};
+
+
+// ======================================================
+// GET /api/dashboard-clientes/clientes-nuevos?desde=2026-01-01&hasta=2026-05-05&canal=
+// MÓDULO 1 — Dashboard de clientes nuevos por canal
+// "Cliente nuevo" = primera factura confirmada dentro del rango de fechas.
+// (fecha_creacion_cliente no es confiable: se reescribe en cada sync de Odoo).
+// Canal = tipos_negocio.descripcion (proxy mientras se limpia codigo_subcanal).
+// ======================================================
+exports.obtenerClientesNuevos = async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+    if (!validarFechaISO(desde) || !validarFechaISO(hasta)) {
+      return res.status(400).json({ ok: false, message: 'desde y hasta requeridos (YYYY-MM-DD)' });
+    }
+    // Filtro opcional de canal (CSV de descripciones de tipo_negocio)
+    const canalFilter = typeof req.query.canal === 'string' && req.query.canal.trim()
+      ? req.query.canal.split('|||').map(s => s.trim().toUpperCase()).filter(Boolean)
+      : [];
+
+    const replacements = { desde, hasta };
+    let canalWhere = '';
+    if (canalFilter.length) {
+      replacements.canalFilter = canalFilter;
+      canalWhere = `AND UPPER(canal) IN (:canalFilter)`;
+    }
+
+    const sql = `
+      WITH primera_factura AS (
+        -- Primera factura confirmada por cliente
+        SELECT
+          f.customer_code,
+          MIN(f.fecha_creacion)::date AS primera_fecha
+        FROM facturas f
+        WHERE f.status IN (0,2,3,4,5)
+        GROUP BY f.customer_code
+      ),
+      nuevos AS (
+        -- Clientes cuya primera factura cae en el rango
+        SELECT
+          c.codigo_cliente,
+          COALESCE(NULLIF(TRIM(c.identificacion_cliente), ''), c.codigo_cliente) AS ruc,
+          COALESCE(c.nombre_cliente, c.nombre_comercial_cliente, c.codigo_cliente) AS nombre_cliente,
+          UPPER(c.codigo_usuario_asignado_cliente) AS vendedor,
+          COALESCE(NULLIF(TRIM(c.telefono_cliente), ''), '') AS telefono,
+          COALESCE(NULLIF(TRIM(c.email_cliente), ''), '') AS email,
+          COALESCE(c.ciudad_cliente, '') AS ciudad,
+          COALESCE(UPPER(tn.descripcion), 'SIN CLASIFICAR') AS canal,
+          pf.primera_fecha AS fecha_creacion
+        FROM clientes c
+        JOIN primera_factura pf ON pf.customer_code = c.codigo_cliente
+        LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+        WHERE pf.primera_fecha BETWEEN :desde::date AND :hasta::date
+      ),
+      actividad_periodo AS (
+        -- Pedidos y facturación de los nuevos en el mismo periodo
+        SELECT
+          n.codigo_cliente,
+          COUNT(DISTINCT f.code)::int AS pedidos_periodo,
+          COALESCE(SUM(f.total), 0)::numeric AS facturado_periodo,
+          MAX(f.fecha_creacion)::date AS ultima_compra_periodo
+        FROM nuevos n
+        LEFT JOIN facturas f
+               ON f.customer_code = n.codigo_cliente
+              AND f.status IN (0,2,3,4,5)
+              AND f.fecha_creacion::date BETWEEN :desde::date AND :hasta::date
+        GROUP BY n.codigo_cliente
+      )
+      SELECT
+        n.codigo_cliente,
+        n.ruc,
+        n.nombre_cliente,
+        n.vendedor,
+        n.telefono,
+        n.email,
+        n.ciudad,
+        n.canal,
+        n.fecha_creacion,
+        ap.pedidos_periodo,
+        ap.facturado_periodo,
+        ap.ultima_compra_periodo,
+        CASE
+          WHEN ap.pedidos_periodo >= 2 THEN 'ACTIVO'
+          WHEN ap.pedidos_periodo = 1   THEN 'SIN_RECOMPRA'
+          ELSE 'SIN_ACTIVIDAD'
+        END AS estado
+      FROM nuevos n
+      JOIN actividad_periodo ap ON ap.codigo_cliente = n.codigo_cliente
+      WHERE 1=1 ${canalWhere}
+      ORDER BY ap.facturado_periodo DESC NULLS LAST
+    `;
+
+    const [rows] = await sequelize.query(sql, { replacements });
+
+    // Agregaciones por canal
+    const porCanal = {};
+    for (const r of rows) {
+      const canal = r.canal || 'SIN CLASIFICAR';
+      if (!porCanal[canal]) {
+        porCanal[canal] = {
+          canal,
+          total_nuevos: 0,
+          facturado: 0,
+          activos: 0,         // 2+ compras
+          sin_recompra: 0,    // 1 compra
+          sin_actividad: 0,   // 0 compras
+        };
+      }
+      const c = porCanal[canal];
+      c.total_nuevos += 1;
+      c.facturado += Number(r.facturado_periodo || 0);
+      if (r.estado === 'ACTIVO') c.activos += 1;
+      else if (r.estado === 'SIN_RECOMPRA') c.sin_recompra += 1;
+      else c.sin_actividad += 1;
+    }
+    // Calcular porcentajes
+    const canales = Object.values(porCanal).map(c => ({
+      ...c,
+      facturado: Number(c.facturado.toFixed(2)),
+      pct_retencion_temprana: c.total_nuevos > 0
+        ? Number((c.activos / c.total_nuevos * 100).toFixed(1))
+        : 0,
+      pct_sin_recompra: c.total_nuevos > 0
+        ? Number((c.sin_recompra / c.total_nuevos * 100).toFixed(1))
+        : 0,
+      pct_sin_actividad: c.total_nuevos > 0
+        ? Number((c.sin_actividad / c.total_nuevos * 100).toFixed(1))
+        : 0,
+    })).sort((a, b) => b.total_nuevos - a.total_nuevos);
+
+    // Totales
+    const totales = canales.reduce((acc, c) => ({
+      total_nuevos: acc.total_nuevos + c.total_nuevos,
+      facturado: acc.facturado + c.facturado,
+      activos: acc.activos + c.activos,
+      sin_recompra: acc.sin_recompra + c.sin_recompra,
+      sin_actividad: acc.sin_actividad + c.sin_actividad,
+    }), { total_nuevos: 0, facturado: 0, activos: 0, sin_recompra: 0, sin_actividad: 0 });
+    totales.facturado = Number(totales.facturado.toFixed(2));
+    totales.pct_retencion_temprana = totales.total_nuevos > 0
+      ? Number((totales.activos / totales.total_nuevos * 100).toFixed(1)) : 0;
+    totales.pct_sin_recompra = totales.total_nuevos > 0
+      ? Number((totales.sin_recompra / totales.total_nuevos * 100).toFixed(1)) : 0;
+    totales.pct_sin_actividad = totales.total_nuevos > 0
+      ? Number((totales.sin_actividad / totales.total_nuevos * 100).toFixed(1)) : 0;
+
+    return res.json({
+      ok: true,
+      desde, hasta,
+      canalFilter,
+      totales,
+      canales,
+      data: rows,
+    });
+  } catch (error) {
+    console.error('❌ obtenerClientesNuevos:', error);
+    return res.status(500).json({ ok: false, message: 'Error obteniendo clientes nuevos' });
+  }
+};
+
+
+// ======================================================
+// GET /api/dashboard-clientes/recovery-rate?desde=&hasta=
+// Reportería: contactos × resultados × vendedor (auditoría / efectividad)
+// ======================================================
+exports.obtenerRecoveryRate = async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+    const replacements = {};
+    let dateWhere = '';
+    if (validarFechaISO(desde) && validarFechaISO(hasta)) {
+      dateWhere = `WHERE fecha_contacto::date BETWEEN :desde::date AND :hasta::date`;
+      replacements.desde = desde;
+      replacements.hasta = hasta;
+    } else {
+      // Default últimos 30 días
+      dateWhere = `WHERE fecha_contacto >= CURRENT_DATE - INTERVAL '30 days'`;
+    }
+
+    const sql = `
+      SELECT
+        contactado_por                                                         AS vendedor,
+        COUNT(*)::int                                                          AS contactos_total,
+        COUNT(DISTINCT group_key)::int                                         AS clientes_unicos,
+        COUNT(*) FILTER (WHERE resultado = 'CONTACTADO')::int                  AS contactados,
+        COUNT(*) FILTER (WHERE resultado = 'NO_CONTESTA')::int                 AS no_contesta,
+        COUNT(*) FILTER (WHERE resultado = 'PROMETIO_COMPRAR')::int            AS prometio,
+        COUNT(*) FILTER (WHERE resultado = 'NO_INTERESADO')::int               AS no_interesado,
+        COUNT(*) FILTER (WHERE resultado = 'RECUPERADO')::int                  AS recuperados,
+        COUNT(*) FILTER (WHERE resultado = 'CONSUMO_RECUPERADO')::int          AS consumo_recuperado
+      FROM contactos_recuperacion
+      ${dateWhere}
+      GROUP BY contactado_por
+      ORDER BY contactos_total DESC
+    `;
+    const [rows] = await sequelize.query(sql, { replacements });
+
+    // Calcular recovery rate por vendedor: (recuperados+consumo_recuperado) / contactos_total
+    const conRate = rows.map(r => {
+      const total = Number(r.contactos_total) || 0;
+      const recup = Number(r.recuperados) + Number(r.consumo_recuperado);
+      return {
+        ...r,
+        recovery_rate: total > 0 ? Number((recup / total * 100).toFixed(1)) : 0,
+      };
+    });
+
+    // Totales
+    const totales = conRate.reduce((acc, r) => ({
+      contactos_total:    acc.contactos_total    + Number(r.contactos_total),
+      clientes_unicos:    acc.clientes_unicos    + Number(r.clientes_unicos),
+      contactados:        acc.contactados        + Number(r.contactados),
+      no_contesta:        acc.no_contesta        + Number(r.no_contesta),
+      prometio:           acc.prometio           + Number(r.prometio),
+      no_interesado:      acc.no_interesado      + Number(r.no_interesado),
+      recuperados:        acc.recuperados        + Number(r.recuperados),
+      consumo_recuperado: acc.consumo_recuperado + Number(r.consumo_recuperado),
+    }), {
+      contactos_total: 0, clientes_unicos: 0, contactados: 0, no_contesta: 0,
+      prometio: 0, no_interesado: 0, recuperados: 0, consumo_recuperado: 0,
+    });
+    totales.recovery_rate = totales.contactos_total > 0
+      ? Number(((totales.recuperados + totales.consumo_recuperado) / totales.contactos_total * 100).toFixed(1))
+      : 0;
+
+    return res.json({ ok: true, totales, vendedores: conRate });
+  } catch (error) {
+    console.error('❌ obtenerRecoveryRate:', error);
+    return res.status(500).json({ ok: false, message: 'Error obteniendo recovery rate' });
   }
 };
 

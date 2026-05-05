@@ -61,9 +61,10 @@ export default function SaludRutas() {
   const [data, setData]           = useState<RutaSalud[]>([]);
   const [totales, setTotales]     = useState<Totales | null>(null);
   const [cargando, setCargando]   = useState(false);
-  const [expandido, setExpandido] = useState(true);
+  const [expandido, setExpandido] = useState(false);
 
   useEffect(() => {
+    if (!expandido) return;
     const ctrl = new AbortController();
     (async () => {
       setCargando(true);
@@ -82,7 +83,7 @@ export default function SaludRutas() {
       }
     })();
     return () => ctrl.abort();
-  }, [dias, prefijos]);
+  }, [expandido, dias, prefijos]);
 
   const orden = useMemo(() => {
     return [...data].sort((a, b) => {

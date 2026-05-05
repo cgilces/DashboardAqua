@@ -33,4 +33,13 @@ router.get("/salud-rutas", ctrl.obtenerSaludRutas);
 // GET clientes con coordenadas para el mapa
 router.get("/clientes-mapa", ctrl.obtenerClientesMapa);
 
+// GET clientes en declive de consumo (Módulo 2)
+router.get("/declive-consumo", ctrl.obtenerDeclieveConsumo);
+
+// GET clientes nuevos por canal (Módulo 1)
+router.get("/clientes-nuevos", ctrl.obtenerClientesNuevos);
+
+// GET recovery rate por vendedor
+router.get("/recovery-rate", ctrl.obtenerRecoveryRate);
+
 module.exports = router;

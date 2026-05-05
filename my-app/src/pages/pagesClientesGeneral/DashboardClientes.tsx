@@ -7,6 +7,9 @@ import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
 import AlertasRecuperacion from "../../components/ComponentClientes/AlertasRecuperacion";
+import DeclieveConsumo from "../../components/ComponentClientes/DeclieveConsumo";
+import ClientesNuevos from "../../components/ComponentClientes/ClientesNuevos";
+import RecoveryRate from "../../components/ComponentClientes/RecoveryRate";
 import SaludRutas from "../../components/ComponentClientes/SaludRutas";
 import MapaClientes from "../../components/ComponentClientes/MapaClientes";
 
@@ -571,14 +574,23 @@ export default function DashboardClientesTabla() {
           ))}
         </div>
 
-        {/* Alertas de recuperación de clientes inactivos */}
+        {/* Alertas de recuperación de clientes inactivos (consumo = 0) */}
         <AlertasRecuperacion />
+
+        {/* Módulo 2: detector de declive de consumo activo (siguen comprando pero menos) */}
+        <DeclieveConsumo />
+
+        {/* Módulo 1: clientes nuevos por canal */}
+        <ClientesNuevos />
 
         {/* Salud por ruta: nuevos vs perdidos */}
         <SaludRutas />
 
         {/* Mapa geográfico de clientes */}
         <MapaClientes />
+
+        {/* Recovery rate por vendedor (analítica de gestión) */}
+        <RecoveryRate />
 
         {/* Filter toggle + chips */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
