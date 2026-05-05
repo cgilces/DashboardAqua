@@ -6,6 +6,9 @@ import { X, Users, CalendarDays } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
+import AlertasRecuperacion from "../../components/ComponentClientes/AlertasRecuperacion";
+import SaludRutas from "../../components/ComponentClientes/SaludRutas";
+import MapaClientes from "../../components/ComponentClientes/MapaClientes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Una fila por empresa (ya agrupado por el backend)
@@ -567,6 +570,15 @@ export default function DashboardClientesTabla() {
             </div>
           ))}
         </div>
+
+        {/* Alertas de recuperación de clientes inactivos */}
+        <AlertasRecuperacion />
+
+        {/* Salud por ruta: nuevos vs perdidos */}
+        <SaludRutas />
+
+        {/* Mapa geográfico de clientes */}
+        <MapaClientes />
 
         {/* Filter toggle + chips */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
