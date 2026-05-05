@@ -211,19 +211,20 @@ const obtenerRankingRutasDescartable = async (anioNum, mesNum, metasPorPreventa,
   const inicioPrev = getFechaInicioMes(anioPrev, mesPrev);
   const finPrev    = getFechaFinMes(anioPrev, mesPrev);
 
-  // Hasta marzo 2026 inclusive → autoventa (R%) + prevendedores (PVR%).
-  // Desde abril 2026 → solo prevendedores (PVR%).
+  // Hasta marzo 2026 inclusive → SOLO autoventa (R%, excluye PVR%).
+  // Desde abril 2026 → SOLO prevendedores (PVR%).
+  // Mutuamente excluyentes: nunca se mezclan R% y PVR% en la misma vista.
   const soloPVR = (a, m) => (a > 2026) || (a === 2026 && m >= 4);
   const buildSellerFilter = (alias, a, m) => soloPVR(a, m)
     ? `${alias}.seller_code ILIKE 'PVR%'`
-    : `(${alias}.seller_code ILIKE 'R%' OR ${alias}.seller_code ILIKE 'PVR%')`;
+    : `(${alias}.seller_code ILIKE 'R%' AND ${alias}.seller_code NOT ILIKE 'PVR%')`;
 
   const filtroOActual = buildSellerFilter('o', anioNum,  mesNum);
   const filtroFActual = buildSellerFilter('f', anioNum,  mesNum);
   const filtroOPrev   = buildSellerFilter('o', anioPrev, mesPrev);
   const filtroFPrev   = buildSellerFilter('f', anioPrev, mesPrev);
-  const etiqActual    = soloPVR(anioNum,  mesNum)  ? 'PVR%'      : 'R%+PVR%';
-  const etiqPrev      = soloPVR(anioPrev, mesPrev) ? 'PVR%'      : 'R%+PVR%';
+  const etiqActual    = soloPVR(anioNum,  mesNum)  ? 'PVR%' : 'R% (sin PVR)';
+  const etiqPrev      = soloPVR(anioPrev, mesPrev) ? 'PVR%' : 'R% (sin PVR)';
 
   console.log(`📅 RankingR ${anioNum}-${mesNum}: ${inicio} → ${fin} (filtro=${etiqActual}, prev=${etiqPrev})`);
 const sqlActual = `

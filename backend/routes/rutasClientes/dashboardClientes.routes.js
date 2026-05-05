@@ -17,4 +17,29 @@ router.get("/sucursal-productos/:codigo_cliente/:codigo_sucursal", ctrl.obtenerP
 // GET detalle de productos por cliente (con filtros)
 router.get("/productos/:codigo_cliente", ctrl.obtenerProductosCliente);
 
+// ── Recuperación de clientes inactivos ────────────────────────
+// GET clientes a recuperar (ordenados por valor en riesgo)
+router.get("/alertas-recuperacion", ctrl.obtenerAlertasRecuperacion);
+
+// POST registrar un contacto hecho a un cliente
+router.post("/contactos-recuperacion", ctrl.registrarContacto);
+
+// GET historial de contactos de un cliente
+router.get("/contactos-recuperacion/historial/:group_key", ctrl.obtenerHistorialContactos);
+
+// GET salud por ruta (nuevos vs perdidos)
+router.get("/salud-rutas", ctrl.obtenerSaludRutas);
+
+// GET clientes con coordenadas para el mapa
+router.get("/clientes-mapa", ctrl.obtenerClientesMapa);
+
+// GET clientes en declive de consumo (Módulo 2)
+router.get("/declive-consumo", ctrl.obtenerDeclieveConsumo);
+
+// GET clientes nuevos por canal (Módulo 1)
+router.get("/clientes-nuevos", ctrl.obtenerClientesNuevos);
+
+// GET recovery rate por vendedor
+router.get("/recovery-rate", ctrl.obtenerRecoveryRate);
+
 module.exports = router;
