@@ -86,16 +86,13 @@ exports.obtenerResumen = async (req, res) => {
     }
 
     // Filtro nuevo: multi-producto + multi-categoría (OR entre ambos grupos)
-    if (productosList.length || categoriasList.length) {
+    const hasProductFilter = productosList.length > 0 || categoriasList.length > 0;
+    if (productosList.length)  params.productosList  = productosList;
+    if (categoriasList.length) params.categoriasList = categoriasList;
+    if (hasProductFilter) {
       const condiciones = [];
-      if (productosList.length) {
-        params.productosList = productosList;
-        condiciones.push(`UPPER(dd2.descripcion) IN (:productosList)`);
-      }
-      if (categoriasList.length) {
-        params.categoriasList = categoriasList;
-        condiciones.push(`UPPER(COALESCE(dd2.descripcion_categoria, dd2.producto_categoria, '')) IN (:categoriasList)`);
-      }
+      if (productosList.length)  condiciones.push(`UPPER(dd2.descripcion) IN (:productosList)`);
+      if (categoriasList.length) condiciones.push(`UPPER(COALESCE(dd2.descripcion_categoria, dd2.producto_categoria, '')) IN (:categoriasList)`);
       facturaWhere.push(`f.customer_code IN (
         SELECT DISTINCT f2.customer_code FROM facturas f2
         JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
@@ -103,6 +100,17 @@ exports.obtenerResumen = async (req, res) => {
           AND (${condiciones.join(' OR ')})
       )`);
     }
+
+    // Cuando hay filtro de producto, las métricas (ventas/unidades/facturas) deben
+    // reflejar SOLO las líneas que coinciden con el filtro — no el total del cliente.
+    const detalleConds = [];
+    if (productosList.length)  detalleConds.push(`UPPER(dd.descripcion) IN (:productosList)`);
+    if (categoriasList.length) detalleConds.push(`UPPER(COALESCE(dd.descripcion_categoria, dd.producto_categoria, '')) IN (:categoriasList)`);
+    const detalleFilter = detalleConds.length ? `AND (${detalleConds.join(' OR ')})` : '';
+    const productJoin   = hasProductFilter
+      ? `JOIN detalle_documento dd ON dd.documento_code = f.code ${detalleFilter}`
+      : '';
+    const totalCol      = hasProductFilter ? `dd.total` : `f.total`;
 
     const whereFactura = facturaWhere.length ? `WHERE ${facturaWhere.join(' AND ')}` : '';
     const dateFilter   = hasDates ? `AND DATE(f.fecha_creacion) BETWEEN :desde AND :hasta` : '';
@@ -129,6 +137,8 @@ exports.obtenerResumen = async (req, res) => {
         ORDER BY customer_code, id_orden DESC
       ),
       -- ── Base: partimos de facturas para capturar TODOS los clientes con ventas
+      -- Cuando hay filtro de productos, hacemos JOIN con detalle_documento y usamos
+      -- dd.total (línea-ítem) en vez de f.total (factura completa).
       metricas AS (
         SELECT
           f.customer_code,
@@ -140,11 +150,12 @@ exports.obtenerResumen = async (req, res) => {
           c.codigo_usuario_asignado_cliente                      AS seller_code,
           c.tiene_credito_cliente,
           COALESCE(tn.descripcion, 'SIN CLASIFICAR')             AS tipo_negocio,
-          f.total,
+          ${totalCol}                                             AS total,
           f.code                                                  AS factura_code,
           f.fecha_creacion,
           f.customer_address_code
         FROM facturas f
+        ${productJoin}
         LEFT JOIN clientes c          ON c.codigo_cliente = f.customer_code
         LEFT JOIN nombres_ordenes no  ON no.customer_code = f.customer_code
         LEFT JOIN tipos_negocio tn    ON tn.codigo = c.codigo_tipo_negocio
@@ -177,13 +188,14 @@ exports.obtenerResumen = async (req, res) => {
           ${havingBuscar}
       ),
       -- ── Unidades (join separado para evitar double-count)
+      -- Aplica el mismo filtro de producto/categoría para mantener coherencia con metricas.
       unidades AS (
         SELECT
           COALESCE(NULLIF(TRIM(c.identificacion_cliente), ''), f.customer_code)
             || '::' || COALESCE(f.company_id, 0)::text   AS group_key,
           COALESCE(SUM(dd.cantidad), 0)::bigint           AS total_unidades
         FROM facturas f
-        JOIN detalle_documento dd ON dd.documento_code = f.code
+        JOIN detalle_documento dd ON dd.documento_code = f.code ${detalleFilter}
         LEFT JOIN clientes c ON c.codigo_cliente = f.customer_code
         WHERE f.status IN (0,2,3,4,5)
           ${dateFilter}
@@ -301,7 +313,7 @@ exports.obtenerProductosCliente = async (req, res) => {
 exports.obtenerProductosSucursal = async (req, res) => {
   try {
     const { codigo_cliente, codigo_sucursal } = req.params;
-    const { desde, hasta } = req.query;
+    const { desde, hasta, company_id, productos, categorias } = req.query;
     const hasDates = validarFechaISO(desde) && validarFechaISO(hasta);
     const params = { codigo_cliente, codigo_sucursal };
     if (hasDates) { params.desde = desde; params.hasta = hasta; }
@@ -309,6 +321,25 @@ exports.obtenerProductosSucursal = async (req, res) => {
     const dateFilter = hasDates
       ? `AND DATE(f.fecha_creacion) BETWEEN :desde AND :hasta`
       : '';
+
+    // Filtro por compañía (alinea con la fila de la sucursal en el detalle)
+    const hasCompany = company_id && company_id !== '0';
+    if (hasCompany) params.company_id = Number(company_id);
+    const companyFilter = hasCompany ? `AND f.company_id = :company_id` : '';
+
+    // Filtro heredado por productos / categorías
+    const productosList = typeof productos === 'string' && productos.trim()
+      ? productos.split('|||').map(p => p.trim().toUpperCase()).filter(Boolean)
+      : [];
+    const categoriasList = typeof categorias === 'string' && categorias.trim()
+      ? categorias.split('|||').map(c => c.trim().toUpperCase()).filter(Boolean)
+      : [];
+    if (productosList.length)  params.productosList  = productosList;
+    if (categoriasList.length) params.categoriasList = categoriasList;
+    const detalleConds = [];
+    if (productosList.length)  detalleConds.push(`UPPER(dd.descripcion) IN (:productosList)`);
+    if (categoriasList.length) detalleConds.push(`UPPER(COALESCE(dd.descripcion_categoria, dd.producto_categoria, '')) IN (:categoriasList)`);
+    const detalleFilter = detalleConds.length ? `AND (${detalleConds.join(' OR ')})` : '';
 
     const sql = `
       SELECT
@@ -320,7 +351,9 @@ exports.obtenerProductosSucursal = async (req, res) => {
       WHERE f.customer_code         = :codigo_cliente
         AND f.customer_address_code = :codigo_sucursal
         AND f.status IN (0,2,3,4,5)
+        ${companyFilter}
         ${dateFilter}
+        ${detalleFilter}
       GROUP BY dd.descripcion
       ORDER BY total_ventas DESC NULLS LAST
       LIMIT 200
@@ -344,7 +377,7 @@ exports.obtenerEmpresaDetalle = async (req, res) => {
       return res.status(400).json({ ok: false, message: 'RUC requerido' });
     }
 
-    const { desde, hasta, company_id } = req.query;
+    const { desde, hasta, company_id, productos: productosQS, categorias: categoriasQS } = req.query;
     const hasDates = validarFechaISO(desde) && validarFechaISO(hasta);
     const params   = { ruc: ruc.trim() };
     if (hasDates) { params.desde = desde; params.hasta = hasta; }
@@ -359,11 +392,40 @@ exports.obtenerEmpresaDetalle = async (req, res) => {
       ? `AND DATE(f.fecha_creacion) BETWEEN :desde AND :hasta`
       : '';
 
-    // Buscar nombre del cliente: primero en clientes, luego en ordenes
+    // Filtro por productos / categorías (heredado del dashboard de clientes)
+    const productosList = typeof productosQS === 'string' && productosQS.trim()
+      ? productosQS.split('|||').map(p => p.trim().toUpperCase()).filter(Boolean)
+      : [];
+    const categoriasList = typeof categoriasQS === 'string' && categoriasQS.trim()
+      ? categoriasQS.split('|||').map(c => c.trim().toUpperCase()).filter(Boolean)
+      : [];
+    const hasProductFilter = productosList.length > 0 || categoriasList.length > 0;
+    if (productosList.length)  params.productosList  = productosList;
+    if (categoriasList.length) params.categoriasList = categoriasList;
+
+    const buildDetalleFilter = (alias = 'dd') => {
+      const conds = [];
+      if (productosList.length)  conds.push(`UPPER(${alias}.descripcion) IN (:productosList)`);
+      if (categoriasList.length) conds.push(`UPPER(COALESCE(${alias}.descripcion_categoria, ${alias}.producto_categoria, '')) IN (:categoriasList)`);
+      return conds.length ? `AND (${conds.join(' OR ')})` : '';
+    };
+    const detalleFilter = buildDetalleFilter('dd');
+    const productJoin   = hasProductFilter
+      ? `JOIN detalle_documento dd ON dd.documento_code = f.code ${detalleFilter}`
+      : '';
+
+    // Buscar nombre del cliente principal: cuando varios clientes comparten el RUC,
+    // preferir el de mayor actividad facturada (no LIMIT 1 arbitrario que podía elegir
+    // un sub-cliente / sucursal individual).
     const [[checkCliente]] = await sequelize.query(`
-      SELECT c.codigo_cliente, c.nombre_cliente
+      SELECT c.codigo_cliente, c.nombre_cliente,
+             COALESCE((SELECT SUM(f.total) FROM facturas f
+                       WHERE f.customer_code::text = c.codigo_cliente::text
+                         AND f.status IN (0,2,3,4,5)), 0) AS total_actividad
       FROM clientes c
       WHERE c.identificacion_cliente = :ruc OR c.codigo_cliente = :ruc
+      ORDER BY total_actividad DESC NULLS LAST,
+               LENGTH(COALESCE(c.nombre_cliente, '')) DESC
       LIMIT 1
     `, { replacements: params });
 
@@ -420,6 +482,7 @@ exports.obtenerEmpresaDetalle = async (req, res) => {
           f.customer_code::text         AS customer_code,
           f.customer_address_code::text AS customer_address_code
         FROM facturas f
+        ${productJoin}
         WHERE f.customer_code::text IN (SELECT customer_code FROM codigos_cliente)
           AND f.status IN (0,2,3,4,5)
           ${companyFilterFactura}
@@ -434,10 +497,13 @@ exports.obtenerEmpresaDetalle = async (req, res) => {
         SELECT
           f.customer_code::text         AS customer_code,
           f.customer_address_code::text AS customer_address_code,
-          SUM(f.total)::numeric             AS total_ventas,
+          ${hasProductFilter
+            ? `SUM(dd.total)::numeric          AS total_ventas,`
+            : `SUM(f.total)::numeric           AS total_ventas,`}
           COUNT(DISTINCT f.code)::int       AS total_facturas,
           MAX(f.fecha_creacion)::date       AS ultima_compra
         FROM facturas f
+        ${productJoin}
         WHERE f.customer_code::text IN (SELECT customer_code FROM codigos_cliente)
           AND f.status IN (0,2,3,4,5)
           ${companyFilterFactura}
@@ -450,7 +516,7 @@ exports.obtenerEmpresaDetalle = async (req, res) => {
           f.customer_address_code::text AS customer_address_code,
           SUM(dd.cantidad)::bigint AS total_unidades
         FROM facturas f
-        JOIN detalle_documento dd ON dd.documento_code = f.code
+        JOIN detalle_documento dd ON dd.documento_code = f.code ${detalleFilter}
         WHERE f.customer_code::text IN (SELECT customer_code FROM codigos_cliente)
           AND f.status IN (0,2,3,4,5)
           ${companyFilterFactura}
@@ -525,6 +591,7 @@ exports.obtenerEmpresaDetalle = async (req, res) => {
         AND f.status IN (0,2,3,4,5)
         ${companyFilterFactura}
         ${dateFilter}
+        ${detalleFilter}
       GROUP BY dd.descripcion
       ORDER BY total_ventas DESC NULLS LAST
       LIMIT 200
