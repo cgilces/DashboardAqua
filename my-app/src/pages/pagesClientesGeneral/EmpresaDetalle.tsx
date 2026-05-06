@@ -261,15 +261,35 @@ function ProdsSucursal({ prods }: { prods: ProductoSucursal[] | undefined }) {
 export default function EmpresaDetalle() {
   const { ruc }  = useParams<{ ruc: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const companyId = searchParams.get("company_id") || "";
 
-  // Period filter
-  const [activePreset, setActivePreset] = useState("mes");
-  const [sfDesde, setSfDesde]           = useState(() => calcPreset("mes").desde);
-  const [sfHasta, setSfHasta]           = useState(() => calcPreset("mes").hasta);
-  const [draftDesde, setDraftDesde]     = useState(() => calcPreset("mes").desde);
-  const [draftHasta, setDraftHasta]     = useState(() => calcPreset("mes").hasta);
+  // Filtros heredados desde /dashboard/clientes
+  const urlDesde      = searchParams.get("desde")      || "";
+  const urlHasta      = searchParams.get("hasta")      || "";
+  const urlProductos  = (searchParams.get("productos")  || "").split("|||").filter(Boolean);
+  const urlCategorias = (searchParams.get("categorias") || "").split("|||").filter(Boolean);
+  const inheritedProductos  = urlProductos;
+  const inheritedCategorias = urlCategorias;
+  const hasInheritedProds   = inheritedProductos.length > 0 || inheritedCategorias.length > 0;
+
+  // Period filter — si vienen fechas en URL, las usamos; si no, "Este Mes"
+  const initialPeriod = (urlDesde && urlHasta)
+    ? { desde: urlDesde, hasta: urlHasta }
+    : calcPreset("mes");
+  const [activePreset, setActivePreset] = useState(urlDesde && urlHasta ? "" : "mes");
+  const [sfDesde, setSfDesde]           = useState(initialPeriod.desde);
+  const [sfHasta, setSfHasta]           = useState(initialPeriod.hasta);
+  const [draftDesde, setDraftDesde]     = useState(initialPeriod.desde);
+  const [draftHasta, setDraftHasta]     = useState(initialPeriod.hasta);
+
+  // Limpiar filtros heredados de productos/categorías
+  const clearInheritedProds = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("productos");
+    next.delete("categorias");
+    setSearchParams(next, { replace: true });
+  };
 
   // Data
   const [nombre,              setNombre]              = useState("");
@@ -326,6 +346,8 @@ export default function EmpresaDetalle() {
         const p = new URLSearchParams();
         if (sfDesde && sfHasta) { p.set("desde", sfDesde); p.set("hasta", sfHasta); }
         if (companyId) p.set("company_id", companyId);
+        if (inheritedProductos.length)  p.set("productos",  inheritedProductos.join("|||"));
+        if (inheritedCategorias.length) p.set("categorias", inheritedCategorias.join("|||"));
         const url = `${API_BASE_URL}/api/dashboard-clientes/empresa/${encodeURIComponent(ruc)}?${p}`;
         const res  = await fetchAuth(url, { signal: ctrl.signal });
         const json = await res.json();
@@ -368,9 +390,12 @@ export default function EmpresaDetalle() {
     };
     cargar();
     return () => ctrl.abort();
-  }, [ruc, sfDesde, sfHasta, companyId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ruc, sfDesde, sfHasta, companyId, inheritedProductos.join("|||"), inheritedCategorias.join("|||")]);
 
   // ── Toggle expand sucursal ──────────────────────────────────────────────────
+  const inheritedProductosKey  = inheritedProductos.join("|||");
+  const inheritedCategoriasKey = inheritedCategorias.join("|||");
   const toggleSucursal = useCallback(async (s: Sucursal) => {
     const key = `${s.codigo_cliente}-${s.codigo_sucursal}`;
     setExpanded(prev => {
@@ -384,6 +409,9 @@ export default function EmpresaDetalle() {
       try {
         const p = new URLSearchParams();
         if (sfDesde && sfHasta) { p.set("desde", sfDesde); p.set("hasta", sfHasta); }
+        if (companyId) p.set("company_id", companyId);
+        if (inheritedProductosKey)  p.set("productos",  inheritedProductosKey);
+        if (inheritedCategoriasKey) p.set("categorias", inheritedCategoriasKey);
         const url = `${API_BASE_URL}/api/dashboard-clientes/sucursal-productos/${encodeURIComponent(s.codigo_cliente)}/${encodeURIComponent(s.codigo_sucursal)}?${p}`;
         const res  = await fetchAuth(url);
         const json = await res.json();
@@ -400,7 +428,7 @@ export default function EmpresaDetalle() {
         setSucursalProds(prev => new Map(prev).set(key, []));
       }
     }
-  }, [sucursalProds, sfDesde, sfHasta]);
+  }, [sucursalProds, sfDesde, sfHasta, companyId, inheritedProductosKey, inheritedCategoriasKey]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const applyPreset = (id: string) => {
@@ -509,6 +537,33 @@ export default function EmpresaDetalle() {
             </div>
           </div>
         </div>
+
+        {/* Banner de filtros heredados desde Dashboard de Clientes */}
+        {hasInheritedProds && (
+          <div className="mb-6 bg-gradient-to-r from-emerald-900/30 to-[#013d32] border border-emerald-500/40 rounded-2xl px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <span className="text-[10px] uppercase tracking-widest text-emerald-300/80 font-bold shrink-0">
+                  Filtros heredados
+                </span>
+                {inheritedProductos.map(p => (
+                  <span key={`p-${p}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-emerald-500/15 border border-emerald-500/40 text-emerald-200">
+                    Producto: <span className="font-semibold ml-1 truncate max-w-[180px]">{p}</span>
+                  </span>
+                ))}
+                {inheritedCategorias.map(c => (
+                  <span key={`c-${c}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-emerald-500/15 border border-emerald-500/40 text-emerald-200">
+                    Categoría: <span className="font-semibold ml-1 truncate max-w-[180px]">{c}</span>
+                  </span>
+                ))}
+              </div>
+              <button onClick={clearInheritedProds}
+                className="text-[11px] text-white/60 hover:text-red-400 transition-colors underline underline-offset-2 shrink-0">
+                Quitar filtros
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Period filter */}
         <div className="bg-[#013d32] border border-[#046C5E]/60 rounded-2xl p-4 mb-6">

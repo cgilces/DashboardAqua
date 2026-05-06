@@ -312,13 +312,18 @@ export default function DashboardClientesTabla() {
     setInputQuery(""); setSeleccionados(new Set()); setPage(1);
   };
   const navigateToEmpresa = (e: EmpresaRow) => {
-    const companyParam = e.company_id && e.company_id !== '0' ? `?company_id=${e.company_id}` : '';
+    const qp = new URLSearchParams();
+    if (e.company_id && e.company_id !== '0') qp.set('company_id', e.company_id);
+    if (sfDesde && sfHasta) { qp.set('desde', sfDesde); qp.set('hasta', sfHasta); }
+    if (sfProductos.length)  qp.set('productos',  sfProductos.join('|||'));
+    if (sfCategorias.length) qp.set('categorias', sfCategorias.join('|||'));
+    const qs = qp.toString() ? `?${qp.toString()}` : '';
     if (e.ruc) {
-      navigate(`/dashboard/empresa/${encodeURIComponent(e.ruc)}${companyParam}`);
+      navigate(`/dashboard/empresa/${encodeURIComponent(e.ruc)}${qs}`);
     } else {
       // Sin RUC: navegar usando el codigo_cliente (antes del :: en group_key)
       const key = e.group_key.split('::')[0];
-      navigate(`/dashboard/empresa/${encodeURIComponent(key)}${companyParam}`);
+      navigate(`/dashboard/empresa/${encodeURIComponent(key)}${qs}`);
     }
   };
 
