@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Activity, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
-  ChevronDown, ChevronUp, Minus,
+  ChevronDown, ChevronUp, ChevronRight, Minus, X,
 } from "lucide-react";
 import { API_BASE_URL } from "../../config";
+import { fetchAuth } from "../../utils/fetchAuth";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────
 type RutaSalud = {
@@ -55,6 +56,22 @@ function severidadColor(net: number, perdidos: number) {
 }
 
 // ─── Componente ──────────────────────────────────────────────────────────
+type DetalleRow = {
+  codigo_cliente: string;
+  ruc: string;
+  nombre_cliente: string;
+  telefono: string;
+  ciudad: string;
+  tipo_negocio: string;
+  ultima_compra: string | null;
+  primera_compra: string | null;
+  ventas_total: number;
+  facturas_total: number;
+  promedio_mensual: number;
+  dias_sin_compra: number;
+  clasificacion: "NUEVO" | "PERDIDO" | "ACTIVO" | "OTRO";
+};
+
 export default function SaludRutas() {
   const [dias, setDias]           = useState(60);
   const [prefijos, setPrefijos]   = useState("*");
@@ -63,6 +80,26 @@ export default function SaludRutas() {
   const [cargando, setCargando]   = useState(false);
   const [expandido, setExpandido] = useState(false);
 
+  // Drill-down state
+  const [rutaSeleccionada, setRutaSeleccionada] = useState<string | null>(null);
+  const [detalle, setDetalle] = useState<{ nuevos: DetalleRow[]; perdidos: DetalleRow[]; activos: DetalleRow[] } | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [tabDetalle, setTabDetalle] = useState<"perdidos" | "nuevos" | "activos">("perdidos");
+
+  const abrirDetalle = async (ruta: string) => {
+    setRutaSeleccionada(ruta);
+    setDetalle(null);
+    setCargandoDetalle(true);
+    try {
+      const res = await fetchAuth(`${API_BASE_URL}/api/dashboard-clientes/ruta-detalle?ruta=${encodeURIComponent(ruta)}&dias=${dias}`);
+      const json = await res.json();
+      if (json.ok) {
+        setDetalle({ nuevos: json.nuevos || [], perdidos: json.perdidos || [], activos: json.activos || [] });
+      }
+    } catch (e) { console.error(e); }
+    finally { setCargandoDetalle(false); }
+  };
+
   useEffect(() => {
     if (!expandido) return;
     const ctrl = new AbortController();
@@ -70,7 +107,7 @@ export default function SaludRutas() {
       setCargando(true);
       try {
         const url = `${API_BASE_URL}/api/dashboard-clientes/salud-rutas?dias=${dias}&prefijos=${encodeURIComponent(prefijos)}`;
-        const res = await fetch(url, { signal: ctrl.signal });
+        const res = await fetchAuth(url, { signal: ctrl.signal });
         const json = await res.json();
         if (json.ok) {
           setData(json.data || []);
@@ -200,23 +237,36 @@ export default function SaludRutas() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {orden.map(r => <CardRuta key={r.ruta} r={r} />)}
+              {orden.map(r => <CardRuta key={r.ruta} r={r} onClick={() => abrirDetalle(r.ruta)} />)}
             </div>
           )}
         </div>
+      )}
+
+      {/* Modal de drill-down */}
+      {rutaSeleccionada && (
+        <ModalDetalleRuta
+          ruta={rutaSeleccionada}
+          detalle={detalle}
+          cargando={cargandoDetalle}
+          tab={tabDetalle}
+          onChangeTab={setTabDetalle}
+          onClose={() => { setRutaSeleccionada(null); setDetalle(null); }}
+        />
       )}
     </div>
   );
 }
 
 // ─── Card por ruta ────────────────────────────────────────────────────────
-function CardRuta({ r }: { r: RutaSalud }) {
+function CardRuta({ r, onClick }: { r: RutaSalud; onClick: () => void }) {
   const colorBorder = severidadColor(r.net_delta_clientes, r.perdidos);
   const positivo = r.net_delta_clientes >= 0;
   const equilibrio = r.net_delta_clientes === 0;
 
   return (
-    <div className={`bg-gradient-to-br ${colorBorder} to-[#012E24] border rounded-xl p-3 hover:shadow-xl transition-all flex flex-col gap-2.5`}>
+    <button onClick={onClick}
+      className={`bg-gradient-to-br ${colorBorder} to-[#012E24] border rounded-xl p-3 hover:shadow-xl hover:scale-[1.01] transition-all flex flex-col gap-2.5 text-left`}>
       {/* Header: Ruta + delta */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -265,6 +315,88 @@ function CardRuta({ r }: { r: RutaSalud }) {
         <div className="bg-black/25 rounded-md px-2 py-1.5 border border-white/5">
           <p className="text-white/40 uppercase">$ activos/mes</p>
           <p className="font-bold text-blue-300">{money(r.valor_activo_mensual)}</p>
+        </div>
+      </div>
+      <p className="text-[10px] text-white/40 italic text-center inline-flex items-center justify-center gap-0.5">Click para ver clientes <ChevronRight size={10}/></p>
+    </button>
+  );
+}
+
+// ─── Modal drill-down ─────────────────────────────────────────────────────
+function ModalDetalleRuta({
+  ruta, detalle, cargando, tab, onChangeTab, onClose,
+}: {
+  ruta: string;
+  detalle: { nuevos: DetalleRow[]; perdidos: DetalleRow[]; activos: DetalleRow[] } | null;
+  cargando: boolean;
+  tab: "perdidos" | "nuevos" | "activos";
+  onChangeTab: (t: "perdidos" | "nuevos" | "activos") => void;
+  onClose: () => void;
+}) {
+  const filas = detalle ? detalle[tab] : [];
+  const tabsCfg = [
+    { id: "perdidos" as const, label: "Perdidos", color: "text-red-300 border-red-500", count: detalle?.perdidos.length ?? 0 },
+    { id: "nuevos" as const,   label: "Nuevos",   color: "text-emerald-300 border-emerald-500", count: detalle?.nuevos.length ?? 0 },
+    { id: "activos" as const,  label: "Activos",  color: "text-blue-300 border-blue-500", count: detalle?.activos.length ?? 0 },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-gradient-to-br from-[#013d32] to-[#012E24] border border-[#046C5E] rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#046C5E]/40 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-blue-300 font-semibold">Detalle de ruta</p>
+            <h3 className="text-lg font-bold text-white">{ruta}</h3>
+          </div>
+          <button onClick={onClose} className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10">
+            <X size={20}/>
+          </button>
+        </div>
+        <div className="px-5 py-2 border-b border-[#046C5E]/40 flex gap-2">
+          {tabsCfg.map(t => (
+            <button key={t.id} onClick={() => onChangeTab(t.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border-b-2 transition-all ${
+                tab === t.id ? `${t.color} bg-white/5` : "border-transparent text-white/50 hover:text-white"
+              }`}>
+              {t.label} ({t.count})
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 overflow-auto px-5 py-3">
+          {cargando ? (
+            <p className="text-center text-white/40 italic py-8">Cargando…</p>
+          ) : filas.length === 0 ? (
+            <p className="text-center text-white/40 italic py-8">Sin clientes en este grupo</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="text-[10px] uppercase tracking-wider text-white/50">
+                  <tr>
+                    <th className="px-2 py-2 text-left">Cliente</th>
+                    <th className="px-2 py-2 text-left">Ciudad</th>
+                    <th className="px-2 py-2 text-right">Última compra</th>
+                    <th className="px-2 py-2 text-right">Días sin</th>
+                    <th className="px-2 py-2 text-right">Promedio/mes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filas.map((f, i) => (
+                    <tr key={f.codigo_cliente} className={`border-t border-white/5 ${i % 2 === 0 ? "bg-black/20" : "bg-black/30"}`}>
+                      <td className="px-2 py-2">
+                        <div className="text-xs font-medium text-white">{f.nombre_cliente}</div>
+                        <div className="text-[10px] text-white/40 font-mono">{f.ruc || "Sin RUC"}</div>
+                      </td>
+                      <td className="px-2 py-2 text-xs text-white/60">{f.ciudad || "-"}</td>
+                      <td className="px-2 py-2 text-right text-xs text-white/70">{f.ultima_compra ? new Date(f.ultima_compra).toLocaleDateString("es-EC") : "-"}</td>
+                      <td className="px-2 py-2 text-right text-xs text-yellow-300">{f.dias_sin_compra}d</td>
+                      <td className="px-2 py-2 text-right text-xs text-emerald-300 font-semibold">{money(f.promedio_mensual)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

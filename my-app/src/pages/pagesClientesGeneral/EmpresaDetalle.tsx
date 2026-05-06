@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { MapPin, Phone, CalendarDays } from "lucide-react";
+import { BsDownload } from "react-icons/bs";
+import * as XLSX from "xlsx";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
+import { fetchAuth } from "../../utils/fetchAuth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Sucursal = {
@@ -26,6 +29,7 @@ type Producto = {
   nombre_producto: string;
   total_unidades:  number;
   total_ventas:    number;
+  precio_promedio: number;
 };
 type ProductoSucursal = {
   nombre_producto: string;
@@ -323,7 +327,7 @@ export default function EmpresaDetalle() {
         if (sfDesde && sfHasta) { p.set("desde", sfDesde); p.set("hasta", sfHasta); }
         if (companyId) p.set("company_id", companyId);
         const url = `${API_BASE_URL}/api/dashboard-clientes/empresa/${encodeURIComponent(ruc)}?${p}`;
-        const res  = await fetch(url, { signal: ctrl.signal });
+        const res  = await fetchAuth(url, { signal: ctrl.signal });
         const json = await res.json();
         if (!json.ok) throw new Error(json.message);
         setNombre(json.nombre);
@@ -345,11 +349,16 @@ export default function EmpresaDetalle() {
           longitud:        s.longitud ?? "",
           telefono:        s.telefono ?? "",
         })));
-        setProductos(json.productos.map((p: any): Producto => ({
-          nombre_producto: p.nombre_producto,
-          total_unidades:  Number(p.total_unidades || 0),
-          total_ventas:    Number(p.total_ventas   || 0),
-        })));
+        setProductos(json.productos.map((p: any): Producto => {
+          const u = Number(p.total_unidades || 0);
+          const v = Number(p.total_ventas   || 0);
+          return {
+            nombre_producto: p.nombre_producto,
+            total_unidades:  u,
+            total_ventas:    v,
+            precio_promedio: u > 0 ? v / u : 0,
+          };
+        }));
       } catch (err: any) {
         if (err?.name === "AbortError") return;
       } finally {
@@ -376,7 +385,7 @@ export default function EmpresaDetalle() {
         const p = new URLSearchParams();
         if (sfDesde && sfHasta) { p.set("desde", sfDesde); p.set("hasta", sfHasta); }
         const url = `${API_BASE_URL}/api/dashboard-clientes/sucursal-productos/${encodeURIComponent(s.codigo_cliente)}/${encodeURIComponent(s.codigo_sucursal)}?${p}`;
-        const res  = await fetch(url);
+        const res  = await fetchAuth(url);
         const json = await res.json();
         setSucursalProds(prev => new Map(prev).set(key,
           json.ok
@@ -412,6 +421,51 @@ export default function EmpresaDetalle() {
   const labelPeriod = sfDesde && sfHasta
     ? sfDesde === sfHasta ? sfDesde : `${sfDesde} → ${sfHasta}`
     : "Histórico";
+
+  // ── Exportar a Excel ────────────────────────────────────────────────────────
+  const slug = (s: string) => (s || "empresa").toString().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+  const hoyStr = new Date().toISOString().slice(0, 10);
+
+  const exportarProductos = () => {
+    if (!prodSorted.length) return;
+    const totUni = prodSorted.reduce((a, p) => a + p.total_unidades, 0);
+    const rows = prodSorted.map((p, i) => ({
+      "N°":             i + 1,
+      "Producto":       p.nombre_producto,
+      "Unidades":       p.total_unidades,
+      "Ventas USD":     p.total_ventas,
+      "Precio Promedio": p.total_unidades > 0 ? p.total_ventas / p.total_unidades : 0,
+      "% Total":        totalProd > 0 ? Number(((p.total_ventas / totalProd) * 100).toFixed(2)) : 0,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Productos");
+    XLSX.writeFile(wb, `productos_${slug(nombre)}_${hoyStr}.xlsx`);
+    void totUni;
+  };
+
+  const exportarSucursales = () => {
+    if (!sucFiltered.length) return;
+    const rows = sucFiltered.map((s, i) => ({
+      "N°":             i + 1,
+      "Cód. Sucursal":  s.codigo_sucursal,
+      "Nombre / Dirección": s.nombre_sucursal || s.calle1_direccion || "",
+      "Teléfono":       s.telefono || "",
+      "Tipo Negocio":   s.tipo_negocio,
+      "Estado":         s.estado_cliente,
+      "Unidades":       s.total_unidades,
+      "Ventas USD":     s.total_ventas,
+      "Facturas":       s.total_facturas,
+      "Última Compra":  s.ultima_compra || "",
+      "Latitud":        s.latitud || "",
+      "Longitud":       s.longitud || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sucursales");
+    const marca = sucSearch.trim() ? "filtradas" : "todas";
+    XLSX.writeFile(wb, `sucursales_${slug(nombre)}_${marca}_${hoyStr}.xlsx`);
+  };
 
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading)
@@ -524,15 +578,27 @@ export default function EmpresaDetalle() {
             </div>
           ) : (
             <div className="rounded-2xl overflow-hidden border border-[#046C5E]/40 shadow-xl">
+              {/* Toolbar productos */}
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#046C5E]/40 bg-[#013d32]">
+                <span className="text-xs text-white/60">
+                  {prodSorted.length.toLocaleString("es-EC")} producto{prodSorted.length !== 1 ? "s" : ""} · {labelPeriod}
+                </span>
+                <button onClick={exportarProductos}
+                  disabled={prodSorted.length === 0}
+                  className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                  <BsDownload size={14}/>
+                  <span className="whitespace-nowrap text-xs">Exportar</span>
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-[#014434] text-green-300 uppercase text-xs">
                     <tr>
                       <th className="px-3 py-3 text-center w-10">#</th>
-                      <ProdTh label="Producto"  col="nombre_producto"/>
-                      <ProdTh label="Unidades"  col="total_unidades"  align="right"/>
-                      <ProdTh label="Ventas"    col="total_ventas"    align="right"/>
-                      <th className="px-3 py-3 text-right text-xs">Precio Promedio</th>
+                      <ProdTh label="Producto"        col="nombre_producto"/>
+                      <ProdTh label="Unidades"        col="total_unidades"  align="right"/>
+                      <ProdTh label="Ventas"          col="total_ventas"    align="right"/>
+                      <ProdTh label="Precio Promedio" col="precio_promedio" align="right"/>
                       <th className="px-3 py-3 text-right text-xs">% Total</th>
                     </tr>
                   </thead>
@@ -595,31 +661,45 @@ export default function EmpresaDetalle() {
 
         {/* ── SUCURSALES ────────────────────────────────────────────────────── */}
         <div>
-          <div className="flex flex-col items-center gap-3 mb-4">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-white/50">
-              Sucursales · {sucFiltered.length}{sucSearch && ` / ${sucSorted.length}`}
-            </h2>
-            <div className="relative w-full max-w-lg">
-              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/>
-              </svg>
-              <input
-                type="text"
-                value={sucSearch}
-                onChange={e => setSucSearch(e.target.value)}
-                placeholder="Buscar por código o dirección..."
-                className="w-full bg-[#014434] border border-[#046C5E] rounded-xl pl-11 pr-4 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-colors"
-              />
-            </div>
-            {sucTotalPages > 1 && (
-              <span className="text-xs text-white/30">
-                {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, sucFiltered.length)} de {sucFiltered.length}
-              </span>
-            )}
-          </div>
-
           {/* ── Mobile cards ──────────────────────────────────────────────── */}
           <div className="md:hidden space-y-3">
+            {/* Header mobile: título + buscador + exportar */}
+            <div className="bg-gradient-to-br from-[#014434] to-[#013d32] border border-[#046C5E]/60 rounded-2xl shadow-lg overflow-hidden">
+              <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-[#046C5E]/40">
+                <div className="min-w-0">
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-emerald-300/80 truncate">
+                    Sucursales
+                  </h2>
+                  <p className="text-[11px] text-white/50 mt-0.5">
+                    {sucSearch.trim()
+                      ? `${sucFiltered.length.toLocaleString("es-EC")} de ${sucSorted.length.toLocaleString("es-EC")}`
+                      : `${sucFiltered.length.toLocaleString("es-EC")} en total`}
+                  </p>
+                </div>
+                <button onClick={exportarSucursales}
+                  disabled={sucFiltered.length === 0}
+                  className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+                  <BsDownload size={14}/>
+                  <span className="whitespace-nowrap text-xs">
+                    Exportar{sucSearch.trim() ? " filtradas" : ""}
+                  </span>
+                </button>
+              </div>
+              <div className="px-4 py-3">
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/>
+                  </svg>
+                  <input
+                    type="text"
+                    value={sucSearch}
+                    onChange={e => setSucSearch(e.target.value)}
+                    placeholder="Buscar por código o dirección..."
+                    className="w-full bg-[#012E24] border border-[#046C5E]/60 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
             {sucPageData.map(s => {
               const key       = `${s.codigo_cliente}-${s.codigo_sucursal}`;
               const isOpen    = expanded.has(key);
@@ -702,6 +782,51 @@ export default function EmpresaDetalle() {
 
           {/* ── Desktop table ─────────────────────────────────────────────── */}
           <div className="hidden md:block rounded-2xl overflow-hidden border border-[#046C5E]/40 shadow-xl">
+            {/* Header de la tabla: título + buscador + exportar */}
+            <div className="bg-gradient-to-r from-[#014434] to-[#013d32] border-b border-[#046C5E]/40">
+              <div className="flex items-center justify-between gap-4 px-5 py-3.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-1 h-8 bg-emerald-500/60 rounded-full shrink-0"/>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-bold uppercase tracking-widest text-emerald-300/90">
+                      Sucursales
+                    </h2>
+                    <p className="text-[11px] text-white/50 mt-0.5">
+                      {sucSearch.trim()
+                        ? <>Mostrando <span className="text-emerald-300 font-semibold">{sucFiltered.length.toLocaleString("es-EC")}</span> de {sucSorted.length.toLocaleString("es-EC")} sucursales</>
+                        : <><span className="text-emerald-300 font-semibold">{sucFiltered.length.toLocaleString("es-EC")}</span> sucursal{sucFiltered.length !== 1 ? "es" : ""} en total</>}
+                      {sucTotalPages > 1 && (
+                        <span className="text-white/30 ml-2">
+                          · {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, sucFiltered.length)}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="relative w-72">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/>
+                    </svg>
+                    <input
+                      type="text"
+                      value={sucSearch}
+                      onChange={e => setSucSearch(e.target.value)}
+                      placeholder="Buscar por código o dirección..."
+                      className="w-full bg-[#012E24] border border-[#046C5E]/70 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all"
+                    />
+                  </div>
+                  <button onClick={exportarSucursales}
+                    disabled={sucFiltered.length === 0}
+                    className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                    <BsDownload size={14}/>
+                    <span className="whitespace-nowrap text-xs">
+                      Exportar{sucSearch.trim() ? " filtradas" : ""}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-[#014434] text-green-300 uppercase text-xs">

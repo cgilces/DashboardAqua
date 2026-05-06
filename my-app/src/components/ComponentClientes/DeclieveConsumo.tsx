@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   TrendingDown, Phone, MessageCircle, X, History, ChevronDown, ChevronUp,
-  Users, AlertTriangle, BarChart3,
+  Users, AlertTriangle, BarChart3, Mail,
 } from "lucide-react";
+import toast from "react-hot-toast";
+import { BsDownload } from "react-icons/bs";
 import { API_BASE_URL } from "../../config";
-import { useAuth } from "../auth/AuthContext";
+import { fetchAuth } from "../../utils/fetchAuth";
+import { exportExcel } from "../../utils/exportExcel";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────
 type ClienteDeclive = {
@@ -102,9 +105,6 @@ function cfgCaida(p: number) {
 
 // ─── Componente ──────────────────────────────────────────────────────────
 export default function DeclieveConsumo() {
-  const { user } = useAuth();
-  const username = user?.username ?? "anonimo";
-
   const [umbral, setUmbral]       = useState(30);
   const [ventana, setVentana]     = useState(14);
   const [prefijos, setPrefijos]   = useState("*");
@@ -129,7 +129,7 @@ export default function DeclieveConsumo() {
     setCargando(true);
     try {
       const url = `${API_BASE_URL}/api/dashboard-clientes/declive-consumo?umbral=${umbral}&ventana=${ventana}&prefijos=${encodeURIComponent(prefijos)}`;
-      const res = await fetch(url);
+      const res = await fetchAuth(url);
       const json = await res.json();
       if (json.ok) {
         setData(json.data || []);
@@ -155,7 +155,7 @@ export default function DeclieveConsumo() {
     setNotas("");
     setCargandoHist(true);
     try {
-      const r = await fetch(`${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion/historial/${encodeURIComponent(c.group_key)}`);
+      const r = await fetchAuth(`${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion/historial/${encodeURIComponent(c.group_key)}`);
       const j = await r.json();
       if (j.ok) setHistorial(j.contactos || []);
     } catch (e) { console.error(e); }
@@ -166,14 +166,12 @@ export default function DeclieveConsumo() {
     if (!clienteModal) return;
     setGuardando(true);
     try {
-      const r = await fetch(`${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion`, {
+      const r = await fetchAuth(`${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           group_key:                    clienteModal.group_key,
           ruc:                          clienteModal.ruc,
           nombre_cliente:               clienteModal.nombre_cliente,
-          contactado_por:               username,
           resultado,
           notas:                        notas.trim() || null,
           dias_sin_compra_al_contactar: clienteModal.dias_sin_compra,
@@ -183,17 +181,18 @@ export default function DeclieveConsumo() {
       if (j.ok) {
         setNotas("");
         setResultado("CONTACTADO");
+        toast.success("Contacto registrado");
         // refrescar historial y la lista (un cliente marcado como CONSUMO_RECUPERADO/NO_INTERESADO sale de la lista)
-        const hist = await fetch(`${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion/historial/${encodeURIComponent(clienteModal.group_key)}`);
+        const hist = await fetchAuth(`${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion/historial/${encodeURIComponent(clienteModal.group_key)}`);
         const hjson = await hist.json();
         if (hjson.ok) setHistorial(hjson.contactos || []);
         await cargarDeclive();
       } else {
-        alert("No se pudo registrar el contacto");
+        toast.error("No se pudo registrar el contacto");
       }
     } catch (e) {
       console.error(e);
-      alert("Error registrando contacto");
+      toast.error("Error de red registrando contacto");
     } finally {
       setGuardando(false);
     }
@@ -319,6 +318,34 @@ export default function DeclieveConsumo() {
               <option value="">Todos los vendedores</option>
               {vendedoresOpts.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
+            <button
+              onClick={() => {
+                if (filtrados.length === 0) return;
+                exportExcel("declive_consumo", filtrados.map((c, i) => ({
+                  "N°": i + 1,
+                  "RUC": c.ruc,
+                  "Cliente": c.nombre_cliente,
+                  "Ciudad": c.ciudad,
+                  "Vendedor": c.vendedor,
+                  "Tipo Negocio": c.tipo_negocio,
+                  "Baseline u/sem": c.baseline_semanal_unidades,
+                  "Reciente u/sem": c.reciente_semanal_unidades,
+                  "Caída %": c.caida_porc,
+                  "Volumen $ riesgo": c.volumen_riesgo,
+                  "Última compra": c.ultima_compra,
+                  "Días sin compra": c.dias_sin_compra,
+                  "Precio promedio": c.precio_promedio,
+                  "Teléfono": c.telefono,
+                  "Email": c.email,
+                  "Último contacto": c.ultimo_contacto_fecha || "",
+                  "Resultado último contacto": c.ultimo_contacto_resultado || "",
+                })), "Declive");
+                toast.success(`Exportado ${filtrados.length} clientes`);
+              }}
+              disabled={filtrados.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs font-medium hover:bg-emerald-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              <BsDownload size={12}/> Exportar
+            </button>
           </div>
 
           {/* Tabla */}
@@ -363,7 +390,7 @@ export default function DeclieveConsumo() {
                         <td className="px-3 py-2 text-right text-orange-300 text-xs font-semibold">{num(c.reciente_semanal_unidades)}</td>
                         <td className="px-3 py-2 text-center">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border ${caidaCfg.color}`}>
-                            ▼{c.caida_porc}%
+                            <TrendingDown size={11}/>{c.caida_porc}%
                           </span>
                           <div className="text-[9px] text-white/40 mt-0.5">{caidaCfg.label}</div>
                         </td>
@@ -488,7 +515,7 @@ function ModalGestion({
           <div>
             <p className="text-[9px] text-white/40 uppercase">Caída</p>
             <p className={`text-base font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded ${caidaCfg.color}`}>
-              ▼{cliente.caida_porc}%
+              <TrendingDown size={14}/>{cliente.caida_porc}%
             </p>
           </div>
           <div>
@@ -505,8 +532,8 @@ function ModalGestion({
               </a>
             )}
             {cliente.email && (
-              <a href={`mailto:${cliente.email}`} className="text-emerald-300 hover:underline">
-                ✉ {cliente.email}
+              <a href={`mailto:${cliente.email}`} className="text-emerald-300 hover:underline flex items-center gap-1">
+                <Mail size={12}/> {cliente.email}
               </a>
             )}
           </div>

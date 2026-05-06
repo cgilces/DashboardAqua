@@ -6,12 +6,14 @@ import { X, Users, CalendarDays } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
+import { fetchAuth } from "../../utils/fetchAuth";
 import AlertasRecuperacion from "../../components/ComponentClientes/AlertasRecuperacion";
 import DeclieveConsumo from "../../components/ComponentClientes/DeclieveConsumo";
 import ClientesNuevos from "../../components/ComponentClientes/ClientesNuevos";
 import RecoveryRate from "../../components/ComponentClientes/RecoveryRate";
 import SaludRutas from "../../components/ComponentClientes/SaludRutas";
 import MapaClientes from "../../components/ComponentClientes/MapaClientes";
+import AnaliticaInactivos from "../../components/ComponentClientes/AnaliticaInactivos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Una fila por empresa (ya agrupado por el backend)
@@ -230,7 +232,7 @@ export default function DashboardClientesTabla() {
         if (sfDesde && sfHasta) { p.set("desde", sfDesde); p.set("hasta", sfHasta); }
         if (sfProductos.length)  p.set("productos",  sfProductos.join("|||"));
         if (sfCategorias.length) p.set("categorias", sfCategorias.join("|||"));
-        const res  = await fetch(`${API_BASE_URL}/api/dashboard-clientes/resumen?${p}`, { signal: ctrl.signal });
+        const res  = await fetchAuth(`${API_BASE_URL}/api/dashboard-clientes/resumen?${p}`, { signal: ctrl.signal });
         const json = await res.json();
         if (!json.ok) throw new Error();
         // El backend devuelve filas ya agrupadas por empresa
@@ -271,7 +273,7 @@ export default function DashboardClientesTabla() {
       try {
         const p = new URLSearchParams();
         if (sfDesde && sfHasta) { p.set("desde", sfDesde); p.set("hasta", sfHasta); }
-        const res  = await fetch(`${API_BASE_URL}/api/dashboard-clientes/catalogo-productos?${p}`, { signal: ctrl.signal });
+        const res  = await fetchAuth(`${API_BASE_URL}/api/dashboard-clientes/catalogo-productos?${p}`, { signal: ctrl.signal });
         const json = await res.json();
         if (json.ok) setCatalogo({ productos: json.productos || [], categorias: json.categorias || [] });
       } catch (err: any) {
@@ -548,14 +550,6 @@ export default function DashboardClientesTabla() {
               </span>
             )}
           </div>
-          <button onClick={exportarExcel}
-            disabled={filteredData.length === 0}
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto">
-            <BsDownload size={16}/>
-            <span className="whitespace-nowrap text-sm">
-              Exportar{seleccionados.size > 0 ? ` (${seleccionados.size})` : filteredData.length !== empresas.length ? " filtrados" : ""}
-            </span>
-          </button>
         </div>
 
         {/* KPIs */}
@@ -591,6 +585,9 @@ export default function DashboardClientesTabla() {
 
         {/* Recovery rate por vendedor (analítica de gestión) */}
         <RecoveryRate />
+
+        {/* Analítica histórica: tendencia + cohorte de retención */}
+        <AnaliticaInactivos />
 
         {/* Filter toggle + chips */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -829,6 +826,22 @@ export default function DashboardClientesTabla() {
 
         {/* ── MOBILE CARDS ─────────────────────────────────────────────── */}
         <div className="md:hidden space-y-3">
+          {/* Toolbar mobile */}
+          <div className="flex items-center justify-between gap-2 bg-[#013d32] border border-[#046C5E]/40 rounded-xl px-3 py-2">
+            <span className="text-xs text-white/60">
+              {seleccionados.size > 0
+                ? `${seleccionados.size} seleccionado${seleccionados.size !== 1 ? "s" : ""}`
+                : `${filteredData.length.toLocaleString("es-EC")} cliente${filteredData.length !== 1 ? "s" : ""}`}
+            </span>
+            <button onClick={exportarExcel}
+              disabled={filteredData.length === 0}
+              className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+              <BsDownload size={14}/>
+              <span className="whitespace-nowrap text-xs">
+                Exportar{seleccionados.size > 0 ? ` (${seleccionados.size})` : filteredData.length !== empresas.length ? " filtrados" : ""}
+              </span>
+            </button>
+          </div>
           {pageData.length === 0 ? (
             <div className="text-center text-white/30 italic py-10">No se encontraron clientes</div>
           ) : pageData.map((e, idx) => {
@@ -896,6 +909,29 @@ export default function DashboardClientesTabla() {
 
         {/* ── DESKTOP TABLE ────────────────────────────────────────────── */}
         <div className="hidden md:block rounded-2xl overflow-hidden border border-[#046C5E]/40 shadow-xl bg-gradient-to-b from-[#013d30] to-[#012E24]">
+          {/* Toolbar de la tabla */}
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#046C5E]/40 bg-[#013d32]">
+            <div className="flex items-center gap-3 text-xs text-white/60">
+              <span>
+                {filteredData.length === empresas.length
+                  ? `${empresas.length.toLocaleString("es-EC")} clientes`
+                  : `${filteredData.length.toLocaleString("es-EC")} de ${empresas.length.toLocaleString("es-EC")} clientes`}
+              </span>
+              {seleccionados.size > 0 && (
+                <span className="text-emerald-300">
+                  · {seleccionados.size} seleccionado{seleccionados.size !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            <button onClick={exportarExcel}
+              disabled={filteredData.length === 0}
+              className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+              <BsDownload size={14}/>
+              <span className="whitespace-nowrap text-xs">
+                Exportar{seleccionados.size > 0 ? ` (${seleccionados.size})` : filteredData.length !== empresas.length ? " filtrados" : ""}
+              </span>
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-[#014434] text-green-300 uppercase text-xs">
