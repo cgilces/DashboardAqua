@@ -86,16 +86,13 @@ exports.obtenerResumen = async (req, res) => {
     }
 
     // Filtro nuevo: multi-producto + multi-categoría (OR entre ambos grupos)
-    if (productosList.length || categoriasList.length) {
+    const hasProductFilter = productosList.length > 0 || categoriasList.length > 0;
+    if (productosList.length)  params.productosList  = productosList;
+    if (categoriasList.length) params.categoriasList = categoriasList;
+    if (hasProductFilter) {
       const condiciones = [];
-      if (productosList.length) {
-        params.productosList = productosList;
-        condiciones.push(`UPPER(dd2.descripcion) IN (:productosList)`);
-      }
-      if (categoriasList.length) {
-        params.categoriasList = categoriasList;
-        condiciones.push(`UPPER(COALESCE(dd2.descripcion_categoria, dd2.producto_categoria, '')) IN (:categoriasList)`);
-      }
+      if (productosList.length)  condiciones.push(`UPPER(dd2.descripcion) IN (:productosList)`);
+      if (categoriasList.length) condiciones.push(`UPPER(COALESCE(dd2.descripcion_categoria, dd2.producto_categoria, '')) IN (:categoriasList)`);
       facturaWhere.push(`f.customer_code IN (
         SELECT DISTINCT f2.customer_code FROM facturas f2
         JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
@@ -103,6 +100,17 @@ exports.obtenerResumen = async (req, res) => {
           AND (${condiciones.join(' OR ')})
       )`);
     }
+
+    // Cuando hay filtro de producto, las métricas (ventas/unidades/facturas) deben
+    // reflejar SOLO las líneas que coinciden con el filtro — no el total del cliente.
+    const detalleConds = [];
+    if (productosList.length)  detalleConds.push(`UPPER(dd.descripcion) IN (:productosList)`);
+    if (categoriasList.length) detalleConds.push(`UPPER(COALESCE(dd.descripcion_categoria, dd.producto_categoria, '')) IN (:categoriasList)`);
+    const detalleFilter = detalleConds.length ? `AND (${detalleConds.join(' OR ')})` : '';
+    const productJoin   = hasProductFilter
+      ? `JOIN detalle_documento dd ON dd.documento_code = f.code ${detalleFilter}`
+      : '';
+    const totalCol      = hasProductFilter ? `dd.total` : `f.total`;
 
     const whereFactura = facturaWhere.length ? `WHERE ${facturaWhere.join(' AND ')}` : '';
     const dateFilter   = hasDates ? `AND DATE(f.fecha_creacion) BETWEEN :desde AND :hasta` : '';
@@ -129,6 +137,8 @@ exports.obtenerResumen = async (req, res) => {
         ORDER BY customer_code, id_orden DESC
       ),
       -- ── Base: partimos de facturas para capturar TODOS los clientes con ventas
+      -- Cuando hay filtro de productos, hacemos JOIN con detalle_documento y usamos
+      -- dd.total (línea-ítem) en vez de f.total (factura completa).
       metricas AS (
         SELECT
           f.customer_code,
@@ -140,11 +150,12 @@ exports.obtenerResumen = async (req, res) => {
           c.codigo_usuario_asignado_cliente                      AS seller_code,
           c.tiene_credito_cliente,
           COALESCE(tn.descripcion, 'SIN CLASIFICAR')             AS tipo_negocio,
-          f.total,
+          ${totalCol}                                             AS total,
           f.code                                                  AS factura_code,
           f.fecha_creacion,
           f.customer_address_code
         FROM facturas f
+        ${productJoin}
         LEFT JOIN clientes c          ON c.codigo_cliente = f.customer_code
         LEFT JOIN nombres_ordenes no  ON no.customer_code = f.customer_code
         LEFT JOIN tipos_negocio tn    ON tn.codigo = c.codigo_tipo_negocio
@@ -177,13 +188,14 @@ exports.obtenerResumen = async (req, res) => {
           ${havingBuscar}
       ),
       -- ── Unidades (join separado para evitar double-count)
+      -- Aplica el mismo filtro de producto/categoría para mantener coherencia con metricas.
       unidades AS (
         SELECT
           COALESCE(NULLIF(TRIM(c.identificacion_cliente), ''), f.customer_code)
             || '::' || COALESCE(f.company_id, 0)::text   AS group_key,
           COALESCE(SUM(dd.cantidad), 0)::bigint           AS total_unidades
         FROM facturas f
-        JOIN detalle_documento dd ON dd.documento_code = f.code
+        JOIN detalle_documento dd ON dd.documento_code = f.code ${detalleFilter}
         LEFT JOIN clientes c ON c.codigo_cliente = f.customer_code
         WHERE f.status IN (0,2,3,4,5)
           ${dateFilter}
