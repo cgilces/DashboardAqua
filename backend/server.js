@@ -120,6 +120,14 @@ require('./cron/tareasCron');
 // 🚀 START SERVER
 // ======================================================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`✅ API escuchando en puerto ${PORT}`);
+  // Ejecuta automáticamente los SQL idempotentes de backend/sql/
+  // (índices, migraciones simples). Seguro de re-ejecutar en cada deploy.
+  try {
+    const runStartupSql = require("./utils/runStartupSql");
+    await runStartupSql();
+  } catch (err) {
+    console.error("⚠ Error en runStartupSql:", err.message);
+  }
 });

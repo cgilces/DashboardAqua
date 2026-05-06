@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  UserPlus, ChevronDown, ChevronUp, X, CalendarDays, ArrowLeft, AlertCircle,
+  UserPlus, ChevronDown, ChevronUp, CalendarDays, ArrowLeft, AlertCircle, ChevronRight,
 } from "lucide-react";
+import { BsDownload } from "react-icons/bs";
+import toast from "react-hot-toast";
 import { API_BASE_URL } from "../../config";
+import { fetchAuth } from "../../utils/fetchAuth";
+import { exportExcel } from "../../utils/exportExcel";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────
 type CanalRow = {
@@ -95,7 +99,7 @@ export default function ClientesNuevos() {
       setCargando(true);
       try {
         const url = `${API_BASE_URL}/api/dashboard-clientes/clientes-nuevos?desde=${desde}&hasta=${hasta}`;
-        const res = await fetch(url, { signal: ctrl.signal });
+        const res = await fetchAuth(url, { signal: ctrl.signal });
         const json = await res.json();
         if (json.ok) {
           setCanales(json.canales || []);
@@ -156,14 +160,40 @@ export default function ClientesNuevos() {
               )}
             </h2>
             <p className="text-[11px] md:text-xs text-white/60">
-              Adquisición y retención temprana — período <span className="font-semibold text-white">{desde}</span> → <span className="font-semibold text-white">{hasta}</span>
+              Adquisición y retención temprana — período <span className="font-semibold text-white">{desde}</span> a <span className="font-semibold text-white">{hasta}</span>
             </p>
           </div>
         </div>
-        <button onClick={() => setExpandido(o => !o)}
-          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors">
-          {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
-        </button>
+        <div className="flex items-center gap-2">
+          {expandido && data.length > 0 && (
+            <button
+              onClick={() => {
+                exportExcel("clientes_nuevos", data.map((c, i) => ({
+                  "N°": i + 1,
+                  "Canal": c.canal,
+                  "RUC": c.ruc,
+                  "Cliente": c.nombre_cliente,
+                  "Ciudad": c.ciudad,
+                  "Vendedor": c.vendedor,
+                  "Primera compra": c.fecha_creacion,
+                  "Pedidos en período": c.pedidos_periodo,
+                  "Última compra": c.ultima_compra_periodo,
+                  "Facturado período": c.facturado_periodo,
+                  "Estado": c.estado,
+                  "Teléfono": c.telefono,
+                  "Email": c.email,
+                })), "ClientesNuevos");
+                toast.success(`Exportado ${data.length} clientes`);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs font-medium hover:bg-emerald-500/25 transition-colors">
+              <BsDownload size={12}/> Exportar
+            </button>
+          )}
+          <button onClick={() => setExpandido(o => !o)}
+            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors">
+            {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
+          </button>
+        </div>
       </div>
 
       {expandido && (
@@ -243,7 +273,7 @@ export default function ClientesNuevos() {
                         {/* Canal name */}
                         <div className="flex items-start justify-between gap-2">
                           <p className={`text-sm font-bold ${col.accent} truncate`}>{c.canal}</p>
-                          <span className="text-[10px] text-white/40 italic shrink-0">Ver clientes →</span>
+                          <span className="text-[10px] text-white/40 italic shrink-0 inline-flex items-center gap-0.5">Ver clientes <ChevronRight size={10}/></span>
                         </div>
 
                         {/* Total + facturación */}

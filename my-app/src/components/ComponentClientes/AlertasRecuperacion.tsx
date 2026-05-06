@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, Phone, MessageCircle, X, Clock, TrendingDown,
-  CheckCircle2, History, ChevronDown, ChevronUp, Users, DollarSign,
+  CheckCircle2, History, ChevronDown, ChevronUp, Users, DollarSign, Mail,
 } from "lucide-react";
+import toast from "react-hot-toast";
+import { BsDownload } from "react-icons/bs";
 import { API_BASE_URL } from "../../config";
-import { useAuth } from "../auth/AuthContext";
+import { fetchAuth } from "../../utils/fetchAuth";
+import { exportExcel } from "../../utils/exportExcel";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────
 type ClienteAlerta = {
@@ -78,8 +81,8 @@ function normalizarTel(t: string) {
 
 // ─── Componente principal ────────────────────────────────────────────────
 export default function AlertasRecuperacion() {
-  const { user } = useAuth();
-  const username = user?.username ?? "anonimo";
+  // Auth se aplica vía fetchAuth (Bearer token desde localStorage)
+  // y el backend toma el usuario del JWT.
 
   const [umbral, setUmbral] = useState<number>(15);
   const [expandido, setExpandido] = useState(true);
@@ -104,7 +107,7 @@ export default function AlertasRecuperacion() {
   const cargarAlertas = async () => {
     setCargando(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/dashboard-clientes/alertas-recuperacion?umbral=${umbral}`);
+      const res = await fetchAuth(`${API_BASE_URL}/api/dashboard-clientes/alertas-recuperacion?umbral=${umbral}`);
       const json = await res.json();
       if (json.ok) {
         setData(json.data || []);
@@ -126,7 +129,7 @@ export default function AlertasRecuperacion() {
     setNotas("");
     setCargandoHist(true);
     try {
-      const res = await fetch(
+      const res = await fetchAuth(
         `${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion/historial/${encodeURIComponent(c.group_key)}`
       );
       const json = await res.json();
@@ -143,14 +146,13 @@ export default function AlertasRecuperacion() {
     if (!clienteModal) return;
     setGuardando(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion`, {
+      const res = await fetchAuth(`${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // contactado_por se toma del JWT en el backend (seguridad)
         body: JSON.stringify({
           group_key:                    clienteModal.group_key,
           ruc:                          clienteModal.ruc,
           nombre_cliente:               clienteModal.nombre_cliente,
-          contactado_por:               username,
           resultado,
           notas:                        notas.trim() || null,
           dias_sin_compra_al_contactar: clienteModal.dias_sin_compra,
@@ -160,10 +162,11 @@ export default function AlertasRecuperacion() {
       if (json.ok) {
         setNotas("");
         setResultado("CONTACTADO");
+        toast.success("Contacto registrado");
         // Refresca historial y la lista principal
         await Promise.all([
           (async () => {
-            const r = await fetch(
+            const r = await fetchAuth(
               `${API_BASE_URL}/api/dashboard-clientes/contactos-recuperacion/historial/${encodeURIComponent(clienteModal.group_key)}`
             );
             const j = await r.json();
@@ -172,11 +175,11 @@ export default function AlertasRecuperacion() {
           cargarAlertas(),
         ]);
       } else {
-        alert("No se pudo registrar el contacto");
+        toast.error("No se pudo registrar el contacto");
       }
     } catch (err) {
       console.error(err);
-      alert("Error registrando contacto");
+      toast.error("Error de red registrando contacto");
     } finally {
       setGuardando(false);
     }
@@ -282,6 +285,32 @@ export default function AlertasRecuperacion() {
               <option value="">Todos los vendedores</option>
               {vendedoresOpts.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
+            <button
+              onClick={() => {
+                if (filtrados.length === 0) return;
+                exportExcel("alertas_recuperacion", filtrados.map((c, i) => ({
+                  "N°": i + 1,
+                  "RUC": c.ruc,
+                  "Cliente": c.nombre_cliente,
+                  "Ciudad": c.ciudad,
+                  "Tipo Negocio": c.tipo_negocio,
+                  "Vendedor": c.vendedor,
+                  "Última compra": c.ultima_compra,
+                  "Días sin compra": c.dias_sin_compra,
+                  "Promedio mensual": c.promedio_mensual,
+                  "Valor en riesgo": c.valor_en_riesgo,
+                  "Teléfono": c.telefono,
+                  "Email": c.email,
+                  "Tiene crédito": c.tiene_credito ? "Sí" : "No",
+                  "Último contacto": c.ultimo_contacto_fecha || "",
+                  "Resultado último contacto": c.ultimo_contacto_resultado || "",
+                })), "Alertas");
+                toast.success(`Exportado ${filtrados.length} clientes`);
+              }}
+              disabled={filtrados.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs font-medium hover:bg-emerald-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              <BsDownload size={12}/> Exportar
+            </button>
           </div>
 
           {/* Lista de candidatos */}
@@ -505,8 +534,8 @@ function ModalCliente({
               </a>
             )}
             {cliente.email && (
-              <a href={`mailto:${cliente.email}`} className="text-emerald-300 hover:underline">
-                ✉ {cliente.email}
+              <a href={`mailto:${cliente.email}`} className="text-emerald-300 hover:underline flex items-center gap-1">
+                <Mail size={12}/> {cliente.email}
               </a>
             )}
           </div>

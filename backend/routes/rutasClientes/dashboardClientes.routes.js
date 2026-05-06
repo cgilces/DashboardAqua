@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const ctrl = require("../../controllers/controllerClientes/dashboardClientes.controller");
+const { verificarToken } = require("../../middleware/auth.middleware");
+
+// Todas las rutas del dashboard de clientes requieren autenticación
+router.use(verificarToken);
 
 // GET KPIs + tabla principal (con filtros)
 router.get("/resumen", ctrl.obtenerResumen);
@@ -41,5 +45,17 @@ router.get("/clientes-nuevos", ctrl.obtenerClientesNuevos);
 
 // GET recovery rate por vendedor
 router.get("/recovery-rate", ctrl.obtenerRecoveryRate);
+
+// GET drill-down de una ruta específica (nuevos/perdidos/activos)
+router.get("/ruta-detalle", ctrl.obtenerDetalleRuta);
+
+// GET cohorte de retención (clientes nuevos por mes y % retención)
+router.get("/cohorte-retencion", ctrl.obtenerCohorteRetencion);
+
+// GET tendencia histórica de inactivos vs activos
+router.get("/tendencia-inactivos", ctrl.obtenerTendenciaInactivos);
+
+// GET productos recientes de un cliente (para WhatsApp inteligente)
+router.get("/productos-recientes/:codigo_cliente", ctrl.obtenerProductosRecientes);
 
 module.exports = router;

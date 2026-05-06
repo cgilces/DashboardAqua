@@ -742,17 +742,19 @@ exports.registrarContacto = async (req, res) => {
       group_key,
       ruc,
       nombre_cliente,
-      contactado_por,
       resultado,
       notas,
       dias_sin_compra_al_contactar,
     } = req.body || {};
 
-    if (!group_key || !contactado_por) {
-      return res.status(400).json({
-        ok: false,
-        message: 'group_key y contactado_por son requeridos',
-      });
+    // SEGURIDAD: contactado_por se toma del JWT, NO del body. Esto evita que
+    // alguien registre contactos a nombre de otro vendedor.
+    const contactado_por = req.user?.usuario || req.user?.username || null;
+    if (!contactado_por) {
+      return res.status(401).json({ ok: false, message: 'No autenticado' });
+    }
+    if (!group_key) {
+      return res.status(400).json({ ok: false, message: 'group_key requerido' });
     }
 
     const RESULTADOS_VALIDOS = [
@@ -915,6 +917,12 @@ exports.obtenerClientesMapa = async (req, res) => {
 
     const estadoFiltro = (req.query.estado || 'todos').toString().toUpperCase();
 
+    // Límite de puntos a renderizar en el mapa (evita congelar el navegador)
+    const limiteRaw = parseInt(req.query.limite, 10);
+    const limite    = Number.isFinite(limiteRaw) && limiteRaw > 0 && limiteRaw <= 10000
+      ? limiteRaw
+      : 2000;
+
     const replacements = { dias, ...filtro.replacements };
 
     const VENTANA_MESES = 6;
@@ -1011,17 +1019,36 @@ exports.obtenerClientesMapa = async (req, res) => {
       JOIN coords co              ON co.codigo_cliente = c.codigo_cliente
       WHERE co.lat IS NOT NULL
         AND co.lng IS NOT NULL
+        -- Filtro de coordenadas válidas para Ecuador continental + Galápagos
+        -- evita pins en África por errores de captura en Odoo (lat 0,0 ya se filtró arriba)
+        AND co.lat BETWEEN -5.5 AND 2.0
+        AND co.lng BETWEEN -92.0 AND -75.0
         AND (${filtroPrefijos})
     `;
 
-    const [rows] = await sequelize.query(sql, { replacements });
+    const [rowsAll] = await sequelize.query(sql, { replacements });
 
     // Filtrar por estado si se especifica
     const filtrados = estadoFiltro && estadoFiltro !== 'TODOS'
-      ? rows.filter(r => r.estado === estadoFiltro)
-      : rows;
+      ? rowsAll.filter(r => r.estado === estadoFiltro)
+      : rowsAll;
 
-    // KPIs por estado
+    // Ordenar por urgencia: PERDIDO > INACTIVO > RIESGO > NUEVO > ACTIVO > SIN_COMPRAS
+    // Tiebreaker: más días sin compra primero
+    const PRIORIDAD = { PERDIDO: 1, INACTIVO: 2, RIESGO: 3, NUEVO: 4, ACTIVO: 5, SIN_COMPRAS: 6 };
+    filtrados.sort((a, b) => {
+      const pa = PRIORIDAD[a.estado] ?? 9;
+      const pb = PRIORIDAD[b.estado] ?? 9;
+      if (pa !== pb) return pa - pb;
+      return Number(b.dias_sin_compra || 0) - Number(a.dias_sin_compra || 0);
+    });
+
+    // Truncar al límite (después del filtro y orden, garantiza que los más importantes pasan)
+    const totalDisponible = filtrados.length;
+    const truncado = totalDisponible > limite;
+    const data     = truncado ? filtrados.slice(0, limite) : filtrados;
+
+    // KPIs por estado (sobre el resultado total disponible, no truncado)
     const conteo = filtrados.reduce((acc, r) => {
       acc[r.estado] = (acc[r.estado] || 0) + 1;
       return acc;
@@ -1032,9 +1059,12 @@ exports.obtenerClientesMapa = async (req, res) => {
       dias,
       prefijos: filtro.etiqueta,
       estado: estadoFiltro,
-      total: filtrados.length,
+      total: data.length,
+      total_disponible: totalDisponible,
+      truncado,
+      limite,
       conteo,
-      data: filtrados,
+      data,
     });
   } catch (error) {
     console.error('❌ obtenerClientesMapa:', error);
@@ -1208,6 +1238,242 @@ exports.obtenerDeclieveConsumo = async (req, res) => {
   } catch (error) {
     console.error('❌ obtenerDeclieveConsumo:', error);
     return res.status(500).json({ ok: false, message: 'Error obteniendo declive de consumo' });
+  }
+};
+
+
+// ======================================================
+// GET /api/dashboard-clientes/ruta-detalle?ruta=R3&dias=60
+// Drill-down de SaludRutas: lista clientes nuevos y perdidos de una ruta específica.
+// ======================================================
+exports.obtenerDetalleRuta = async (req, res) => {
+  try {
+    const ruta = (req.query.ruta || '').toString().trim().toUpperCase();
+    if (!ruta) {
+      return res.status(400).json({ ok: false, message: 'ruta requerida' });
+    }
+    const diasRaw = parseInt(req.query.dias, 10);
+    const dias    = Number.isFinite(diasRaw) && diasRaw > 0 ? diasRaw : 60;
+    const VENTANA_MESES = 6;
+
+    const sql = `
+      WITH actividad AS (
+        SELECT
+          f.customer_code,
+          MAX(f.fecha_creacion)::date  AS ultima_compra,
+          MIN(f.fecha_creacion)::date  AS primera_compra,
+          SUM(CASE WHEN f.fecha_creacion >= CURRENT_DATE - INTERVAL '${VENTANA_MESES} months'
+                   THEN f.total ELSE 0 END)::numeric AS ventas_${VENTANA_MESES}m,
+          COUNT(DISTINCT CASE WHEN f.fecha_creacion >= CURRENT_DATE - INTERVAL '${VENTANA_MESES} months'
+                              THEN f.code END)::int  AS facturas_${VENTANA_MESES}m,
+          SUM(f.total)::numeric AS ventas_total,
+          COUNT(DISTINCT f.code)::int AS facturas_total
+        FROM facturas f
+        WHERE f.status IN (0,2,3,4,5)
+        GROUP BY f.customer_code
+      )
+      SELECT
+        c.codigo_cliente,
+        COALESCE(NULLIF(TRIM(c.identificacion_cliente), ''), '') AS ruc,
+        COALESCE(c.nombre_cliente, c.nombre_comercial_cliente, c.codigo_cliente) AS nombre_cliente,
+        COALESCE(NULLIF(TRIM(c.telefono_cliente), ''), '') AS telefono,
+        COALESCE(c.ciudad_cliente, '') AS ciudad,
+        COALESCE(tn.descripcion, 'SIN CLASIFICAR') AS tipo_negocio,
+        a.ultima_compra,
+        a.primera_compra,
+        a.ventas_total::numeric,
+        a.facturas_total,
+        ROUND((a.ventas_${VENTANA_MESES}m / ${VENTANA_MESES})::numeric, 2) AS promedio_mensual,
+        (CURRENT_DATE - a.ultima_compra)::int AS dias_sin_compra,
+        CASE
+          WHEN (CURRENT_DATE - a.primera_compra) <= :dias                                       THEN 'NUEVO'
+          WHEN (CURRENT_DATE - a.ultima_compra) >= :dias AND a.facturas_${VENTANA_MESES}m >= 2 THEN 'PERDIDO'
+          WHEN (CURRENT_DATE - a.ultima_compra) <= 30                                           THEN 'ACTIVO'
+          ELSE 'OTRO'
+        END AS clasificacion
+      FROM clientes c
+      JOIN actividad a ON a.customer_code = c.codigo_cliente
+      LEFT JOIN tipos_negocio tn ON tn.codigo = c.codigo_tipo_negocio
+      WHERE UPPER(c.codigo_usuario_asignado_cliente) = :ruta
+      ORDER BY a.ultima_compra DESC NULLS LAST
+    `;
+    const [rows] = await sequelize.query(sql, { replacements: { ruta, dias } });
+
+    const nuevos   = rows.filter(r => r.clasificacion === 'NUEVO');
+    const perdidos = rows.filter(r => r.clasificacion === 'PERDIDO');
+    const activos  = rows.filter(r => r.clasificacion === 'ACTIVO');
+
+    return res.json({ ok: true, ruta, dias, nuevos, perdidos, activos, total: rows.length });
+  } catch (err) {
+    console.error('❌ obtenerDetalleRuta:', err);
+    return res.status(500).json({ ok: false, message: 'Error obteniendo detalle de ruta' });
+  }
+};
+
+
+// ======================================================
+// GET /api/dashboard-clientes/cohorte-retencion?meses=6
+// Cohorte: por cada mes de los últimos N meses, calcula:
+//   - cuantos clientes nuevos hubo (primera factura en ese mes)
+//   - cuantos seguían comprando 30, 60 y 90 días después
+// ======================================================
+exports.obtenerCohorteRetencion = async (req, res) => {
+  try {
+    const mesesRaw = parseInt(req.query.meses, 10);
+    const meses    = Number.isFinite(mesesRaw) && mesesRaw > 0 && mesesRaw <= 12 ? mesesRaw : 6;
+
+    const sql = `
+      WITH primeras AS (
+        SELECT
+          f.customer_code,
+          MIN(f.fecha_creacion)::date AS primera_fecha
+        FROM facturas f
+        WHERE f.status IN (0,2,3,4,5)
+        GROUP BY f.customer_code
+      ),
+      cohorts AS (
+        SELECT
+          DATE_TRUNC('month', primera_fecha)::date AS cohorte,
+          customer_code,
+          primera_fecha
+        FROM primeras
+        WHERE primera_fecha >= DATE_TRUNC('month', CURRENT_DATE) - (:meses || ' months')::interval
+          AND primera_fecha < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+      )
+      SELECT
+        TO_CHAR(c.cohorte, 'YYYY-MM') AS mes,
+        COUNT(DISTINCT c.customer_code)::int AS nuevos,
+        COUNT(DISTINCT c.customer_code) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM facturas f2
+            WHERE f2.customer_code = c.customer_code
+              AND f2.status IN (0,2,3,4,5)
+              AND f2.fecha_creacion::date BETWEEN c.primera_fecha + 1 AND c.primera_fecha + 30
+          )
+        )::int AS retenidos_30d,
+        COUNT(DISTINCT c.customer_code) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM facturas f2
+            WHERE f2.customer_code = c.customer_code
+              AND f2.status IN (0,2,3,4,5)
+              AND f2.fecha_creacion::date BETWEEN c.primera_fecha + 1 AND c.primera_fecha + 60
+          )
+        )::int AS retenidos_60d,
+        COUNT(DISTINCT c.customer_code) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM facturas f2
+            WHERE f2.customer_code = c.customer_code
+              AND f2.status IN (0,2,3,4,5)
+              AND f2.fecha_creacion::date BETWEEN c.primera_fecha + 1 AND c.primera_fecha + 90
+          )
+        )::int AS retenidos_90d
+      FROM cohorts c
+      GROUP BY c.cohorte
+      ORDER BY c.cohorte
+    `;
+    const [rows] = await sequelize.query(sql, { replacements: { meses } });
+
+    const conPorcentajes = rows.map(r => ({
+      mes: r.mes,
+      nuevos: r.nuevos,
+      retenidos_30d: r.retenidos_30d,
+      retenidos_60d: r.retenidos_60d,
+      retenidos_90d: r.retenidos_90d,
+      pct_30d: r.nuevos > 0 ? Number((r.retenidos_30d / r.nuevos * 100).toFixed(1)) : 0,
+      pct_60d: r.nuevos > 0 ? Number((r.retenidos_60d / r.nuevos * 100).toFixed(1)) : 0,
+      pct_90d: r.nuevos > 0 ? Number((r.retenidos_90d / r.nuevos * 100).toFixed(1)) : 0,
+    }));
+    return res.json({ ok: true, meses, data: conPorcentajes });
+  } catch (err) {
+    console.error('❌ obtenerCohorteRetencion:', err);
+    return res.status(500).json({ ok: false, message: 'Error obteniendo cohorte de retención' });
+  }
+};
+
+
+// ======================================================
+// GET /api/dashboard-clientes/tendencia-inactivos?meses=6
+// Snapshot por mes: cuántos clientes activos vs inactivos había al cierre de cada mes.
+// Activo = al menos una factura en los últimos 30 días previos al cierre.
+// ======================================================
+exports.obtenerTendenciaInactivos = async (req, res) => {
+  try {
+    const mesesRaw = parseInt(req.query.meses, 10);
+    const meses    = Number.isFinite(mesesRaw) && mesesRaw > 0 && mesesRaw <= 12 ? mesesRaw : 6;
+
+    // Pre-agrega max/min fecha por cliente (una sola vez), luego cruza con cada mes.
+    // Mucho más rápido que LEFT JOIN sobre todas las facturas + EXISTS por mes.
+    const sql = `
+      WITH meses_serie AS (
+        SELECT (DATE_TRUNC('month', CURRENT_DATE) - (n || ' months')::interval + INTERVAL '1 month' - INTERVAL '1 day')::date AS cierre_mes
+        FROM generate_series(0, :meses - 1) AS n
+      ),
+      actividad_cliente AS (
+        SELECT
+          customer_code,
+          MIN(fecha_creacion::date) AS primera,
+          MAX(fecha_creacion::date) AS ultima
+        FROM facturas
+        WHERE status IN (0,2,3,4,5)
+        GROUP BY customer_code
+      )
+      SELECT
+        TO_CHAR(ms.cierre_mes, 'YYYY-MM') AS mes,
+        COUNT(*) FILTER (
+          WHERE a.ultima BETWEEN ms.cierre_mes - 30 AND ms.cierre_mes
+        )::int AS activos,
+        COUNT(*) FILTER (
+          WHERE a.ultima BETWEEN ms.cierre_mes - 60 AND ms.cierre_mes - 31
+        )::int AS en_riesgo,
+        COUNT(*) FILTER (
+          WHERE a.ultima < ms.cierre_mes - 60
+            AND a.primera <= ms.cierre_mes - 60
+            AND a.ultima >= ms.cierre_mes - 365
+        )::int AS inactivos
+      FROM meses_serie ms
+      CROSS JOIN actividad_cliente a
+      GROUP BY ms.cierre_mes
+      ORDER BY ms.cierre_mes ASC
+    `;
+    const [rows] = await sequelize.query(sql, { replacements: { meses } });
+    return res.json({ ok: true, meses, data: rows });
+  } catch (err) {
+    console.error('❌ obtenerTendenciaInactivos:', err);
+    return res.status(500).json({ ok: false, message: 'Error obteniendo tendencia' });
+  }
+};
+
+
+// ======================================================
+// GET /api/dashboard-clientes/productos-recientes/:codigo_cliente
+// Devuelve los top 3 productos que ese cliente compraba en los últimos 6 meses
+// (para construir mensaje WhatsApp personalizado).
+// ======================================================
+exports.obtenerProductosRecientes = async (req, res) => {
+  try {
+    const { codigo_cliente } = req.params;
+    if (!codigo_cliente) return res.status(400).json({ ok: false, message: 'codigo_cliente requerido' });
+
+    const sql = `
+      SELECT
+        dd.descripcion AS producto,
+        SUM(dd.cantidad)::numeric AS unidades,
+        COUNT(DISTINCT f.code)::int AS pedidos
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.customer_code = :codigo_cliente
+        AND f.status IN (0,2,3,4,5)
+        AND f.fecha_creacion >= CURRENT_DATE - INTERVAL '6 months'
+        AND COALESCE(dd.descripcion, '') <> ''
+      GROUP BY dd.descripcion
+      ORDER BY unidades DESC NULLS LAST
+      LIMIT 3
+    `;
+    const [productos] = await sequelize.query(sql, { replacements: { codigo_cliente } });
+    return res.json({ ok: true, productos });
+  } catch (err) {
+    console.error('❌ obtenerProductosRecientes:', err);
+    return res.status(500).json({ ok: false, message: 'Error obteniendo productos' });
   }
 };
 
