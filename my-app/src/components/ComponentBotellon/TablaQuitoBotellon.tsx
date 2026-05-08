@@ -41,7 +41,7 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
       <div className="flex flex-col gap-3 md:gap-4 md:flex-row md:items-center md:justify-between px-3 sm:px-4 py-3 sm:py-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-base sm:text-lg md:text-xl font-bold text-green-300 leading-tight">QUITO</h2>
-          <p className="text-xs sm:text-sm text-gray-300">Botellones — Canal Quito (MobilVendor U1 + Odoo)</p>
+          <p className="text-xs sm:text-sm text-gray-300">Botellones — Canal Quito</p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-2 sm:gap-3 items-stretch">

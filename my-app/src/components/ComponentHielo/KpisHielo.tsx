@@ -70,7 +70,7 @@ const KpisHielo: React.FC<Props> = ({ kpis, comparativa, totalProyeccion, totalP
     <div className="mb-10">
 
       {/* ── GRÁFICO TENDENCIA 6 MESES ────────────────────────── */}
-      <GraficoTendencia datos={tendencia6Meses ?? []} subtitulo="MobilVendor + Odoo" anioFiltro={anioFiltro} mesFiltro={mesFiltro} />
+      <GraficoTendencia datos={tendencia6Meses ?? []} subtitulo="Tendencia" anioFiltro={anioFiltro} mesFiltro={mesFiltro} />
 
       <h3 className="text-sm text-emerald-300 mb-4 uppercase px-2 tracking-wider">
         Total Hielo

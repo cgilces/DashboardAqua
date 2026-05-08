@@ -243,150 +243,150 @@ export default function MapaClientes() {
   // Para el badge de conteo en cada botón de estado
   const total = data.length;
 
-  // return (
-  //   <div className="mb-6 bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl shadow-2xl overflow-hidden">
-  //     {/* Header */}
-  //     <div className="px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#046C5E]/40 bg-gradient-to-r from-purple-900/20 to-transparent">
-  //       <div className="flex items-center gap-3 min-w-0">
-  //         <div className="bg-purple-500/20 border border-purple-500/40 rounded-xl p-2 shrink-0">
-  //           <MapIcon className="text-purple-400" size={22} />
-  //         </div>
-  //         <div className="min-w-0">
-  //           <h2 className="text-base md:text-lg font-bold text-white flex items-center gap-2 flex-wrap">
-  //             Mapa Geográfico de Clientes
-  //             {cargando && (
-  //               <span className="text-xs text-emerald-400 inline-flex items-center gap-1">
-  //                 <span className="w-3 h-3 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"/>
-  //                 cargando…
-  //               </span>
-  //             )}
-  //           </h2>
-  //           <p className="text-[11px] md:text-xs text-white/60">
-  //             Visualización geográfica de clientes — <span className="font-semibold text-white">{total}</span> puntos en el mapa
-  //           </p>
-  //         </div>
-  //       </div>
-  //       <button
-  //         onClick={() => setExpandido(o => !o)}
-  //         className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors"
-  //       >
-  //         {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
-  //       </button>
-  //     </div>
+  return (
+    <div className="mb-6 bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-2xl shadow-2xl overflow-hidden">
+      {/* Header */}
+      <div className="px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#046C5E]/40 bg-gradient-to-r from-purple-900/20 to-transparent">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-purple-500/20 border border-purple-500/40 rounded-xl p-2 shrink-0">
+            <MapIcon className="text-purple-400" size={22} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-base md:text-lg font-bold text-white flex items-center gap-2 flex-wrap">
+              Mapa Geográfico de Clientes
+              {cargando && (
+                <span className="text-xs text-emerald-400 inline-flex items-center gap-1">
+                  <span className="w-3 h-3 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"/>
+                  cargando…
+                </span>
+              )}
+            </h2>
+            <p className="text-[11px] md:text-xs text-white/60">
+              Visualización geográfica de clientes — <span className="font-semibold text-white">{total}</span> puntos en el mapa
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setExpandido(o => !o)}
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors"
+        >
+          {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
+        </button>
+      </div>
 
-  //     {expandido && (
-  //       <div className="p-4 md:p-6 space-y-4">
-  //         {/* Filtros */}
-  //         <div className="flex flex-col gap-3">
-  //           {/* Estado pills */}
-  //           <div className="flex items-center gap-1.5 flex-wrap">
-  //             <span className="text-[10px] uppercase tracking-widest text-white/40 font-semibold mr-1">Estado:</span>
-  //             {ESTADOS.map(e => (
-  //               <button key={e.id} onClick={() => setEstado(e.id)}
-  //                 className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5 ${
-  //                   estado === e.id
-  //                     ? "border-white/40 text-white"
-  //                     : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
-  //                 }`}
-  //                 style={estado === e.id ? { backgroundColor: `${e.color}33`, borderColor: e.color } : {}}>
-  //                 <span className="w-2 h-2 rounded-full" style={{ background: e.color }} />
-  //                 {e.label}
-  //                 {conteo[e.id] != null && estado !== "TODOS" && e.id !== "TODOS" && (
-  //                   <span className="text-[10px] opacity-70">({conteo[e.id]})</span>
-  //                 )}
-  //               </button>
-  //             ))}
-  //           </div>
+      {expandido && (
+        <div className="p-4 md:p-6 space-y-4">
+          {/* Filtros */}
+          <div className="flex flex-col gap-3">
+            {/* Estado pills */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] uppercase tracking-widest text-white/40 font-semibold mr-1">Estado:</span>
+              {ESTADOS.map(e => (
+                <button key={e.id} onClick={() => setEstado(e.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                    estado === e.id
+                      ? "border-white/40 text-white"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                  }`}
+                  style={estado === e.id ? { backgroundColor: `${e.color}33`, borderColor: e.color } : {}}>
+                  <span className="w-2 h-2 rounded-full" style={{ background: e.color }} />
+                  {e.label}
+                  {conteo[e.id] != null && estado !== "TODOS" && e.id !== "TODOS" && (
+                    <span className="text-[10px] opacity-70">({conteo[e.id]})</span>
+                  )}
+                </button>
+              ))}
+            </div>
 
-  //           {/* Canal pills */}
-  //           <div className="flex items-center gap-1.5 flex-wrap">
-  //             <span className="text-[10px] uppercase tracking-widest text-white/40 font-semibold mr-1">Canal:</span>
-  //             {PRESET_PREFIJOS.map(p => (
-  //               <button key={p.id} onClick={() => setPrefijos(p.value)}
-  //                 className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-  //                   prefijos === p.value
-  //                     ? "bg-blue-500/30 border-blue-500 text-blue-200"
-  //                     : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white hover:border-blue-500/40"
-  //                 }`}>
-  //                 {p.label}
-  //               </button>
-  //             ))}
-  //             <span className="text-[10px] uppercase tracking-widest text-white/40 font-semibold ml-2 mr-1">Umbral:</span>
-  //             {[15, 30, 60, 90].map(d => (
-  //               <button key={d} onClick={() => setDias(d)}
-  //                 className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-  //                   dias === d
-  //                     ? "bg-yellow-500/25 border-yellow-500/50 text-yellow-200"
-  //                     : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
-  //                 }`}>
-  //                 {d}d
-  //               </button>
-  //             ))}
-  //           </div>
-  //         </div>
+            {/* Canal pills */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] uppercase tracking-widest text-white/40 font-semibold mr-1">Canal:</span>
+              {PRESET_PREFIJOS.map(p => (
+                <button key={p.id} onClick={() => setPrefijos(p.value)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                    prefijos === p.value
+                      ? "bg-blue-500/30 border-blue-500 text-blue-200"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white hover:border-blue-500/40"
+                  }`}>
+                  {p.label}
+                </button>
+              ))}
+              <span className="text-[10px] uppercase tracking-widest text-white/40 font-semibold ml-2 mr-1">Umbral:</span>
+              {[15, 30, 60, 90].map(d => (
+                <button key={d} onClick={() => setDias(d)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                    dias === d
+                      ? "bg-yellow-500/25 border-yellow-500/50 text-yellow-200"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                  }`}>
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
 
-  //         {/* Leyenda + total + selector límite */}
-  //         <div className="flex items-center justify-between flex-wrap gap-2 text-[11px] text-white/60">
-  //           <div className="flex items-center gap-3 flex-wrap">
-  //             {ESTADOS.filter(e => e.id !== "TODOS").map(e => (
-  //               <span key={e.id} className="inline-flex items-center gap-1">
-  //                 <span className="w-2.5 h-2.5 rounded-full" style={{ background: e.color }}/>
-  //                 {e.label}
-  //               </span>
-  //             ))}
-  //           </div>
-  //           <div className="flex items-center gap-2">
-  //             <label className="text-white/50">Límite:</label>
-  //             <select value={limite} onChange={e => setLimite(Number(e.target.value))}
-  //               className="bg-[#013d32] border border-[#046C5E] rounded px-2 py-0.5 text-[11px] text-white focus:outline-none">
-  //               <option value={500}>500</option>
-  //               <option value={1000}>1000</option>
-  //               <option value={2000}>2000</option>
-  //               <option value={5000}>5000</option>
-  //             </select>
-  //           </div>
-  //         </div>
+          {/* Leyenda + total + selector límite */}
+          <div className="flex items-center justify-between flex-wrap gap-2 text-[11px] text-white/60">
+            <div className="flex items-center gap-3 flex-wrap">
+              {ESTADOS.filter(e => e.id !== "TODOS").map(e => (
+                <span key={e.id} className="inline-flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: e.color }}/>
+                  {e.label}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-white/50">Límite:</label>
+              <select value={limite} onChange={e => setLimite(Number(e.target.value))}
+                className="bg-[#013d32] border border-[#046C5E] rounded px-2 py-0.5 text-[11px] text-white focus:outline-none">
+                <option value={500}>500</option>
+                <option value={1000}>1000</option>
+                <option value={2000}>2000</option>
+                <option value={5000}>5000</option>
+              </select>
+            </div>
+          </div>
 
-  //         {/* Indicador de truncado */}
-  //         {truncado && !cargando && (
-  //           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 text-[11px] text-yellow-200/90 flex items-start gap-2">
-  //             <AlertTriangle size={14} className="shrink-0 mt-0.5"/>
-  //             <span>
-  //               Mostrando {data.length.toLocaleString("es-EC")} de {totalDisponible.toLocaleString("es-EC")} clientes (los más críticos primero).
-  //               Sube el límite o filtra por estado para ver más.
-  //             </span>
-  //           </div>
-  //         )}
+          {/* Indicador de truncado */}
+          {truncado && !cargando && (
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 text-[11px] text-yellow-200/90 flex items-start gap-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5"/>
+              <span>
+                Mostrando {data.length.toLocaleString("es-EC")} de {totalDisponible.toLocaleString("es-EC")} clientes (los más críticos primero).
+                Sube el límite o filtra por estado para ver más.
+              </span>
+            </div>
+          )}
 
-  //         {/* Mapa — preferCanvas=true mejora performance con muchos markers */}
-  //         <div className="rounded-xl overflow-hidden border border-[#046C5E]/40 bg-[#011f1a]" style={{ height: 520 }}>
-  //           <MapContainer
-  //             center={centroDefault}
-  //             zoom={7}
-  //             scrollWheelZoom
-  //             preferCanvas
-  //             className="h-full w-full"
-  //             style={{ background: "#011f1a", height: "100%", width: "100%" }}
-  //           >
-  //             <TileLayer
-  //               attribution='&copy; <a href="https://osm.org">OpenStreetMap</a>'
-  //               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-  //             />
-  //             <AutoResize />
-  //             <AjustarViewport puntos={data} />
-  //             <CapaCluster puntos={data} />
-  //           </MapContainer>
-  //         </div>
+          {/* Mapa — preferCanvas=true mejora performance con muchos markers */}
+          <div className="rounded-xl overflow-hidden border border-[#046C5E]/40 bg-[#011f1a]" style={{ height: 520 }}>
+            <MapContainer
+              center={centroDefault}
+              zoom={7}
+              scrollWheelZoom
+              preferCanvas
+              className="h-full w-full"
+              style={{ background: "#011f1a", height: "100%", width: "100%" }}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://osm.org">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <AutoResize />
+              <AjustarViewport puntos={data} />
+              <CapaCluster puntos={data} />
+            </MapContainer>
+          </div>
 
-  //         {data.length === 0 && !cargando && (
-  //           <p className="text-center text-white/40 italic text-sm py-2">
-  //             No hay clientes con coordenadas para los filtros seleccionados
-  //           </p>
-  //         )}
-  //       </div>
-  //     )}
-  //   </div>
-  // );
+          {data.length === 0 && !cargando && (
+            <p className="text-center text-white/40 italic text-sm py-2">
+              No hay clientes con coordenadas para los filtros seleccionados
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Popup ────────────────────────────────────────────────────────────────

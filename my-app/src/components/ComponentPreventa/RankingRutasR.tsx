@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../components/auth/AuthContext";
 import { BsDownload, BsGear } from "react-icons/bs";
+import ImportarMetasBoton from "../common/ImportarMetasBoton";
 
 const RankingRutasR = ({
   data,
@@ -210,6 +211,7 @@ const RankingRutasInner = ({
               <span>Metas</span>
             </button>
           )}
+          {isAdmin && <ImportarMetasBoton />}
           {isAdmin && (
             <button
               onClick={exportarTablaExcel}

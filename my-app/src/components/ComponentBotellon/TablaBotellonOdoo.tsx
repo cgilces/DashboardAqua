@@ -172,7 +172,7 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
 
       const ws = XLSX.utils.json_to_sheet([]);
       XLSX.utils.sheet_add_aoa(ws, [
-        [`VENTAS BOTELLÓN - RUTAS EMPRESA (ODOO) - ${mes}/${anio}`],
+        [`VENTAS BOTELLÓN - RUTAS EMPRESA - ${mes}/${anio}`],
         [],
       ], { origin: "A1" });
       XLSX.utils.sheet_add_json(ws, rows, { origin: "A3" });
@@ -184,7 +184,7 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
       }));
 
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "BotellonOdoo");
+      XLSX.utils.book_append_sheet(wb, ws, "Botellon");
       XLSX.writeFile(wb, `botellon_odoo_${mes}_${anio}.xlsx`, { compression: true });
     } catch (err) {
       console.error("Error exportando Excel:", err);
@@ -196,7 +196,7 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
     return (
       <div className="flex justify-center items-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-[#046C5E]" />
-        <span className="ml-3 text-gray-400">Cargando botellones Odoo...</span>
+        <span className="ml-3 text-gray-400">Cargando botellones...</span>
       </div>
     );
 
@@ -233,7 +233,7 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
         <div>
           <h2 className="text-lg md:text-xl font-bold text-blue-300">
-            <BsDroplet className="inline mr-1 text-blue-300" size={16} /> BOTELLÓN — RUTAS EMPRESA (ODOO)
+            <BsDroplet className="inline mr-1 text-blue-300" size={16} /> BOTELLÓN — RUTAS EMPRESA
           </h2>
           {/* <p className="text-xs text-gray-400 mt-1">
             {esMesActual

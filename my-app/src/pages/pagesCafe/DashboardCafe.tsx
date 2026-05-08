@@ -43,7 +43,7 @@ const DashboardCafe: React.FC = () => {
             </div>
             <div>
               <h1 className="text-xl md:text-3xl font-bold tracking-wide">DASHBOARD CAFÉ</h1>
-              <p className="text-sm text-gray-300">IIBC S.A. — Facturación Odoo</p>
+              <p className="text-sm text-gray-300">IIBC S.A. — Facturación</p>
             </div>
           </div>
 

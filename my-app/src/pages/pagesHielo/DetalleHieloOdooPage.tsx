@@ -345,7 +345,7 @@ const DetalleHieloOdooPage: React.FC = () => {
               ← {clienteSeleccionado ? "Volver a clientes" : "Volver"}
             </button>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-5 flex-wrap">
-              <span>{clienteSeleccionado ? clienteNombre : "HIELO ODOO — Clientes"}</span>
+              <span>{clienteSeleccionado ? clienteNombre : "HIELO — Clientes"}</span>
               {clienteSeleccionado && (
                 <span className="inline-flex items-center px-4 py-1.5 rounded-full text-base md:text-lg font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 whitespace-nowrap tracking-wide">
                   Hielo

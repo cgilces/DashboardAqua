@@ -47,12 +47,12 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
     setCargando(true);
     setError(null);
     fetch(`${API_BASE_URL}/api/odoo/descartable-odoo?anio=${anio}&mes=${mes}`)
-      .then(res => { if (!res.ok) throw new Error("Error Descartable Odoo"); return res.json(); })
+      .then(res => { if (!res.ok) throw new Error("Error Descartable"); return res.json(); })
       .then((data: DatosDescartableOdoo) => {
         setDatos(data);
         if (onTotalesLoaded) {
           onTotalesLoaded({
-            canal: "EMPRESA DESCARTABLE ODOO",
+            canal: "EMPRESA DESCARTABLE",
             monto: data.periodo.esMesActual ? data.totales.proyeccion : data.totales.dolares,
             montoReal: data.totales.dolares,
             mesAnterior: data.totales.mes_anterior.dolares,
@@ -70,7 +70,7 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
     return (
       <div className="flex justify-center items-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-[#046C5E]" />
-        <span className="ml-3 text-gray-400">Cargando datos Descartable Odoo...</span>
+        <span className="ml-3 text-gray-400">Cargando datos Descartable...</span>
       </div>
     );
 
@@ -97,7 +97,7 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
     if (!datos) return;
     try {
       const row = {
-        "Canal"          : "EMPRESA DESCARTABLE ODOO",
+        "Canal"          : "EMPRESA DESCARTABLE",
         "Unidades"       : fmtInt(totales.unidades),
         "Dólares $"      : fmt(totales.dolares),
         "Proyección"     : fmt(totales.proyeccion),
@@ -107,10 +107,10 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
         "Órdenes"        : totales.cant_ordenes,
       };
       const ws = XLSX.utils.json_to_sheet([]);
-      XLSX.utils.sheet_add_aoa(ws, [[`DESCARTABLE ODOO — VENTAS - ${mes}/${anio}`], []], { origin: "A1" });
+      XLSX.utils.sheet_add_aoa(ws, [[`DESCARTABLE — VENTAS - ${mes}/${anio}`], []], { origin: "A1" });
       XLSX.utils.sheet_add_json(ws, [row], { origin: "A3" });
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "DescartableOdoo");
+      XLSX.utils.book_append_sheet(wb, ws, "Descartable");
       XLSX.writeFile(wb, `descartable_odoo_${mes}_${anio}.xlsx`, { compression: true });
     } catch (err) {
       console.error("Error exportando Excel:", err);
@@ -123,7 +123,7 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
       {/* ── Encabezado con KPIs ──────────────────────────────── */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
         <h2 className="text-lg md:text-xl font-bold text-blue-300">
-          DESCARTABLE — RUTAS EMPRESA (ODOO)
+          DESCARTABLE — RUTAS EMPRESA
         </h2>
 
         <div className="flex gap-3 flex-wrap items-center">
@@ -179,7 +179,7 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
             className="bg-[#013d32] cursor-pointer hover:bg-[#025940] border-l-4 border-transparent hover:border-green-400 transition-all duration-200"
           >
             <td className="px-4 py-3 font-bold text-blue-300">
-              EMPRESA DESCARTABLE — ODOO
+              EMPRESA DESCARTABLE
               <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
             </td>
 

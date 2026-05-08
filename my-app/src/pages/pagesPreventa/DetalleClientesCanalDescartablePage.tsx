@@ -29,11 +29,11 @@ const CANAL_LABELS: Record<string, string> = {
   vip:              "VIP",
   mayorista:        "Mayorista",
   empresas:         "Empresas",
-  moderno:          "ODOO · Moderno",
-  distribuidores:   "ODOO · Distribuidores",
-  quito:            "ODOO · Quito",
-  "empresas-odoo":  "ODOO · Empresas",
-  "domicilio-odoo": "ODOO · Domicilio",
+  moderno:          "Moderno",
+  distribuidores:   "Distribuidores",
+  quito:            "Quito",
+  "empresas-odoo":  "Empresas",
+  "domicilio-odoo": "Domicilio",
 };
 
 interface Cliente {
@@ -422,7 +422,7 @@ export default function DetalleClientesCanalDescartablePage() {
                 : <>Clientes {canalLabel} — Descartable
                     {esVip && fuenteSeleccionada && (
                       <span className="ml-2 text-base font-normal text-emerald-300">
-                        · {fuenteSeleccionada === "odoo" ? "ODOO Moderno" : "Mobilvendor VIP"}
+                        · {fuenteSeleccionada === "odoo" ? "Moderno" : "VIP"}
                       </span>
                     )}
                     {esVip && tipoSeleccionado && tipoSeleccionado !== "TODOS" && (
@@ -555,8 +555,8 @@ export default function DetalleClientesCanalDescartablePage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 mb-8">
                   {/* Cards de fuente (Mobilvendor VIP / ODOO Moderno) — solo al nivel top */}
                   {fuentesDisponibles.length > 1 && !fuenteSeleccionada && [
-                    { fuente: "mobilvendor", label: "Mobilvendor VIP", badge: "Mobilvendor", borderClass: "border-blue-500/40 hover:border-blue-400/70",   badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/40" },
-                    { fuente: "odoo",        label: "ODOO Moderno",    badge: "ODOO",        borderClass: "border-purple-500/40 hover:border-purple-400/70", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/40" },
+                    { fuente: "mobilvendor", label: "VIP",     badge: "Preventa", borderClass: "border-blue-500/40 hover:border-blue-400/70",   badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/40" },
+                    { fuente: "odoo",        label: "Moderno", badge: "Externo",  borderClass: "border-purple-500/40 hover:border-purple-400/70", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/40" },
                   ].map(({ fuente, label, badge, borderClass, badgeClass }) => {
                     const cls      = clientes.filter(c => c.fuente === fuente);
                     const monto    = cls.reduce((a, c) => a + c.consumo_actual,   0);
@@ -888,8 +888,8 @@ export default function DetalleClientesCanalDescartablePage() {
                                 </span>
                                 {esVip && (
                                   c.fuente === "odoo"
-                                    ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">ODOO</span>
-                                    : <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40">Mobil</span>
+                                    ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">Externo</span>
+                                    : <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40">Preventa</span>
                                 )}
                               </div>
                             </div>
@@ -1122,8 +1122,8 @@ export default function DetalleClientesCanalDescartablePage() {
                                 {esVip && (
                                   <td className="px-3 py-2 text-center">
                                     {c.fuente === "odoo"
-                                      ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">ODOO</span>
-                                      : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40">Mobil</span>
+                                      ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">Externo</span>
+                                      : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40">Preventa</span>
                                     }
                                   </td>
                                 )}

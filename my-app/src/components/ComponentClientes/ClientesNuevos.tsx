@@ -203,7 +203,7 @@ export default function ClientesNuevos() {
             <AlertCircle size={14} className="shrink-0 mt-0.5"/>
             <div>
               <span className="font-semibold">Nota sobre fuente de datos:</span> "Cliente nuevo" se calcula por <span className="underline">fecha de primera factura</span> en el rango (no por <code>fecha_creacion_cliente</code> que se reescribe en cada sync).
-              Canal usa <span className="underline">tipo de negocio</span> (cobertura ~58%) hasta que <code>codigo_subcanal</code> esté limpio en Odoo (hoy 22%).
+              Canal usa <span className="underline">tipo de negocio</span> (cobertura ~58%) hasta que <code>codigo_subcanal</code> esté limpio (hoy 22%).
             </div>
           </div>
 

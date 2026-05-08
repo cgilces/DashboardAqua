@@ -346,7 +346,7 @@ export default function DashboardPreventa() {
               odooArr.forEach((o: any) => {
                 if (o.canal === "Domicilio" || o.canal === "Moderno") return;
                 cards.push({
-                  canal: `ODOO · ${o.canal}`,
+                  canal: o.canal,
                   _slug: SLUG_ODOO[o.canal] ?? (o.canal || "").toLowerCase(),
                   monto: Number(o.proyeccion ?? o.total_imponible ?? 0),
                   montoReal: Number(o.total_imponible ?? 0),

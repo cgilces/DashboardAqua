@@ -54,54 +54,54 @@ export default function AnaliticaInactivos() {
     return () => ctrl.abort();
   }, [expandido]);
 
-  // return (
-  //   <div className="mb-6 bg-gradient-to-br from-[#1a1f2c] via-[#0f1620] to-[#012E24] border border-violet-500/30 rounded-2xl shadow-2xl overflow-hidden">
-  //     <div className="px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-violet-500/20 bg-gradient-to-r from-violet-900/30 to-transparent">
-  //       <div className="flex items-center gap-3 min-w-0">
-  //         <div className="bg-violet-500/20 border border-violet-500/40 rounded-xl p-2 shrink-0">
-  //           <LineChartIcon className="text-violet-400" size={22}/>
-  //         </div>
-  //         <div>
-  //           <h2 className="text-base md:text-lg font-bold text-white">Analítica histórica</h2>
-  //           <p className="text-[11px] md:text-xs text-white/60">
-  //             Tendencia de activos vs inactivos · Cohortes de retención por mes
-  //           </p>
-  //         </div>
-  //       </div>
-  //       <button onClick={() => setExpandido(o => !o)}
-  //         className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors">
-  //         {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
-  //       </button>
-  //     </div>
+  return (
+    <div className="mb-6 bg-gradient-to-br from-[#1a1f2c] via-[#0f1620] to-[#012E24] border border-violet-500/30 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-violet-500/20 bg-gradient-to-r from-violet-900/30 to-transparent">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-violet-500/20 border border-violet-500/40 rounded-xl p-2 shrink-0">
+            <LineChartIcon className="text-violet-400" size={22}/>
+          </div>
+          <div>
+            <h2 className="text-base md:text-lg font-bold text-white">Analítica histórica</h2>
+            <p className="text-[11px] md:text-xs text-white/60">
+              Tendencia de activos vs inactivos · Cohortes de retención por mes
+            </p>
+          </div>
+        </div>
+        <button onClick={() => setExpandido(o => !o)}
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors">
+          {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
+        </button>
+      </div>
 
-  //     {expandido && (
-  //       <div className="p-4 md:p-6 space-y-4">
-  //         <div className="flex gap-2">
-  //           <button onClick={() => setTab("tendencia")}
-  //             className={`px-3 py-1.5 rounded-lg text-xs font-medium border-b-2 transition-all ${
-  //               tab === "tendencia" ? "border-violet-400 text-violet-200 bg-white/5" : "border-transparent text-white/50 hover:text-white"
-  //             }`}>
-  //             Tendencia mensual
-  //           </button>
-  //           <button onClick={() => setTab("cohorte")}
-  //             className={`px-3 py-1.5 rounded-lg text-xs font-medium border-b-2 transition-all ${
-  //               tab === "cohorte" ? "border-violet-400 text-violet-200 bg-white/5" : "border-transparent text-white/50 hover:text-white"
-  //             }`}>
-  //             Cohorte de retención
-  //           </button>
-  //         </div>
+      {expandido && (
+        <div className="p-4 md:p-6 space-y-4">
+          <div className="flex gap-2">
+            <button onClick={() => setTab("tendencia")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border-b-2 transition-all ${
+                tab === "tendencia" ? "border-violet-400 text-violet-200 bg-white/5" : "border-transparent text-white/50 hover:text-white"
+              }`}>
+              Tendencia mensual
+            </button>
+            <button onClick={() => setTab("cohorte")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border-b-2 transition-all ${
+                tab === "cohorte" ? "border-violet-400 text-violet-200 bg-white/5" : "border-transparent text-white/50 hover:text-white"
+              }`}>
+              Cohorte de retención
+            </button>
+          </div>
 
-  //         {cargando ? (
-  //           <p className="text-center text-white/40 italic py-8">Cargando analítica…</p>
-  //         ) : tab === "tendencia" ? (
-  //           <TendenciaChart data={tendencia} />
-  //         ) : (
-  //           <CohorteTabla data={cohorte} />
-  //         )}
-  //       </div>
-  //     )}
-  //   </div>
-  // );
+          {cargando ? (
+            <p className="text-center text-white/40 italic py-8">Cargando analítica…</p>
+          ) : tab === "tendencia" ? (
+            <TendenciaChart data={tendencia} />
+          ) : (
+            <CohorteTabla data={cohorte} />
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TendenciaChart({ data }: { data: TendenciaRow[] }) {

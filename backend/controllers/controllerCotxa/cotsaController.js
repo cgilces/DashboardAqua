@@ -92,7 +92,7 @@ const obtenerVentasCOTTSAPorRuta = async (anioNum, mesNum, fechaFin = null) => {
       AND ${COTTSA_SELLER_FILTER}
       AND f.fecha_entrega >= '${inicio}'
       AND f.fecha_entrega < '${fin}'
-      AND f.status IN (0,2,3,4,5)
+      AND f.status IN (2,4,5)
       AND f.tipo_documento = '(01) Invoice'
 
     GROUP BY f.seller_code
@@ -137,12 +137,181 @@ const obtenerVentasPOSCOTTSA = async (anioNum, mesNum, fechaFin = null) => {
       AND ${COTTSA_POS_FILTER}
       AND f.fecha_entrega >= '${inicio}'
       AND f.fecha_entrega < '${fin}'
-      AND f.status IN (0,2,3,4,5)
+      AND f.status IN (2,4,5)
       AND f.tipo_documento = '(01) Invoice';
   `;
 
   const rows = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
   return rows[0] || { unidades: 0, subtotal: 0, dolares: 0, cant_facturas: 0, cant_clientes: 0 };
+};
+
+// ================================================================
+// DATOS COTTSA DESDE ODOO (report.pos.order)
+// Replica EXACTAMENTE la query SQL que usa el reporte "Análisis del TPV":
+//
+//   SELECT rp.name AS vendedor,
+//          COUNT(rpo.id) AS pedidos,
+//          SUM(rpo.product_qty) AS cantidad_producto,
+//          SUM(rpo.price_total) AS precio_total
+//   FROM report_pos_order rpo
+//   LEFT JOIN res_users    ru ON rpo.user_id   = ru.id
+//   LEFT JOIN res_partner  rp ON ru.partner_id = rp.id
+//   WHERE rpo.date BETWEEN <inicio> AND <fin>
+//     AND rpo.state IN ('paid','invoiced')
+//   GROUP BY rp.name;
+//
+// Notas clave:
+//   - report.pos.order es una vista (1 fila por línea, no por pedido).
+//   - El "vendedor" se agrupa por res.users → res.partner.name.
+//   - Incluye 'paid' (no solo 'invoiced') porque Odoo lo cuenta así.
+//
+// Devuelve { ranking: [...], pos: {...} } compatible con el dashboard.
+// ================================================================
+const obtenerDatosCOTTSADesdeOdoo = async (anioNum, mesNum) => {
+  const vacio = { ranking: [], pos: null };
+
+  if (!process.env.ODOO_DB || !process.env.ODOO_API_KEY || !process.env.ODOO_URL) {
+    return vacio;
+  }
+
+  // Odoo guarda Datetime en UTC. Ecuador es UTC-5 (sin horario de verano).
+  // El reporte UI muestra fechas en hora local Ecuador, así que para que
+  // nuestro rango coincida con "febrero hora Ecuador" hay que sumar 5 horas
+  // al inicio y fin (00:00 hora Ecuador = 05:00 UTC).
+  const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 05:00:00`;
+  let mesFin = mesNum + 1;
+  let anioFin = anioNum;
+  if (mesFin === 13) { mesFin = 1; anioFin++; }
+  const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 05:00:00`;
+
+  const domain = [
+    ['company_id', '=', COTTSA_COMPANY_ID],
+    ['date', '>=', inicio],
+    ['date', '<', fin],
+    ['state', 'in', ['paid', 'invoiced']],
+  ];
+
+  try {
+    const uid = await loginOdoo();
+
+    // 1. read_group sobre report.pos.order — equivalente exacto del SQL.
+    //    Devuelve por cada user_id: count de líneas, sum(product_qty), sum(price_total).
+    const grupos = await odooExecuteCOTTSA([
+      process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+      'report.pos.order', 'read_group',
+      [domain, ['user_id', 'product_qty', 'price_total'], ['user_id']],
+      { lazy: false },
+    ]);
+
+    if (!Array.isArray(grupos) || !grupos.length) return vacio;
+
+    // 2. Para cada user_id, mapear a su res.partner.name (eso es lo que el
+    //    SQL del usuario usa como "vendedor").
+    const userIds = grupos
+      .map(g => Array.isArray(g.user_id) ? g.user_id[0] : null)
+      .filter(Boolean);
+
+    const userToPartnerName = {};
+    if (userIds.length) {
+      const users = await odooExecuteCOTTSA([
+        process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+        'res.users', 'read',
+        [userIds],
+        { fields: ['id', 'partner_id'] },
+      ]);
+      for (const u of users) {
+        userToPartnerName[u.id] = Array.isArray(u.partner_id) ? u.partner_id[1] : null;
+      }
+    }
+
+    // 3. Para clientes únicos y agrupar pedidos en una RUTA cuando varios
+    //    user_id comparten el mismo partner.name (ej. dos cajeros distintos
+    //    asociados al partner "RUTA 113"), traemos los pos.order del mes.
+    const orders = await odooExecuteCOTTSA([
+      process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+      'pos.order', 'search_read',
+      [[
+        ['company_id', '=', COTTSA_COMPANY_ID],
+        ['date_order', '>=', inicio],
+        ['date_order', '<', fin],
+        ['state', 'in', ['paid', 'invoiced']],
+      ]],
+      { fields: ['id', 'user_id', 'partner_id'], limit: 0 },
+    ]);
+    // (mismo rango UTC con offset +5h por zona horaria Ecuador)
+
+    const clientesByUser = {};
+    for (const o of orders) {
+      const uId = Array.isArray(o.user_id) ? o.user_id[0] : null;
+      const pId = Array.isArray(o.partner_id) ? o.partner_id[0] : null;
+      if (!uId) continue;
+      if (!clientesByUser[uId]) clientesByUser[uId] = new Set();
+      if (pId) clientesByUser[uId].add(pId);
+    }
+
+    // 4. Construir ranking agrupando por la ruta extraída del partner.name.
+    //    Si dos user_id resuelven a "RUTA 113", consolidamos.
+    const grupoPorRuta = {};
+    let kennyDolares = 0, kennyUnidades = 0, kennyLineas = 0;
+    const kennyClientes = new Set();
+
+    for (const g of grupos) {
+      const userIdArr = Array.isArray(g.user_id) ? g.user_id : null;
+      const userId = userIdArr ? userIdArr[0] : null;
+      const partnerName = userId ? (userToPartnerName[userId] || (userIdArr ? userIdArr[1] : '')) : '';
+
+      const cantLineas = Number(g.user_id_count ?? g.__count ?? 0);
+      const dolares = Number(g.price_total) || 0;
+      const unidades = Number(g.product_qty) || 0;
+      const clientes = userId ? (clientesByUser[userId] || new Set()) : new Set();
+
+      const m = String(partnerName || '').match(/RUTA\s*\d+/i);
+      const ruta = m ? m[0].toUpperCase().replace(/\s+/g, ' ') : null;
+
+      if (!ruta) {
+        kennyDolares += dolares;
+        kennyUnidades += unidades;
+        kennyLineas += cantLineas;
+        for (const c of clientes) kennyClientes.add(c);
+        continue;
+      }
+
+      if (!grupoPorRuta[ruta]) {
+        grupoPorRuta[ruta] = {
+          unidades: 0, dolares: 0, lineas: 0, clientes: new Set(),
+        };
+      }
+      grupoPorRuta[ruta].unidades += unidades;
+      grupoPorRuta[ruta].dolares += dolares;
+      grupoPorRuta[ruta].lineas += cantLineas;
+      for (const c of clientes) grupoPorRuta[ruta].clientes.add(c);
+    }
+
+    const ranking = Object.entries(grupoPorRuta)
+      .map(([ruta, g]) => ({
+        ruta,
+        vendedor: ruta,
+        unidades: g.unidades,
+        subtotal: Number(g.dolares.toFixed(2)),
+        dolares: Number(g.dolares.toFixed(2)),
+        cant_facturas: g.lineas,
+        cant_clientes: g.clientes.size,
+      }))
+      .sort((a, b) => b.dolares - a.dolares);
+
+    const pos = {
+      unidades: kennyUnidades,
+      subtotal: Number(kennyDolares.toFixed(2)),
+      dolares: Number(kennyDolares.toFixed(2)),
+      cant_facturas: kennyLineas,
+      cant_clientes: kennyClientes.size,
+    };
+
+    return { ranking, pos };
+  } catch (err) {
+    console.warn('⚠️ obtenerDatosCOTTSADesdeOdoo:', err?.message || err);
+    return vacio;
+  }
 };
 
 // ================================================================
@@ -162,11 +331,12 @@ const obtenerResumenReembolsosCOTTSA = async (anioNum, mesNum) => {
     return vacio;
   }
 
-  const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
+  // Offset +5h: Odoo guarda en UTC, Ecuador es UTC-5.
+  const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 05:00:00`;
   let mesFin = mesNum + 1;
   let anioFin = anioNum;
   if (mesFin === 13) { mesFin = 1; anioFin++; }
-  const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
+  const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 05:00:00`;
 
   try {
     const uid = await loginOdoo();
@@ -245,47 +415,40 @@ const obtenerDashboardCOTTSA = async (req, res) => {
       anioPrev--;
     }
 
-    const [ventasActuales, ventasAnteriores, ventasPOS, ventasPOSAnt, reembolsosActuales, reembolsosAnt, objetivos] = await Promise.all([
-      obtenerVentasCOTTSAPorRuta(anioNum, mesNum, fechaFin),
-      obtenerVentasCOTTSAPorRuta(anioPrev, mesPrev),
-      obtenerVentasPOSCOTTSA(anioNum, mesNum, fechaFin),
-      obtenerVentasPOSCOTTSA(anioPrev, mesPrev),
+    // Datos del mes actual y anterior leídos directo desde pos.order de Odoo.
+    // Esto cuadra con el reporte "Análisis del TPV" porque incluye TODOS los
+    // pedidos POS del período (no depende de account.move ya facturado en BD).
+    // Los huérfanos siguen leyéndose con obtenerResumenReembolsosCOTTSA porque
+    // el banner de UI necesita su detalle (cantidad / total específico).
+    const [datosActuales, datosAnteriores, reembolsosActuales, objetivos] = await Promise.all([
+      obtenerDatosCOTTSADesdeOdoo(anioNum, mesNum),
+      obtenerDatosCOTTSADesdeOdoo(anioPrev, mesPrev),
       obtenerResumenReembolsosCOTTSA(anioNum, mesNum),
-      obtenerResumenReembolsosCOTTSA(anioPrev, mesPrev),
       obtenerObjetivosGerencia(anioNum, mesNum),
     ]);
 
     const mapAnterior = {};
-
-    ventasAnteriores.forEach(r => {
-      const key = `${(r.ruta || '').toUpperCase()}|${(r.vendedor || '').toUpperCase()}`;
+    (datosAnteriores.ranking || []).forEach(r => {
+      const key = String(r.ruta || '').toUpperCase();
       mapAnterior[key] = Number(r.dolares) || 0;
     });
 
-    const ranking = ventasActuales.map(r => {
+    const ranking = (datosActuales.ranking || []).map(r => {
       const actual = Number(r.dolares) || 0;
-      const key = `${(r.ruta || '').toUpperCase()}|${(r.vendedor || '').toUpperCase()}`;
-
+      const key = String(r.ruta || '').toUpperCase();
       const anterior = mapAnterior[key] || 0;
 
       const base = Math.max(diasTranscurridos, 1);
-
       const proyeccion = esMesCerrado
         ? actual
         : (actual / base) * diasLaborables;
 
       const variacionAbs = proyeccion - anterior;
-
       const variacionPorc = anterior > 0
         ? (variacionAbs / anterior) * 100
         : null;
 
-      const rutaKey = String(r.ruta || '').toUpperCase();
-
-      const obj = objetivos[rutaKey] || {
-        meta_dolares: 0,
-        meta_unidades: 0,
-      };
+      const obj = objetivos[key] || { meta_dolares: 0, meta_unidades: 0 };
 
       return {
         ruta: r.ruta,
@@ -296,10 +459,8 @@ const obtenerDashboardCOTTSA = async (req, res) => {
         proyeccion: Number(proyeccion.toFixed(2)),
         cant_facturas: Number(r.cant_facturas) || 0,
         cant_clientes: Number(r.cant_clientes) || 0,
-
         objetivo_gerencia: obj.meta_dolares,
         objetivo_gerencia_unidades: obj.meta_unidades,
-
         vsMesAnterior: {
           dolares_anterior: Number(anterior.toFixed(2)),
           variacion_abs: Number(variacionAbs.toFixed(2)),
@@ -308,32 +469,19 @@ const obtenerDashboardCOTTSA = async (req, res) => {
       };
     });
 
-    // Bloque POS — Kenny Navas (NETO consolidado real).
-    //   Facts POS (BD)         viene de obtenerVentasPOSCOTTSA → solo Facts.
-    //   Reembolsos (Odoo)      viene de obtenerResumenReembolsosCOTTSA, que
-    //                          captura TODAS las pos.order negativas del mes
-    //                          (facturadas + huérfanas), independiente de
-    //                          fecha_entrega en BD.
-    //   Neto = Facts − Reembolsos
-    const posFactsDolares = Number(ventasPOS.dolares) || 0;
-    const posFactsUnidades = Number(ventasPOS.unidades) || 0;
-    const posFactsSubtotal = Number(ventasPOS.subtotal) || 0;
-    const posFactsCantFacturas = Number(ventasPOS.cant_facturas) || 0;
-    const posCantClientes = Number(ventasPOS.cant_clientes) || 0;
+    // Bloque POS — Kenny Navas. Ahora viene directo desde pos.order:
+    // todos los pedidos negativos + los positivos sin "RUTA XXX" en name.
+    // Los huérfanos siguen calculándose aparte solo para el banner de UI.
+    const posActual = datosActuales.pos || {
+      unidades: 0, subtotal: 0, dolares: 0, cant_facturas: 0, cant_clientes: 0,
+    };
+    const posAnt = datosAnteriores.pos || { dolares: 0 };
 
-    const reembolsosTotal = Number(reembolsosActuales?.total) || 0;
-    const reembolsosCantidad = Number(reembolsosActuales?.cantidad) || 0;
     const huerfanosTotal = Number(reembolsosActuales?.huerfanosTotal) || 0;
     const huerfanosCant = Number(reembolsosActuales?.huerfanosCantidad) || 0;
 
-    const posDolares = posFactsDolares - reembolsosTotal;
-    const posUnidades = posFactsUnidades; // pos.order sólo trae monto, no unidades por línea
-    const posSubtotal = posFactsSubtotal - reembolsosTotal;
-    const posCantFacturas = posFactsCantFacturas + reembolsosCantidad;
-
-    const reembolsosTotalAnt = Number(reembolsosAnt?.total) || 0;
-    const posDolaresAntBD = Number(ventasPOSAnt.dolares) || 0;
-    const posDolaresAnt = posDolaresAntBD - reembolsosTotalAnt;
+    const posDolares = Number(posActual.dolares) || 0;
+    const posDolaresAnt = Number(posAnt.dolares) || 0;
     const posVarAbs = posDolares - posDolaresAnt;
     const posVarPorc = posDolaresAnt !== 0
       ? (posVarAbs / Math.abs(posDolaresAnt)) * 100
@@ -341,11 +489,11 @@ const obtenerDashboardCOTTSA = async (req, res) => {
 
     const pos = {
       label: 'POS - Kenny Navas',
-      unidades: posUnidades,
-      subtotal: Number(posSubtotal.toFixed(2)),
+      unidades: Number(posActual.unidades) || 0,
+      subtotal: Number(Number(posActual.subtotal).toFixed(2)),
       dolares: Number(posDolares.toFixed(2)),
-      cant_facturas: posCantFacturas,
-      cant_clientes: posCantClientes,
+      cant_facturas: Number(posActual.cant_facturas) || 0,
+      cant_clientes: Number(posActual.cant_clientes) || 0,
       huerfanos: { total: huerfanosTotal, cantidad: huerfanosCant },
       vsMesAnterior: {
         dolares_anterior: Number(posDolaresAnt.toFixed(2)),
@@ -354,14 +502,14 @@ const obtenerDashboardCOTTSA = async (req, res) => {
       },
     };
 
-    // Totales: ranking (3 rutas preventa, brutos) + POS (NETO con huérfanos).
-    // Esto cuadra con Total general de Odoo: 145,997.71 en el ejemplo de marzo.
+    // Totales: ranking (positivos por ruta) + POS Kenny Navas (negativos).
+    // Cuadra con "Total" del reporte Análisis del TPV de Odoo.
     const totales = {
-      unidades: ranking.reduce((a, r) => a + r.unidades, 0) + posUnidades,
-      dolares: ranking.reduce((a, r) => a + r.dolares, 0) + posDolares,
-      proyeccion: ranking.reduce((a, r) => a + r.proyeccion, 0) + posDolares,
-      cant_facturas: ranking.reduce((a, r) => a + r.cant_facturas, 0) + posCantFacturas,
-      cant_clientes: ranking.reduce((a, r) => a + r.cant_clientes, 0) + posCantClientes,
+      unidades: ranking.reduce((a, r) => a + r.unidades, 0) + pos.unidades,
+      dolares: ranking.reduce((a, r) => a + r.dolares, 0) + pos.dolares,
+      proyeccion: ranking.reduce((a, r) => a + r.proyeccion, 0) + pos.dolares,
+      cant_facturas: ranking.reduce((a, r) => a + r.cant_facturas, 0) + pos.cant_facturas,
+      cant_clientes: ranking.reduce((a, r) => a + r.cant_clientes, 0) + pos.cant_clientes,
     };
 
     return res.json({ ranking, pos, totales });
@@ -435,7 +583,7 @@ const obtenerDetalleRutaCOTTSA = async (req, res) => {
 
       WHERE f.company_id = ${COTTSA_COMPANY_ID}
         AND ${COTTSA_SELLER_FILTER}
-        AND f.status IN (0,2)
+        AND f.status IN (2)
         AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
         AND ${filtro}
         AND f.fecha_entrega >= '${inicio}'
@@ -458,7 +606,7 @@ const obtenerDetalleRutaCOTTSA = async (req, res) => {
       FROM facturas f
       WHERE f.company_id = ${COTTSA_COMPANY_ID}
         AND ${COTTSA_SELLER_FILTER}
-        AND f.status IN (0,2)
+        AND f.status IN (2)
         AND ${filtro}
         AND f.fecha_entrega >= '${inicioAnio}'
         AND f.fecha_entrega < '${finAnio}';
@@ -540,7 +688,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
       ) best_dc ON true
       WHERE f.company_id = ${COTTSA_COMPANY_ID}
         AND ${COTTSA_TODOS_FILTER}
-        AND f.status IN (0,2,3,4,5)
+        AND f.status IN (2,4,5)
         AND f.fecha_entrega >= '${inicioAnio}'
         AND f.fecha_entrega  < '${finAnio}'
       ORDER BY f.customer_code
@@ -597,7 +745,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
     AND ${COTTSA_TODOS_FILTER}
-    AND f.status IN (0,2,3,4,5)
+    AND f.status IN (2,4,5)
     AND f.fecha_entrega >= '${inicioAnio}'
     AND f.fecha_entrega < '${finAnio}'
     AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
@@ -624,7 +772,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
 
     WHERE f.company_id = ${COTTSA_COMPANY_ID}
       AND ${COTTSA_TODOS_FILTER}
-      AND f.status IN (0,2,3,4,5)
+      AND f.status IN (2,4,5)
       AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
       AND f.fecha_entrega >= '${inicioAnio}'
       AND f.fecha_entrega < '${finAnio}'
@@ -650,7 +798,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
     AND ${COTTSA_TODOS_FILTER}
-    AND f.status IN (0,2,3,4,5)
+    AND f.status IN (2,4,5)
     AND f.tipo_documento = '(01) Invoice'
 
   GROUP BY f.customer_code
@@ -759,7 +907,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
 
   WHERE f.company_id = ${COTTSA_COMPANY_ID}
     AND ${COTTSA_TODOS_FILTER}
-    AND f.status IN (0,2,3,4,5)
+    AND f.status IN (2,4,5)
     AND f.tipo_documento IN ('(01) Invoice','(04) Credit Note')
     AND f.fecha_entrega >= '${inicio}'
     AND f.fecha_entrega <  '${fin}'
@@ -825,7 +973,7 @@ const diagnosticoCOTTSA = async (req, res) => {
         JOIN detalle_documento dd 
           ON dd.documento_code = f.code
         WHERE f.company_id = ${COTTSA_COMPANY_ID}
-          AND f.status IN (0,2,3,4,5)
+          AND f.status IN (2,4,5)
           AND f.fecha_entrega >= '${inicio}'
           AND f.fecha_entrega < '${fin}'
       `, { type: Sequelize.QueryTypes.SELECT }),
@@ -841,7 +989,7 @@ const diagnosticoCOTTSA = async (req, res) => {
         WHERE company_id = ${COTTSA_COMPANY_ID}
           AND fecha_entrega >= '${inicio}'
           AND fecha_entrega < '${fin}'
-          AND status IN (0,2,3,4,5)
+          AND status IN (2,4,5)
         GROUP BY company_id, status
         ORDER BY company_id, status
       `, { type: Sequelize.QueryTypes.SELECT }),
@@ -963,12 +1111,12 @@ const obtenerReembolsosHuerfanos = async (req, res) => {
       return res.status(400).json({ error: 'Parámetros inválidos' });
     }
 
-    // Rango del mes (formato Odoo: 'YYYY-MM-DD HH:MM:SS')
-    const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
+    // Rango del mes en UTC con offset +5h (Ecuador es UTC-5).
+    const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 05:00:00`;
     let mesFin = mesNum + 1;
     let anioFin = anioNum;
     if (mesFin === 13) { mesFin = 1; anioFin++; }
-    const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
+    const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 05:00:00`;
 
     // Si no hay credenciales Odoo configuradas, devolvemos vacío (no romper UI)
     if (!process.env.ODOO_DB || !process.env.ODOO_API_KEY || !process.env.ODOO_URL) {
@@ -1058,11 +1206,12 @@ const obtenerPOSDetalleCOTTSA = async (req, res) => {
       });
     }
 
-    const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 00:00:00`;
+    // Offset +5h: Odoo guarda en UTC, Ecuador es UTC-5.
+    const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 05:00:00`;
     let mesFin = mesNum + 1;
     let anioFin = anioNum;
     if (mesFin === 13) { mesFin = 1; anioFin++; }
-    const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 00:00:00`;
+    const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 05:00:00`;
 
     // Estrategia:
     //  1) Traemos TODAS las pos.order de COTTSA con date_order en el mes.
@@ -1106,7 +1255,7 @@ const obtenerPOSDetalleCOTTSA = async (req, res) => {
       WHERE f.company_id = ${COTTSA_COMPANY_ID}
         AND f.fecha_entrega >= '${inicioAnio}'
         AND f.fecha_entrega < '${finAnio}'
-        AND f.status IN (0,2,3,4,5)
+        AND f.status IN (2,4,5)
         AND (
           (f.tipo_documento = '(01) Invoice' AND ${COTTSA_POS_FILTER})
           OR f.tipo_documento = '(04) Credit Note'
@@ -1207,18 +1356,235 @@ const obtenerPOSDetalleCOTTSA = async (req, res) => {
   }
 };
 
+// ================================================================
+// ENDPOINT DETALLE POR RUTA — lista los pos.order de una ruta específica
+// (RUTA 113, RUTA 131, RUTA 132). Sirve para comparar contra el reporte
+// "Análisis del TPV" de Odoo y detectar pedidos cruzados/faltantes.
+// GET /api/COTTSA/ruta-pos-detalle?anio=YYYY&mes=MM&ruta=RUTA%20113
+// ================================================================
+const obtenerRutaPOSDetalleCOTTSA = async (req, res) => {
+  try {
+    const { anio, mes, ruta } = req.query;
+    const anioNum = parseInt(anio, 10);
+    const mesNum = parseInt(mes, 10);
+    const rutaUp = String(ruta || '').toUpperCase().replace(/\s+/g, ' ').trim();
+
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12 || !/^RUTA\s*\d+/.test(rutaUp)) {
+      return res.status(400).json({ error: 'Parámetros inválidos (anio, mes, ruta)' });
+    }
+
+    if (!process.env.ODOO_DB || !process.env.ODOO_API_KEY || !process.env.ODOO_URL) {
+      return res.json({ items: [], totales: { cantidad: 0, total: 0, unidades: 0 } });
+    }
+
+    // Offset +5h: Odoo guarda en UTC, Ecuador es UTC-5.
+    const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 05:00:00`;
+    let mesFin = mesNum + 1, anioFin = anioNum;
+    if (mesFin === 13) { mesFin = 1; anioFin++; }
+    const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 05:00:00`;
+
+    const uid = await loginOdoo();
+
+    const orders = await odooExecuteCOTTSA([
+      process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+      'pos.order', 'search_read',
+      [[
+        ['company_id', '=', COTTSA_COMPANY_ID],
+        ['date_order', '>=', inicio],
+        ['date_order', '<', fin],
+        // Mismo filtro que el dashboard.
+        ['state', 'in', ['paid', 'invoiced']],
+      ]],
+      {
+        fields: [
+          'id', 'name', 'pos_reference', 'date_order', 'amount_total',
+          'partner_id', 'user_id', 'session_id', 'config_id',
+          'account_move', 'state',
+        ],
+        limit: 0,
+        order: 'date_order asc',
+      },
+    ]);
+
+    // Filtrar a la ruta solicitada por user_id (mismo criterio que el dashboard).
+    const filtrados = orders.filter(o => {
+      const userName = Array.isArray(o.user_id) ? String(o.user_id[1] || '') : '';
+      const m = userName.match(/RUTA\s*\d+/i);
+      const r = m ? m[0].toUpperCase().replace(/\s+/g, ' ') : null;
+      return r === rutaUp;
+    });
+
+    const items = filtrados.map(o => {
+      const monto = Number(o.amount_total) || 0;
+      const docName = Array.isArray(o.account_move) ? o.account_move[1] : null;
+      const cliente = Array.isArray(o.partner_id) ? o.partner_id[1] : '—';
+      const sesion = Array.isArray(o.session_id) ? o.session_id[1] : null;
+      const cajero = Array.isArray(o.user_id) ? o.user_id[1] : null;
+      const config = Array.isArray(o.config_id) ? o.config_id[1] : null;
+      return {
+        id: o.id,
+        caja: o.name,
+        pos_reference: o.pos_reference,
+        sesion, cajero, config,
+        date_order: o.date_order,
+        cliente,
+        monto: Number(monto.toFixed(2)),
+        documento: docName,
+        state: o.state,
+        facturado: Boolean(Array.isArray(o.account_move) && o.account_move[0]),
+      };
+    });
+
+    const total = items.reduce((a, it) => a + (it.monto || 0), 0);
+
+    return res.json({
+      ruta: rutaUp,
+      items,
+      totales: {
+        cantidad: items.length,
+        total: Number(total.toFixed(2)),
+      },
+    });
+  } catch (err) {
+    console.error('❌ obtenerRutaPOSDetalleCOTTSA:', err);
+    return res.status(500).json({
+      error: 'Error al consultar detalle por ruta',
+      detalle: err?.message || String(err),
+    });
+  }
+};
+
+// ================================================================
+// ENDPOINT DIAGNÓSTICO POS — para identificar por qué el dashboard
+// no cuadra al 100% con el reporte "Análisis del TPV" de Odoo.
+// Lista cada pos.order con todos los campos potenciales de agrupación
+// para comparar manualmente contra el reporte.
+// GET /api/COTTSA/diagnostico-pos?anio=YYYY&mes=MM
+// ================================================================
+const diagnosticoPOSCOTTSA = async (req, res) => {
+  try {
+    const anioNum = parseInt(req.query.anio, 10);
+    const mesNum = parseInt(req.query.mes, 10);
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12) {
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+    }
+
+    // Offset +5h: Odoo guarda en UTC, Ecuador es UTC-5.
+    const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01 05:00:00`;
+    let mesFin = mesNum + 1, anioFin = anioNum;
+    if (mesFin === 13) { mesFin = 1; anioFin++; }
+    const fin = `${anioFin}-${String(mesFin).padStart(2, '0')}-01 05:00:00`;
+
+    const uid = await loginOdoo();
+
+    const orders = await odooExecuteCOTTSA([
+      process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+      'pos.order', 'search_read',
+      [[
+        ['company_id', '=', COTTSA_COMPANY_ID],
+        ['date_order', '>=', inicio],
+        ['date_order', '<', fin],
+        ['state', 'in', ['paid', 'invoiced', 'done']],
+      ]],
+      {
+        fields: [
+          'id', 'name', 'date_order', 'amount_total',
+          'partner_id', 'user_id', 'session_id',
+          'config_id', 'pos_reference', 'state',
+          'account_move',
+        ],
+        limit: 0,
+        order: 'date_order asc',
+      },
+    ]);
+
+    const extraerRutaDe = (s) => {
+      const m = String(s || '').match(/RUTA\s*\d+/i);
+      return m ? m[0].toUpperCase().replace(/\s+/g, ' ') : null;
+    };
+
+    // Agrupación de prueba por cada candidato de campo.
+    const buildBreakdown = (lista, extractor) => {
+      const groups = {};
+      for (const o of lista) {
+        const key = extractor(o) || '<KENNY/SIN RUTA>';
+        if (!groups[key]) groups[key] = { cant: 0, dolares: 0 };
+        groups[key].cant += 1;
+        groups[key].dolares += Number(o.amount_total) || 0;
+      }
+      return Object.entries(groups)
+        .map(([k, v]) => ({ grupo: k, cant: v.cant, dolares: Number(v.dolares.toFixed(2)) }))
+        .sort((a, b) => b.dolares - a.dolares);
+    };
+
+    const breakdowns = {
+      por_session_id: buildBreakdown(orders, o => extraerRutaDe(Array.isArray(o.session_id) ? o.session_id[1] : '')),
+      por_user_id: buildBreakdown(orders, o => extraerRutaDe(Array.isArray(o.user_id) ? o.user_id[1] : '')),
+      por_config_id: buildBreakdown(orders, o => extraerRutaDe(Array.isArray(o.config_id) ? o.config_id[1] : '')),
+      por_pos_name: buildBreakdown(orders, o => extraerRutaDe(o.name)),
+    };
+
+    // Solo facturados: para validar la sospecha de "incluyendo no facturados".
+    // Si Odoo solo cuenta los facturados, este desglose debería cuadrar.
+    const soloFacturados = orders.filter(o =>
+      o.state === 'invoiced' || (Array.isArray(o.account_move) && o.account_move[0])
+    );
+    const breakdownsFacturadas = {
+      total: { cant: soloFacturados.length, dolares: Number(soloFacturados.reduce((a, o) => a + (Number(o.amount_total) || 0), 0).toFixed(2)) },
+      por_session_id: buildBreakdown(soloFacturados, o => extraerRutaDe(Array.isArray(o.session_id) ? o.session_id[1] : '')),
+    };
+
+    // Distribución por estado (state) para detectar pedidos no facturados.
+    const porState = {};
+    for (const o of orders) {
+      const k = o.state || '<null>';
+      if (!porState[k]) porState[k] = { cant: 0, dolares: 0 };
+      porState[k].cant += 1;
+      porState[k].dolares += Number(o.amount_total) || 0;
+    }
+
+    return res.json({
+      periodo: `${anioNum}-${String(mesNum).padStart(2, '0')}`,
+      total_pedidos: orders.length,
+      total_dolares: Number(orders.reduce((a, o) => a + (Number(o.amount_total) || 0), 0).toFixed(2)),
+      por_state: Object.entries(porState).map(([k, v]) => ({
+        state: k, cant: v.cant, dolares: Number(v.dolares.toFixed(2))
+      })),
+      breakdowns,
+      solo_facturados: breakdownsFacturadas,
+      muestra: orders.slice(0, 5).map(o => ({
+        id: o.id,
+        name: o.name,
+        state: o.state,
+        amount_total: o.amount_total,
+        session_id: o.session_id,
+        user_id: o.user_id,
+        config_id: o.config_id,
+        partner_id: o.partner_id,
+        account_move: o.account_move,
+      })),
+    });
+  } catch (err) {
+    console.error('❌ diagnosticoPOSCOTTSA:', err);
+    return res.status(500).json({ error: err?.message || String(err) });
+  }
+};
+
 module.exports = {
   obtenerDashboardCOTTSA,
   obtenerDetalleRutaCOTTSA,
   obtenerClientesCOTTSA,
   diagnosticoCOTTSA,
+  diagnosticoPOSCOTTSA,
   obtenerCottsaExtra,
   guardarCottsaExtra,
   obtenerReembolsosHuerfanos,
   obtenerPOSDetalleCOTTSA,
+  obtenerRutaPOSDetalleCOTTSA,
   // Helpers reutilizados por el consolidado para que el card COTTSA cuadre
   // con el total mostrado en el dashboard descartable.
   obtenerVentasCOTTSAPorRuta,
   obtenerVentasPOSCOTTSA,
   obtenerResumenReembolsosCOTTSA,
+  obtenerDatosCOTTSADesdeOdoo,
 };
