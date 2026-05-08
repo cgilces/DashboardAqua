@@ -111,7 +111,7 @@ const DetalleDescartableOdooPage: React.FC = () => {
     }));
     const ws = XLSX.utils.json_to_sheet(datos);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Descartable Odoo");
+    XLSX.utils.book_append_sheet(wb, ws, "Descartable");
     XLSX.writeFile(wb, `clientes_descartable_odoo_${anio}_${mes}.xlsx`);
   };
 
@@ -156,7 +156,7 @@ const DetalleDescartableOdooPage: React.FC = () => {
             <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-white mb-1 flex items-center gap-1 transition">
               ← Volver
             </button>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight">DESCARTABLE ODOO — Clientes</h1>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight">DESCARTABLE — Clientes</h1>
             <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio}</p>
           </div>
           <button onClick={exportar}

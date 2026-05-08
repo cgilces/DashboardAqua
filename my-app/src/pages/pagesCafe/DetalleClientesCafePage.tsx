@@ -146,7 +146,7 @@ const DetalleClientesCafePage: React.FC = () => {
               ← Volver
             </button>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">CAFÉ IIBC — Clientes</h1>
-            <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio} · Facturación Odoo</p>
+            <p className="text-xs text-gray-400">{MESES[Number(mes)]} {anio} · Facturación</p>
           </div>
           <button onClick={exportar}
             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 transition-all self-start sm:self-auto">

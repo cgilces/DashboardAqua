@@ -70,7 +70,7 @@ const CANAL_LABELS: Record<string, string> = {
   BOTELLONES:  "Botellones",
   HIELO:       "Hielo",
   COTTSA:       "COTTSA",
-  "DESC. ODOO":"Desc. Odoo",
+  "DESC. ODOO":"Descartable",
 };
 
 // ── Helpers ─────────────────────────────────────────────────────

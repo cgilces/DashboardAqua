@@ -6,6 +6,7 @@ import { AlertTriangle, Lightbulb, ShoppingCart } from "lucide-react";
 import { useAuth } from "../../components/auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../../config";
+import ImportarMetasBoton from "../common/ImportarMetasBoton";
 
 interface ExtraCOTTSA {
   unidades: number;
@@ -149,6 +150,27 @@ interface RespuestaHuerfanos {
   advertencia?: string;
 }
 
+interface RutaDetalleItem {
+  id: number;
+  caja: string;
+  pos_reference: string | null;
+  sesion: string | null;
+  cajero: string | null;
+  config: string | null;
+  date_order: string;
+  cliente: string;
+  monto: number;
+  documento: string | null;
+  state: string;
+  facturado: boolean;
+}
+
+interface RutaDetalleResp {
+  ruta: string;
+  items: RutaDetalleItem[];
+  totales: { cantidad: number; total: number };
+}
+
 interface Props {
   anio: number | string;
   mes: number | string;
@@ -193,6 +215,40 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
   const [posDetalleError, setPosDetalleError] = useState<string | null>(null);
   const [posBusqueda, setPosBusqueda] = useState("");
   const [posFiltroTipo, setPosFiltroTipo] = useState<"todos" | "fact" | "notcr" | "huerfanos">("todos");
+
+  // Detalle por ruta (modal al hacer click en RUTA 113/131/132)
+  const [rutaDetalleAbierta, setRutaDetalleAbierta] = useState<string | null>(null);
+  const [rutaDetalle, setRutaDetalle] = useState<RutaDetalleResp | null>(null);
+  const [rutaDetalleCargando, setRutaDetalleCargando] = useState(false);
+  const [rutaDetalleError, setRutaDetalleError] = useState<string | null>(null);
+  const [rutaBusqueda, setRutaBusqueda] = useState("");
+
+  const abrirRutaDetalle = async (ruta: string) => {
+    setRutaDetalleAbierta(ruta);
+    setRutaBusqueda("");
+    setRutaDetalle(null);
+    setRutaDetalleError(null);
+    setRutaDetalleCargando(true);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/COTTSA/ruta-pos-detalle?anio=${anio}&mes=${mes}&ruta=${encodeURIComponent(ruta)}`,
+        { headers: authHeaders() }
+      );
+      if (!res.ok) throw new Error("No se pudo cargar el detalle de la ruta");
+      const data: RutaDetalleResp = await res.json();
+      setRutaDetalle(data);
+    } catch (e: any) {
+      setRutaDetalleError(e?.message || "Error al cargar detalle ruta");
+    } finally {
+      setRutaDetalleCargando(false);
+    }
+  };
+
+  const cerrarRutaDetalle = () => {
+    setRutaDetalleAbierta(null);
+    setRutaDetalle(null);
+    setRutaDetalleError(null);
+  };
 
   const abrirPOSDetalle = async () => {
     setPosDetalleAbierto(true);
@@ -459,6 +515,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               <span>Metas</span>
             </button>
           )}
+          {isAdmin && <ImportarMetasBoton />}
           {isAdmin && (
             <button
               onClick={exportarExcel}
@@ -483,10 +540,10 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               <AlertTriangle size={20} className="text-amber-300 flex-shrink-0" />
               <div>
                 <p className="text-amber-200 font-semibold text-sm">
-                  {huerfanos.cantidad} reembolso{huerfanos.cantidad !== 1 ? "s" : ""} POS sin facturar en Odoo
+                  {huerfanos.cantidad} reembolso{huerfanos.cantidad !== 1 ? "s" : ""} POS sin facturar
                 </p>
                 <p className="text-amber-300/70 text-xs">
-                  ${fmt(huerfanos.total)} no se están descontando — facturarlos en Odoo y volver a sincronizar
+                  ${fmt(huerfanos.total)} no se están descontando — facturarlos y volver a sincronizar
                 </p>
               </div>
             </div>
@@ -544,8 +601,8 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               </div>
               <p className="px-4 py-2 text-[11px] text-amber-300/80 italic flex items-start gap-1.5">
                 <Lightbulb size={12} className="mt-0.5 flex-shrink-0" />
-                <span>Estos reembolsos existen como pos.order en Odoo pero no tienen nota de crédito fiscal.
-                Para que entren al dashboard hay que facturarlos en Odoo (botón "Crear factura" en cada pedido)
+                <span>Estos reembolsos existen como pedidos POS pero no tienen nota de crédito fiscal.
+                Para que entren al dashboard hay que facturarlos (botón "Crear factura" en cada pedido)
                 o activar la auto-facturación en la configuración del POS.</span>
               </p>
             </div>
@@ -705,11 +762,18 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                   const rutaVarPorc = r.vsMesAnterior?.variacion_porc;
                   const rutaSinDatos = (Number(r.vsMesAnterior?.dolares_anterior) || 0) === 0;
                   const rutaPositivo = rutaVarAbs >= 0;
+                  const rutaNombre = String(r.vendedor || r.ruta || "");
                   return (
-                    <tr key={`desglose-${idx}`} className="bg-[#011f1a]/70 border-l-4 border-blue-400/40 text-xs">
+                    <tr
+                      key={`desglose-${idx}`}
+                      onClick={() => abrirRutaDetalle(rutaNombre)}
+                      className="bg-[#011f1a]/70 border-l-4 border-blue-400/40 text-xs cursor-pointer hover:bg-blue-500/10 hover:border-blue-400 transition-all duration-150"
+                      title={`Click para ver el detalle de ${rutaNombre}`}
+                    >
                       <td className="pl-10 pr-4 py-2 text-blue-200">
                         <span className="opacity-60 mr-1">↳</span>
-                        {r.vendedor || r.ruta}
+                        {rutaNombre}
+                        <span className="ml-2 text-[10px] text-blue-300/60 italic">click para ver detalle →</span>
                       </td>
                       <td className="px-4 py-2 text-right text-green-400/90">{fmtInt(rutaUnidades)}</td>
                       <td className="px-4 py-2 text-right font-semibold text-white">${fmt(r.dolares)}</td>
@@ -923,7 +987,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               {posDetalleCargando && (
                 <div className="flex flex-col items-center justify-center py-20 gap-3">
                   <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-orange-400" />
-                  <p className="text-orange-200/70 text-sm">Cargando detalle POS desde Odoo…</p>
+                  <p className="text-orange-200/70 text-sm">Cargando detalle POS…</p>
                 </div>
               )}
 
@@ -1217,11 +1281,228 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 px-4 sm:px-6 py-3 border-t border-orange-500/20 bg-[#011a14]/60 shrink-0">
               <p className="text-[11px] text-gray-400 italic flex items-center gap-1.5">
                 <Lightbulb size={12} className="flex-shrink-0" />
-                <span>Datos en vivo desde Odoo · Los <span className="text-amber-300 font-semibold">huérfanos</span> son reembolsos POS sin nota de crédito fiscal.</span>
+                <span>Datos en vivo · Los <span className="text-amber-300 font-semibold">huérfanos</span> son reembolsos POS sin nota de crédito fiscal.</span>
               </p>
               <button
                 onClick={cerrarPOSDetalle}
                 className="px-4 py-2 rounded-lg border border-orange-500/40 bg-orange-500/15 text-orange-100 font-semibold hover:bg-orange-500/25 active:scale-[0.98] transition text-sm"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Detalle por Ruta (RUTA 113/131/132) ─────────────── */}
+      {rutaDetalleAbierta && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4"
+          onClick={cerrarRutaDetalle}
+        >
+          <div
+            className="bg-gradient-to-br from-[#012E24] to-[#011a14] border border-blue-500/40 rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-blue-500/30 bg-gradient-to-r from-blue-500/15 to-transparent shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/20 border border-blue-400/40 flex items-center justify-center shrink-0">
+                  <ShoppingCart size={20} className="text-blue-300" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-bold text-blue-200 truncate">{rutaDetalleAbierta}</h3>
+                  <p className="text-[11px] text-blue-300/60 truncate">
+                    Pedidos de TPV · COTTSA · {String(mes).padStart(2, "0")}/{anio}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={cerrarRutaDetalle}
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
+                title="Cerrar"
+              >
+                <BsX size={26} />
+              </button>
+            </div>
+
+            {/* Body scrollable */}
+            <div className="flex-1 overflow-y-auto">
+              {rutaDetalleCargando && (
+                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                  <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-blue-400" />
+                  <p className="text-blue-200/70 text-sm">Cargando pedidos…</p>
+                </div>
+              )}
+
+              {rutaDetalleError && !rutaDetalleCargando && (
+                <div className="m-4 p-4 rounded-lg bg-red-900/30 border border-red-500/40 text-red-200 text-sm flex items-center gap-2">
+                  <AlertTriangle size={16} className="flex-shrink-0" /> {rutaDetalleError}
+                </div>
+              )}
+
+              {rutaDetalle && !rutaDetalleCargando && (
+                <>
+                  {/* KPIs */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 px-3 sm:px-6 pt-4">
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-3 py-3">
+                      <p className="text-[10px] uppercase tracking-wider text-blue-300/70 mb-1">Pedidos</p>
+                      <p className="text-base font-bold text-blue-300">{rutaDetalle.totales.cantidad}</p>
+                    </div>
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-3">
+                      <p className="text-[10px] uppercase tracking-wider text-emerald-300/70 mb-1">Total</p>
+                      <p className="text-base font-bold text-emerald-300">${fmt(rutaDetalle.totales.total)}</p>
+                    </div>
+                    <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl px-3 py-3">
+                      <p className="text-[10px] uppercase tracking-wider text-purple-300/70 mb-1">Promedio</p>
+                      <p className="text-base font-bold text-purple-300">
+                        ${fmt(rutaDetalle.totales.cantidad > 0 ? rutaDetalle.totales.total / rutaDetalle.totales.cantidad : 0)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Buscador */}
+                  <div className="px-3 sm:px-6 py-3 mt-2">
+                    <div className="relative">
+                      <svg
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-300/50 pointer-events-none"
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 0 5 11a6 6 0 0 0 12 0z" />
+                      </svg>
+                      <input
+                        type="text"
+                        value={rutaBusqueda}
+                        onChange={(e) => setRutaBusqueda(e.target.value)}
+                        placeholder="Buscar pedido, cliente, documento, sesión, cajero, configuración…"
+                        className="w-full bg-[#011f1a] border border-blue-500/30 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-blue-300/40 focus:outline-none focus:border-blue-400/70"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tabla */}
+                  {(() => {
+                    const q = rutaBusqueda.trim().toLowerCase();
+                    const items = rutaDetalle.items.filter(it => {
+                      if (!q) return true;
+                      const hay = [it.caja, it.pos_reference, it.cliente, it.documento, it.sesion, it.cajero, it.config, it.state]
+                        .filter(Boolean).map(String).join(" ").toLowerCase();
+                      return hay.includes(q);
+                    });
+                    const totalFiltrado = items.reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
+
+                    if (!items.length) {
+                      return (
+                        <div className="text-center py-12 text-gray-400 text-sm italic">
+                          No hay registros que coincidan con la búsqueda.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="overflow-x-auto px-3 sm:px-6 pb-4">
+                        <table className="min-w-full text-xs">
+                          <thead>
+                            <tr className="bg-blue-500/10 text-blue-200 uppercase text-[10px] tracking-wider">
+                              <th className="px-3 py-2.5 text-left">Pedido</th>
+                              <th className="px-3 py-2.5 text-left">Fecha</th>
+                              <th className="px-3 py-2.5 text-left">Cliente</th>
+                              <th className="px-3 py-2.5 text-left">Cajero (user_id)</th>
+                              <th className="px-3 py-2.5 text-left">Caja (config_id)</th>
+                              <th className="px-3 py-2.5 text-left">Sesión</th>
+                              <th className="px-3 py-2.5 text-left">Estado</th>
+                              <th className="px-3 py-2.5 text-right">Monto</th>
+                              <th className="px-3 py-2.5 text-left">Documento</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((it, idx) => {
+                              const negativo = it.monto < 0;
+                              return (
+                                <tr
+                                  key={it.id}
+                                  className={`border-b border-blue-500/10 hover:bg-blue-500/5 transition ${idx % 2 === 0 ? "bg-[#011f1a]/40" : ""}`}
+                                >
+                                  <td className="px-3 py-2 font-semibold text-white whitespace-nowrap">
+                                    {it.caja}
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-300 whitespace-nowrap">
+                                    {it.date_order ? new Date(it.date_order).toLocaleString("es-EC", {
+                                      day: "2-digit", month: "2-digit", year: "numeric",
+                                      hour: "2-digit", minute: "2-digit",
+                                    }) : "—"}
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-200 max-w-[200px] truncate" title={it.cliente}>
+                                    {it.cliente}
+                                  </td>
+                                  <td className="px-3 py-2 text-blue-200/80 whitespace-nowrap" title={it.cajero || ""}>
+                                    {it.cajero || "—"}
+                                  </td>
+                                  <td className="px-3 py-2 text-amber-200/80 whitespace-nowrap" title={it.config || ""}>
+                                    {it.config || "—"}
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-400 font-mono text-[10px] whitespace-nowrap">
+                                    {it.sesion || "—"}
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                      it.state === "invoiced" ? "bg-emerald-500/20 text-emerald-200 border border-emerald-500/30"
+                                      : it.state === "paid" ? "bg-amber-500/20 text-amber-200 border border-amber-500/30"
+                                      : "bg-gray-500/20 text-gray-200 border border-gray-500/30"
+                                    }`}>
+                                      {it.state}
+                                    </span>
+                                  </td>
+                                  <td className={`px-3 py-2 text-right font-bold tabular-nums whitespace-nowrap ${
+                                    negativo ? "text-red-300" : "text-emerald-300"
+                                  }`}>
+                                    {negativo ? "−" : ""}${fmt(Math.abs(it.monto))}
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    {it.documento ? (
+                                      <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-emerald-500/15 text-emerald-200 border border-emerald-500/25">
+                                        {it.documento}
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-200 border border-amber-500/40 font-semibold inline-flex items-center gap-1">
+                                        <AlertTriangle size={10} /> Sin facturar
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-blue-500/15 border-t-2 border-blue-500/40">
+                              <td colSpan={7} className="px-3 py-2.5 text-right text-blue-200 uppercase text-[10px] font-bold tracking-wider whitespace-nowrap">
+                                Total ({items.length} {items.length === 1 ? "pedido" : "pedidos"})
+                              </td>
+                              <td className={`px-3 py-2.5 text-right font-extrabold tabular-nums text-base whitespace-nowrap ${
+                                totalFiltrado < 0 ? "text-red-300" : "text-emerald-300"
+                              }`}>
+                                {totalFiltrado < 0 && "−"}${fmt(Math.abs(totalFiltrado))}
+                              </td>
+                              <td className="px-3 py-2.5"></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 px-4 sm:px-6 py-3 border-t border-blue-500/20 bg-[#011a14]/60 shrink-0">
+              <p className="text-[11px] text-gray-400 italic flex items-center gap-1.5">
+                <Lightbulb size={12} className="flex-shrink-0" />
+                <span>Datos en vivo · Compara contra "Análisis del TPV" para identificar pedidos faltantes/cruzados.</span>
+              </p>
+              <button
+                onClick={cerrarRutaDetalle}
+                className="px-4 py-2 rounded-lg border border-blue-500/40 bg-blue-500/15 text-blue-100 font-semibold hover:bg-blue-500/25 active:scale-[0.98] transition text-sm"
               >
                 Cerrar
               </button>

@@ -150,7 +150,7 @@ const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses, anio
             {fmtInt(totales.cant_facturas)}
           </p>
           <div className="border-t border-[#046C5E]/30 pt-2">
-            <p className="text-xs text-gray-400">Facturas Odoo</p>
+            <p className="text-xs text-gray-400">Facturas</p>
             <p className="text-xs text-green-300 mt-1">company_id = 4</p>
           </div>
         </div>
@@ -163,7 +163,7 @@ const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses, anio
           </p>
           <div className="border-t border-[#046C5E]/30 pt-2">
             <p className="text-xs text-gray-400">Empresa IIBC S.A.</p>
-            <p className="text-xs text-green-300 mt-1">Facturación Odoo</p>
+            <p className="text-xs text-green-300 mt-1">Facturación</p>
           </div>
         </div>
 

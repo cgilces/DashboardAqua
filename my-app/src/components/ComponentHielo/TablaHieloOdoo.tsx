@@ -59,7 +59,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded, onLoadingCh
 
     fetch(`${API_BASE_URL}/api/odoo/hielo?anio=${anio}&mes=${mes}`)
       .then(res => {
-        if (!res.ok) throw new Error("Error Hielo Odoo");
+        if (!res.ok) throw new Error("Error Hielo");
         return res.json();
       })
       .then((data: DatosHieloOdoo) => {
@@ -67,7 +67,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded, onLoadingCh
 
         if (onTotalesLoaded) {
           onTotalesLoaded({
-            canal: "HIELO EMPRESA ODOO",
+            canal: "HIELO EMPRESA",
             monto: data.periodo.esMesActual
               ? data.totales.proyeccion_dolares
               : data.totales.dolares,
@@ -136,7 +136,7 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded, onLoadingCh
       XLSX.utils.sheet_add_json(ws, [row], { origin: "A3" });
 
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "HieloOdoo");
+      XLSX.utils.book_append_sheet(wb, ws, "Hielo");
       XLSX.writeFile(wb, `hielo_odoo_${mes}_${anio}.xlsx`, { compression: true });
 
     } catch (err) {

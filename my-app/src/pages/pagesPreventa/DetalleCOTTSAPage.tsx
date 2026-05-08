@@ -322,7 +322,7 @@ const DetalleCOTTSAPage: React.FC = () => {
                     <tr className="bg-amber-500/10 border-l-4 border-amber-500/40">
                       <td className="px-4 py-2 text-amber-200">
                         Reembolsos POS sin facturar
-                        <span className="text-gray-500 italic ml-1">({huerfanos.cantidad} huérfanos en Odoo)</span>
+                        <span className="text-gray-500 italic ml-1">({huerfanos.cantidad} huérfanos)</span>
                       </td>
                       <td className="px-4 py-2 text-right text-amber-300/70">—</td>
                       <td className="px-4 py-2 text-right text-amber-300 font-semibold">−${fmt(huerfanos.total)}</td>

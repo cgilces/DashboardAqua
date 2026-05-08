@@ -69,7 +69,7 @@ export default function DetalleClientesEmpresasPage() {
             </button>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">Clientes Empresas — Botellón</h1>
             <p className="text-xs text-gray-400">
-              {MESES[Number(mes)]} {anio} · MobilVendor + Odoo · Selecciona un módulo
+              {MESES[Number(mes)]} {anio} · Selecciona un módulo
               {tipoProducto !== "todo" && (
                 <span
                   className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${

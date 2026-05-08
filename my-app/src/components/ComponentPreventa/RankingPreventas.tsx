@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../components/auth/AuthContext";
 import { BsDownload, BsGear } from "react-icons/bs";
+import ImportarMetasBoton from "../common/ImportarMetasBoton";
 
 /* ───────────────── TIPOS ───────────────── */
 
@@ -258,6 +259,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
                 <BsGear size={16} />
                 <span>Metas</span>
               </button>
+              <ImportarMetasBoton />
               <button
                 onClick={exportarTablaExcel}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"

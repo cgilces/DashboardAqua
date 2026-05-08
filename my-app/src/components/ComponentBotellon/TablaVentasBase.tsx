@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { BsDownload, BsGear } from "react-icons/bs";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../components/auth/AuthContext";
+import ImportarMetasBoton from "../common/ImportarMetasBoton";
 
 
 /* ============================
@@ -334,6 +335,8 @@ const TablaVentasBase: React.FC<Props> = ({
                             <span>Metas</span>
                         </button>
                     )}
+
+                    {isAdmin && seccionMetas && <ImportarMetasBoton />}
 
                     <button
                         onClick={exportarExcel}
