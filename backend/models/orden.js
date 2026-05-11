@@ -233,7 +233,7 @@ const Orden = sequelize.define('Orden', {
   },
 
   mobilvendor_id: {
-    type: DataTypes.STRING(100),
+    type: DataTypes.STRING(255),
     allowNull: true
   },
 

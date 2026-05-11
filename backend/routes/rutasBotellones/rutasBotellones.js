@@ -14,6 +14,7 @@ router.get('/vip-cliente-detalle',         botellonesController.obtenerVipDetall
 router.get('/empresas-subcanales',         botellonesController.obtenerEmpresasSubcanales);
 router.get('/empresas-clientes-tipo',      botellonesController.obtenerEmpresasClientesPorTipo);
 router.get('/empresas-cliente-detalle',    botellonesController.obtenerEmpresasDetalleCliente);
+router.get('/empresas-sucursal-productos', botellonesController.obtenerEmpresasProductosSucursal);
 
 // Quito / Website — canales independientes (MV + Odoo)
 router.get('/quito-consolidado',   verificarTokenOpcional, botellonesController.obtenerQuitoConsolidado);

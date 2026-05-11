@@ -21,6 +21,8 @@ const Producto = require('./Producto');
 const Subcanal = require('./Subcanal'); // 🔥 NUEVO
 const CottsaExtraMes = require('./CottsaExtraMes');
 const ContactoRecuperacion = require('./ContactoRecuperacion');
+const PosOrder = require('./posOrder');
+const PosOrderLine = require('./posOrderLine');
 
 // =============================
 // RELACIONES
@@ -200,6 +202,19 @@ HistorialVisitas.belongsTo(Orden, {
   as: 'orden',
 });
 
+// ---------- POS ORDER ----------
+PosOrder.hasMany(PosOrderLine, {
+  foreignKey: 'order_odoo_id',
+  sourceKey: 'odoo_id',
+  as: 'lines',
+});
+
+PosOrderLine.belongsTo(PosOrder, {
+  foreignKey: 'order_odoo_id',
+  targetKey: 'odoo_id',
+  as: 'order',
+});
+
 // =============================
 // EXPORTACIÓN
 // =============================
@@ -222,5 +237,7 @@ module.exports = {
   Subcanal, //  NUEVO
   CottsaExtraMes,
   ContactoRecuperacion,
+  PosOrder,
+  PosOrderLine,
   sequelize,
 };
