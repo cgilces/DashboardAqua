@@ -10,6 +10,8 @@ const {
   DetalleDocumento,
   Producto,
   SincronizacionVenta,
+  PosOrder,
+  PosOrderLine,
 } = require("../../models");
 
 const { Op } = require("sequelize");
@@ -22,6 +24,23 @@ const { object, loginOdoo } = require("./odooConexion");
 const toNumber = (val) => {
   const n = Number(val);
   return Number.isFinite(n) ? n : 0;
+};
+
+// Odoo XML-RPC devuelve datetime como string "YYYY-MM-DD HH:MM:SS" SIN zona.
+// Esos valores siempre están en UTC, pero new Date(str) los interpreta como
+// hora LOCAL del servidor → si el server no está en UTC, se corren las horas
+// (Ecuador UTC-5 → -5h de error, descuadre contra Odoo). Forzamos UTC.
+const parseOdooUTC = (val) => {
+  if (!val) return null;
+  if (val instanceof Date) return val;
+  const s = String(val).trim();
+  if (!s) return null;
+  // Acepta "YYYY-MM-DD HH:MM:SS" o "YYYY-MM-DDTHH:MM:SS" con/sin Z.
+  const iso = /[zZ]|[+\-]\d{2}:?\d{2}$/.test(s)
+    ? s.replace(' ', 'T')
+    : s.replace(' ', 'T') + 'Z';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
 };
 
 // ========================================================
@@ -415,9 +434,14 @@ const procesarChunkPedidos = async (uid, pedidos, errores, contadores) => {
         estado_odoo: orden.state || null,
         estado_facturacion: orden.invoice_status || null,
         estado_entrega: orden.delivery_status || null,
-        fecha_creacion: orden.date_order || null,
+        // ⚠️ Odoo devuelve datetimes en UTC sin zona. parseOdooUTC los
+        // interpreta correctamente como UTC; pasarlos como string crudo
+        // hacía que Postgres los leyera en hora local del servidor y
+        // movía ventas de finales de día (UTC) al día siguiente local,
+        // descuadrándose contra el reporte "Análisis de ventas" de Odoo.
+        fecha_creacion: parseOdooUTC(orden.date_order),
         fecha_validez: orden.validity_date || null,
-        fecha_compromiso: orden.commitment_date || null,
+        fecha_compromiso: parseOdooUTC(orden.commitment_date),
         fecha_entrega: orden.effective_date || null,
         campania_id: idCompany,
         descripcion_company: descripcionCompany,
@@ -954,13 +978,183 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
       console.error("⚠️ Error en post-update de seller_code para NotCr:", err.message);
     }
 
+    // ── 3. POS ORDERS (COTTSA) ─────────────────────────────────
+    // Traer pos.order del rango para company_id=3 (COTTSA). La idea es
+    // tener el universo TPV en BD para poder consultarlo offline igual
+    // que ya hacemos con sale.order y account.move.
+    let posCounters = { orders: 0, lines: 0 };
+    try {
+      console.log("\n🛒 Buscando pedidos POS (TPV) de COTTSA...");
+      const COTTSA_COMPANY_ID = 3;
+
+      const posOrders = await odooExecute([
+        process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+        "pos.order", "search_read",
+        [[
+          ["company_id", "=", COTTSA_COMPANY_ID],
+          ["date_order", ">=", `${startDate} 00:00:00`],
+          ["date_order", "<=", `${endDate} 23:59:59`],
+        ]],
+        {
+          fields: [
+            "id", "name", "pos_reference", "date_order", "state",
+            "amount_total", "amount_paid", "amount_tax", "amount_return",
+            "partner_id", "user_id", "session_id", "config_id",
+            "account_move", "company_id", "lines",
+          ],
+        },
+      ]);
+
+      console.log(`🛒 Pedidos POS encontrados: ${posOrders.length}`);
+
+      if (posOrders.length) {
+        // Resolver partner del user_id (vendedor) — es lo que el reporte
+        // "Análisis del TPV" usa como agrupador. Lo cacheamos por user_id.
+        const userIds = [...new Set(
+          posOrders.map(o => Array.isArray(o.user_id) ? o.user_id[0] : null).filter(Boolean)
+        )];
+        const userPartnerMap = {};
+        if (userIds.length) {
+          const usersData = await odooExecute([
+            process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+            "res.users", "read",
+            [userIds],
+            { fields: ["id", "partner_id"] },
+          ]);
+          for (const u of usersData) {
+            userPartnerMap[u.id] = Array.isArray(u.partner_id) ? u.partner_id[1] : null;
+          }
+        }
+
+        // Líneas POS — read en batch para todas las orders del chunk
+        const allLineIds = [...new Set(
+          posOrders.flatMap(o => Array.isArray(o.lines) ? o.lines : [])
+        )];
+
+        // Upsert en chunks para no saturar Postgres
+        const chunkPosOrders = chunkArray(posOrders, 200);
+        for (const chunk of chunkPosOrders) {
+          const t = await sequelize.transaction();
+          try {
+            const payloads = chunk.map(o => {
+              const userId = Array.isArray(o.user_id) ? o.user_id[0] : null;
+              return {
+                odoo_id: o.id,
+                name: o.name,
+                pos_reference: o.pos_reference || null,
+                date_order: parseOdooUTC(o.date_order),
+                state: o.state || null,
+                amount_total: toNumber(o.amount_total),
+                amount_paid: toNumber(o.amount_paid),
+                amount_tax: toNumber(o.amount_tax),
+                amount_return: toNumber(o.amount_return),
+                partner_id: Array.isArray(o.partner_id) ? o.partner_id[0] : null,
+                partner_name: Array.isArray(o.partner_id) ? o.partner_id[1] : null,
+                user_id: userId,
+                user_name: Array.isArray(o.user_id) ? o.user_id[1] : null,
+                user_partner_name: userId ? (userPartnerMap[userId] || null) : null,
+                session_id: Array.isArray(o.session_id) ? o.session_id[0] : null,
+                session_name: Array.isArray(o.session_id) ? o.session_id[1] : null,
+                config_id: Array.isArray(o.config_id) ? o.config_id[0] : null,
+                config_name: Array.isArray(o.config_id) ? o.config_id[1] : null,
+                account_move_id: Array.isArray(o.account_move) ? o.account_move[0] : null,
+                account_move_name: Array.isArray(o.account_move) ? o.account_move[1] : null,
+                company_id: Array.isArray(o.company_id) ? o.company_id[0] : COTTSA_COMPANY_ID,
+                fecha_sync: new Date(),
+              };
+            });
+            await PosOrder.bulkCreate(payloads, {
+              updateOnDuplicate: [
+                "name", "pos_reference", "date_order", "state",
+                "amount_total", "amount_paid", "amount_tax", "amount_return",
+                "partner_id", "partner_name",
+                "user_id", "user_name", "user_partner_name",
+                "session_id", "session_name", "config_id", "config_name",
+                "account_move_id", "account_move_name",
+                "company_id", "fecha_sync",
+              ],
+              transaction: t,
+            });
+            posCounters.orders += payloads.length;
+            await t.commit();
+          } catch (err) {
+            await t.rollback();
+            console.error(`❌ Chunk pos.order falló: ${err?.message || err}`);
+            errores.push({ doc: "CHUNK_POS_ORDER", error: err?.message || String(err) });
+          }
+        }
+
+        // Líneas POS — fetch + upsert
+        if (allLineIds.length) {
+          const linesChunks = chunkArray(allLineIds, 500);
+          for (const lineChunk of linesChunks) {
+            try {
+              const lines = await odooExecute([
+                process.env.ODOO_DB, uid, process.env.ODOO_API_KEY,
+                "pos.order.line", "read",
+                [lineChunk],
+                {
+                  fields: [
+                    "id", "order_id", "product_id", "qty",
+                    "price_unit", "price_subtotal", "price_subtotal_incl",
+                    "discount",
+                  ],
+                },
+              ]);
+
+              const linePayloads = lines.map(l => ({
+                odoo_id: l.id,
+                order_odoo_id: Array.isArray(l.order_id) ? l.order_id[0] : null,
+                product_id: Array.isArray(l.product_id) ? l.product_id[0] : null,
+                product_name: Array.isArray(l.product_id) ? l.product_id[1] : null,
+                qty: toNumber(l.qty),
+                price_unit: toNumber(l.price_unit),
+                price_subtotal: toNumber(l.price_subtotal),
+                price_subtotal_incl: toNumber(l.price_subtotal_incl),
+                discount: toNumber(l.discount),
+                fecha_sync: new Date(),
+              })).filter(l => l.order_odoo_id);
+
+              if (linePayloads.length) {
+                const t = await sequelize.transaction();
+                try {
+                  await PosOrderLine.bulkCreate(linePayloads, {
+                    updateOnDuplicate: [
+                      "order_odoo_id", "product_id", "product_name",
+                      "qty", "price_unit", "price_subtotal",
+                      "price_subtotal_incl", "discount", "fecha_sync",
+                    ],
+                    transaction: t,
+                  });
+                  posCounters.lines += linePayloads.length;
+                  await t.commit();
+                } catch (err) {
+                  await t.rollback();
+                  console.error(`❌ Chunk pos.order.line upsert falló: ${err?.message || err}`);
+                  errores.push({ doc: "CHUNK_POS_LINE", error: err?.message || String(err) });
+                }
+              }
+            } catch (err) {
+              console.error(`❌ Fetch pos.order.line falló: ${err?.message || err}`);
+              errores.push({ doc: "FETCH_POS_LINE", error: err?.message || String(err) });
+            }
+          }
+        }
+      }
+
+      console.log(`🛒 POS sincronizado: ${posCounters.orders} pedidos, ${posCounters.lines} líneas`);
+    } catch (err) {
+      console.error("⚠️ Error sincronizando POS:", err?.message || err);
+      errores.push({ doc: "POS_BLOCK", error: err?.message || String(err) });
+    }
+
     // ── Finalizar ──────────────────────────────────────────────
     const totalErrores = errores.length;
     await SincronizacionVenta.update(
       {
         estado: totalErrores ? "CON_ERRORES" : "COMPLETADO",
-        total_registros: pedidos.length + facturas.length,
-        mensaje: `Pedidos:${pedidos.length} Facturas:${facturas.length} Clientes:${contadores.clientes} Productos:${contadores.productos} Detalles:${contadores.detalles} Errores:${totalErrores}`,
+        total_registros: pedidos.length + facturas.length + posCounters.orders,
+        mensaje: `Pedidos:${pedidos.length} Facturas:${facturas.length} POS:${posCounters.orders} Líneas POS:${posCounters.lines} Clientes:${contadores.clientes} Productos:${contadores.productos} Detalles:${contadores.detalles} Errores:${totalErrores}`,
       },
       { where: { id_sync: idSync } }
     );
@@ -969,17 +1163,21 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
 
     console.log("\n====================================");
     console.log(" SINCRONIZACIÓN ODOO COMPLETADA");
-    console.log(`   → Pedidos   : ${pedidos.length}`);
-    console.log(`   → Facturas  : ${facturas.length}`);
-    console.log(`   → Clientes  : ${contadores.clientes}`);
-    console.log(`   → Productos : ${contadores.productos}`);
-    console.log(`   → Detalles  : ${contadores.detalles}`);
-    console.log(`   → Errores   : ${totalErrores}`);
+    console.log(`   → Pedidos     : ${pedidos.length}`);
+    console.log(`   → Facturas    : ${facturas.length}`);
+    console.log(`   → POS Orders  : ${posCounters.orders}`);
+    console.log(`   → POS Líneas  : ${posCounters.lines}`);
+    console.log(`   → Clientes    : ${contadores.clientes}`);
+    console.log(`   → Productos   : ${contadores.productos}`);
+    console.log(`   → Detalles    : ${contadores.detalles}`);
+    console.log(`   → Errores     : ${totalErrores}`);
     console.log("====================================\n");
 
     return {
       totalPedidos: pedidos.length,
       totalFacturas: facturas.length,
+      totalPosOrders: posCounters.orders,
+      totalPosLines: posCounters.lines,
       totalClientes: contadores.clientes,
       totalProductos: contadores.productos,
       totalDetalles: contadores.detalles,

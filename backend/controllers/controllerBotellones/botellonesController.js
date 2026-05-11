@@ -2780,6 +2780,93 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 't
 const obtenerClientesQuitoBotellon = buildClientesOdooBotellon(fuenteQuito);
 const obtenerClientesWebsiteBotellon = buildClientesOdooBotellon(fuenteWebsite);
 
+/* ======================================================
+   EMPRESAS — PRODUCTOS POR SUCURSAL (BOTELLÓN)
+   GET /api/botellones/empresas-sucursal-productos
+       ?clienteCode=X&addressCode=Y&anio=YYYY&mes=MM&tipoProducto=todo|liquido|envase
+   Devuelve los productos vendidos a esa (cliente, sucursal) en el mes,
+   combinando MV (facturas seller_code ILIKE 'E%') + Odoo (ordenes con
+   seller_nombre en RUTAS_ODOO_EMPRESAS), filtrando categoría BOTELLÓN
+   y respetando el filtro de tipoProducto activo.
+====================================================== */
+const obtenerEmpresasProductosSucursal = async (req, res) => {
+  try {
+    const { clienteCode, addressCode, anio, mes } = req.query;
+    const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
+    if (!clienteCode || !addressCode || !anio || !mes)
+      return res.status(400).json({ ok: false, error: 'clienteCode, addressCode, anio y mes requeridos' });
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
+      return res.status(400).json({ ok: false, error: 'Parámetros inválidos' });
+
+    const { inicio, fin } = getRangoFechas(anioNum, mesNum);
+
+    const rutasRepl = {};
+    RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
+    const rutasPH = RUTAS_ODOO_EMPRESAS.map((_, i) => `:re${i}`).join(', ');
+
+    const fDDmv = buildFiltroProductoBotellon(tipoProducto, 'ddm');
+    const fDDod = buildFiltroProductoBotellon(tipoProducto, 'ddo');
+
+    const filas = await sequelize.query(`
+      SELECT descripcion AS producto,
+             SUM(cantidad) AS unidades_vendidas,
+             SUM(total)    AS monto_usd
+      FROM (
+        SELECT ddm.descripcion, ddm.cantidad, ddm.total
+        FROM facturas f
+        JOIN detalle_documento ddm ON ddm.documento_code = f.code
+        WHERE f.customer_code = :clienteCode
+          AND f.customer_address_code = :addressCode
+          AND f.seller_code ILIKE 'E%'
+          AND ddm.descripcion_categoria = 'BOTELLÓN'
+          ${fDDmv}
+          AND f.status IN (2,4,5)
+          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
+
+        UNION ALL
+
+        SELECT ddo.descripcion, ddo.cantidad, ddo.total
+        FROM ordenes o
+        JOIN detalle_documento ddo ON ddo.documento_code = o.code
+        WHERE o.customer_code = :clienteCode
+          AND o.customer_address_code::text = :addressCode
+          AND o.seller_nombre IN (${rutasPH})
+          AND o.type = 2 AND o.status IN (2,4,5)
+          AND ddo.descripcion_categoria = 'BOTELLÓN'
+          ${fDDod}
+          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+      ) comb
+      GROUP BY descripcion
+      ORDER BY monto_usd DESC
+    `, {
+      replacements: { clienteCode, addressCode, inicio, fin, ...rutasRepl },
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    // Limpia el prefijo "[código] " y consolida líneas con el mismo nombre.
+    const limpiar = (n) => (n ? n.replace(/^\[[^\]]+\]\s*/, '').trim() : '');
+    const map = new Map();
+    for (const f of filas) {
+      const nombre = limpiar(f.producto);
+      if (!map.has(nombre)) {
+        map.set(nombre, { producto: nombre, unidades_vendidas: 0, monto_usd: 0 });
+      }
+      const acc = map.get(nombre);
+      acc.unidades_vendidas += Number(f.unidades_vendidas) || 0;
+      acc.monto_usd         += Number(f.monto_usd)         || 0;
+    }
+    const productos = Array.from(map.values()).sort((a, b) => b.monto_usd - a.monto_usd);
+
+    return res.json({ ok: true, productos });
+  } catch (error) {
+    console.error('❌ ERROR EMPRESAS PRODUCTOS SUCURSAL:', error);
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
 module.exports = {
   obtenerDashboardBotellones,
   obtenerClientesVipBotellon,
@@ -2792,6 +2879,7 @@ module.exports = {
   obtenerEmpresasSubcanales,
   obtenerEmpresasClientesPorTipo,
   obtenerEmpresasDetalleCliente,
+  obtenerEmpresasProductosSucursal,
   obtenerQuitoConsolidado,
   obtenerWebsiteConsolidado,
   obtenerClientesQuitoBotellon,

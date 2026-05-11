@@ -42,20 +42,48 @@ const getFechaFinQuery = (anio, mes) => getFechaFinMes(anio, mes);
 // ================================================================
 // DESPUÉS
 const queryMVHielo = async (inicio, fin) => {
-  const [row] = await sequelize.query(
-    `SELECT
-       SUM(dd.cantidad)                  AS unidades,
-       SUM(dd.total)                     AS dolares,
-       COUNT(DISTINCT f.code)            AS cant_facturas,
-       COUNT(DISTINCT f.customer_code)   AS cant_clientes
-     FROM facturas f
-     LEFT JOIN detalle_documento dd ON f.code = dd.documento_code
-     WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
-       AND f.status IN ('2')
-       AND f.fecha_creacion >= :inicio
-       AND f.fecha_creacion <  :fin`,
-    { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT }
-  );
+const [row] = await sequelize.query(
+  `SELECT
+      COALESCE(SUM(
+        CASE
+          -- Televentas anuladas
+          WHEN f.seller_code = '10'
+            THEN -dd.cantidad
+          ELSE dd.cantidad
+        END
+      ), 0) AS unidades,
+
+      COALESCE(SUM(
+        CASE
+          -- Televentas anuladas
+          WHEN f.seller_code = '10'
+            THEN -dd.total
+          ELSE dd.total
+        END
+      ), 0) AS dolares,
+
+      COUNT(DISTINCT f.code)          AS cant_facturas,
+      COUNT(DISTINCT f.customer_code) AS cant_clientes
+
+    FROM facturas f
+
+    LEFT JOIN detalle_documento dd
+      ON f.code = dd.documento_code
+
+    WHERE
+      (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
+
+      AND f.status = '2'
+
+      AND dd.descripcion_categoria = 'HIELO'
+
+      AND f.fecha_creacion >= :inicio
+      AND f.fecha_creacion < :fin`,
+  {
+    replacements: { inicio, fin },
+    type: Sequelize.QueryTypes.SELECT
+  }
+);
   return {
     unidades: Number(row?.unidades || 0),
     dolares: Number(row?.dolares || 0),
@@ -71,6 +99,9 @@ const queryMVHielo = async (inicio, fin) => {
 // ================================================================
 // DESPUÉS
 const queryVentasPorRuta = async (inicio, fin) => {
+  // DIST vende mayormente PT-DISTRINTER (hielo). Excluimos categoría BOTELLN
+  // para que el dashboard de hielo NO contabilice botellones (p.ej. una
+  // orden esporádica como S183426 a GADM Guayaquil con 29 botellones).
   const sql = `
     SELECT
       SUM(dd.total)                   AS dolares,
@@ -81,6 +112,7 @@ const queryVentasPorRuta = async (inicio, fin) => {
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.campania_id = 5
       AND o.status IN (2)
+      AND dd.descripcion_categoria NOT ILIKE '%BOTELL%'
       AND o.fecha_creacion >= :inicio
       AND o.fecha_creacion <  :fin
   `;
@@ -96,6 +128,39 @@ const queryVentasPorRuta = async (inicio, fin) => {
     cant_clientes: Number(row?.cant_clientes || 0),
     subtotal: 0,
   }];
+};
+
+// ================================================================
+// QUERY VENTAS HIELO ODOO GA (Grupo Aqua, company_id=1)
+// Ordenes (sale.order) de GRUPOAQUA con categoría HIELO.
+// Estas ventas NO están cubiertas por MV (seller_code H%) ni por
+// DISTRINTER (campania_id=5), por lo que se suman aparte al total.
+// ================================================================
+const queryGAHielo = async (inicio, fin) => {
+  const sql = `
+    SELECT
+      COALESCE(SUM(dd.total), 0)      AS dolares,
+      COALESCE(SUM(dd.cantidad), 0)   AS unidades,
+      COUNT(DISTINCT o.code)          AS cant_ordenes,
+      COUNT(DISTINCT o.customer_code) AS cant_clientes
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.campania_id = 1
+      AND o.status IN (2)
+      AND dd.descripcion_categoria ILIKE '%HIELO%'
+      AND o.fecha_creacion >= :inicio
+      AND o.fecha_creacion <  :fin
+  `;
+  const [row] = await sequelize.query(sql, {
+    replacements: { inicio, fin },
+    type: Sequelize.QueryTypes.SELECT,
+  });
+  return {
+    unidades: Number(row?.unidades || 0),
+    dolares: Number(row?.dolares || 0),
+    cant_ordenes: Number(row?.cant_ordenes || 0),
+    cant_clientes: Number(row?.cant_clientes || 0),
+  };
 };
 
 // ================================================================
@@ -135,23 +200,36 @@ const obtenerVentasHielo = async (req, res) => {
     const rutaBindings = {};
     RUTAS_ODOO.forEach((r, i) => { rutaBindings[`ruta${i}`] = r; });
 
-    const [ventasActual, ventasAnterior, mvActual, mvAnterior, conteosExtra] = await Promise.all([
+    const [ventasActual, ventasAnterior, mvActual, mvAnterior, gaActual, gaAnterior, conteosExtra] = await Promise.all([
       queryVentasPorRuta(inicio, fin),
       queryVentasPorRuta(inicioPrev, finPrev),
       queryMVHielo(inicio, fin),
       queryMVHielo(inicioPrev, finPrev),
+      queryGAHielo(inicio, fin),
+      queryGAHielo(inicioPrev, finPrev),
       sequelize.query(`
         SELECT COUNT(DISTINCT customer_code) AS cant_clientes
         FROM (
-          SELECT customer_code FROM facturas
-          WHERE (seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3'))
-            AND status IN ('2')
-            AND fecha_creacion >= :inicio AND fecha_creacion < :fin
+          SELECT f.customer_code FROM facturas f
+          JOIN detalle_documento dd ON dd.documento_code = f.code
+          WHERE (f.seller_code ILIKE 'H%' OR f.seller_code = 'h3')
+            AND f.status IN ('2')
+            AND dd.descripcion_categoria = 'HIELO'
+            AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
           UNION
-          SELECT customer_code FROM ordenes
-          WHERE campania_id = 5
-            AND status IN (2)
-            AND fecha_creacion >= :inicio AND fecha_creacion < :fin
+          SELECT o.customer_code FROM ordenes o
+          JOIN detalle_documento dd ON dd.documento_code = o.code
+          WHERE o.campania_id = 5
+            AND o.status IN (2)
+            AND dd.descripcion_categoria NOT ILIKE '%BOTELL%'
+            AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+          UNION
+          SELECT o.customer_code FROM ordenes o
+          JOIN detalle_documento dd ON dd.documento_code = o.code
+          WHERE o.campania_id = 1
+            AND o.status IN (2)
+            AND dd.descripcion_categoria ILIKE '%HIELO%'
+            AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
         ) combined
       `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT }),
     ]);
@@ -220,10 +298,10 @@ const obtenerVentasHielo = async (req, res) => {
     const odooAntDolares = rutas.reduce((a, r) => a + r.mes_anterior.dolares, 0);
     const odooAntUnidades = rutas.reduce((a, r) => a + r.mes_anterior.unidades, 0);
 
-    const totalDolares = odooDolares + mvActual.dolares;
-    const totalUnidades = odooUnidades + mvActual.unidades;
-    const totalAntDolares = odooAntDolares + mvAnterior.dolares;
-    const totalAntUnidades = odooAntUnidades + mvAnterior.unidades;
+    const totalDolares = odooDolares + mvActual.dolares + gaActual.dolares;
+    const totalUnidades = odooUnidades + mvActual.unidades + gaActual.unidades;
+    const totalAntDolares = odooAntDolares + mvAnterior.dolares + gaAnterior.dolares;
+    const totalAntUnidades = odooAntUnidades + mvAnterior.unidades + gaAnterior.unidades;
 
     // Proyección combinada sobre dólares totales
     const proyeccionDolares = esMesActual && diasTranscurridos > 0
@@ -245,7 +323,7 @@ const obtenerVentasHielo = async (req, res) => {
       dolares: Number(totalDolares.toFixed(2)),
       proyeccion_unidades: Number(proyeccionUnidades.toFixed(0)),
       proyeccion_dolares: Number(proyeccionDolares.toFixed(2)),
-      cant_ordenes: rutas.reduce((a, r) => a + r.cant_ordenes, 0),
+      cant_ordenes: rutas.reduce((a, r) => a + r.cant_ordenes, 0) + gaActual.cant_ordenes,
       cant_facturas: mvActual.cant_facturas,
       cant_clientes: Number(conteosExtra[0]?.cant_clientes || 0),
       mes_anterior: {
@@ -302,11 +380,17 @@ const obtenerClientesHieloOdoo = async (req, res) => {
     const R = { inicio, fin, antInicio, antFin, inicioAnio, finAnio };
 
     // ── Filtros base reutilizables ─────────────────────────────────────────────
-    // Replican EXACTAMENTE las dos fuentes de la tabla principal (HIELO — VENTAS EMPRESA):
-    //   ① MobilVendor: facturas con seller_code H% / 10 / h3, status='2', fecha_creacion
-    //   ② Distrinter:  ordenes con campania_id=5, status=2, fecha_creacion
-    // (sin filtro de categoría — la principal tampoco lo aplica)
+    // Replican EXACTAMENTE las tres fuentes de la tabla principal (HIELO — VENTAS EMPRESA):
+    //   ① MobilVendor: facturas H% / 10 / h3, status='2' + categoría HIELO
+    //      (sin categoría entraban $160.77 de botellones de televentas anuladas)
+    //   ② Distrinter:  ordenes campania_id=5, status=2 (sin filtro de categoría)
+    //   ③ Grupo Aqua: ordenes campania_id=1, status=2 + categoría HIELO
+    //      (GA vende otros productos también — sin este filtro entraría todo)
+    // Nota: para clientesSQL/ultimaSQL el bloque MV excluye seller_code='10'
+    // (televentas anuladas) porque no representan compras reales del cliente.
     const mvWhere = `(seller_code ILIKE 'H%' OR seller_code IN ('10', 'h3')) AND status IN ('2')`;
+    // Para conteos de existencia (clientes, última fecha) — sólo compras reales.
+    const mvWhereReal = `(seller_code ILIKE 'H%' OR seller_code = 'h3') AND status IN ('2')`;
 
     // NOTA: customer_address_code es VARCHAR en facturas e INTEGER en ordenes → cast a TEXT.
 
@@ -325,17 +409,34 @@ const obtenerClientesHieloOdoo = async (req, res) => {
     dc.latitud_direccion_cliente                               AS latitud_cliente,
     dc.longitud_direccion_cliente                              AS longitud_cliente
   FROM (
-    SELECT customer_code, customer_address_code::TEXT AS customer_address_code
-    FROM facturas
-    WHERE ${mvWhere}
-      AND fecha_creacion >= :inicioAnio AND fecha_creacion < :finAnio
+    -- ① MobilVendor filtrado por categoría HIELO; excluye televentas anuladas.
+    SELECT DISTINCT f.customer_code, f.customer_address_code::TEXT AS customer_address_code
+    FROM facturas f
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE ${mvWhereReal}
+      AND dd.descripcion_categoria = 'HIELO'
+      AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
 
     UNION
 
-    SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code
+    -- ② Distrinter excluye botellones (dashboard sólo hielo)
+    SELECT DISTINCT o.customer_code, o.customer_address_code::TEXT AS customer_address_code
     FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.campania_id = 5
       AND o.status IN (2)
+      AND dd.descripcion_categoria NOT ILIKE '%BOTELL%'
+      AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
+
+    UNION
+
+    -- ③ Grupo Aqua (campania_id=1) filtrado por categoría HIELO
+    SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.campania_id = 1
+      AND o.status IN (2)
+      AND dd.descripcion_categoria ILIKE '%HIELO%'
       AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
 
   ) src
@@ -346,6 +447,7 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 `;
 
     // ── 2. Consumo por (cliente, dirección) ───────────────────────────────────
+    // MV niega televentas anuladas (seller_code='10') igual que el principal.
     const consumoSQL = `
   SELECT customer_code, customer_address_code,
     SUM(CASE WHEN fecha >= :inicio    AND fecha < :fin    THEN total    ELSE 0 END) AS consumo_actual,
@@ -353,19 +455,35 @@ const obtenerClientesHieloOdoo = async (req, res) => {
     SUM(CASE WHEN fecha >= :inicio    AND fecha < :fin    THEN cantidad ELSE 0 END) AS cantidad_actual
   FROM (
     SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
-           f.fecha_creacion AS fecha, dd.total, dd.cantidad
+           f.fecha_creacion AS fecha,
+           (CASE WHEN f.seller_code = '10' THEN -dd.total    ELSE dd.total    END) AS total,
+           (CASE WHEN f.seller_code = '10' THEN -dd.cantidad ELSE dd.cantidad END) AS cantidad
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE ${mvWhere}
+      AND dd.descripcion_categoria = 'HIELO'
 
     UNION ALL
 
+    -- ② Distrinter excluye botellones (dashboard sólo hielo)
     SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
            o.fecha_creacion AS fecha, dd.total, dd.cantidad
     FROM ordenes o
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.campania_id = 5
       AND o.status IN (2)
+      AND dd.descripcion_categoria NOT ILIKE '%BOTELL%'
+
+    UNION ALL
+
+    -- ③ Grupo Aqua (campania_id=1) filtrado por categoría HIELO
+    SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
+           o.fecha_creacion AS fecha, dd.total, dd.cantidad
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.campania_id = 1
+      AND o.status IN (2)
+      AND dd.descripcion_categoria ILIKE '%HIELO%'
 
   ) comb
   GROUP BY customer_code, customer_address_code
@@ -378,20 +496,36 @@ const obtenerClientesHieloOdoo = async (req, res) => {
            DATE_TRUNC('month', fecha) AS mes, SUM(total) AS consumo_mes
     FROM (
       SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
-             f.fecha_creacion AS fecha, dd.total
+             f.fecha_creacion AS fecha,
+             (CASE WHEN f.seller_code = '10' THEN -dd.total ELSE dd.total END) AS total
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE ${mvWhere}
+        AND dd.descripcion_categoria = 'HIELO'
         AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
 
       UNION ALL
 
+      -- ② Distrinter excluye botellones (dashboard sólo hielo)
       SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
              o.fecha_creacion AS fecha, dd.total
       FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
       WHERE o.campania_id = 5
         AND o.status IN (2)
+        AND dd.descripcion_categoria NOT ILIKE '%BOTELL%'
+        AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
+
+      UNION ALL
+
+      -- ③ Grupo Aqua (campania_id=1) filtrado por categoría HIELO
+      SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
+             o.fecha_creacion AS fecha, dd.total
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.campania_id = 1
+        AND o.status IN (2)
+        AND dd.descripcion_categoria ILIKE '%HIELO%'
         AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
 
     ) comb
@@ -404,20 +538,39 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 `;
 
     // ── 4. Última fecha por (cliente, dirección) ──────────────────────────────
+    // MV: sólo HIELO real (excluye televentas anuladas) — la "última factura"
+    // representa una compra real, no una venta cancelada.
     const ultimaSQL = `
   SELECT customer_code, customer_address_code, MAX(fecha) AS ultima_factura
   FROM (
-    SELECT customer_code, customer_address_code::TEXT AS customer_address_code,
-           fecha_creacion AS fecha
-    FROM facturas WHERE ${mvWhere}
+    SELECT f.customer_code, f.customer_address_code::TEXT AS customer_address_code,
+           f.fecha_creacion AS fecha
+    FROM facturas f
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE ${mvWhereReal}
+      AND dd.descripcion_categoria = 'HIELO'
 
     UNION ALL
 
+    -- ② Distrinter excluye botellones (dashboard sólo hielo)
     SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
            o.fecha_creacion AS fecha
     FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.campania_id = 5
       AND o.status IN (2)
+      AND dd.descripcion_categoria NOT ILIKE '%BOTELL%'
+
+    UNION ALL
+
+    -- ③ Grupo Aqua (campania_id=1) filtrado por categoría HIELO
+    SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
+           o.fecha_creacion AS fecha
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.campania_id = 1
+      AND o.status IN (2)
+      AND dd.descripcion_categoria ILIKE '%HIELO%'
 
   ) comb
   GROUP BY customer_code, customer_address_code
@@ -425,29 +578,46 @@ const obtenerClientesHieloOdoo = async (req, res) => {
 
 
 
-    // 5. Productos vendidos (solo del mes consultado) — replica las DOS fuentes
-    //    de la tabla principal (MobilVendor + Distrinter), sin filtro de categoría.
+    // 5. Productos vendidos (solo del mes consultado) — replica EXACTAMENTE las
+    //    tres fuentes de la tabla principal para que el total cuadre:
+    //    MV filtra HIELO + niega televentas anuladas; DIST sin filtro de
+    //    categoría (= principal); GA con filtro HIELO.
     const productosSQL = `
       SELECT descripcion AS producto,
              SUM(cantidad) AS unidades_vendidas,
              SUM(total)    AS monto_usd
       FROM (
-        -- MobilVendor: facturas H%/10/h3 con status='2'
-        SELECT dd.descripcion, dd.cantidad, dd.total
+        -- ① MobilVendor: HIELO + televentas anuladas en negativo
+        SELECT dd.descripcion,
+               (CASE WHEN f.seller_code = '10' THEN -dd.cantidad ELSE dd.cantidad END) AS cantidad,
+               (CASE WHEN f.seller_code = '10' THEN -dd.total    ELSE dd.total    END) AS total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE (f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3'))
           AND f.status IN ('2')
+          AND dd.descripcion_categoria = 'HIELO'
           AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
 
         UNION ALL
 
-        -- Distrinter: ordenes campania_id=5 con status=2
+        -- ② Distrinter: ordenes campania_id=5 con status=2, excluyendo botellones
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM ordenes o
         JOIN detalle_documento dd ON dd.documento_code = o.code
         WHERE o.campania_id = 5
           AND o.status IN (2)
+          AND dd.descripcion_categoria NOT ILIKE '%BOTELL%'
+          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+
+        UNION ALL
+
+        -- ③ Grupo Aqua: ordenes campania_id=1 con status=2 filtrado por HIELO
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.campania_id = 1
+          AND o.status IN (2)
+          AND dd.descripcion_categoria ILIKE '%HIELO%'
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
       ) comb
       GROUP BY descripcion
@@ -580,8 +750,12 @@ const obtenerProductosClienteHielo = async (req, res) => {
     const inicio = getFechaInicioMes(anioNum, mesNum);
     const fin = getFechaFinQuery(anioNum, mesNum);
 
-    const mvWhere = `(f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3')) AND f.status IN ('2')`;
-    const distWhere = `o.campania_id = 5 AND o.status IN (2)`;
+    // MV: filtra HIELO y niega televentas anuladas (igual que el principal).
+    const mvWhere = `(f.seller_code ILIKE 'H%' OR f.seller_code IN ('10', 'h3')) AND f.status IN ('2') AND dd.descripcion_categoria = 'HIELO'`;
+    // DIST: excluye botellones (dashboard de hielo).
+    const distWhere = `o.campania_id = 5 AND o.status IN (2) AND dd.descripcion_categoria NOT ILIKE '%BOTELL%'`;
+    // Grupo Aqua requiere filtro de categoría HIELO porque vende otros productos.
+    const gaWhere = `o.campania_id = 1 AND o.status IN (2) AND dd.descripcion_categoria ILIKE '%HIELO%'`;
 
     const addrFilterMV = addressCode ? `AND f.customer_address_code::TEXT = :addressCode` : '';
     const addrFilterOrden = addressCode ? `AND o.customer_address_code::TEXT = :addressCode` : '';
@@ -591,7 +765,9 @@ const obtenerProductosClienteHielo = async (req, res) => {
              SUM(cantidad) AS unidades_vendidas,
              SUM(total)    AS monto_usd
       FROM (
-        SELECT dd.descripcion, dd.cantidad, dd.total
+        SELECT dd.descripcion,
+               (CASE WHEN f.seller_code = '10' THEN -dd.cantidad ELSE dd.cantidad END) AS cantidad,
+               (CASE WHEN f.seller_code = '10' THEN -dd.total    ELSE dd.total    END) AS total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
         WHERE ${mvWhere}
@@ -605,6 +781,17 @@ const obtenerProductosClienteHielo = async (req, res) => {
         FROM ordenes o
         JOIN detalle_documento dd ON dd.documento_code = o.code
         WHERE ${distWhere}
+          AND o.customer_code = :customerCode
+          ${addrFilterOrden}
+          AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
+
+        UNION ALL
+
+        -- ③ Grupo Aqua (campania_id=1) filtrado por categoría HIELO
+        SELECT dd.descripcion, dd.cantidad, dd.total
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE ${gaWhere}
           AND o.customer_code = :customerCode
           ${addrFilterOrden}
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin

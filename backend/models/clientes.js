@@ -22,7 +22,7 @@ const Cliente = sequelize.define(
     },
 
     descripcion_company: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 
@@ -79,7 +79,7 @@ const Cliente = sequelize.define(
     },
 
     condicion_pago_cliente: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 
@@ -155,17 +155,17 @@ const Cliente = sequelize.define(
     },
 
     ciudad_cliente: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 
     pais_cliente: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 
     industria_cliente: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 
@@ -186,7 +186,7 @@ const Cliente = sequelize.define(
     // VÍNCULO MOBILVENDOR
     // =========================
     mobilvendor_id_cliente: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 

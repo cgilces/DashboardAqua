@@ -1,6 +1,9 @@
 // controllers/controllerCafe/cafeController.js
 // Ventas de CAFÉ — Empresa IIBC S.A.
-// Fuente única: facturas Odoo (company_id = 4)
+// Fuente única: Pedidos de Venta (sale.order) de Odoo
+//   ordenes.campania_id = 4   (IIBC S.A.)
+//   ordenes.status      = 2   (sale / done)
+// Esto replica el reporte "Análisis de ventas → Pedidos de ventas" de Odoo.
 
 const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
@@ -22,21 +25,21 @@ function getFechaFinMes(anio, mes) {
 const getFechaFinQuery = (anio, mes) => getFechaFinMes(anio, mes);
 
 // ================================================================
-// QUERY TOTALES CAFÉ (solo facturas Odoo company_id=4)
+// QUERY TOTALES CAFÉ — Pedidos de Venta Odoo (IIBC, campania_id=4)
 // ================================================================
 const queryTotalesCafe = async (inicio, fin) => {
   const [row] = await sequelize.query(
     `SELECT
        SUM(dd.cantidad)                  AS unidades,
        SUM(dd.total)                     AS dolares,
-       COUNT(DISTINCT f.code)            AS cant_facturas,
-       COUNT(DISTINCT f.customer_code)   AS cant_clientes
-     FROM facturas f
-     JOIN detalle_documento dd ON dd.documento_code = f.code
-     WHERE f.company_id = 4
-       AND f.status IN ('0','2','4','5')
-       AND f.fecha_creacion >= :inicio
-       AND f.fecha_creacion <  :fin`,
+       COUNT(DISTINCT o.code)            AS cant_facturas,
+       COUNT(DISTINCT o.customer_code)   AS cant_clientes
+     FROM ordenes o
+     JOIN detalle_documento dd ON dd.documento_code = o.code
+     WHERE o.campania_id = 4
+       AND o.status = 2
+       AND o.fecha_creacion >= :inicio
+       AND o.fecha_creacion <  :fin`,
     { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT }
   );
   return {
@@ -48,23 +51,24 @@ const queryTotalesCafe = async (inicio, fin) => {
 };
 
 // ================================================================
-// QUERY VENTAS POR RUTA / VENDEDOR
+// QUERY VENTAS POR CANAL / EQUIPO DE VENTAS
+// Café no maneja rutas, sólo equipos: Website / Point of Sale.
 // ================================================================
 const queryVentasPorRuta = async (inicio, fin) => {
   return sequelize.query(`
     SELECT
-      COALESCE(f.route_code, f.seller_code, 'SIN RUTA') AS ruta,
+      COALESCE(o.equipo_ventas, o.seller_nombre, 'SIN CANAL') AS ruta,
       SUM(dd.cantidad)                AS unidades,
       SUM(dd.total)                   AS dolares,
-      COUNT(DISTINCT f.code)          AS cant_facturas,
-      COUNT(DISTINCT f.customer_code) AS cant_clientes
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.company_id = 4
-      AND f.status IN ('0','2','4','5')
-      AND f.fecha_creacion >= :inicio
-      AND f.fecha_creacion <  :fin
-    GROUP BY COALESCE(f.route_code, f.seller_code, 'SIN RUTA')
+      COUNT(DISTINCT o.code)          AS cant_facturas,
+      COUNT(DISTINCT o.customer_code) AS cant_clientes
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.campania_id = 4
+      AND o.status = 2
+      AND o.fecha_creacion >= :inicio
+      AND o.fecha_creacion <  :fin
+    GROUP BY COALESCE(o.equipo_ventas, o.seller_nombre, 'SIN CANAL')
     ORDER BY dolares DESC
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 };
@@ -82,16 +86,16 @@ const tendencia6MesesCafe = async (anioNum, mesNum) => {
   const fin6 = `${anioFin}-${String(mesFin).padStart(2,'0')}-01 00:00:00`;
 
   const rows = await sequelize.query(`
-    SELECT DATE_TRUNC('month', f.fecha_creacion) AS mes_periodo,
+    SELECT DATE_TRUNC('month', o.fecha_creacion) AS mes_periodo,
            SUM(dd.total)    AS dolares,
            SUM(dd.cantidad) AS unidades
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.company_id = 4
-      AND f.status IN ('0','2','4','5')
-      AND f.fecha_creacion >= :inicio6
-      AND f.fecha_creacion <  :fin6
-    GROUP BY DATE_TRUNC('month', f.fecha_creacion)
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.campania_id = 4
+      AND o.status = 2
+      AND o.fecha_creacion >= :inicio6
+      AND o.fecha_creacion <  :fin6
+    GROUP BY DATE_TRUNC('month', o.fecha_creacion)
     ORDER BY mes_periodo
   `, { replacements: { inicio6, fin6 }, type: Sequelize.QueryTypes.SELECT });
 
@@ -212,6 +216,7 @@ const obtenerDashboardCafe = async (req, res) => {
 
 // ================================================================
 // ENDPOINT CLIENTES — GET /api/cafe/clientes?anio=YYYY&mes=MM
+// Fuente: ordenes (Odoo sale.order) campania_id=4 status=2
 // ================================================================
 const obtenerClientesCafe = async (req, res) => {
   try {
@@ -237,51 +242,54 @@ const obtenerClientesCafe = async (req, res) => {
 
     const R = { inicio, fin, antInicio, antFin, inicioAnio, finAnio };
 
+    // customer_address_code es INTEGER en ordenes → cast a TEXT para
+    // empatar con direcciones_clientes.codigo_direccion_cliente.
     // ── 1. Clientes únicos del año ────────────────────────────────
     const clientesSQL = `
-      SELECT DISTINCT ON (f.customer_code, f.customer_address_code)
-        f.customer_code,
-        f.customer_address_code,
+      SELECT DISTINCT ON (o.customer_code, o.customer_address_code)
+        o.customer_code,
+        o.customer_address_code::TEXT                              AS customer_address_code,
         c.nombre_cliente,
         tn.descripcion                                              AS tipo_negocio,
+        dc.descripcion_direccion_cliente                           AS nombre_sucursal,
         COALESCE(dc.calle1_direccion_cliente, c.direccion_cliente) AS direccion_entrega,
         COALESCE(dc.telefono_direccion_cliente, c.telefono_cliente)AS telefono_cliente,
         dc.latitud_direccion_cliente                               AS latitud_cliente,
         dc.longitud_direccion_cliente                              AS longitud_cliente
-      FROM facturas f
-      LEFT JOIN clientes c              ON c.codigo_cliente = f.customer_code
+      FROM ordenes o
+      LEFT JOIN clientes c              ON c.codigo_cliente = o.customer_code
       LEFT JOIN tipos_negocio tn        ON tn.codigo = c.codigo_tipo_negocio
-      LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente::TEXT = f.customer_address_code
-      WHERE f.company_id = 4
-        AND f.status IN ('0','2','4','5')
-        AND f.fecha_creacion >= :inicioAnio
-        AND f.fecha_creacion <  :finAnio
-      ORDER BY f.customer_code, f.customer_address_code, c.nombre_cliente
+      LEFT JOIN direcciones_clientes dc ON dc.codigo_direccion_cliente::TEXT = o.customer_address_code::TEXT
+      WHERE o.campania_id = 4
+        AND o.status = 2
+        AND o.fecha_creacion >= :inicioAnio
+        AND o.fecha_creacion <  :finAnio
+      ORDER BY o.customer_code, o.customer_address_code, c.nombre_cliente
     `;
 
     // ── 2. Consumo actual / anterior ──────────────────────────────
     const consumoSQL = `
-      SELECT f.customer_code, f.customer_address_code,
-        SUM(CASE WHEN f.fecha_creacion >= :inicio    AND f.fecha_creacion < :fin    THEN dd.total    ELSE 0 END) AS consumo_actual,
-        SUM(CASE WHEN f.fecha_creacion >= :antInicio AND f.fecha_creacion < :antFin THEN dd.total    ELSE 0 END) AS consumo_anterior,
-        SUM(CASE WHEN f.fecha_creacion >= :inicio    AND f.fecha_creacion < :fin    THEN dd.cantidad ELSE 0 END) AS cantidad_actual
-      FROM facturas f
-      JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = 4 AND f.status IN ('0','2','4','5')
-      GROUP BY f.customer_code, f.customer_address_code
+      SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
+        SUM(CASE WHEN o.fecha_creacion >= :inicio    AND o.fecha_creacion < :fin    THEN dd.total    ELSE 0 END) AS consumo_actual,
+        SUM(CASE WHEN o.fecha_creacion >= :antInicio AND o.fecha_creacion < :antFin THEN dd.total    ELSE 0 END) AS consumo_anterior,
+        SUM(CASE WHEN o.fecha_creacion >= :inicio    AND o.fecha_creacion < :fin    THEN dd.cantidad ELSE 0 END) AS cantidad_actual
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.campania_id = 4 AND o.status = 2
+      GROUP BY o.customer_code, o.customer_address_code
     `;
 
     // ── 3. Máximo consumo mensual del año ─────────────────────────
     const maxConsumoSQL = `
       WITH cm AS (
-        SELECT f.customer_code, f.customer_address_code,
-               DATE_TRUNC('month', f.fecha_creacion) AS mes,
+        SELECT o.customer_code, o.customer_address_code::TEXT AS customer_address_code,
+               DATE_TRUNC('month', o.fecha_creacion) AS mes,
                SUM(dd.total) AS consumo_mes
-        FROM facturas f
-        JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.company_id = 4 AND f.status IN ('0','2','4','5')
-          AND f.fecha_creacion >= :inicioAnio AND f.fecha_creacion < :finAnio
-        GROUP BY f.customer_code, f.customer_address_code, DATE_TRUNC('month', f.fecha_creacion)
+        FROM ordenes o
+        JOIN detalle_documento dd ON dd.documento_code = o.code
+        WHERE o.campania_id = 4 AND o.status = 2
+          AND o.fecha_creacion >= :inicioAnio AND o.fecha_creacion < :finAnio
+        GROUP BY o.customer_code, o.customer_address_code, DATE_TRUNC('month', o.fecha_creacion)
       )
       SELECT DISTINCT ON (customer_code, customer_address_code)
         customer_code, customer_address_code, mes, consumo_mes
@@ -289,11 +297,12 @@ const obtenerClientesCafe = async (req, res) => {
       ORDER BY customer_code, customer_address_code, consumo_mes DESC
     `;
 
-    // ── 4. Última fecha de factura ────────────────────────────────
+    // ── 4. Última fecha de pedido ─────────────────────────────────
     const ultimaSQL = `
-      SELECT customer_code, customer_address_code, MAX(fecha_creacion) AS ultima_factura
-      FROM facturas
-      WHERE company_id = 4 AND status IN ('2','4','5')
+      SELECT customer_code, customer_address_code::TEXT AS customer_address_code,
+             MAX(fecha_creacion) AS ultima_factura
+      FROM ordenes
+      WHERE campania_id = 4 AND status = 2
       GROUP BY customer_code, customer_address_code
     `;
 
@@ -302,21 +311,37 @@ const obtenerClientesCafe = async (req, res) => {
       SELECT dd.descripcion AS producto,
              SUM(dd.cantidad) AS unidades_vendidas,
              SUM(dd.total)    AS monto_usd
-      FROM facturas f
-      JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.company_id = 4 AND f.status IN ('0','2','4','5')
-        AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.campania_id = 4 AND o.status = 2
+        AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC
     `;
 
-    const [clientes, consumoData, maxConsumoData, ultimaData, productosVendidos] = await Promise.all([
+    const [clientes, consumoData, maxConsumoData, ultimaData, productosVendidosRaw] = await Promise.all([
       sequelize.query(clientesSQL,   { replacements: R, type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(consumoSQL,    { replacements: R, type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(maxConsumoSQL, { replacements: R, type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(ultimaSQL,     { replacements: R, type: Sequelize.QueryTypes.SELECT }),
       sequelize.query(productosSQL,  { replacements: R, type: Sequelize.QueryTypes.SELECT }),
     ]);
+
+    // Limpia el código entre corchetes al inicio (ej: "[8056370761357] MUST DG CAPUCCINO X 16" → "MUST DG CAPUCCINO X 16")
+    // y consolida líneas duplicadas que queden con el mismo nombre.
+    const limpiarNombreProducto = (n) => (n ? n.replace(/^\[[^\]]+\]\s*/, '').trim() : '');
+    const productosMap = new Map();
+    for (const p of productosVendidosRaw) {
+      const nombre = limpiarNombreProducto(p.producto);
+      if (!productosMap.has(nombre)) {
+        productosMap.set(nombre, { producto: nombre, unidades_vendidas: 0, monto_usd: 0 });
+      }
+      const acc = productosMap.get(nombre);
+      acc.unidades_vendidas += Number(p.unidades_vendidas) || 0;
+      acc.monto_usd         += Number(p.monto_usd)         || 0;
+    }
+    const productosVendidos = Array.from(productosMap.values())
+      .sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
 
     const clave = (r) => `${r.customer_code}__${r.customer_address_code ?? ""}`;
 
@@ -353,6 +378,7 @@ const obtenerClientesCafe = async (req, res) => {
         codigo_cliente:         c.customer_code,
         codigo_direccion:       c.customer_address_code || null,
         nombre_cliente:         c.nombre_cliente,
+        nombre_sucursal:        c.nombre_sucursal || null,
         direccion_entrega:      c.direccion_entrega,
         tipo_negocio:           c.tipo_negocio || "SIN CLASIFICAR",
         telefono_cliente:       c.telefono_cliente || "—",
@@ -392,4 +418,68 @@ const obtenerClientesCafe = async (req, res) => {
   }
 };
 
-module.exports = { obtenerDashboardCafe, obtenerClientesCafe };
+// ================================================================
+// ENDPOINT PRODUCTOS POR SUCURSAL — CAFÉ
+// GET /api/cafe/sucursal-productos?anio=YYYY&mes=MM&customerCode=X&addressCode=Y
+// Devuelve los productos vendidos a una (cliente, dirección) en el mes.
+// ================================================================
+const obtenerProductosSucursalCafe = async (req, res) => {
+  try {
+    const { anio, mes, customerCode, addressCode } = req.query;
+    if (!anio || !mes || !customerCode)
+      return res.status(400).json({ ok: false, error: "Faltan parámetros" });
+
+    const anioNum = parseInt(anio, 10);
+    const mesNum  = parseInt(mes,  10);
+    if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
+      return res.status(400).json({ ok: false, error: "Parámetros inválidos" });
+
+    const inicio = getFechaInicioMes(anioNum, mesNum);
+    const fin    = getFechaFinMes(anioNum, mesNum);
+
+    const addrFilter = addressCode ? `AND o.customer_address_code::TEXT = :addressCode` : '';
+
+    const sql = `
+      SELECT dd.descripcion AS producto,
+             SUM(dd.cantidad) AS unidades_vendidas,
+             SUM(dd.total)    AS monto_usd
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.campania_id = 4
+        AND o.status = 2
+        AND o.customer_code = :customerCode
+        ${addrFilter}
+        AND o.fecha_creacion >= :inicio
+        AND o.fecha_creacion <  :fin
+      GROUP BY dd.descripcion
+      ORDER BY unidades_vendidas DESC
+    `;
+
+    const filas = await sequelize.query(sql, {
+      replacements: { customerCode, addressCode: addressCode || null, inicio, fin },
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    // Limpia el código entre corchetes y consolida líneas con mismo nombre.
+    const limpiar = (n) => (n ? n.replace(/^\[[^\]]+\]\s*/, '').trim() : '');
+    const map = new Map();
+    for (const f of filas) {
+      const nombre = limpiar(f.producto);
+      if (!map.has(nombre)) {
+        map.set(nombre, { producto: nombre, unidades_vendidas: 0, monto_usd: 0 });
+      }
+      const acc = map.get(nombre);
+      acc.unidades_vendidas += Number(f.unidades_vendidas) || 0;
+      acc.monto_usd         += Number(f.monto_usd)         || 0;
+    }
+    const productos = Array.from(map.values())
+      .sort((a, b) => b.monto_usd - a.monto_usd);
+
+    return res.json({ ok: true, productos });
+  } catch (error) {
+    console.error("❌ ERROR productos sucursal café:", error);
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
+module.exports = { obtenerDashboardCafe, obtenerClientesCafe, obtenerProductosSucursalCafe };
