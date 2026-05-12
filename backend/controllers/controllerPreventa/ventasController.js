@@ -212,12 +212,16 @@ const obtenerRankingRutasDescartable = async (anioNum, mesNum, metasPorPreventa,
   const finPrev    = getFechaFinMes(anioPrev, mesPrev);
 
   // Hasta febrero 2026 → SOLO autoventa (R%, excluye PVR%).
-  // Marzo 2026 → mes de transición: R% + PVR% (incluye ambos).
+  // Marzo 2026 → mes de transición: R% (sin PVR%) + PVR% (incluye ambos).
   // Desde abril 2026 → SOLO prevendedores (PVR%).
   const esTransicion = (a, m) => a === 2026 && m === 3;
   const soloPVR = (a, m) => (a > 2026) || (a === 2026 && m >= 4);
   const buildSellerFilter = (alias, a, m) => {
-    if (esTransicion(a, m)) return `${alias}.seller_code ILIKE 'R%'`; // R% incluye PVR%
+    if (esTransicion(a, m)) {
+      // R% no captura PVR% porque PVR empieza con P, no con R.
+      // Necesitamos ambos prefijos explícitos.
+      return `(${alias}.seller_code ILIKE 'R%' OR ${alias}.seller_code ILIKE 'PVR%')`;
+    }
     return soloPVR(a, m)
       ? `${alias}.seller_code ILIKE 'PVR%'`
       : `(${alias}.seller_code ILIKE 'R%' AND ${alias}.seller_code NOT ILIKE 'PVR%')`;
@@ -254,8 +258,8 @@ const sqlActual = `
     WHERE dd.codigo_categoria = '7'
       AND o.status = 5
       AND ${filtroOActual}
-      AND o.fecha_entrega >= '${inicio}'
-      AND o.fecha_entrega < '${fin}'
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= '${inicio}'
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  '${fin}'
     GROUP BY o.seller_code
 
     UNION ALL
@@ -274,8 +278,8 @@ const sqlActual = `
     WHERE dd.codigo_categoria = '7'
       AND f.status = 5
       AND ${filtroFActual}
-      AND f.fecha_entrega >= '${inicio}'
-      AND f.fecha_entrega < '${fin}'
+      AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= '${inicio}'
+      AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  '${fin}'
     GROUP BY f.seller_code
 
   ) x
@@ -300,8 +304,8 @@ const sqlPrev = `
     WHERE dd.codigo_categoria = '7'
       AND o.status = 5
       AND ${filtroOPrev}
-      AND o.fecha_entrega >= '${inicioPrev}'
-      AND o.fecha_entrega <  '${finPrev}'
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= '${inicioPrev}'
+      AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  '${finPrev}'
     GROUP BY o.seller_code
 
     UNION ALL
@@ -316,8 +320,8 @@ const sqlPrev = `
     WHERE dd.codigo_categoria = '7'
       AND f.status = 5
       AND ${filtroFPrev}
-      AND f.fecha_entrega >= '${inicioPrev}'
-      AND f.fecha_entrega <  '${finPrev}'
+      AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= '${inicioPrev}'
+      AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  '${finPrev}'
     GROUP BY f.seller_code
   ) x
   GROUP BY x.usuario;
