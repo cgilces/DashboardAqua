@@ -195,7 +195,7 @@ const obtenerDetallePorVendedor = async (codigoVendedor, anioNum, mesNum) => {
 // ✅ Mes actual  → fecha fin = día siguiente a última sync
 // ✅ Mes cerrado → fecha fin = fin de mes completo
 // El mes anterior siempre usa fin de mes completo
-// Cutoff: hasta marzo 2026 → autoventa R%; desde abril 2026 → prevendedores PVR%
+// Cutoff: hasta feb 2026 → R% (sin PVR); marzo 2026 → transición R% + PVR%; desde abril 2026 → solo PVR%
 // ======================================================
 const obtenerRankingRutasDescartable = async (anioNum, mesNum, metasPorPreventa, diasTranscurridos, diasLaborablesMes) => {
   const hoy = new Date();
@@ -211,20 +211,25 @@ const obtenerRankingRutasDescartable = async (anioNum, mesNum, metasPorPreventa,
   const inicioPrev = getFechaInicioMes(anioPrev, mesPrev);
   const finPrev    = getFechaFinMes(anioPrev, mesPrev);
 
-  // Hasta marzo 2026 inclusive → SOLO autoventa (R%, excluye PVR%).
+  // Hasta febrero 2026 → SOLO autoventa (R%, excluye PVR%).
+  // Marzo 2026 → mes de transición: R% + PVR% (incluye ambos).
   // Desde abril 2026 → SOLO prevendedores (PVR%).
-  // Mutuamente excluyentes: nunca se mezclan R% y PVR% en la misma vista.
+  const esTransicion = (a, m) => a === 2026 && m === 3;
   const soloPVR = (a, m) => (a > 2026) || (a === 2026 && m >= 4);
-  const buildSellerFilter = (alias, a, m) => soloPVR(a, m)
-    ? `${alias}.seller_code ILIKE 'PVR%'`
-    : `(${alias}.seller_code ILIKE 'R%' AND ${alias}.seller_code NOT ILIKE 'PVR%')`;
+  const buildSellerFilter = (alias, a, m) => {
+    if (esTransicion(a, m)) return `${alias}.seller_code ILIKE 'R%'`; // R% incluye PVR%
+    return soloPVR(a, m)
+      ? `${alias}.seller_code ILIKE 'PVR%'`
+      : `(${alias}.seller_code ILIKE 'R%' AND ${alias}.seller_code NOT ILIKE 'PVR%')`;
+  };
 
   const filtroOActual = buildSellerFilter('o', anioNum,  mesNum);
   const filtroFActual = buildSellerFilter('f', anioNum,  mesNum);
   const filtroOPrev   = buildSellerFilter('o', anioPrev, mesPrev);
   const filtroFPrev   = buildSellerFilter('f', anioPrev, mesPrev);
-  const etiqActual    = soloPVR(anioNum,  mesNum)  ? 'PVR%' : 'R% (sin PVR)';
-  const etiqPrev      = soloPVR(anioPrev, mesPrev) ? 'PVR%' : 'R% (sin PVR)';
+  const etiquetaFiltro = (a, m) => esTransicion(a, m) ? 'R% + PVR% (transición)' : (soloPVR(a, m) ? 'PVR%' : 'R% (sin PVR)');
+  const etiqActual    = etiquetaFiltro(anioNum,  mesNum);
+  const etiqPrev      = etiquetaFiltro(anioPrev, mesPrev);
 
   console.log(`📅 RankingR ${anioNum}-${mesNum}: ${inicio} → ${fin} (filtro=${etiqActual}, prev=${etiqPrev})`);
 const sqlActual = `

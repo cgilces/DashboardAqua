@@ -1150,11 +1150,12 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
 
     // ── Finalizar ──────────────────────────────────────────────
     const totalErrores = errores.length;
+    const mensajeFinal = `Ped:${pedidos.length} Fac:${facturas.length} POS:${posCounters.orders}/${posCounters.lines} Cli:${contadores.clientes} Prod:${contadores.productos} Det:${contadores.detalles} Err:${totalErrores}`.substring(0, 100);
     await SincronizacionVenta.update(
       {
         estado: totalErrores ? "CON_ERRORES" : "COMPLETADO",
         total_registros: pedidos.length + facturas.length + posCounters.orders,
-        mensaje: `Pedidos:${pedidos.length} Facturas:${facturas.length} POS:${posCounters.orders} Líneas POS:${posCounters.lines} Clientes:${contadores.clientes} Productos:${contadores.productos} Detalles:${contadores.detalles} Errores:${totalErrores}`,
+        mensaje: mensajeFinal,
       },
       { where: { id_sync: idSync } }
     );
@@ -1187,7 +1188,7 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
   } catch (err) {
     console.error("💥 Error crítico en sincronización Odoo:", err.message);
     await SincronizacionVenta.update(
-      { estado: "ERROR", mensaje: err.message.substring(0, 500) },
+      { estado: "ERROR", mensaje: (err.message || "").substring(0, 100) },
       { where: { id_sync: idSync } }
     );
     throw err;

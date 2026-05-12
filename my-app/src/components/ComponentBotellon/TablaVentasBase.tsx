@@ -450,14 +450,21 @@ const TablaVentasBase: React.FC<Props> = ({
                                 {(() => {
                                     const cupo = row.cupo?.cupo_dolares ?? 0;
                                     const proy = row.proyeccion?.dolares ?? 0;
+                                    const montoAnterior = Number(row.vsMesAnterior?.monto_anterior ?? 0);
+                                    const tieneCupo = seccionMetas && cupo > 0;
 
-                                    const variacionAbs = seccionMetas
+                                    const variacionAbs = tieneCupo
                                         ? proy - cupo
-                                        : row.vsMesAnterior?.variacion_abs ?? 0;
+                                        : (row.vsMesAnterior?.variacion_abs ?? (proy - montoAnterior));
 
-                                    const variacionPorc = seccionMetas
-                                        ? (cupo > 0 ? ((proy - cupo) / cupo) * 100 : 0)
-                                        : row.vsMesAnterior?.variacion_porc ?? 0;
+                                    const baseVar = tieneCupo ? cupo : montoAnterior;
+                                    const variacionPorc = tieneCupo
+                                        ? ((proy - cupo) / cupo) * 100
+                                        : (row.vsMesAnterior?.variacion_porc != null
+                                            ? Number(row.vsMesAnterior.variacion_porc)
+                                            : (montoAnterior > 0 ? ((proy - montoAnterior) / montoAnterior) * 100 : 0));
+
+                                    const mostrarValor = tieneCupo || baseVar > 0;
 
                                     return (
                                         <>
@@ -465,7 +472,7 @@ const TablaVentasBase: React.FC<Props> = ({
                                                 variacionAbs < 0 ? "text-red-400" :
                                                     "text-gray-400"
                                                 }`}>
-                                                {variacionAbs !== 0
+                                                {mostrarValor
                                                     ? `${variacionAbs >= 0 ? "+" : "-"}${money(Math.abs(variacionAbs))}`
                                                     : "—"}
                                             </td>
@@ -474,7 +481,7 @@ const TablaVentasBase: React.FC<Props> = ({
                                                 variacionPorc < 0 ? "text-red-400" :
                                                     "text-gray-400"
                                                 }`}>
-                                                {variacionAbs !== 0
+                                                {mostrarValor
                                                     ? `${variacionPorc >= 0 ? "+" : ""}${variacionPorc.toFixed(2)}%`
                                                     : "—"}
                                             </td>
