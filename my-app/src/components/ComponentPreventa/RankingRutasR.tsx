@@ -263,9 +263,12 @@ const RankingRutasInner = ({
             {sortedData.map((r, index) => {
               const cupo = Number(r.objetivo_gerencia || 0);
               const proy = Number(r.proyeccion || 0);
-              const variacionAbs = proy - cupo;
-              const variacionPorc = cupo > 0 ? (variacionAbs / cupo) * 100 : 0;
+              const montoAnterior = Number(r.vsMesAnterior?.monto_anterior || 0);
               const tieneCupo = cupo > 0;
+
+              const variacionAbs = tieneCupo ? proy - cupo : proy - montoAnterior;
+              const baseVar = tieneCupo ? cupo : montoAnterior;
+              const variacionPorc = baseVar > 0 ? (variacionAbs / baseVar) * 100 : 0;
 
               return (
                 <tr
@@ -307,17 +310,19 @@ const RankingRutasInner = ({
                     ${proy.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                   </td>
                   {/* VARIACIÓN */}
-                  <td className={`px-4 py-2 text-right font-bold ${!tieneCupo ? "text-gray-400" : variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
-                    {!tieneCupo
-                      ? <span className="text-gray-500 text-xs italic">—</span>
-                      : <>{variacionAbs > 0 ? "+" : "-"}${Math.abs(variacionAbs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                  <td className={`px-4 py-2 text-right font-bold ${variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
+                    {variacionAbs !== 0
+                      ? <>{variacionAbs > 0 ? "+" : "-"}${Math.abs(variacionAbs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                      : <span className="text-gray-500 text-xs italic">—</span>
                     }
                   </td>
                   {/* % */}
-                  <td className={`px-4 py-2 text-right font-bold ${!tieneCupo ? "text-gray-400" : variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
-                    {!tieneCupo
-                      ? <span className="text-gray-500 text-xs italic">—</span>
-                      : <>{variacionPorc > 0 ? "+" : ""}{variacionPorc.toFixed(2)}%</>
+                  <td className={`px-4 py-2 text-right font-bold ${baseVar <= 0 ? "text-gray-400" : variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
+                    {baseVar > 0
+                      ? <>{variacionPorc > 0 ? "+" : ""}{variacionPorc.toFixed(2)}%</>
+                      : (variacionAbs > 0
+                          ? <span className="text-emerald-300 text-xs italic">Nuevo</span>
+                          : <span className="text-gray-500 text-xs italic">—</span>)
                     }
                   </td>
                 </tr>

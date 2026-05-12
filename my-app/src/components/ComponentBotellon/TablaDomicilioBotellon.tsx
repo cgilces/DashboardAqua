@@ -29,10 +29,6 @@ const TablaDomicilioBotellon: React.FC<Props> = ({
   const numOrdenes = Number(total?.numOrdenes ?? 0);
 
   const mesAnt = Number(total?.mesAnterior?.dolares ?? 0);
-  const varAbs = Number(
-    total?.mesAnterior?.variacionAbs ?? dolares - mesAnt
-  );
-  const varPorc = Number(total?.mesAnterior?.variacionPorc ?? 0);
 
   const proyDolares = detalle.reduce(
     (s: number, r: any) => s + Number(r.proyeccion?.dolares || 0),
@@ -42,6 +38,13 @@ const TablaDomicilioBotellon: React.FC<Props> = ({
     (s: number, r: any) => s + Number(r.proyeccion?.unidades || 0),
     0
   );
+
+  const baseProy = esMesActual ? proyDolares : dolares;
+  const varAbs = Number(total?.mesAnterior?.variacionAbs ?? (baseProy - mesAnt));
+  const varPorc = total?.mesAnterior?.variacionPorc != null
+    ? Number(total.mesAnterior.variacionPorc)
+    : (mesAnt > 0 ? ((baseProy - mesAnt) / mesAnt) * 100 : 0);
+  const hayMesAnterior = mesAnt > 0;
 
   const positivo = varAbs >= 0;
 
@@ -126,18 +129,21 @@ const TablaDomicilioBotellon: React.FC<Props> = ({
               </td>
 
               <td
-                className={`px-4 py-3 text-right font-bold ${positivo ? "text-green-400" : "text-red-400"
+                className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"
                   }`}
               >
-                {varAbs >= 0 ? "+" : "-"}
-                {money(Math.abs(varAbs))}
+                {hayMesAnterior
+                  ? (<>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</>)
+                  : "—"}
               </td>
 
               <td
-                className={`px-4 py-3 text-right font-bold ${positivo ? "text-green-400" : "text-red-400"
+                className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"
                   }`}
               >
-                {varPorc.toFixed(2)}%
+                {hayMesAnterior
+                  ? (<>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</>)
+                  : "—"}
               </td>
             </tr>
           </tbody>

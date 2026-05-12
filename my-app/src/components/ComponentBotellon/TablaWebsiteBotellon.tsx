@@ -23,10 +23,14 @@ const TablaWebsiteBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual =
   const numFacturas = Number(total?.numFacturas ?? 0);
   const numOrdenes = Number(total?.numOrdenes ?? 0);
   const mesAnt = Number(total?.mesAnterior?.dolares ?? 0);
-  const varAbs = Number(total?.mesAnterior?.variacionAbs ?? (dolares - mesAnt));
-  const varPorc = Number(total?.mesAnterior?.variacionPorc ?? 0);
   const proyDolares = detalle.reduce((s: number, r: any) => s + Number(r.proyeccion?.dolares || 0), 0);
   const proyUnidades = detalle.reduce((s: number, r: any) => s + Number(r.proyeccion?.unidades || 0), 0);
+  const baseProy = esMesActual ? proyDolares : dolares;
+  const varAbs = Number(total?.mesAnterior?.variacionAbs ?? (baseProy - mesAnt));
+  const varPorc = total?.mesAnterior?.variacionPorc != null
+    ? Number(total.mesAnterior.variacionPorc)
+    : (mesAnt > 0 ? ((baseProy - mesAnt) / mesAnt) * 100 : 0);
+  const hayMesAnterior = mesAnt > 0;
   const positivo = varAbs >= 0;
 
   // Si no hay datos relevantes, no mostrar nada
@@ -83,14 +87,18 @@ const TablaWebsiteBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual =
             {mostrarDetalle
               ? detalle.map((item: any, idx: number) => {
                   const canal = item.canal || "WEBSITE BOTELLÓN";
-                  const unidades = Number(item.unidades ?? 0);
-                  const dolares = Number(item.dolares ?? 0);
-                  const proyUnidades = Number(item.proyeccion?.unidades ?? 0);
-                  const proyDolares = Number(item.proyeccion?.dolares ?? 0);
-                  const mesAnt = Number(item.mesAnterior?.dolares ?? 0);
-                  const varAbs = Number(item.mesAnterior?.variacionAbs ?? (dolares - mesAnt));
-                  const varPorc = Number(item.mesAnterior?.variacionPorc ?? 0);
-                  const positivo = varAbs >= 0;
+                  const unidadesIt = Number(item.unidades ?? 0);
+                  const dolaresIt = Number(item.dolares ?? 0);
+                  const proyUnidadesIt = Number(item.proyeccion?.unidades ?? 0);
+                  const proyDolaresIt = Number(item.proyeccion?.dolares ?? 0);
+                  const mesAntIt = Number(item.mesAnterior?.dolares ?? 0);
+                  const baseProyIt = esMesActual ? proyDolaresIt : dolaresIt;
+                  const varAbsIt = Number(item.mesAnterior?.variacionAbs ?? (baseProyIt - mesAntIt));
+                  const varPorcIt = item.mesAnterior?.variacionPorc != null
+                    ? Number(item.mesAnterior.variacionPorc)
+                    : (mesAntIt > 0 ? ((baseProyIt - mesAntIt) / mesAntIt) * 100 : 0);
+                  const hayMesAnteriorIt = mesAntIt > 0;
+                  const positivoIt = varAbsIt >= 0;
                   return (
                     <tr
                       key={canal + idx}
@@ -101,12 +109,16 @@ const TablaWebsiteBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual =
                         {canal}
                         <span className="ml-2 text-[10px] text-gray-400 font-normal italic">Ver clientes →</span>
                       </td>
-                      <td className="px-4 py-3 text-right text-green-400 font-bold">{unidades.toLocaleString("es-EC")}</td>
-                      <td className="px-4 py-3 text-right text-blue-400 font-bold">{money(dolares)}</td>
-                      <td className="px-4 py-3 text-right text-gray-300">{proyUnidades.toLocaleString("es-EC")}</td>
-                      <td className="px-4 py-3 text-right text-emerald-400 font-bold">{esMesActual ? money(proyDolares) : money(dolares)}</td>
-                      <td className={`px-4 py-3 text-right font-bold ${positivo ? "text-green-400" : "text-red-400"}`}>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</td>
-                      <td className={`px-4 py-3 text-right font-bold ${positivo ? "text-green-400" : "text-red-400"}`}>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</td>
+                      <td className="px-4 py-3 text-right text-green-400 font-bold">{unidadesIt.toLocaleString("es-EC")}</td>
+                      <td className="px-4 py-3 text-right text-blue-400 font-bold">{money(dolaresIt)}</td>
+                      <td className="px-4 py-3 text-right text-gray-300">{proyUnidadesIt.toLocaleString("es-EC")}</td>
+                      <td className="px-4 py-3 text-right text-emerald-400 font-bold">{esMesActual ? money(proyDolaresIt) : money(dolaresIt)}</td>
+                      <td className={`px-4 py-3 text-right font-bold ${hayMesAnteriorIt ? (positivoIt ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
+                        {hayMesAnteriorIt ? (<>{varAbsIt >= 0 ? "+" : "-"}{money(Math.abs(varAbsIt))}</>) : "—"}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-bold ${hayMesAnteriorIt ? (positivoIt ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
+                        {hayMesAnteriorIt ? (<>{varPorcIt >= 0 ? "+" : ""}{varPorcIt.toFixed(2)}%</>) : "—"}
+                      </td>
                     </tr>
                   );
                 })
@@ -123,8 +135,12 @@ const TablaWebsiteBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual =
                   <td className="px-4 py-3 text-right text-blue-400 font-bold">{money(dolares)}</td>
                   <td className="px-4 py-3 text-right text-gray-300">{proyUnidades.toLocaleString("es-EC")}</td>
                   <td className="px-4 py-3 text-right text-emerald-400 font-bold">{esMesActual ? money(proyDolares) : money(dolares)}</td>
-                  <td className={`px-4 py-3 text-right font-bold ${positivo ? "text-green-400" : "text-red-400"}`}>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</td>
-                  <td className={`px-4 py-3 text-right font-bold ${positivo ? "text-green-400" : "text-red-400"}`}>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</td>
+                  <td className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
+                    {hayMesAnterior ? (<>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</>) : "—"}
+                  </td>
+                  <td className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
+                    {hayMesAnterior ? (<>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</>) : "—"}
+                  </td>
                 </tr>
               )}
           </tbody>
@@ -164,12 +180,12 @@ const TablaWebsiteBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual =
               {esMesActual ? money(proyDolares) : money(dolares)}
             </dd>
             <dt className="text-gray-400">Variación</dt>
-            <dd className={`text-right font-semibold ${positivo ? "text-green-400" : "text-red-400"}`}>
-              {varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}
+            <dd className={`text-right font-semibold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
+              {hayMesAnterior ? (<>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</>) : "—"}
             </dd>
             <dt className="text-gray-400">%</dt>
-            <dd className={`text-right font-semibold ${positivo ? "text-green-400" : "text-red-400"}`}>
-              {varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%
+            <dd className={`text-right font-semibold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
+              {hayMesAnterior ? (<>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</>) : "—"}
             </dd>
           </dl>
         </button>

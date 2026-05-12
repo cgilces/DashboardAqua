@@ -845,7 +845,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
       {
         estado         : "SUCCESS",
         total_registros: stats.headers,
-        mensaje        : stats.toMessage(),
+        mensaje        : (stats.toMessage() || "").substring(0, 100),
       },
       { where: { id_sync: idSync } }
     );
@@ -861,7 +861,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
     console.error("Stack:",   err.stack);
 
     await SincronizacionVenta.update(
-      { estado: "FAILED", mensaje: err.message },
+      { estado: "FAILED", mensaje: (err.message || "").substring(0, 100) },
       { where: { id_sync: idSync } }
     ).catch(() => {});
 
