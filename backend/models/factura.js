@@ -61,8 +61,10 @@ const Factura = sequelize.define("Factura", {
   },
 
   // 🔥 RELACIÓN CON PEDIDO
+  // TEXT: Odoo puede concatenar varias referencias (p.ej. NC sobre varias
+  // facturas) y el valor llega a exceder 255 chars.
   invoice_origin: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
 

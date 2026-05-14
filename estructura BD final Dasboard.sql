@@ -631,6 +631,11 @@ ALTER TABLE facturas ADD COLUMN IF NOT EXISTS moneda              VARCHAR(10);
 ALTER TABLE facturas ADD COLUMN IF NOT EXISTS company_id          INT;
 ALTER TABLE facturas ADD COLUMN IF NOT EXISTS reversed_entry_id   INT;
 ALTER TABLE facturas ADD COLUMN IF NOT EXISTS origen_sistema      VARCHAR(15);
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS odoo_id              INT;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS tipo_movimiento      VARCHAR(20);
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS invoice_origin       TEXT;
+-- Si la columna ya existía como VARCHAR(...), ampliarla a TEXT:
+ALTER TABLE facturas ALTER COLUMN invoice_origin TYPE TEXT;
 
 -- FK: facturas → tipos_negocio
 DO $$
@@ -672,6 +677,11 @@ CREATE INDEX IF NOT EXISTS idx_facturas_fecha          ON facturas(fecha_creacio
 CREATE INDEX IF NOT EXISTS idx_facturas_customer_code  ON facturas(customer_code);
 CREATE INDEX IF NOT EXISTS idx_facturas_subcanal       ON facturas(codigo_subcanal);
 CREATE INDEX IF NOT EXISTS idx_facturas_tipo_negocio   ON facturas(codigo_tipo_negocio);
+-- Necesarios para el matching NC ↔ factura original al clasificar código 29
+-- (filtro tipoProducto liquido/envase usa invoice_origin como llave de matching)
+CREATE INDEX IF NOT EXISTS idx_facturas_invoice_origin ON facturas(invoice_origin) WHERE invoice_origin IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_facturas_reversed_entry ON facturas(reversed_entry_id) WHERE reversed_entry_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_facturas_odoo_id ON facturas(odoo_id) WHERE odoo_id IS NOT NULL;
 
 
 -- =========================================================================
@@ -755,6 +765,8 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_doc_code              ON detalle_documento(documento_code);
 CREATE INDEX IF NOT EXISTS idx_doc_producto          ON detalle_documento(codigo_producto);
 CREATE INDEX IF NOT EXISTS idx_detalle_documento_doc ON detalle_documento(documento_code);
+-- Acelera el filtro de DISC en facturas (clasificación código 29 con/sin NotCr)
+CREATE INDEX IF NOT EXISTS idx_dd_codigo_interno     ON detalle_documento(producto_codigo_interno) WHERE producto_codigo_interno = 'DISC';
 
 
 -- =========================================================================
