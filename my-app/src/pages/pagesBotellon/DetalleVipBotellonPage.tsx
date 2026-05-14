@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx";
+import { BsDownload } from "react-icons/bs";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -13,6 +15,7 @@ const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
 interface Subcanal {
   canal: string;
   subcanal: string;
+  codigo_subcanal: string;
   total_clientes: number;
   clientes_con_consumo: number;
   unidades_actual: number;
@@ -26,6 +29,25 @@ interface Producto {
   monto_usd: number;
 }
 
+interface ClienteFull {
+  codigo_cliente: string;
+  nombre_cliente: string;
+  direccion_entrega: string;
+  tipo_negocio: string;
+  subcanal: string;
+  codigo_subcanal: string;
+  telefono: string;
+  latitud?: string | null;
+  longitud?: string | null;
+  cantidad_actual: number;
+  consumo_actual: number;
+  consumo_anterior: number;
+  max_consumo: number;
+  ultima_factura: string | null;
+}
+
+const POR_PAGINA = 60;
+
 export default function DetalleVipBotellonPage() {
   const { anio, mes } = useParams<{ anio: string; mes: string }>();
   const navigate = useNavigate();
@@ -36,6 +58,18 @@ export default function DetalleVipBotellonPage() {
   const [subcanales, setSubcanales] = useState<Subcanal[]>([]);
   const [productos,  setProductos]  = useState<Producto[]>([]);
   const [cargando,   setCargando]   = useState(true);
+
+  // ─── Vista "Todos los clientes" ───────────────────────────────────────
+  const [vistaTodos, setVistaTodos] = useState(false);
+  const [clientesTodos, setClientesTodos] = useState<ClienteFull[]>([]);
+  const [cargandoTodos, setCargandoTodos] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtro, setFiltro] = useState<"todos" | "con" | "sin">("todos");
+  const [subcanalFiltro, setSubcanalFiltro] = useState<{ codigo: string; nombre: string } | null>(null);
+  const [pagina, setPagina] = useState(1);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
+    key: "consumo_actual", direction: "desc",
+  });
 
   useEffect(() => {
     setCargando(true);
@@ -49,12 +83,88 @@ export default function DetalleVipBotellonPage() {
       .finally(() => setCargando(false));
   }, [anio, mes, tipoProducto]);
 
+  useEffect(() => {
+    if (!vistaTodos || clientesTodos.length > 0) return;
+    setCargandoTodos(true);
+    fetch(`${API_BASE_URL}/api/botellones/clientes-vip?anio=${anio}&mes=${mes}&tipoProducto=${tipoProducto}`)
+      .then(r => r.json())
+      .then(data => {
+        setClientesTodos(data.clientes || []);
+      })
+      .catch(console.error)
+      .finally(() => setCargandoTodos(false));
+  }, [vistaTodos, anio, mes, tipoProducto]);
+
   const totalClientes     = subcanales.reduce((a, s) => a + Number(s.total_clientes), 0);
   const totalConConsumo   = subcanales.reduce((a, s) => a + Number(s.clientes_con_consumo), 0);
   const totalMonto        = subcanales.reduce((a, s) => a + Number(s.monto_actual), 0);
   const totalMontoAnt     = subcanales.reduce((a, s) => a + Number(s.monto_anterior), 0);
   const totalUnidades     = subcanales.reduce((a, s) => a + Number(s.unidades_actual), 0);
   const varAbs            = totalMonto - totalMontoAnt;
+
+  const requestSort = (key: string) => {
+    const dir = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+    setSortConfig({ key, direction: dir });
+    setPagina(1);
+  };
+  const sa = (k: string) => sortConfig.key === k ? (sortConfig.direction === "asc" ? " ↑" : " ↓") : " ↕";
+
+  const clientesFiltrados = useMemo(() => {
+    const q = busqueda.toLowerCase();
+    let arr = clientesTodos.filter(c => {
+      const matchQ = !q || c.nombre_cliente?.toLowerCase().includes(q) || c.codigo_cliente?.toLowerCase().includes(q);
+      const matchF = filtro === "todos" ? true : filtro === "con" ? c.consumo_actual > 0 : c.consumo_actual === 0;
+      let matchSub = true;
+      if (subcanalFiltro) {
+        if (subcanalFiltro.codigo) {
+          // Subcanal con código real → match exacto
+          matchSub = c.codigo_subcanal === subcanalFiltro.codigo;
+        } else {
+          // Sin código = card "Sin Clasificar": clientes sin codigo_subcanal
+          // (o que apuntan a un subcanal no registrado en la tabla subcanales).
+          const sinCodigo = !c.codigo_subcanal || c.codigo_subcanal.trim() === "";
+          const target = subcanalFiltro.nombre.toLowerCase();
+          const sinSubcanal = !c.subcanal || c.subcanal.trim() === "";
+          const matchNombre = (c.subcanal || "").toLowerCase() === target;
+          matchSub = sinCodigo || sinSubcanal || matchNombre;
+        }
+      }
+      return matchQ && matchF && matchSub;
+    });
+    const { key, direction: dir } = sortConfig;
+    arr = [...arr].sort((a, b) => {
+      const av: any = (a as any)[key];
+      const bv: any = (b as any)[key];
+      const an = Number(av), bn = Number(bv);
+      if (Number.isFinite(an) && Number.isFinite(bn)) return dir === "asc" ? an - bn : bn - an;
+      return dir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    });
+    return arr;
+  }, [clientesTodos, busqueda, filtro, sortConfig, subcanalFiltro]);
+
+  const totalPags = Math.max(1, Math.ceil(clientesFiltrados.length / POR_PAGINA));
+  const paginados = clientesFiltrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+
+  const exportarTodos = () => {
+    if (clientesFiltrados.length === 0) return;
+    const datos = clientesFiltrados.map((c, i) => ({
+      "N°": i + 1,
+      Código: c.codigo_cliente,
+      Cliente: c.nombre_cliente,
+      "Tipo Negocio": c.tipo_negocio,
+      Teléfono: c.telefono,
+      Unidades: c.cantidad_actual,
+      "Consumo Actual": c.consumo_actual,
+      "Consumo Anterior": c.consumo_anterior,
+      "Variación Abs": c.consumo_actual - c.consumo_anterior,
+      "Máx Histórico": c.max_consumo,
+      "Última Factura": c.ultima_factura ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(datos);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Clientes VIP");
+    XLSX.writeFile(wb, `clientes_vip_${mes}_${anio}.xlsx`);
+  };
 
   return (
     <DashboardLayout>
@@ -70,7 +180,8 @@ export default function DetalleVipBotellonPage() {
             </button>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">Clientes VIP — Botellón</h1>
             <p className="text-xs text-gray-400">
-              {MESES[Number(mes)]} {anio} · Selecciona un módulo para ver sus clientes
+              {MESES[Number(mes)]} {anio} ·{" "}
+              {vistaTodos ? "Lista completa de clientes" : "Selecciona un módulo para ver sus clientes"}
               {tipoProducto !== "todo" && (
                 <span
                   className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
@@ -86,25 +197,27 @@ export default function DetalleVipBotellonPage() {
           </div>
         </div>
 
-        {/* KPIs globales */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
-          {[
-            { label: "Total Clientes",   value: totalClientes.toLocaleString("es-EC"),    color: "text-white"        },
-            { label: "Con Consumo",      value: totalConConsumo.toLocaleString("es-EC"),   color: "text-emerald-400"  },
-            { label: "Sin Consumo",      value: (totalClientes - totalConConsumo).toLocaleString("es-EC"), color: "text-red-400" },
-            { label: "Unidades Actual",  value: totalUnidades.toLocaleString("es-EC"),     color: "text-blue-300"     },
-            { label: "Dólares Actual",   value: `$${fmt(totalMonto)}`,                    color: "text-amber-300"    },
-          ].map(k => (
-            <div key={k.label}
-              className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-xl p-3 text-center">
-              <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">{k.label}</p>
-              <p className={`text-xl font-extrabold ${k.color}`}>{k.value}</p>
-            </div>
-          ))}
-        </div>
+        {/* KPIs globales (solo vista subcanales) */}
+        {!vistaTodos && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+            {[
+              { label: "Total Clientes",   value: totalClientes.toLocaleString("es-EC"),    color: "text-white"        },
+              { label: "Con Consumo",      value: totalConConsumo.toLocaleString("es-EC"),   color: "text-emerald-400"  },
+              { label: "Sin Consumo",      value: (totalClientes - totalConConsumo).toLocaleString("es-EC"), color: "text-red-400" },
+              { label: "Unidades Actual",  value: totalUnidades.toLocaleString("es-EC"),     color: "text-blue-300"     },
+              { label: "Dólares Actual",   value: `$${fmt(totalMonto)}`,                    color: "text-amber-300"    },
+            ].map(k => (
+              <div key={k.label}
+                className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-xl p-3 text-center">
+                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">{k.label}</p>
+                <p className={`text-xl font-extrabold ${k.color}`}>{k.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* VS Mes anterior banner */}
-        {!cargando && totalMontoAnt > 0 && (
+        {/* VS Mes anterior banner (solo vista subcanales) */}
+        {!vistaTodos && !cargando && totalMontoAnt > 0 && (
           <div className={`flex items-center gap-3 mb-6 px-4 py-3 rounded-xl border text-sm font-semibold
             ${varAbs >= 0
               ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
@@ -118,16 +231,195 @@ export default function DetalleVipBotellonPage() {
           </div>
         )}
 
-        {/* Loading */}
-        {cargando && (
+        {/* ───────── VISTA: TODOS LOS CLIENTES ───────── */}
+        {vistaTodos && (
+          <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-8">
+            {subcanalFiltro && (
+              <div className="flex items-center justify-between px-4 py-3 bg-emerald-500/10 border-b border-emerald-400/30">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-emerald-300 font-semibold uppercase text-xs tracking-wider">Filtro Subcanal:</span>
+                  <span className="text-white font-bold">{subcanalFiltro.nombre}</span>
+                </div>
+                <button
+                  onClick={() => { setSubcanalFiltro(null); setPagina(1); }}
+                  className="text-xs text-emerald-300 hover:text-white font-semibold flex items-center gap-1"
+                >
+                  ✕ Quitar filtro
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4 border-b border-[#046C5E]/30">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Buscar por código o nombre…"
+                  value={busqueda}
+                  onChange={(e) => { setBusqueda(e.target.value); setPagina(1); }}
+                  className="bg-[#011f1a] border border-[#046C5E]/60 rounded-lg px-3 py-2 text-sm w-64 placeholder-gray-500 focus:outline-none focus:border-emerald-400"
+                />
+                <select
+                  value={filtro}
+                  onChange={(e) => { setFiltro(e.target.value as any); setPagina(1); }}
+                  className="bg-[#011f1a] border border-[#046C5E]/60 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                >
+                  <option value="todos">Todos</option>
+                  <option value="con">Con consumo</option>
+                  <option value="sin">Sin consumo</option>
+                </select>
+                <span className="text-xs text-gray-400">
+                  {clientesFiltrados.length.toLocaleString("es-EC")} cliente{clientesFiltrados.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setVistaTodos(false);
+                    setSubcanalFiltro(null);
+                    setBusqueda("");
+                    setPagina(1);
+                  }}
+                  className="px-3 py-2 rounded-lg border border-[#046C5E] bg-[#013d30] text-white text-sm font-semibold hover:border-emerald-400/60 hover:bg-[#025040] transition"
+                >
+                  ← Volver a subcanales
+                </button>
+                <button
+                  onClick={exportarTodos}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white text-sm font-semibold hover:bg-[#0db48b]/30 transition"
+                >
+                  <BsDownload size={14} />
+                  <span>Exportar</span>
+                </button>
+              </div>
+            </div>
+
+            {cargandoTodos ? (
+              <div className="flex flex-col justify-center items-center py-24 gap-4">
+                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-emerald-400" />
+                <p className="text-gray-400 text-sm">Cargando clientes…</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="bg-[#014434] text-[10px] uppercase text-green-300">
+                        <th className="px-3 py-3 text-left">N°</th>
+                        <th className="px-3 py-3 text-left cursor-pointer hover:text-white" onClick={() => requestSort("codigo_cliente")}>
+                          Código{sa("codigo_cliente")}
+                        </th>
+                        <th className="px-3 py-3 text-left cursor-pointer hover:text-white" onClick={() => requestSort("nombre_cliente")}>
+                          Cliente{sa("nombre_cliente")}
+                        </th>
+                        <th className="px-3 py-3 text-left cursor-pointer hover:text-white" onClick={() => requestSort("tipo_negocio")}>
+                          Tipo Negocio{sa("tipo_negocio")}
+                        </th>
+                        <th className="px-3 py-3 text-left">Teléfono</th>
+                        <th className="px-3 py-3 text-right cursor-pointer hover:text-white" onClick={() => requestSort("cantidad_actual")}>
+                          Unidades{sa("cantidad_actual")}
+                        </th>
+                        <th className="px-3 py-3 text-right cursor-pointer hover:text-white" onClick={() => requestSort("consumo_actual")}>
+                          Consumo{sa("consumo_actual")}
+                        </th>
+                        <th className="px-3 py-3 text-right cursor-pointer hover:text-white" onClick={() => requestSort("consumo_anterior")}>
+                          Mes Ant.{sa("consumo_anterior")}
+                        </th>
+                        <th className="px-3 py-3 text-right">Variación</th>
+                        <th className="px-3 py-3 text-right cursor-pointer hover:text-white" onClick={() => requestSort("max_consumo")}>
+                          Máx{sa("max_consumo")}
+                        </th>
+                        <th className="px-3 py-3 text-left cursor-pointer hover:text-white" onClick={() => requestSort("ultima_factura")}>
+                          Última{sa("ultima_factura")}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginados.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} className="px-4 py-10 text-center text-gray-400 text-sm">
+                            No se encontraron clientes con los filtros aplicados.
+                          </td>
+                        </tr>
+                      ) : (
+                        paginados.map((c, idx) => {
+                          const varMonto = Number(c.consumo_actual) - Number(c.consumo_anterior);
+                          const tieneConsumo = Number(c.consumo_actual) > 0;
+                          const num = (pagina - 1) * POR_PAGINA + idx + 1;
+                          return (
+                            <tr
+                              key={c.codigo_cliente}
+                              onClick={() => navigate(`/vip-botellon/cliente/${c.codigo_cliente}/${anio}/${mes}`)}
+                              className={`cursor-pointer transition-colors hover:bg-[#025940] ${
+                                idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"
+                              }`}
+                            >
+                              <td className="px-3 py-2 text-gray-400 text-xs">{num}</td>
+                              <td className="px-3 py-2 text-gray-300 font-mono text-xs">{c.codigo_cliente}</td>
+                              <td className="px-3 py-2 font-semibold text-white">{c.nombre_cliente}</td>
+                              <td className="px-3 py-2 text-gray-300">{c.tipo_negocio || "—"}</td>
+                              <td className="px-3 py-2 text-gray-300">{c.telefono || "—"}</td>
+                              <td className="px-3 py-2 text-right text-blue-300 font-semibold">
+                                {Number(c.cantidad_actual).toLocaleString("es-EC")}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-bold ${tieneConsumo ? "text-amber-300" : "text-gray-500"}`}>
+                                ${fmt(Number(c.consumo_actual))}
+                              </td>
+                              <td className="px-3 py-2 text-right text-gray-400">
+                                ${fmt(Number(c.consumo_anterior))}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-semibold ${varMonto >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                {varMonto >= 0 ? "+" : "-"}${fmt(Math.abs(varMonto))}
+                              </td>
+                              <td className="px-3 py-2 text-right text-purple-300">
+                                ${fmt(Number(c.max_consumo))}
+                              </td>
+                              <td className="px-3 py-2 text-gray-300 text-xs">
+                                {c.ultima_factura ? new Date(c.ultima_factura).toLocaleDateString("es-EC") : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {totalPags > 1 && (
+                  <div className="flex items-center justify-between p-4 border-t border-[#046C5E]/30 text-sm">
+                    <button
+                      onClick={() => setPagina(p => Math.max(1, p - 1))}
+                      disabled={pagina === 1}
+                      className="px-3 py-1.5 rounded border border-[#046C5E]/60 disabled:opacity-30 hover:bg-[#025040]"
+                    >
+                      ← Anterior
+                    </button>
+                    <span className="text-gray-400">
+                      Página {pagina} de {totalPags}
+                    </span>
+                    <button
+                      onClick={() => setPagina(p => Math.min(totalPags, p + 1))}
+                      disabled={pagina === totalPags}
+                      className="px-3 py-1.5 rounded border border-[#046C5E]/60 disabled:opacity-30 hover:bg-[#025040]"
+                    >
+                      Siguiente →
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Loading vista principal */}
+        {!vistaTodos && cargando && (
           <div className="flex flex-col justify-center items-center py-32 gap-4">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400" />
             <p className="text-gray-400 text-sm">Cargando módulos…</p>
           </div>
         )}
 
-        {/* Productos Vendidos */}
-        {!cargando && productos.length > 0 && (
+        {/* Productos Vendidos (solo vista subcanales) */}
+        {!vistaTodos && !cargando && productos.length > 0 && (
           <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-8">
             <h2 className="text-sm font-bold uppercase tracking-wider text-green-300 px-4 py-3 border-b border-[#046C5E]/30">
               Productos Vendidos
@@ -188,8 +480,7 @@ export default function DetalleVipBotellonPage() {
         )}
 
         {/* Subcanales agrupados por canal */}
-        {!cargando && (() => {
-          // Agrupar por canal
+        {!vistaTodos && !cargando && (() => {
           const porCanal = subcanales.reduce<Record<string, Subcanal[]>>((acc, s) => {
             const key = s.canal;
             if (!acc[key]) acc[key] = [];
@@ -209,14 +500,13 @@ export default function DetalleVipBotellonPage() {
 
           return (
             <>
-              {canales.map((canal) => {
+              {canales.map((canal, canalIdx) => {
                 const items = porCanal[canal];
                 const canalTotal = items.reduce((a, s) => a + Number(s.monto_actual), 0);
                 const canalClientes = items.reduce((a, s) => a + Number(s.total_clientes), 0);
 
                 return (
                   <div key={canal} className="mb-10">
-                    {/* Cabecera del canal */}
                     <div className="flex items-center justify-between mb-4 pb-2 border-b border-[#046C5E]/40">
                       <div className="flex items-center gap-3">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
@@ -229,7 +519,21 @@ export default function DetalleVipBotellonPage() {
                       </div>
                     </div>
 
-                    {/* Grid de subcanales dentro del canal */}
+                    {canalIdx === 0 && (
+                      <div className="mb-5">
+                        <button
+                          onClick={() => {
+                            setSubcanalFiltro(null);
+                            setVistaTodos(true);
+                            setPagina(1);
+                          }}
+                          className="w-full sm:w-auto px-5 py-2.5 rounded-xl border text-sm font-semibold transition-all flex items-center justify-center gap-2 bg-[#013d30] border-[#046C5E] text-white hover:border-emerald-400/60 hover:bg-[#025040]"
+                        >
+                          Ver todos los clientes →
+                        </button>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                       {items.map((s) => {
                         const sinConsumo = Number(s.total_clientes) - Number(s.clientes_con_consumo);
@@ -237,20 +541,20 @@ export default function DetalleVipBotellonPage() {
                         return (
                           <div
                             key={`${canal}-${s.subcanal}`}
-                            onClick={() =>
-                              navigate(`/vip-botellon/tipo/${encodeURIComponent(s.subcanal)}/${anio}/${mes}`)
-                            }
+                            onClick={() => {
+                              setSubcanalFiltro({ codigo: s.codigo_subcanal || "", nombre: s.subcanal });
+                              setVistaTodos(true);
+                              setPagina(1);
+                            }}
                             className="cursor-pointer bg-gradient-to-br from-[#012E24] to-[#014034]
                               border border-[#046C5E]/40 rounded-2xl p-5 shadow-lg flex flex-col gap-3
                               hover:border-emerald-400/60 hover:scale-[1.02] transition-all duration-200"
                           >
-                            {/* Encabezado */}
                             <div className="flex items-start justify-between gap-2">
                               <p className="text-sm font-bold text-white leading-tight">{s.subcanal}</p>
                               <span className="shrink-0 text-[10px] text-gray-400 italic mt-0.5">Ver clientes →</span>
                             </div>
 
-                            {/* Clientes */}
                             <div className="grid grid-cols-3 gap-2 text-center">
                               <div>
                                 <p className="text-[9px] text-gray-500 uppercase tracking-wide">Total</p>
@@ -268,7 +572,6 @@ export default function DetalleVipBotellonPage() {
 
                             <div className="border-t border-[#046C5E]/30" />
 
-                            {/* Montos */}
                             <div>
                               <p className="text-[9px] text-gray-500 uppercase tracking-wide mb-1">Dólares Actual</p>
                               <p className="text-amber-300 font-extrabold text-lg">${fmt(Number(s.monto_actual))}</p>
@@ -287,7 +590,6 @@ export default function DetalleVipBotellonPage() {
                               </span>
                             </div>
 
-                            {/* Unidades */}
                             <div className="flex items-center justify-between border-t border-[#046C5E]/20 pt-2">
                               <p className="text-[9px] text-gray-500 uppercase tracking-wide">Unidades</p>
                               <p className="text-blue-300 font-bold">{Number(s.unidades_actual).toLocaleString("es-EC")}</p>

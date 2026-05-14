@@ -11,6 +11,7 @@ router.get('/clientes-empresas',      botellonesController.obtenerClientesEmpres
 router.get('/vip-subcanales',              botellonesController.obtenerVipSubcanales);
 router.get('/vip-clientes-tipo',           botellonesController.obtenerVipClientesPorTipo);
 router.get('/vip-cliente-detalle',         botellonesController.obtenerVipDetalleCliente);
+router.get('/vip-sucursal-productos',      botellonesController.obtenerVipProductosSucursal);
 router.get('/empresas-subcanales',         botellonesController.obtenerEmpresasSubcanales);
 router.get('/empresas-clientes-tipo',      botellonesController.obtenerEmpresasClientesPorTipo);
 router.get('/empresas-cliente-detalle',    botellonesController.obtenerEmpresasDetalleCliente);

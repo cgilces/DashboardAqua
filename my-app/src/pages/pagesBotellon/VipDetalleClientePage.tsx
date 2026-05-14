@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { MapPin, Phone } from "lucide-react";
+import { MapPin, Phone, ChevronDown, ChevronRight } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
@@ -42,6 +42,12 @@ interface Sucursal {
   ultima_factura: string | null;
 }
 
+interface ProductoSucursal {
+  producto: string;
+  unidades_vendidas: number;
+  monto_usd: number;
+}
+
 export default function VipDetalleClientePage() {
   const { clienteCode, anio, mes } = useParams<{ clienteCode: string; anio: string; mes: string }>();
   const navigate = useNavigate();
@@ -53,6 +59,37 @@ export default function VipDetalleClientePage() {
   const [cliente,   setCliente]   = useState<ClienteInfo | null>(null);
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [cargando,  setCargando]  = useState(true);
+
+  // Expand productos por sucursal
+  const [expandedSuc, setExpandedSuc] = useState<Set<string>>(new Set());
+  const [productosSuc, setProductosSuc] = useState<Map<string, ProductoSucursal[] | undefined>>(new Map());
+
+  const toggleSucursal = async (s: Sucursal) => {
+    const key = s.customer_address_code || s.codigo_sucursal;
+    if (!key) return;
+    setExpandedSuc(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+    if (!productosSuc.has(key)) {
+      setProductosSuc(prev => new Map(prev).set(key, undefined)); // spinner
+      try {
+        const params = new URLSearchParams({
+          clienteCode: codigo,
+          addressCode: key,
+          anio: String(anio),
+          mes: String(mes),
+          tipoProducto,
+        });
+        const res = await fetch(`${API_BASE_URL}/api/botellones/vip-sucursal-productos?${params}`);
+        const json = await res.json();
+        setProductosSuc(prev => new Map(prev).set(key, json.ok ? json.productos : []));
+      } catch {
+        setProductosSuc(prev => new Map(prev).set(key, []));
+      }
+    }
+  };
 
   useEffect(() => {
     setCargando(true);
@@ -156,17 +193,25 @@ export default function VipDetalleClientePage() {
                     {sucursales.map((s, idx) => {
                       const sinConsumo = Number(s.consumo_actual) === 0;
                       const vsAnt = Number(s.consumo_actual) - Number(s.consumo_anterior);
+                      const key = s.customer_address_code || s.codigo_sucursal || String(idx);
+                      const isExpanded = expandedSuc.has(key);
+                      const productos = productosSuc.get(key);
                       return (
-                        <div key={s.customer_address_code || idx}
+                        <div key={key}
                           className="bg-gradient-to-br from-[#013d30] to-[#012E24] border border-[#046C5E]/40 rounded-xl overflow-hidden">
-                          <div className="p-4">
+                          <div className="p-4 cursor-pointer" onClick={() => toggleSucursal(s)}>
                             <div className="flex items-start justify-between mb-3">
-                              <div className="flex-1 pr-2">
-                                <p className="font-semibold text-white text-sm leading-tight">{s.nombre_sucursal}</p>
-                                {s.direccion && s.direccion !== s.nombre_sucursal && (
-                                  <p className="text-[10px] text-white/40 mt-0.5">{s.direccion}</p>
-                                )}
-                                <p className="text-[10px] text-white/30 font-mono mt-0.5">{s.codigo_sucursal}</p>
+                              <div className="flex-1 pr-2 flex items-start gap-2">
+                                <span className="text-emerald-300 mt-0.5">
+                                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                </span>
+                                <div>
+                                  <p className="font-semibold text-white text-sm leading-tight">{s.nombre_sucursal}</p>
+                                  {s.direccion && s.direccion !== s.nombre_sucursal && (
+                                    <p className="text-[10px] text-white/40 mt-0.5">{s.direccion}</p>
+                                  )}
+                                  <p className="text-[10px] text-white/30 font-mono mt-0.5">{s.codigo_sucursal}</p>
+                                </div>
                               </div>
                               <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
                                 ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
@@ -203,6 +248,36 @@ export default function VipDetalleClientePage() {
                               )}
                             </div>
                           </div>
+                          {/* Productos expandidos en mobile */}
+                          {isExpanded && (
+                            <div className="px-4 pb-4 border-t border-emerald-400/20 bg-[#011f1a]">
+                              <p className="text-[10px] uppercase tracking-widest text-emerald-300 font-bold py-3">
+                                Productos vendidos
+                              </p>
+                              {productos === undefined ? (
+                                <div className="flex items-center gap-2 text-gray-400 text-xs py-2">
+                                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-emerald-400" />
+                                  Cargando…
+                                </div>
+                              ) : productos.length === 0 ? (
+                                <p className="text-gray-400 text-xs italic py-2">Sin productos.</p>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {productos.map((p, i) => {
+                                    const uni = Number(p.unidades_vendidas);
+                                    const usd = Number(p.monto_usd);
+                                    return (
+                                      <div key={i} className="flex justify-between items-center text-xs py-1 border-b border-emerald-400/10">
+                                        <span className="text-gray-200 flex-1 pr-2">{p.producto}</span>
+                                        <span className="text-blue-300 font-semibold w-12 text-right">{uni}</span>
+                                        <span className="text-amber-300 font-semibold w-20 text-right">${fmt(usd)}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -216,6 +291,7 @@ export default function VipDetalleClientePage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-[#014434] text-[10px] uppercase text-green-300">
+                    <th className="px-3 py-3 text-center w-8"></th>
                     <th className="px-3 py-3 text-left">N°</th>
                     <th className="px-3 py-3 text-left">Dirección / Sucursal</th>
                     <th className="px-3 py-3 text-left">Teléfono</th>
@@ -230,55 +306,129 @@ export default function VipDetalleClientePage() {
                 </thead>
                 <tbody>
                   {sucursales.length === 0
-                    ? <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron sucursales.</td></tr>
+                    ? <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron sucursales.</td></tr>
                     : sucursales.map((s, idx) => {
                         const sinConsumo = Number(s.consumo_actual) === 0;
                         const vsAnt = Number(s.consumo_actual) - Number(s.consumo_anterior);
+                        const key = s.customer_address_code || s.codigo_sucursal || String(idx);
+                        const isExpanded = expandedSuc.has(key);
+                        const productos = productosSuc.get(key);
                         return (
-                          <tr key={s.customer_address_code || idx}
-                            className={`transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940]`}>
-                            <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
-                            <td className="px-3 py-2 text-white max-w-[300px]">
-                              <p className="font-semibold text-sm leading-tight">{s.nombre_sucursal}</p>
-                              {s.direccion && s.direccion !== s.nombre_sucursal && (
-                                <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{s.direccion}</p>
-                              )}
-                              <p className="text-xs text-blue-400 font-mono mt-0.5">{s.codigo_sucursal}</p>
-                            </td>
-                            <td className="px-3 py-2 text-gray-300 text-xs">{s.telefono || "—"}</td>
-                            <td className="px-3 py-2 text-right text-blue-300 font-semibold">
-                              {Number(s.cantidad_actual).toLocaleString("es-EC")}
-                            </td>
-                            <td className="px-3 py-2 text-right font-bold text-white">
-                              ${fmt(Number(s.consumo_actual))}
-                            </td>
-                            <td className="px-3 py-2 text-right text-gray-300">
-                              ${fmt(Number(s.consumo_anterior))}
-                            </td>
-                            <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                              {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
-                            </td>
-                            <td className="px-3 py-2 text-center text-gray-400 text-xs whitespace-nowrap">
-                              {s.ultima_factura ? new Date(s.ultima_factura).toLocaleDateString("es-EC") : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              {hasCoords(s.latitud, s.longitud)
-                                ? <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
-                                    target="_blank" rel="noreferrer"
-                                    className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap inline-flex items-center gap-1">
-                                    <MapPin size={10} /> Mapa
-                                  </a>
-                                : <span className="text-[10px] text-white/40 italic whitespace-nowrap">Sin información</span>
-                              }
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold
-                                ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
-                                {sinConsumo ? "Sin consumo" : "Activo"}
-                              </span>
-                            </td>
-                          </tr>
+                          <React.Fragment key={key}>
+                            <tr
+                              onClick={() => toggleSucursal(s)}
+                              className={`cursor-pointer transition-colors ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"} hover:bg-[#025940]`}>
+                              <td className="px-3 py-2 text-emerald-300">
+                                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              </td>
+                              <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
+                              <td className="px-3 py-2 text-white max-w-[300px]">
+                                <p className="font-semibold text-sm leading-tight">{s.nombre_sucursal}</p>
+                                {s.direccion && s.direccion !== s.nombre_sucursal && (
+                                  <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{s.direccion}</p>
+                                )}
+                                <p className="text-xs text-blue-400 font-mono mt-0.5">{s.codigo_sucursal}</p>
+                              </td>
+                              <td className="px-3 py-2 text-gray-300 text-xs">{s.telefono || "—"}</td>
+                              <td className="px-3 py-2 text-right text-blue-300 font-semibold">
+                                {Number(s.cantidad_actual).toLocaleString("es-EC")}
+                              </td>
+                              <td className="px-3 py-2 text-right font-bold text-white">
+                                ${fmt(Number(s.consumo_actual))}
+                              </td>
+                              <td className="px-3 py-2 text-right text-gray-300">
+                                ${fmt(Number(s.consumo_anterior))}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-bold ${vsAnt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                {vsAnt >= 0 ? "+" : ""}${fmt(Math.abs(vsAnt))}
+                              </td>
+                              <td className="px-3 py-2 text-center text-gray-400 text-xs whitespace-nowrap">
+                                {s.ultima_factura ? new Date(s.ultima_factura).toLocaleDateString("es-EC") : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                {hasCoords(s.latitud, s.longitud)
+                                  ? <a href={`https://maps.google.com/?q=${s.latitud},${s.longitud}`}
+                                      target="_blank" rel="noreferrer"
+                                      className="text-[10px] text-blue-400 hover:underline border border-blue-400/30 px-2 py-0.5 rounded whitespace-nowrap inline-flex items-center gap-1">
+                                      <MapPin size={10} /> Mapa
+                                    </a>
+                                  : <span className="text-[10px] text-white/40 italic whitespace-nowrap">Sin información</span>
+                                }
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold
+                                  ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sinConsumo ? "bg-red-500" : "bg-green-500"}`}/>
+                                  {sinConsumo ? "Sin consumo" : "Activo"}
+                                </span>
+                              </td>
+                            </tr>
+                            {/* Fila expandida: productos de la sucursal */}
+                            {isExpanded && (
+                              <tr className="bg-[#011f1a]">
+                                <td colSpan={11} className="p-0">
+                                  <div className="px-6 py-4 border-t border-b border-emerald-400/20">
+                                    <p className="text-[10px] uppercase tracking-widest text-emerald-300 font-bold mb-3">
+                                      Productos vendidos en esta sucursal
+                                    </p>
+                                    {productos === undefined ? (
+                                      <div className="flex items-center gap-2 text-gray-400 text-xs py-4">
+                                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-emerald-400" />
+                                        Cargando productos…
+                                      </div>
+                                    ) : productos.length === 0 ? (
+                                      <p className="text-gray-400 text-xs italic py-2">Sin productos para esta sucursal en el período.</p>
+                                    ) : (
+                                      <table className="min-w-full text-xs">
+                                        <thead>
+                                          <tr className="text-[10px] uppercase text-emerald-300 border-b border-emerald-400/30">
+                                            <th className="px-3 py-2 text-left">Producto</th>
+                                            <th className="px-3 py-2 text-right">Unidades</th>
+                                            <th className="px-3 py-2 text-right">Dólares</th>
+                                            <th className="px-3 py-2 text-right">Precio Prom.</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {productos.map((p, i) => {
+                                            const uni = Number(p.unidades_vendidas);
+                                            const usd = Number(p.monto_usd);
+                                            const prom = uni > 0 ? usd / uni : 0;
+                                            return (
+                                              <tr key={i} className="border-b border-emerald-400/10 hover:bg-emerald-400/5">
+                                                <td className="px-3 py-1.5 text-gray-200">{p.producto}</td>
+                                                <td className="px-3 py-1.5 text-right text-blue-300 font-semibold">
+                                                  {uni.toLocaleString("es-EC")}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right text-amber-300 font-semibold">
+                                                  ${fmt(usd)}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right text-purple-300">
+                                                  ${fmt(prom)}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                          {(() => {
+                                            const totUni = productos.reduce((a, p) => a + Number(p.unidades_vendidas), 0);
+                                            const totUSD = productos.reduce((a, p) => a + Number(p.monto_usd), 0);
+                                            const promTot = totUni > 0 ? totUSD / totUni : 0;
+                                            return (
+                                              <tr className="font-bold border-t border-emerald-400/40 text-emerald-200">
+                                                <td className="px-3 py-2 uppercase text-[10px]">Total</td>
+                                                <td className="px-3 py-2 text-right">{totUni.toLocaleString("es-EC")}</td>
+                                                <td className="px-3 py-2 text-right">${fmt(totUSD)}</td>
+                                                <td className="px-3 py-2 text-right">${fmt(promTot)}</td>
+                                              </tr>
+                                            );
+                                          })()}
+                                        </tbody>
+                                      </table>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })
                   }
@@ -286,7 +436,7 @@ export default function VipDetalleClientePage() {
                 {sucursales.length > 1 && (
                   <tfoot>
                     <tr className="bg-[#014434] border-t border-[#046C5E]/30 font-bold text-green-300 text-xs uppercase">
-                      <td colSpan={3} className="px-3 py-3">Total</td>
+                      <td colSpan={4} className="px-3 py-3">Total</td>
                       <td className="px-3 py-3 text-right text-blue-300">
                         {totalUnid.toLocaleString("es-EC")}
                       </td>

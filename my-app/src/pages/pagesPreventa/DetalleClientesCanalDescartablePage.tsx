@@ -392,15 +392,19 @@ export default function DetalleClientesCanalDescartablePage() {
         {/* Cabecera */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6 border-b border-[#046C5E]/50 pb-4">
           <div>
-            {/* Botón volver: sucursales → lista → tipo cards → fuente cards → atrás */}
+            {/* Botón volver: sucursales → lista → fuente cards → atrás
+                (saltamos el nivel de tipo cards ahora que el click en fuente va directo a la lista) */}
             <button
               onClick={() => {
                 if (clienteSeleccionado !== null) {
                   setClienteSeleccionado(null); setClienteIdentificacion(""); setBusqueda(""); setFiltro("todos"); setPagina(1);
+                } else if (esVip && fuenteSeleccionada !== null) {
+                  // Volver a las cards de fuente (no a las de tipo)
+                  setFuenteSeleccionada(null);
+                  setTipoSeleccionado(null);
+                  setBusqueda(""); setFiltro("todos"); setPagina(1);
                 } else if (esVip && tipoSeleccionado !== null) {
                   setTipoSeleccionado(null); setBusqueda(""); setFiltro("todos"); setPagina(1);
-                } else if (esVip && fuenteSeleccionada !== null) {
-                  setFuenteSeleccionada(null); setBusqueda(""); setFiltro("todos"); setPagina(1);
                 } else {
                   navigate(-1);
                 }
@@ -410,10 +414,10 @@ export default function DetalleClientesCanalDescartablePage() {
               ←{" "}
               {clienteSeleccionado !== null
                 ? "Volver a clientes"
-                : esVip && tipoSeleccionado !== null
-                ? (fuenteSeleccionada ? "Volver a tipos" : "Volver a fuentes")
                 : esVip && fuenteSeleccionada !== null
                 ? "Volver a fuentes"
+                : esVip && tipoSeleccionado !== null
+                ? "Volver"
                 : "Volver"}
             </button>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">
@@ -571,7 +575,15 @@ export default function DetalleClientesCanalDescartablePage() {
                     return (
                       <div
                         key={fuente}
-                        onClick={() => { setFuenteSeleccionada(fuente); setBusqueda(""); setFiltro("todos"); setPagina(1); }}
+                        onClick={() => {
+                          // Ir directo a la tabla de clientes filtrada por esta fuente
+                          // (saltarse el nivel intermedio de tipo-cards).
+                          setFuenteSeleccionada(fuente);
+                          setTipoSeleccionado("TODOS");
+                          setBusqueda("");
+                          setFiltro("todos");
+                          setPagina(1);
+                        }}
                         className={`cursor-pointer bg-gradient-to-br from-[#012E24] to-[#014034]
                           border ${borderClass} rounded-2xl p-5 shadow-lg flex flex-col gap-3
                           hover:scale-[1.02] transition-all duration-200`}
