@@ -67,12 +67,23 @@ const getRangoFechas = (anio, mes) => {
 
 /* ======================================================
    FILTRO POR TIPO DE PRODUCTO (LÍQUIDO / ENVASE / TODO)
-   - ENVASE   → productos [29] y [11] (producto_codigo_interno).
-                Incluye tanto facturas (out_invoice) como notas de crédito
-                (out_refund). El neteado se hace en la SUM con signedSumFactura.
-   - LÍQUIDO  → descripcion NO contiene 'ENVASE' ni 'PET'.
-                También se nete con NotCr de líquidos.
-   - TODO     → sin filtro
+
+   Regla de negocio del código 29 (BOTELLÓN 20L AQUA PREMIUM, ENVASE+LÍQUIDO):
+   - Si la factura del 29 trae una NotCr con DISC asociada → el cliente devolvió
+     el envase, por lo que la línea del 29 se reclasifica como LÍQUIDO.
+   - Si no hay NotCr DISC asociada → la línea cuenta como ENVASE
+     (cliente compró envase + líquido).
+
+   Cuadre matemático garantizado:  LÍQUIDO + ENVASE = TODO
+
+   - LÍQUIDO  → BOTELLÓN sin ENVASE/PET en descripción y no [29]/[11]
+                + [29]/[11] cuyas facturas SÍ tienen NotCr DISC asociada
+                + todas las líneas DISC (sus signos los ajusta signedSumFactura)
+   - ENVASE   → [29]/[11] cuyas facturas NO tienen NotCr DISC asociada
+                + cualquier otro BOTELLÓN con ENVASE/PET en descripción
+                  (excluyendo DISC)
+   - TODO     → sin filtro (BOTELLÓN ∪ DISC del filtro padre)
+
    Refs Odoo (default_code = producto_codigo_interno):
      [29] BOTELLÓN 20L AQUA PREMIUM (ENVASE+LIQUÍDO)
      [11] BOTELLON VERDE PET
@@ -80,8 +91,7 @@ const getRangoFechas = (anio, mes) => {
    IMPORTANTE: las NotCr (tipo_movimiento = 'out_refund') deben restarse,
    no excluirse. Por eso en queries sobre `facturas` debe usarse
    `signedSumFactura(aliasFactura, aliasDD, 'total')` en lugar de
-   `SUM(aliasDD.total)`, y análogo para cantidad. Esto replica el
-   comportamiento del módulo Contabilidad → Análisis de Facturas en Odoo.
+   `SUM(aliasDD.total)`, y análogo para cantidad.
 ====================================================== */
 const ENVASE_CODES = ['29', '11'];
 
@@ -92,49 +102,130 @@ const normalizarTipoProducto = (raw) => {
   return 'todo';
 };
 
+// Predicado SQL: la factura raíz de la línea actual tiene una NotCr con DISC asociada.
+// El matching se hace por invoice_origin (campo Odoo que en una NotCr apunta al
+// `code` de la factura original) y como fallback parent_id.
+//
+//   - Si la línea actual está en una factura original (out_invoice):
+//       la factura raíz es ella misma. Buscamos NCs cuyo invoice_origin = code.
+//   - Si la línea actual está en una NotCr (out_refund):
+//       la factura raíz es la apuntada por invoice_origin (o parent_id) propio.
+//       Buscamos otras NCs que apunten a esa misma factura raíz.
+const facturaTieneNcDisc = (aliasFactura) => `EXISTS (
+  SELECT 1 FROM facturas __nc
+  JOIN detalle_documento __ddc ON __ddc.documento_code = __nc.code
+  WHERE __nc.tipo_movimiento = 'out_refund'
+    AND __ddc.producto_codigo_interno = 'DISC'
+    AND __nc.invoice_origin IS NOT NULL
+    AND __nc.invoice_origin = CASE
+        WHEN ${aliasFactura}.tipo_movimiento = 'out_refund'
+          THEN COALESCE(${aliasFactura}.invoice_origin, ${aliasFactura}.parent_id)
+        ELSE ${aliasFactura}.code
+      END
+)`;
+
 // Devuelve el fragmento extra a aplicar SOBRE registros ya filtrados por
 // (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC'). Empieza con AND si aplica.
-//
-// IMPORTANTE — Notas de Crédito del envase:
-//   En Odoo, los reembolsos de envase se emiten como líneas con producto
-//   `[DISC] Descuento` (codigo_interno='DISC'), NO como devolución del
-//   producto envase real. Para que el filtro envase capture esas NotCr,
-//   cuando se pasa aliasFactura incluimos también las filas DISC con
-//   tipo_movimiento='out_refund'. La SUM con signedSumFactura las resta
-//   y obtenemos el neto correcto.
 const buildFiltroProductoBotellon = (tipoProducto, alias = 'dd', aliasFactura = null) => {
   const envaseList = ENVASE_CODES.map(c => `'${c}'`).join(',');
   if (tipoProducto === 'liquido') {
-    // Líquido puro: BOTELLÓN no envase/PET y NO DISC (esos son NotCr de envase)
-    return ` AND ${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.descripcion NOT ILIKE '%ENVASE%' AND ${alias}.descripcion NOT ILIKE '%PET%' AND ${alias}.producto_codigo_interno <> 'DISC' `;
+    if (aliasFactura) {
+      // Líquido = líquido puro + códigos 29/11 cuyas facturas tienen NC DISC asociada.
+      // Las líneas DISC NO se cuentan monetariamente (solo se usan para clasificar la línea del 29).
+      return ` AND (
+        (${alias}.descripcion_categoria = 'BOTELLÓN'
+            AND ${alias}.descripcion NOT ILIKE '%ENVASE%'
+            AND ${alias}.descripcion NOT ILIKE '%PET%'
+            AND ${alias}.producto_codigo_interno <> 'DISC'
+            AND ${alias}.producto_codigo_interno NOT IN (${envaseList}))
+        OR (${alias}.descripcion_categoria = 'BOTELLÓN'
+            AND ${alias}.producto_codigo_interno IN (${envaseList})
+            AND ${facturaTieneNcDisc(aliasFactura)})
+      ) `;
+    }
+    // Sin aliasFactura (queries de ordenes, sin NotCr): líquido puro
+    return ` AND ${alias}.descripcion_categoria = 'BOTELLÓN'
+             AND ${alias}.descripcion NOT ILIKE '%ENVASE%'
+             AND ${alias}.descripcion NOT ILIKE '%PET%'
+             AND ${alias}.producto_codigo_interno <> 'DISC'
+             AND ${alias}.producto_codigo_interno NOT IN (${envaseList}) `;
   }
   if (tipoProducto === 'envase') {
     if (aliasFactura) {
-      // Envase: productos [29]/[11] BOTELLÓN + DISC out_refund (NotCr envase aunque
-      // tengan otra descripcion_categoria como 'All / Saleable / PoS').
-      return ` AND ( (${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.producto_codigo_interno IN (${envaseList})) OR (${alias}.producto_codigo_interno = 'DISC' AND ${aliasFactura}.tipo_movimiento = 'out_refund') ) `;
+      return ` AND (
+        (${alias}.descripcion_categoria = 'BOTELLÓN'
+            AND ${alias}.producto_codigo_interno IN (${envaseList})
+            AND NOT ${facturaTieneNcDisc(aliasFactura)})
+        OR (${alias}.descripcion_categoria = 'BOTELLÓN'
+            AND ${alias}.producto_codigo_interno NOT IN (${envaseList})
+            AND ${alias}.producto_codigo_interno <> 'DISC'
+            AND (${alias}.descripcion ILIKE '%ENVASE%' OR ${alias}.descripcion ILIKE '%PET%'))
+      ) `;
     }
-    return ` AND ${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.producto_codigo_interno IN (${envaseList}) `;
+    // Sin aliasFactura (ordenes): 29/11 + otros BOTELLÓN con ENVASE/PET
+    return ` AND (
+      (${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.producto_codigo_interno IN (${envaseList}))
+      OR (${alias}.descripcion_categoria = 'BOTELLÓN'
+          AND ${alias}.producto_codigo_interno NOT IN (${envaseList})
+          AND ${alias}.producto_codigo_interno <> 'DISC'
+          AND (${alias}.descripcion ILIKE '%ENVASE%' OR ${alias}.descripcion ILIKE '%PET%'))
+    ) `;
   }
-  // tipoProducto = 'todo': sin filtro adicional (las queries ya tienen su check de categoría)
-  return '';
+  // tipoProducto = 'todo': solo BOTELLÓN, sin DISC (preserva el valor histórico).
+  return ` AND ${alias}.descripcion_categoria = 'BOTELLÓN' `;
 };
 
 // Para queries DOMICILIO que combinan BOTELLÓN + SUSCRIPCION.
-// Mismo trato de DISC NotCr que el filtro de producto, pero adicionalmente
-// las NotCr DISC pueden NO tener descripcion_categoria = 'BOTELLÓN' (vienen
-// como categoría 'All / Saleable / PoS'), por eso van bajo OR.
+// La SUSCRIPCION es siempre líquido (no envase).
 const buildFiltroCategoriaBotellonOSuscripcion = (tipoProducto, alias = 'dd', aliasFactura = null) => {
   const envaseList = ENVASE_CODES.map(c => `'${c}'`).join(',');
   if (tipoProducto === 'liquido') {
-    return `((${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.descripcion NOT ILIKE '%ENVASE%' AND ${alias}.descripcion NOT ILIKE '%PET%' AND ${alias}.producto_codigo_interno <> 'DISC') OR ${alias}.descripcion_categoria = 'SUSCRIPCION')`;
+    if (aliasFactura) {
+      // Líquido = líquido puro + códigos 29/11 con NC DISC asociada + SUSCRIPCION.
+      // Las líneas DISC NO se cuentan monetariamente.
+      return `(
+        (${alias}.descripcion_categoria = 'BOTELLÓN'
+            AND ${alias}.descripcion NOT ILIKE '%ENVASE%'
+            AND ${alias}.descripcion NOT ILIKE '%PET%'
+            AND ${alias}.producto_codigo_interno <> 'DISC'
+            AND ${alias}.producto_codigo_interno NOT IN (${envaseList}))
+        OR (${alias}.descripcion_categoria = 'BOTELLÓN'
+            AND ${alias}.producto_codigo_interno IN (${envaseList})
+            AND ${facturaTieneNcDisc(aliasFactura)})
+        OR ${alias}.descripcion_categoria = 'SUSCRIPCION'
+      )`;
+    }
+    return `(
+      (${alias}.descripcion_categoria = 'BOTELLÓN'
+          AND ${alias}.descripcion NOT ILIKE '%ENVASE%'
+          AND ${alias}.descripcion NOT ILIKE '%PET%'
+          AND ${alias}.producto_codigo_interno <> 'DISC'
+          AND ${alias}.producto_codigo_interno NOT IN (${envaseList}))
+      OR ${alias}.descripcion_categoria = 'SUSCRIPCION'
+    )`;
   }
   if (tipoProducto === 'envase') {
     if (aliasFactura) {
-      return `( (${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.producto_codigo_interno IN (${envaseList})) OR (${alias}.producto_codigo_interno = 'DISC' AND ${aliasFactura}.tipo_movimiento = 'out_refund') )`;
+      return `(
+        (${alias}.descripcion_categoria = 'BOTELLÓN'
+            AND ${alias}.producto_codigo_interno IN (${envaseList})
+            AND NOT ${facturaTieneNcDisc(aliasFactura)})
+        OR (${alias}.descripcion_categoria = 'BOTELLÓN'
+            AND ${alias}.producto_codigo_interno NOT IN (${envaseList})
+            AND ${alias}.producto_codigo_interno <> 'DISC'
+            AND (${alias}.descripcion ILIKE '%ENVASE%' OR ${alias}.descripcion ILIKE '%PET%'))
+      )`;
     }
-    return `(${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.producto_codigo_interno IN (${envaseList}))`;
+    return `(
+      (${alias}.descripcion_categoria = 'BOTELLÓN' AND ${alias}.producto_codigo_interno IN (${envaseList}))
+      OR (${alias}.descripcion_categoria = 'BOTELLÓN'
+          AND ${alias}.producto_codigo_interno NOT IN (${envaseList})
+          AND ${alias}.producto_codigo_interno <> 'DISC'
+          AND (${alias}.descripcion ILIKE '%ENVASE%' OR ${alias}.descripcion ILIKE '%PET%'))
+    )`;
   }
+  // 'todo': BOTELLÓN + SUSCRIPCION. NO incluye DISC (los reembolsos de envase no
+  // se descuentan del total — solo afectan la clasificación de la línea del 29).
   return `(${alias}.descripcion_categoria = 'BOTELLÓN' OR ${alias}.descripcion_categoria = 'SUSCRIPCION')`;
 };
 
@@ -461,9 +552,7 @@ ORDER BY codigo;
       FROM facturas f
       WHERE f.status IN (2)
         AND (
-          (f.codigo_tipo_negocio IS DISTINCT FROM '29' AND f.fecha_entrega  >= :inicio AND f.fecha_entrega  < :fin)
-          OR
-          (f.codigo_tipo_negocio  = '29' AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin)
+          f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
         )
         AND EXISTS (
           SELECT 1 FROM detalle_documento dd
@@ -624,16 +713,16 @@ const tendencia6MesesBotellon = async (anioNum, mesNum, tipoProducto = 'todo') =
 
       UNION ALL
 
-      SELECT DATE_TRUNC('month', f.fecha_entrega) AS mes_periodo,
+      SELECT DATE_TRUNC('month', f.fecha_creacion) AS mes_periodo,
              ${signedSumFactura('f', 'dd', 'total')}    AS dolares,
              ${signedSumFactura('f', 'dd', 'cantidad')} AS unidades
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.status IN (2)
+      WHERE f.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${filtroProductoBotellonFact}
-        AND f.fecha_entrega >= :inicio6 AND f.fecha_entrega < :fin6
-      GROUP BY DATE_TRUNC('month', f.fecha_entrega)
+        AND f.fecha_creacion >= :inicio6 AND f.fecha_creacion < :fin6
+      GROUP BY DATE_TRUNC('month', f.fecha_creacion)
     ) combinado
     GROUP BY mes_periodo
     ORDER BY mes_periodo
@@ -776,7 +865,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
             SELECT f0b.codigo_subcanal FROM facturas f0b
             WHERE f0b.customer_code = f0.customer_code
               AND f0b.codigo_tipo_negocio = '29'
-              AND f0b.status IN (2,4,5)
+              AND f0b.status = 2
               AND f0b.fecha_creacion >= :iniYear AND f0b.fecha_creacion < :finYear
               AND f0b.codigo_subcanal IS NOT NULL
             ORDER BY f0b.fecha_creacion DESC LIMIT 1
@@ -786,7 +875,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         WHERE f0.codigo_tipo_negocio = '29'
           AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
           ${filtroDD0}
-          AND f0.status IN (2,4,5)
+          AND f0.status = 2
           AND f0.fecha_creacion >= :iniYear
           AND f0.fecha_creacion <  :finYear
         GROUP BY f0.customer_code
@@ -807,6 +896,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
         LIMIT 1
       ) dc ON true
       LEFT JOIN LATERAL (
+        -- Consumo actual del mes: alineado con la tabla principal (status=2).
         SELECT ${signedSumFactura('f2', 'dd2', 'cantidad')} AS cantidad_actual,
                ${signedSumFactura('f2', 'dd2', 'total')}    AS consumo_actual
         FROM facturas f2
@@ -815,7 +905,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
           AND f2.codigo_tipo_negocio = '29'
           AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC')
           ${filtroDD2}
-          AND f2.status IN (2,4,5)
+          AND f2.status = 2
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
       ) act ON true
@@ -827,7 +917,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
           AND f3.codigo_tipo_negocio = '29'
           AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC')
           ${filtroDD3}
-          AND f3.status IN (2,4,5)
+          AND f3.status = 2
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
       ) ant ON true
@@ -861,6 +951,10 @@ const obtenerClientesVipBotellon = async (req, res) => {
     const clientesConConsumo = clientes.filter(c => Number(c.consumo_actual) > 0).length;
     const clientesSinConsumo = totalClientes - clientesConConsumo;
 
+    // IMPORTANTE: alineado con la tabla principal de VIP (obtenerGrupoBotellon).
+    // - status = 2 (no IN (0,2,3,4,5)): solo facturas confirmadas.
+    // - fecha_creacion (no fecha_entrega): VIP se reporta por fecha de creación.
+    // De lo contrario los totales del detalle no cuadran con la tabla principal.
     const productosVendidos = await sequelize.query(`
       SELECT dd.descripcion AS producto,
              ${signedSumFactura('f', 'dd', 'cantidad')} AS unidades_vendidas,
@@ -868,10 +962,10 @@ const obtenerClientesVipBotellon = async (req, res) => {
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.codigo_tipo_negocio = '29'
-        AND f.status IN (0,2,3,4,5)
+        AND f.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${filtroDD}
-        AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+        AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC
     `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
@@ -926,10 +1020,10 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
              COALESCE(${signedSumFactura('f', 'dd', 'total')}, 0)    AS dolares
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
+      WHERE f.seller_code ILIKE 'E%' AND f.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${filtroProductoBotellonFact}
-        AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+        AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
         ${excluyeVipPorFactura}
       UNION ALL
       -- Odoo: ordenes EMPRESA (excluye VIP y POS)
@@ -937,7 +1031,7 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
       FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
       WHERE o.equipo_ventas = 'Empresas'
-        AND o.type = 2 AND o.status IN (2,4,5)
+        AND o.type = 2 AND o.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${filtroProductoBotellon}
         AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
@@ -954,8 +1048,8 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
       COALESCE((
         SELECT COUNT(DISTINCT f.code)
         FROM facturas f
-        WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
-          AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+        WHERE f.seller_code ILIKE 'E%' AND f.status = 2
+          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
           AND EXISTS (
             SELECT 1 FROM detalle_documento dd
             WHERE dd.documento_code = f.code
@@ -968,7 +1062,7 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
         SELECT COUNT(DISTINCT o.code)
         FROM ordenes o
         WHERE o.equipo_ventas = 'Empresas'
-          AND o.type = 2 AND o.status IN (2,4,5)
+          AND o.type = 2 AND o.status = 2
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
           AND EXISTS (
             SELECT 1 FROM detalle_documento dd
@@ -1140,7 +1234,7 @@ FROM (
     ${incluirSuscripcion ? "OR dd0.descripcion_categoria = 'SUSCRIPCION'" : ''}
     OR (f0.equipo_ventas = 'Website' AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC') ${fDD0})
   )
-  AND f0.status IN (0,2,3,4,5)
+  AND f0.status = 2
   AND f0.fecha_creacion >= :inicio
   AND f0.fecha_creacion <  :fin
 
@@ -1184,7 +1278,7 @@ LEFT JOIN LATERAL (
       ${incluirSuscripcion ? "OR dd2.descripcion_categoria = 'SUSCRIPCION'" : ''}
       OR (f2.equipo_ventas = 'Website' AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2})
     )
-    AND f2.status IN (0,2,3,4,5)
+    AND f2.status = 2
     AND f2.fecha_creacion >= :inicio
     AND f2.fecha_creacion <  :fin
 ) act ON true
@@ -1201,7 +1295,7 @@ LEFT JOIN LATERAL (
       ${incluirSuscripcion ? "OR dd3.descripcion_categoria = 'SUSCRIPCION'" : ''}
       OR (f3.equipo_ventas = 'Website' AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3})
     )
-    AND f3.status IN (0,2,3,4,5)
+    AND f3.status = 2
     AND f3.fecha_creacion >= :iniAnt
     AND f3.fecha_creacion <  :finAnt
 ) ant ON true
@@ -1394,7 +1488,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           -- MobilVendor facturas E%
           SELECT f0.customer_code FROM facturas f0
           JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-          WHERE f0.seller_code ILIKE 'E%' AND f0.status IN (2,4,5)
+          WHERE f0.seller_code ILIKE 'E%' AND f0.status = 2
             AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
             ${fDD0Fact}
             AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear
@@ -1403,7 +1497,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           SELECT o0.customer_code FROM ordenes o0
           JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
           WHERE o0.equipo_ventas = 'Empresas'
-            AND o0.type = 2 AND o0.status IN (2,4,5)
+            AND o0.type = 2 AND o0.status = 2
             AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
             ${fDD0}
             AND o0.fecha_creacion >= :iniYear AND o0.fecha_creacion < :finYear
@@ -1431,14 +1525,14 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           FROM facturas f2
           JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
           WHERE f2.customer_code = base.customer_code AND f2.seller_code ILIKE 'E%'
-            AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2Fact} AND f2.status IN (2,4,5)
+            AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2Fact} AND f2.status = 2
             AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
           UNION ALL
           SELECT dd2.cantidad, dd2.total FROM ordenes o2
           JOIN detalle_documento dd2 ON dd2.documento_code = o2.code
           WHERE o2.customer_code = base.customer_code
             AND o2.equipo_ventas = 'Empresas'
-            AND o2.type = 2 AND o2.status IN (2,4,5)
+            AND o2.type = 2 AND o2.status = 2
             AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC')
             ${fDD2}
             AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
@@ -1451,14 +1545,14 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
           FROM facturas f3
           JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
           WHERE f3.customer_code = base.customer_code AND f3.seller_code ILIKE 'E%'
-            AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3Fact} AND f3.status IN (2,4,5)
+            AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3Fact} AND f3.status = 2
             AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
           UNION ALL
           SELECT dd3.total FROM ordenes o3
           JOIN detalle_documento dd3 ON dd3.documento_code = o3.code
           WHERE o3.customer_code = base.customer_code
             AND o3.equipo_ventas = 'Empresas'
-            AND o3.type = 2 AND o3.status IN (2,4,5)
+            AND o3.type = 2 AND o3.status = 2
             AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC')
             ${fDD3}
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
@@ -1520,17 +1614,17 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
                CASE WHEN f.tipo_movimiento = 'out_refund' THEN -dd.total    ELSE dd.total    END AS total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
+        WHERE f.seller_code ILIKE 'E%' AND f.status = 2
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
           ${fDDFact}
-          AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
         UNION ALL
         -- Ordenes Odoo Empresas (equipo de ventas)
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM ordenes o
         JOIN detalle_documento dd ON dd.documento_code = o.code
         WHERE o.equipo_ventas = 'Empresas'
-          AND o.type = 2 AND o.status IN (2,4,5)
+          AND o.type = 2 AND o.status = 2
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
           ${fDD}
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
@@ -1610,7 +1704,7 @@ const obtenerVipSubcanales = async (req, res) => {
         WHERE f0.codigo_tipo_negocio = '29'
           AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
           ${fDD0}
-          AND f0.status IN (2,4,5)
+          AND f0.status = 2
           AND f0.fecha_creacion >= :iniYear
           AND f0.fecha_creacion <  :finYear
       ) base
@@ -1627,7 +1721,7 @@ const obtenerVipSubcanales = async (req, res) => {
           AND f2.codigo_tipo_negocio = '29'
           AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC')
           ${fDD2}
-          AND f2.status IN (2,4,5)
+          AND f2.status = 2
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
       ) act ON true
@@ -1640,7 +1734,7 @@ const obtenerVipSubcanales = async (req, res) => {
           AND f3.codigo_tipo_negocio = '29'
           AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC')
           ${fDD3}
-          AND f3.status IN (2,4,5)
+          AND f3.status = 2
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
       ) ant ON true
@@ -1660,7 +1754,7 @@ const obtenerVipSubcanales = async (req, res) => {
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
       WHERE f.codigo_tipo_negocio = '29'
-        AND f.status IN (2,4,5)
+        AND f.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${fDD}
         AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
@@ -1726,7 +1820,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         WHERE f0.codigo_tipo_negocio = '29'
           AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
           ${fDD0}
-          AND f0.status IN (2,4,5)
+          AND f0.status = 2
           AND f0.fecha_creacion >= :iniYear
           AND f0.fecha_creacion <  :finYear
       ) base
@@ -1750,7 +1844,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         WHERE f0b.customer_code = base.customer_code
           AND (dd0b.descripcion_categoria = 'BOTELLÓN' OR dd0b.producto_codigo_interno = 'DISC')
           ${fDD0b}
-          AND f0b.status IN (2,4,5)
+          AND f0b.status = 2
       ) nsuc ON true
       -- Consumo mes actual (neto NotCr) — por customer_code, sin filtrar seller
       LEFT JOIN LATERAL (
@@ -1761,7 +1855,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         WHERE f2.customer_code = base.customer_code
           AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC')
           ${fDD2}
-          AND f2.status IN (2,4,5)
+          AND f2.status = 2
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
       ) act ON true
@@ -1773,7 +1867,7 @@ const obtenerVipClientesPorTipo = async (req, res) => {
         WHERE f3.customer_code = base.customer_code
           AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC')
           ${fDD3}
-          AND f3.status IN (2,4,5)
+          AND f3.status = 2
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
       ) ant ON true
@@ -1872,7 +1966,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
           AND f0.codigo_tipo_negocio = '29'
           AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
           ${fDD0}
-          AND f0.status IN (2,4,5)
+          AND f0.status = 2
       ) base
       LEFT JOIN direcciones_clientes dc
              ON dc.codigo_cliente           = :clienteCode
@@ -1887,7 +1981,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
           AND f2.codigo_tipo_negocio = '29'
           AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC')
           ${fDD2}
-          AND f2.status IN (2,4,5)
+          AND f2.status = 2
           AND f2.fecha_creacion >= :inicio
           AND f2.fecha_creacion <  :fin
       ) act ON true
@@ -1900,7 +1994,7 @@ const obtenerVipDetalleCliente = async (req, res) => {
           AND f3.codigo_tipo_negocio = '29'
           AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC')
           ${fDD3}
-          AND f3.status IN (2,4,5)
+          AND f3.status = 2
           AND f3.fecha_creacion >= :iniAnt
           AND f3.fecha_creacion <  :finAnt
       ) ant ON true
@@ -1982,7 +2076,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
         SELECT DISTINCT src.customer_code FROM (
           SELECT f0.customer_code FROM facturas f0
           JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-          WHERE f0.seller_code ILIKE 'E%' AND f0.status IN (2,4,5)
+          WHERE f0.seller_code ILIKE 'E%' AND f0.status = 2
             AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
             ${fDD0Fact}
             AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear
@@ -1990,7 +2084,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
           SELECT o0.customer_code FROM ordenes o0
           JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
           WHERE o0.equipo_ventas = 'Empresas'
-            AND o0.type = 2 AND o0.status IN (2,4,5)
+            AND o0.type = 2 AND o0.status = 2
             AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
             ${fDD0}
             AND o0.fecha_creacion >= :iniYear AND o0.fecha_creacion < :finYear
@@ -2008,14 +2102,14 @@ const obtenerEmpresasSubcanales = async (req, res) => {
           FROM facturas f2
           JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
           WHERE f2.customer_code = base.customer_code AND f2.seller_code ILIKE 'E%'
-            AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2Fact} AND f2.status IN (2,4,5)
+            AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2Fact} AND f2.status = 2
             AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
           UNION ALL
           SELECT dd2.cantidad, dd2.total FROM ordenes o2
           JOIN detalle_documento dd2 ON dd2.documento_code = o2.code
           WHERE o2.customer_code = base.customer_code
             AND o2.equipo_ventas = 'Empresas'
-            AND o2.type = 2 AND o2.status IN (2,4,5)
+            AND o2.type = 2 AND o2.status = 2
             AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC')
             ${fDD2}
             AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
@@ -2028,14 +2122,14 @@ const obtenerEmpresasSubcanales = async (req, res) => {
           FROM facturas f3
           JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
           WHERE f3.customer_code = base.customer_code AND f3.seller_code ILIKE 'E%'
-            AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3Fact} AND f3.status IN (2,4,5)
+            AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3Fact} AND f3.status = 2
             AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
           UNION ALL
           SELECT dd3.total FROM ordenes o3
           JOIN detalle_documento dd3 ON dd3.documento_code = o3.code
           WHERE o3.customer_code = base.customer_code
             AND o3.equipo_ventas = 'Empresas'
-            AND o3.type = 2 AND o3.status IN (2,4,5)
+            AND o3.type = 2 AND o3.status = 2
             AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC')
             ${fDD3}
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
@@ -2059,17 +2153,17 @@ const obtenerEmpresasSubcanales = async (req, res) => {
                CASE WHEN f.tipo_movimiento = 'out_refund' THEN -dd.total    ELSE dd.total    END AS total
         FROM facturas f
         JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.seller_code ILIKE 'E%' AND f.status IN (2,4,5)
+        WHERE f.seller_code ILIKE 'E%' AND f.status = 2
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
           ${fDDFact}
-          AND f.fecha_entrega >= :inicio AND f.fecha_entrega < :fin
+          AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
         UNION ALL
         -- Ordenes Odoo Empresas (equipo de ventas)
         SELECT dd.descripcion, dd.cantidad, dd.total
         FROM ordenes o
         JOIN detalle_documento dd ON dd.documento_code = o.code
         WHERE o.equipo_ventas = 'Empresas'
-          AND o.type = 2 AND o.status IN (2,4,5)
+          AND o.type = 2 AND o.status = 2
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
           ${fDD}
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
@@ -2141,7 +2235,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
         SELECT DISTINCT src.customer_code FROM (
           SELECT f0.customer_code FROM facturas f0
           JOIN detalle_documento dd0 ON dd0.documento_code = f0.code
-          WHERE f0.seller_code ILIKE 'E%' AND f0.status IN (2,4,5)
+          WHERE f0.seller_code ILIKE 'E%' AND f0.status = 2
             AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
             ${fDD0Fact}
             AND f0.fecha_creacion >= :iniYear AND f0.fecha_creacion < :finYear
@@ -2149,7 +2243,7 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           SELECT o0.customer_code FROM ordenes o0
           JOIN detalle_documento dd0 ON dd0.documento_code = o0.code
           WHERE o0.equipo_ventas = 'Empresas'
-            AND o0.type = 2 AND o0.status IN (2,4,5)
+            AND o0.type = 2 AND o0.status = 2
             AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
             ${fDD0}
             AND o0.fecha_creacion >= :iniYear AND o0.fecha_creacion < :finYear
@@ -2175,14 +2269,14 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
             AND f0b.seller_code ILIKE 'E%'
             AND (dd0b.descripcion_categoria = 'BOTELLÓN' OR dd0b.producto_codigo_interno = 'DISC')
             ${fDD0bFact}
-            AND f0b.status IN (2,4,5)
+            AND f0b.status = 2
           UNION
           SELECT o0b.customer_address_code::text AS suc_code
           FROM ordenes o0b
           JOIN detalle_documento dd0b ON dd0b.documento_code = o0b.code
           WHERE o0b.customer_code = base.customer_code
             AND o0b.equipo_ventas = 'Empresas'
-            AND o0b.type = 2 AND o0b.status IN (2,4,5)
+            AND o0b.type = 2 AND o0b.status = 2
             AND (dd0b.descripcion_categoria = 'BOTELLÓN' OR dd0b.producto_codigo_interno = 'DISC')
             ${fDD0b}
         ) suc_all
@@ -2197,14 +2291,14 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           FROM facturas f2
           JOIN detalle_documento dd2 ON dd2.documento_code = f2.code
           WHERE f2.customer_code = base.customer_code AND f2.seller_code ILIKE 'E%'
-            AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2Fact} AND f2.status IN (2,4,5)
+            AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2Fact} AND f2.status = 2
             AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
           UNION ALL
           SELECT dd2.cantidad, dd2.total FROM ordenes o2
           JOIN detalle_documento dd2 ON dd2.documento_code = o2.code
           WHERE o2.customer_code = base.customer_code
             AND o2.equipo_ventas = 'Empresas'
-            AND o2.type = 2 AND o2.status IN (2,4,5)
+            AND o2.type = 2 AND o2.status = 2
             AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC')
             ${fDD2}
             AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
@@ -2217,14 +2311,14 @@ const obtenerEmpresasClientesPorTipo = async (req, res) => {
           FROM facturas f3
           JOIN detalle_documento dd3 ON dd3.documento_code = f3.code
           WHERE f3.customer_code = base.customer_code AND f3.seller_code ILIKE 'E%'
-            AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3Fact} AND f3.status IN (2,4,5)
+            AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3Fact} AND f3.status = 2
             AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
           UNION ALL
           SELECT dd3.total FROM ordenes o3
           JOIN detalle_documento dd3 ON dd3.documento_code = o3.code
           WHERE o3.customer_code = base.customer_code
             AND o3.equipo_ventas = 'Empresas'
-            AND o3.type = 2 AND o3.status IN (2,4,5)
+            AND o3.type = 2 AND o3.status = 2
             AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC')
             ${fDD3}
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
@@ -2348,7 +2442,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
             AND f0.seller_code ILIKE 'E%'
             AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
             ${fDD0Fact}
-            AND f0.status IN (2,4,5)
+            AND f0.status = 2
           UNION
           SELECT o0.customer_address_code::text AS suc_code
           FROM ordenes o0
@@ -2356,7 +2450,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           WHERE o0.customer_code = :clienteCode
             AND o0.equipo_ventas = 'Empresas'
             AND o0.equipo_ventas <> 'Point of Sale'
-            AND o0.type = 2 AND o0.status IN (2,4,5)
+            AND o0.type = 2 AND o0.status = 2
             AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
             ${fDD0}
         ) suc_src
@@ -2377,7 +2471,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           WHERE f2.customer_code = :clienteCode
             AND f2.customer_address_code = base.customer_address_code
             AND f2.seller_code ILIKE 'E%'
-            AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2Fact} AND f2.status IN (2,4,5)
+            AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC') ${fDD2Fact} AND f2.status = 2
             AND f2.fecha_creacion >= :inicio AND f2.fecha_creacion < :fin
           UNION ALL
           -- Ordenes Odoo Empresa (excluye POS)
@@ -2387,7 +2481,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
             AND o2.customer_address_code::text = base.customer_address_code
             AND o2.equipo_ventas = 'Empresas'
             AND o2.equipo_ventas <> 'Point of Sale'
-            AND o2.type = 2 AND o2.status IN (2,4,5)
+            AND o2.type = 2 AND o2.status = 2
             AND (dd2.descripcion_categoria = 'BOTELLÓN' OR dd2.producto_codigo_interno = 'DISC')
             ${fDD2}
             AND o2.fecha_creacion >= :inicio AND o2.fecha_creacion < :fin
@@ -2402,7 +2496,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
           WHERE f3.customer_code = :clienteCode
             AND f3.customer_address_code = base.customer_address_code
             AND f3.seller_code ILIKE 'E%'
-            AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3Fact} AND f3.status IN (2,4,5)
+            AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC') ${fDD3Fact} AND f3.status = 2
             AND f3.fecha_creacion >= :iniAnt AND f3.fecha_creacion < :finAnt
           UNION ALL
           SELECT dd3.total FROM ordenes o3
@@ -2411,7 +2505,7 @@ const obtenerEmpresasDetalleCliente = async (req, res) => {
             AND o3.customer_address_code::text = base.customer_address_code
             AND o3.equipo_ventas = 'Empresas'
             AND o3.equipo_ventas <> 'Point of Sale'
-            AND o3.type = 2 AND o3.status IN (2,4,5)
+            AND o3.type = 2 AND o3.status = 2
             AND (dd3.descripcion_categoria = 'BOTELLÓN' OR dd3.producto_codigo_interno = 'DISC')
             ${fDD3}
             AND o3.fecha_creacion >= :iniAnt AND o3.fecha_creacion < :finAnt
@@ -2461,22 +2555,22 @@ const queryTotalesQuito = async (inicio, fin, tipoProducto = 'todo') => {
              COALESCE(${signedSumFactura('f', 'dd', 'total')}, 0)    AS dolares
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.seller_code = 'U1' AND f.status IN (0,2,3,4,5)
+      WHERE f.seller_code = 'U1' AND f.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${filtroProductoBotellonFact}
-        AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
-        AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
+        AND f.fecha_creacion >= :inicio
+        AND f.fecha_creacion <  :fin
       UNION ALL
       -- Odoo: ordenes equipo_ventas = Quito
       SELECT COALESCE(SUM(dd.cantidad), 0), COALESCE(SUM(dd.total), 0)
       FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
       WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
-        AND o.status IN (2,4,5)
+        AND o.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${filtroProductoBotellon}
-        AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
-        AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+        AND o.fecha_creacion >= :inicio
+        AND o.fecha_creacion <  :fin
     ) sub
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 
@@ -2485,9 +2579,9 @@ const queryTotalesQuito = async (inicio, fin, tipoProducto = 'todo') => {
       COALESCE((
         SELECT COUNT(DISTINCT f.code)
         FROM facturas f
-        WHERE f.seller_code = 'U1' AND f.status IN (0,2,3,4,5)
-          AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
-          AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
+        WHERE f.seller_code = 'U1' AND f.status = 2
+          AND f.fecha_creacion >= :inicio
+          AND f.fecha_creacion <  :fin
           AND EXISTS (
             SELECT 1 FROM detalle_documento dd
             WHERE dd.documento_code = f.code
@@ -2499,9 +2593,9 @@ const queryTotalesQuito = async (inicio, fin, tipoProducto = 'todo') => {
         SELECT COUNT(DISTINCT o.code)
         FROM ordenes o
         WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
-          AND o.status IN (2,4,5)
-          AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
-          AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+          AND o.status = 2
+          AND o.fecha_creacion >= :inicio
+          AND o.fecha_creacion <  :fin
           AND EXISTS (
             SELECT 1 FROM detalle_documento dd
             WHERE dd.documento_code = o.code
@@ -2528,20 +2622,20 @@ const queryTotalesWebsite = async (inicio, fin, tipoProducto = 'todo') => {
     FROM ordenes o
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
-      AND o.status IN (2,4,5)
+      AND o.status = 2
       AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
       ${filtroProductoBotellon}
-      AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
-      AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+      AND o.fecha_creacion >= :inicio
+      AND o.fecha_creacion <  :fin
   `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 
   const countsRows = await sequelize.query(`
     SELECT COALESCE(COUNT(DISTINCT o.code), 0) AS num_ordenes
     FROM ordenes o
     WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
-      AND o.status IN (2,4,5)
-      AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
-      AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+      AND o.status = 2
+      AND o.fecha_creacion >= :inicio
+      AND o.fecha_creacion <  :fin
       AND EXISTS (
         SELECT 1 FROM detalle_documento dd
         WHERE dd.documento_code = o.code
@@ -2727,9 +2821,9 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'tod
         WHERE f0.seller_code = 'U1'
           AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
           ${filtroDD0Fact}
-          AND f0.status IN (2,4,5)
-          AND COALESCE(f0.fecha_entrega, f0.fecha_creacion) >= :iniYear
-          AND COALESCE(f0.fecha_entrega, f0.fecha_creacion) <  :finYear
+          AND f0.status = 2
+          AND f0.fecha_creacion >= :iniYear
+          AND f0.fecha_creacion <  :finYear
         UNION
         -- Odoo Quito
         SELECT DISTINCT o0.customer_code
@@ -2738,9 +2832,9 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'tod
         WHERE o0.origen_sistema = 'ODOO' AND o0.equipo_ventas = 'Quito'
           AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
           ${filtroDD0}
-          AND o0.status IN (2,4,5)
-          AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) >= :iniYear
-          AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) <  :finYear
+          AND o0.status = 2
+          AND o0.fecha_creacion >= :iniYear
+          AND o0.fecha_creacion <  :finYear
       )
       SELECT
         base.customer_code                                AS codigo_cliente,
@@ -2765,9 +2859,9 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'tod
             AND f.seller_code = 'U1'
             AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
             ${filtroDDFact}
-            AND f.status IN (2,4,5)
-            AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
-            AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
+            AND f.status = 2
+            AND f.fecha_creacion >= :inicio
+            AND f.fecha_creacion <  :fin
           UNION ALL
           SELECT dd.cantidad, dd.total
           FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
@@ -2775,9 +2869,9 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'tod
             AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
             AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
             ${filtroDD}
-            AND o.status IN (2,4,5)
-            AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
-            AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+            AND o.status = 2
+            AND o.fecha_creacion >= :inicio
+            AND o.fecha_creacion <  :fin
         ) s
       ) act ON true
       LEFT JOIN LATERAL (
@@ -2788,9 +2882,9 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'tod
             AND f.seller_code = 'U1'
             AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
             ${filtroDDFact}
-            AND f.status IN (2,4,5)
-            AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :iniAnt
-            AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :finAnt
+            AND f.status = 2
+            AND f.fecha_creacion >= :iniAnt
+            AND f.fecha_creacion <  :finAnt
           UNION ALL
           SELECT dd.total
           FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
@@ -2798,9 +2892,9 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'tod
             AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
             AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
             ${filtroDD}
-            AND o.status IN (2,4,5)
-            AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :iniAnt
-            AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :finAnt
+            AND o.status = 2
+            AND o.fecha_creacion >= :iniAnt
+            AND o.fecha_creacion <  :finAnt
         ) s
       ) ant ON true
       LEFT JOIN LATERAL (
@@ -2809,14 +2903,14 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'tod
           FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
           WHERE f.customer_code = base.customer_code AND f.seller_code = 'U1'
             AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC') ${filtroDDFact}
-            AND f.status IN (2,4,5)
+            AND f.status = 2
           UNION ALL
           SELECT o.fecha_creacion
           FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
           WHERE o.customer_code = base.customer_code
             AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
             AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC') ${filtroDD}
-            AND o.status IN (2,4,5)
+            AND o.status = 2
         ) s
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
@@ -2828,21 +2922,21 @@ const fuenteQuito = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 'tod
                ${signedSumFactura('f', 'dd', 'cantidad')} AS unidades_vendidas,
                ${signedSumFactura('f', 'dd', 'total')}    AS monto_usd
         FROM facturas f JOIN detalle_documento dd ON dd.documento_code = f.code
-        WHERE f.seller_code = 'U1' AND f.status IN (2,4,5)
+        WHERE f.seller_code = 'U1' AND f.status = 2
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
           ${filtroDDFact}
-          AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= :inicio
-          AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  :fin
+          AND f.fecha_creacion >= :inicio
+          AND f.fecha_creacion <  :fin
         GROUP BY dd.descripcion
         UNION ALL
         SELECT dd.descripcion, SUM(dd.cantidad), SUM(dd.total)
         FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
         WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Quito'
-          AND o.status IN (2,4,5)
+          AND o.status = 2
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
           ${filtroDD}
-          AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
-          AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+          AND o.fecha_creacion >= :inicio
+          AND o.fecha_creacion <  :fin
         GROUP BY dd.descripcion
       ) p
       GROUP BY producto
@@ -2866,9 +2960,9 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 't
         WHERE o0.origen_sistema = 'ODOO' AND o0.equipo_ventas = 'Website'
           AND (dd0.descripcion_categoria = 'BOTELLÓN' OR dd0.producto_codigo_interno = 'DISC')
           ${filtroDD0}
-          AND o0.status IN (2,4,5)
-          AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) >= :iniYear
-          AND COALESCE(o0.fecha_entrega, o0.fecha_creacion) <  :finYear
+          AND o0.status = 2
+          AND o0.fecha_creacion >= :iniYear
+          AND o0.fecha_creacion <  :finYear
       )
       SELECT
         base.customer_code                                AS codigo_cliente,
@@ -2892,9 +2986,9 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 't
           AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
           ${filtroDD}
-          AND o.status IN (2,4,5)
-          AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
-          AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+          AND o.status = 2
+          AND o.fecha_creacion >= :inicio
+          AND o.fecha_creacion <  :fin
       ) act ON true
       LEFT JOIN LATERAL (
         SELECT SUM(dd.total) AS consumo_anterior
@@ -2903,9 +2997,9 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 't
           AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
           ${filtroDD}
-          AND o.status IN (2,4,5)
-          AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :iniAnt
-          AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :finAnt
+          AND o.status = 2
+          AND o.fecha_creacion >= :iniAnt
+          AND o.fecha_creacion <  :finAnt
       ) ant ON true
       LEFT JOIN LATERAL (
         SELECT MAX(o.fecha_creacion)::date AS ultima_factura
@@ -2913,7 +3007,7 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 't
         WHERE o.customer_code = base.customer_code
           AND o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
           AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC') ${filtroDD}
-          AND o.status IN (2,4,5)
+          AND o.status = 2
       ) ult ON true
       ORDER BY consumo_actual DESC NULLS LAST
     `,
@@ -2924,11 +3018,11 @@ const fuenteWebsite = ({ inicio, fin, iniAnt, finAnt, anioNum, tipoProducto = 't
       FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
       WHERE o.origen_sistema = 'ODOO' AND o.equipo_ventas = 'Website'
-        AND o.status IN (2,4,5)
+        AND o.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${filtroDD}
-        AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= :inicio
-        AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  :fin
+        AND o.fecha_creacion >= :inicio
+        AND o.fecha_creacion <  :fin
       GROUP BY dd.descripcion
       ORDER BY unidades_vendidas DESC
     `,
@@ -2983,7 +3077,7 @@ const obtenerEmpresasProductosSucursal = async (req, res) => {
           AND f.seller_code ILIKE 'E%'
           AND (ddm.descripcion_categoria = 'BOTELLÓN' OR ddm.producto_codigo_interno = 'DISC')
           ${fDDmv}
-          AND f.status IN (2,4,5)
+          AND f.status = 2
           AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
 
         UNION ALL
@@ -2995,7 +3089,7 @@ const obtenerEmpresasProductosSucursal = async (req, res) => {
           AND o.customer_address_code::text = :addressCode
           AND o.equipo_ventas = 'Empresas'
           AND o.equipo_ventas <> 'Point of Sale'
-          AND o.type = 2 AND o.status IN (2,4,5)
+          AND o.type = 2 AND o.status = 2
           AND (ddo.descripcion_categoria = 'BOTELLÓN' OR ddo.producto_codigo_interno = 'DISC')
           ${fDDod}
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
@@ -3061,7 +3155,7 @@ const obtenerVipProductosSucursal = async (req, res) => {
         AND f.codigo_tipo_negocio = '29'
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${fDD}
-        AND f.status IN (2,4,5)
+        AND f.status = 2
         AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
       GROUP BY dd.descripcion
       ORDER BY monto_usd DESC

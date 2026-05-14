@@ -740,6 +740,10 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
           ? factura.reversed_entry_id[0]
           : (factura.reversed_entry_id || null),
 
+        // Persistimos invoice_origin para poder asociar NC ↔ factura origen
+        // a nivel SQL (el matching del filtro tipoProducto del código 29 lo usa).
+        invoice_origin: factura.invoice_origin || null,
+
         company_id: companyId,
 
         notes: factura.narration || null,
