@@ -493,10 +493,12 @@ const obtenerOdooDescartablePorCanal = async (fechaInicio, fechaFin) => {
       FROM (
 
         -- ① ODOO por equipo_ventas (A%, V%, M%, etc.)
+        --   Mantenemos cantidad como NUMERIC para conservar decimales
+        --   (Odoo permite unidades fraccionales como 13,561.57).
         SELECT
           COALESCE(o.equipo_ventas, 'SIN EQUIPO') AS canal,
-          ROUND(SUM(dd.total)::NUMERIC, 2)         AS total_imponible,
-          COALESCE(SUM(dd.cantidad), 0)::bigint    AS total_unidades,
+          COALESCE(SUM(dd.total),    0)::NUMERIC  AS total_imponible,
+          COALESCE(SUM(dd.cantidad), 0)::NUMERIC  AS total_unidades,
           COUNT(DISTINCT o.code)                   AS rotacion,
           o.customer_code
         FROM ordenes o
@@ -514,8 +516,8 @@ const obtenerOdooDescartablePorCanal = async (fechaInicio, fechaFin) => {
         -- ② Órdenes E% → canal 'Empresas'
         SELECT
           'Empresas'                               AS canal,
-          ROUND(SUM(dd.total)::NUMERIC, 2)         AS total_imponible,
-          COALESCE(SUM(dd.cantidad), 0)::bigint    AS total_unidades,
+          COALESCE(SUM(dd.total),    0)::NUMERIC  AS total_imponible,
+          COALESCE(SUM(dd.cantidad), 0)::NUMERIC  AS total_unidades,
           COUNT(DISTINCT o.code)                   AS rotacion,
           o.customer_code
         FROM ordenes o
@@ -531,8 +533,8 @@ const obtenerOdooDescartablePorCanal = async (fechaInicio, fechaFin) => {
         -- ③ Facturas E% → canal 'Empresas'
         SELECT
           'Empresas'                               AS canal,
-          ROUND(SUM(dd.total)::NUMERIC, 2)         AS total_imponible,
-          COALESCE(SUM(dd.cantidad), 0)::bigint    AS total_unidades,
+          COALESCE(SUM(dd.total),    0)::NUMERIC  AS total_imponible,
+          COALESCE(SUM(dd.cantidad), 0)::NUMERIC  AS total_unidades,
           COUNT(DISTINCT f.code)                   AS rotacion,
           f.customer_code
         FROM facturas f
