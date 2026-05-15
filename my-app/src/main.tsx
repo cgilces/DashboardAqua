@@ -31,6 +31,9 @@ import DashboardHielo from "./pages/pagesHielo/DashboardHielo";
 import DetalleHieloPage from "./pages/pagesHielo/DetalleHieloPage";
 import DetalleHieloOdooPage from "./pages/pagesHielo/DetalleHieloOdooPage";
 
+import DashboardPlus from "./pages/pagesPlus/DashboardPlus";
+import DetallePlusOdooPage from "./pages/pagesPlus/DetallePlusOdooPage";
+
 import DashboardCafe from "./pages/pagesCafe/DashboardCafe";
 import DetalleClientesCafePage from "./pages/pagesCafe/DetalleClientesCafePage";
 
@@ -156,6 +159,38 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 excelFile="clientes_website_botellon" />}
             />
             <Route
+              path="/mayorista-botellon/clientes/:anio/:mes"
+              element={<DetalleClientesCanalBotellonPage
+                titulo="Clientes Mayorista — Botellón"
+                endpoint="clientes-mayorista"
+                excelSheet="Mayorista Botellón"
+                excelFile="clientes_mayorista_botellon" />}
+            />
+            <Route
+              path="/tiendas-botellon/clientes/:anio/:mes"
+              element={<DetalleClientesCanalBotellonPage
+                titulo="Clientes Tiendas — Botellón"
+                endpoint="clientes-tiendas"
+                excelSheet="Tiendas Botellón"
+                excelFile="clientes_tiendas_botellon" />}
+            />
+            <Route
+              path="/tiendas-vip-botellon/clientes/:anio/:mes"
+              element={<DetalleClientesCanalBotellonPage
+                titulo="Clientes Tiendas VIP — Botellón"
+                endpoint="clientes-tiendas-vip"
+                excelSheet="Tiendas VIP Botellón"
+                excelFile="clientes_tiendas_vip_botellon" />}
+            />
+            <Route
+              path="/rural-botellon/clientes/:anio/:mes"
+              element={<DetalleClientesCanalBotellonPage
+                titulo="Clientes Rural — Botellón"
+                endpoint="clientes-rural"
+                excelSheet="Rural Botellón"
+                excelFile="clientes_rural_botellon" />}
+            />
+            <Route
               path="/configurar-metas-botellon/:seccion"
               element={<ConfigurarMetasBotellon />}
             />
@@ -172,6 +207,16 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/hielo-odoo/clientes/:anio/:mes"
               element={<DetalleHieloOdooPage />}
+            />
+
+            {/* PLUS ELECTROLYTES */}
+            <Route
+              path="/dashboard/plus"
+              element={<DashboardPlus />}
+            />
+            <Route
+              path="/plus-odoo/clientes/:anio/:mes"
+              element={<DetallePlusOdooPage />}
             />
 
             {/* CAFÉ — IIBC S.A. */}

@@ -23,4 +23,10 @@ router.get('/clientes-quito',      botellonesController.obtenerClientesQuitoBote
 router.get('/website-consolidado', verificarTokenOpcional, botellonesController.obtenerWebsiteConsolidado);
 router.get('/clientes-website',    botellonesController.obtenerClientesWebsiteBotellon);
 
+// Vistas agregadas "todos los clientes" por grupo de rutas (MV)
+router.get('/clientes-mayorista',   botellonesController.obtenerClientesMayoristaBotellon);
+router.get('/clientes-tiendas',     botellonesController.obtenerClientesTiendasBotellon);
+router.get('/clientes-tiendas-vip', botellonesController.obtenerClientesTiendasVipBotellon);
+router.get('/clientes-rural',       botellonesController.obtenerClientesRuralBotellon);
+
 module.exports = router;

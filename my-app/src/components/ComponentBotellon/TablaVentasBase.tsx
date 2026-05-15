@@ -1,9 +1,17 @@
 import { useState } from "react";
 import * as XLSX from "xlsx";
-import { BsDownload, BsGear } from "react-icons/bs";
+import { BsDownload, BsGear, BsPeople } from "react-icons/bs";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../components/auth/AuthContext";
 import ImportarMetasBoton from "../common/ImportarMetasBoton";
+
+// Mapa seccionMetas → URL del listado agregado de clientes del grupo.
+const URL_CLIENTES_GRUPO: Record<string, string> = {
+    MAYORISTA: "/mayorista-botellon/clientes",
+    TIENDAS: "/tiendas-botellon/clientes",
+    TIENDAS_VIP: "/tiendas-vip-botellon/clientes",
+    RURAL: "/rural-botellon/clientes",
+};
 
 
 /* ============================
@@ -325,6 +333,16 @@ const TablaVentasBase: React.FC<Props> = ({
                             {money(totalProyeccionDolares)}
                         </p>
                     </div>
+
+                    {seccionMetas && URL_CLIENTES_GRUPO[seccionMetas] && (
+                        <button
+                            onClick={() => navigate(`${URL_CLIENTES_GRUPO[seccionMetas]}/${anio}/${mes}`)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-500/60 bg-emerald-500/20 text-white font-semibold hover:bg-emerald-500/30 active:scale-[0.98] transition-all"
+                        >
+                            <BsPeople size={16} className="text-white shrink-0" />
+                            <span>Ver todos los clientes</span>
+                        </button>
+                    )}
 
                     {isAdmin && seccionMetas && (
                         <button

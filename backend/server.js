@@ -61,6 +61,11 @@ app.use("/api/metas-botellon", require("./routes/rutasBotellones/metasBotellonRo
 app.use("/api/hielo", require("./routes/rutasHielo/rutasHielo"));
 // app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
 
+// ======================================================
+//  PLUS ELECTROLYTES
+// ======================================================
+app.use("/api/plus", require("./routes/rutasPlus/rutasPlus"));
+
 
 // ======================================================
 //  VISITAS RUTAS
