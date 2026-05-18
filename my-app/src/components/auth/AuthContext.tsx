@@ -13,6 +13,10 @@ interface AuthContextType {
   error: string | null;
 }
 
+// Tiempo de inactividad antes del cierre automático (5 minutos).
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+const LAST_ACTIVITY_KEY = 'app_last_activity';
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -29,6 +33,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       catch (e) { localStorage.removeItem('app_user_session'); }
     }
   }, []);
+
+  // ─────────────────────────────────────────────────────────
+  // AUTO-LOGOUT POR INACTIVIDAD
+  // Cierra sesión y vuelve a /login después de 5 min sin
+  // interacción del usuario (mouse, teclado, scroll, touch).
+  // Sincronizado entre pestañas vía localStorage.
+  // ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+
+    let timerId: number | undefined;
+
+    const cerrarPorInactividad = () => {
+      // Limpia sesión sin pasar por navigate dos veces.
+      setUser(null);
+      localStorage.removeItem('app_user_session');
+      localStorage.removeItem('app_token');
+      localStorage.removeItem(LAST_ACTIVITY_KEY);
+      alert('Tu sesión se cerró por inactividad. Inicia sesión nuevamente.');
+      navigate('/', { replace: true });
+    };
+
+    const programarCierre = () => {
+      const last = Number(localStorage.getItem(LAST_ACTIVITY_KEY) || Date.now());
+      const transcurrido = Date.now() - last;
+      const restante = INACTIVITY_TIMEOUT_MS - transcurrido;
+      if (restante <= 0) {
+        cerrarPorInactividad();
+        return;
+      }
+      window.clearTimeout(timerId);
+      timerId = window.setTimeout(programarCierre, restante);
+    };
+
+    const registrarActividad = () => {
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+      programarCierre();
+    };
+
+    // Sincronización entre pestañas: si otra pestaña registra actividad,
+    // refrescamos el timer aquí también.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LAST_ACTIVITY_KEY) programarCierre();
+    };
+
+    const eventos: (keyof WindowEventMap)[] = [
+      'mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click',
+    ];
+    eventos.forEach(ev => window.addEventListener(ev, registrarActividad, { passive: true }));
+    window.addEventListener('storage', onStorage);
+
+    // Inicializa el contador.
+    localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+    programarCierre();
+
+    return () => {
+      window.clearTimeout(timerId);
+      eventos.forEach(ev => window.removeEventListener(ev, registrarActividad));
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [user, navigate]);
 
   const login = async (usuario: string, clave: string) => {
     setLoading(true);

@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import Button from './Button';
+
+interface ModalProps {
+    isOpen: boolean;
+    itemToDelete: string;
+    onConfirm: () => void;
+    onClose: () => void;
+}
 
 /**
  * ConfirmationModal Component
  * Handles the display, closing, and action logic for the delete confirmation dialog.
  */
-const Modal = ({ isOpen, itemToDelete, onConfirm, onClose }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, itemToDelete, onConfirm, onClose }) => {
     if (!isOpen) return null;
 
     return (

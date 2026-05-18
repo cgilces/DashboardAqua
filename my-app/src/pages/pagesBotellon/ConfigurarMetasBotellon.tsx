@@ -141,7 +141,7 @@ export default function ConfigurarMetasBotellon() {
   const metasFiltradas = metas.filter(m => m.mes === mesFiltro && m.anio === anioFiltro);
 
   return (
-    <div className="min-h-screen bg-[#011f18] text-white">
+    <div className="min-h-screen bg-[#011f18] text-white flex flex-col">
 
       {/* Fondo decorativo */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
@@ -149,9 +149,9 @@ export default function ConfigurarMetasBotellon() {
         <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-[#014434]/40 blur-[100px]" />
       </div>
 
-      {/* Toast */}
+      {/* Toast centrado horizontalmente arriba */}
       {toast && (
-        <div className={`fixed top-5 right-5 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl text-sm font-semibold border backdrop-blur-sm
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl text-sm font-semibold border backdrop-blur-sm animate-[fadeSlideDown_0.25s_ease-out]
           ${toast.tipo === "ok"
             ? "bg-emerald-900/90 border-emerald-500/40 text-emerald-200"
             : "bg-red-900/90 border-red-500/40 text-red-200"}`}>
@@ -181,8 +181,9 @@ export default function ConfigurarMetasBotellon() {
         </Link>
       </div>
 
-      {/* Contenido */}
-      <div className="relative z-10 p-6 grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-6 max-w-[1400px] mx-auto">
+      {/* Contenido centrado vertical y horizontalmente */}
+      <div className="relative z-10 flex-1 flex items-center justify-center p-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-6 max-w-[1400px] w-full">
 
         {/* FORMULARIO */}
         <div className="bg-[#012a20]/80 border border-white/8 rounded-2xl p-6 shadow-xl backdrop-blur-sm h-fit">
@@ -351,6 +352,7 @@ export default function ConfigurarMetasBotellon() {
             )}
           </div>
         </div>
+        </div>
       </div>
 
       {/* MODAL EDITAR */}
@@ -438,6 +440,10 @@ export default function ConfigurarMetasBotellon() {
         @keyframes fadeSlideUp {
           from { opacity:0; transform:translateY(16px) scale(0.97); }
           to   { opacity:1; transform:translateY(0) scale(1); }
+        }
+        @keyframes fadeSlideDown {
+          from { opacity:0; transform:translate(-50%, -16px) scale(0.97); }
+          to   { opacity:1; transform:translate(-50%, 0) scale(1); }
         }
       `}</style>
     </div>

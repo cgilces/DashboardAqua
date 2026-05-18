@@ -95,7 +95,9 @@ export default function DashboardBotellon() {
       setMostrarTablas(false);
 
       const token = localStorage.getItem('app_token');
-      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+      const authHeaders: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
       const qsBase = `anio=${anioSeleccionado}&mes=${mesSeleccionado}&tipoProducto=${tipoProducto}`;
       const [resDash, resEmp, resQuito, resWeb] = await Promise.all([
         fetch(`${API_BASE_URL}/api/botellones/dashboard?${qsBase}`, { headers: authHeaders }),
@@ -441,12 +443,12 @@ export default function DashboardBotellon() {
               vip: "/vip-botellon/clientes",
               domicilio: "/domicilio-botellon/clientes",
               empresas: "/empresas-botellon/clientes",
+              mayorista: "/mayorista-botellon/clientes",
+              tiendas: "/tiendas-botellon/clientes",
+              tiendas_vip: "/tiendas-vip-botellon/clientes",
+              rural: "/rural-botellon/clientes",
             }}
             scrollTargets={{
-              tiendas_vip: "seccion-tiendas_vip",
-              tiendas: "seccion-tiendas",
-              mayorista: "seccion-mayorista",
-              rural: "seccion-rural",
               quito: "seccion-quito",
               televenta_vip: "seccion-televenta_vip",
             }}

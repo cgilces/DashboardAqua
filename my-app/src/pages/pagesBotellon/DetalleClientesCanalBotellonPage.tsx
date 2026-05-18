@@ -35,6 +35,7 @@ interface ClienteCanal {
   consumo_actual: number;
   consumo_anterior: number;
   ultima_factura: string | null;
+  rutas?: string;
 }
 
 interface Resumen {
@@ -71,8 +72,30 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
   const [cargando,   setCargando]   = useState(true);
   const [busqueda,   setBusqueda]   = useState("");
   const [filtro,     setFiltro]     = useState<"todos" | "con" | "sin">("todos");
+  const [filtroRuta, setFiltroRuta] = useState<string>("todas");
   const [pagina,     setPagina]     = useState(1);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({ key: "codigo_cliente", direction: "asc" });
+
+  // Lista dinámica de rutas presentes en los clientes cargados.
+  const rutasDisponibles = Array.from(
+    new Set(
+      clientes.flatMap((c) =>
+        (c.rutas || "")
+          .split(",")
+          .map((r) => r.trim())
+          .filter(Boolean)
+      )
+    )
+  ).sort((a, b) => {
+    // Orden natural: M1, M2, M10... (no M1, M10, M2)
+    const numA = parseFloat(a.replace(/[^\d.]/g, "")) || 0;
+    const numB = parseFloat(b.replace(/[^\d.]/g, "")) || 0;
+    const prefA = a.replace(/[\d.]/g, "");
+    const prefB = b.replace(/[\d.]/g, "");
+    if (prefA !== prefB) return prefA.localeCompare(prefB);
+    return numA - numB;
+  });
+  const hayRutas = rutasDisponibles.length > 0;
 
   const requestSort = (key: string) => {
     const dir = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
@@ -105,7 +128,9 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
     const q = busqueda.toLowerCase();
     const matchQ = !q || c.nombre_cliente?.toLowerCase().includes(q) || c.codigo_cliente?.toLowerCase().includes(q);
     const matchF = filtro === "todos" ? true : filtro === "con" ? Number(c.consumo_actual) > 0 : Number(c.consumo_actual) === 0;
-    return matchQ && matchF;
+    const rutasCli = (c.rutas || "").split(",").map(r => r.trim());
+    const matchR = filtroRuta === "todas" ? true : rutasCli.includes(filtroRuta);
+    return matchQ && matchF && matchR;
   });
   const totalPags = Math.ceil(filtrados.length / POR_PAGINA);
   const paginados = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
@@ -113,6 +138,7 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
   const exportar = () => {
     const datos = filtrados.map((c, i) => ({
       "N°": i + 1, Código: c.codigo_cliente, Cliente: c.nombre_cliente,
+      Ruta: c.rutas || "—",
       Dirección: c.direccion_entrega, "Tipo Negocio": c.tipo_negocio,
       Teléfono: c.telefono, Latitud: c.latitud, Longitud: c.longitud,
       "Cant. Actual": c.cantidad_actual, "Consumo Actual ($)": Number(c.consumo_actual),
@@ -248,7 +274,7 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
         )}
 
         <div className="flex flex-wrap gap-3 mb-4">
-          <div className="relative flex-1 min-w-[180px]">
+          <div className="relative flex-1 min-w-[200px]">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 0 5 11a6 6 0 0 0 12 0z"/>
             </svg>
@@ -256,12 +282,48 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
               onChange={e => { setBusqueda(e.target.value); setPagina(1); }}
               className="bg-[#012E24] border border-[#046C5E] rounded-lg px-3 py-2 pl-9 text-sm text-white placeholder-gray-500 w-full focus:outline-none focus:border-emerald-500/60"/>
           </div>
-          <select value={filtro} onChange={e => { setFiltro(e.target.value as any); setPagina(1); }}
-            className="bg-[#046C5E] px-3 py-2 rounded-lg text-sm font-medium">
-            <option value="todos">Todos</option>
-            <option value="con">Con consumo</option>
-            <option value="sin">Sin consumo</option>
-          </select>
+
+          {/* Filtro Consumo */}
+          <div className={`relative flex items-center bg-[#012E24] border rounded-lg transition-colors ${
+            filtro !== "todos" ? "border-emerald-400/70 ring-1 ring-emerald-400/30" : "border-[#046C5E]"
+          }`}>
+            <span className="pl-3 pr-1 text-[10px] uppercase tracking-wider text-gray-400 font-semibold whitespace-nowrap pointer-events-none">Consumo</span>
+            <select value={filtro} onChange={e => { setFiltro(e.target.value as any); setPagina(1); }}
+              className="bg-transparent text-white px-2 py-2 pr-8 text-sm font-medium focus:outline-none cursor-pointer appearance-none">
+              <option value="todos" className="bg-[#012E24]">Todos</option>
+              <option value="con"   className="bg-[#012E24]">Con consumo</option>
+              <option value="sin"   className="bg-[#012E24]">Sin consumo</option>
+            </select>
+            <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
+
+          {/* Filtro Ruta (solo si hay info de rutas) */}
+          {hayRutas && (
+            <div className={`relative flex items-center bg-[#012E24] border rounded-lg transition-colors ${
+              filtroRuta !== "todas" ? "border-emerald-400/70 ring-1 ring-emerald-400/30" : "border-[#046C5E]"
+            }`}>
+              <span className="pl-3 pr-1 text-[10px] uppercase tracking-wider text-emerald-300/80 font-semibold whitespace-nowrap pointer-events-none">Ruta</span>
+              <select value={filtroRuta} onChange={e => { setFiltroRuta(e.target.value); setPagina(1); }}
+                className="bg-transparent text-white px-2 py-2 pr-8 text-sm font-medium focus:outline-none cursor-pointer appearance-none"
+                title="Filtrar por ruta">
+                <option value="todas" className="bg-[#012E24]">Todas</option>
+                {rutasDisponibles.map((r) => (
+                  <option key={r} value={r} className="bg-[#012E24]">{r}</option>
+                ))}
+              </select>
+              <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </div>
+          )}
+
+          {/* Contador de resultados */}
+          <div className="flex items-center px-3 py-2 bg-[#012E24]/70 border border-[#046C5E]/50 rounded-lg text-xs text-gray-300 whitespace-nowrap">
+            <span className="font-bold text-emerald-300">{filtrados.length}</span>
+            <span className="ml-1 text-gray-400">de {clientes.length} clientes</span>
+          </div>
         </div>
 
         {cargando && (
@@ -288,7 +350,14 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex-1 min-w-0 pr-2">
                                 <p className="font-bold text-white text-sm truncate">{c.nombre_cliente}</p>
-                                <p className="text-[11px] text-white/40 font-mono mt-0.5">{c.codigo_cliente}</p>
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  <p className="text-[11px] text-white/40 font-mono">{c.codigo_cliente}</p>
+                                  {c.rutas && c.rutas.split(",").map((r, i) => (
+                                    <span key={i} className="inline-block bg-emerald-500/25 border border-emerald-400/60 text-emerald-200 text-xs font-mono font-bold rounded-md px-2 py-0.5">
+                                      {r.trim()}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
                               <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0
                                 ${sinConsumo ? "text-red-400 bg-red-500/15 border-red-500/30" : "text-green-400 bg-green-500/15 border-green-500/30"}`}>
@@ -350,6 +419,7 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
                     {([
                       ["Código",         "codigo_cliente"],
                       ["Cliente",        "nombre_cliente"],
+                      ...(hayRutas ? [["Ruta", "rutas"]] : []),
                       ["Dirección",      "direccion_entrega"],
                       ["Tipo Negocio",   "tipo_negocio"],
                       ["Teléfono",       "telefono"],
@@ -369,7 +439,7 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
                 </thead>
                 <tbody>
                   {paginados.length === 0
-                    ? <tr><td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron clientes.</td></tr>
+                    ? <tr><td colSpan={hayRutas ? 13 : 12} className="px-4 py-12 text-center text-gray-400 text-sm">No se encontraron clientes.</td></tr>
                     : paginados.map((c, idx) => {
                         const sinConsumo = Number(c.consumo_actual) === 0;
                         const vsAnt = Number(c.consumo_actual) - Number(c.consumo_anterior);
@@ -379,6 +449,18 @@ export default function DetalleClientesCanalBotellonPage({ titulo, endpoint, exc
                             <td className="px-3 py-2 text-white/30 text-xs">{(pagina - 1) * POR_PAGINA + idx + 1}</td>
                             <td className="px-3 py-2 font-mono text-xs text-white/40">{c.codigo_cliente}</td>
                             <td className="px-3 py-2 font-semibold text-white">{c.nombre_cliente}</td>
+                            {hayRutas && (
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {c.rutas
+                                  ? c.rutas.split(",").map((r, i) => (
+                                      <span key={i} className="inline-block bg-emerald-500/25 border border-emerald-400/60 text-emerald-200 text-sm font-mono font-bold rounded-md px-2.5 py-1 mr-1.5">
+                                        {r.trim()}
+                                      </span>
+                                    ))
+                                  : <span className="text-white/30 text-xs">—</span>
+                                }
+                              </td>
+                            )}
                             <td className="px-3 py-2 text-white/50 max-w-[160px]">
                               <span title={c.direccion_entrega} className="line-clamp-2 text-xs">{c.direccion_entrega || "—"}</span>
                             </td>

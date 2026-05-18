@@ -1,11 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import * as XLSX from "xlsx";
-import { BsDownload } from "react-icons/bs";
+import { BsDownload, BsPeople } from "react-icons/bs";
 import { Check, Zap, AlertTriangle, MapPin } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
+
+/** Determina la URL del listado agregado del grupo al que pertenece la ruta.
+ *  Si la ruta no pertenece a un grupo con vista agregada, retorna null. */
+const obtenerUrlGrupo = (ruta: string): string | null => {
+  const r = ruta.trim().toUpperCase();
+  if (r.startsWith("TV")) return "/tiendas-vip-botellon/clientes";
+  if (r.startsWith("M"))  return "/mayorista-botellon/clientes";
+  if (r.startsWith("R"))  return "/rural-botellon/clientes";
+  if (r.startsWith("T"))  return "/tiendas-botellon/clientes";
+  return null;
+};
 
 const fmt = (v: number) =>
   v.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -313,9 +324,28 @@ const DetalleBotellonPage: React.FC = () => {
 
         {/* Tabla / Cards clientes */}
         <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden mb-6">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#046C5E]/30">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-green-300">Clientes de Ruta</h2>
-            <span className="text-xs text-gray-400">{filtrados.length} clientes</span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-[#046C5E]/30">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-green-300">
+                Clientes de Ruta
+              </h2>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-[11px] font-semibold whitespace-nowrap">
+                {filtrados.length} {filtrados.length === 1 ? "cliente" : "clientes"}
+              </span>
+            </div>
+            {(() => {
+              const urlGrupo = obtenerUrlGrupo(usuario || "");
+              if (!urlGrupo) return null;
+              return (
+                <button
+                  onClick={() => navigate(`${urlGrupo}/${anio}/${mes}`)}
+                  className="self-start sm:self-auto flex items-center gap-2 px-3 py-1.5 rounded-lg border border-emerald-500/60 bg-emerald-500/20 text-white text-xs font-semibold hover:bg-emerald-500/30 hover:border-emerald-400 active:scale-[0.98] transition-all whitespace-nowrap"
+                >
+                  <BsPeople size={14} className="text-emerald-200 shrink-0" />
+                  <span>Ver todos los clientes</span>
+                </button>
+              );
+            })()}
           </div>
 
           {/* MOBILE: cards */}
