@@ -660,6 +660,104 @@ servicio -> '%SERVICIO%'
 agua     -> '%AGUA%'
 
 =====================================================
+TERMINOS DEL NEGOCIO — DESCARTABLE Y PREVENTA (CRITICO)
+=====================================================
+
+"DESCARTABLE" / "envase descartable" / "botella descartable" / "no retornable"
+NO es un nombre de producto. Es una CATEGORIA de productos.
+Se identifica SIEMPRE por:  dd.codigo_categoria = '7'
+PROHIBIDO buscar d.descripcion ILIKE '%DESCARTABLE%' -> ese texto no existe y da 0.
+
+"PREVENTA" (ventas de los prevendedores PV1..PV14, PVM, TELEVENTA, etc.)
+se calcula sobre la tabla ordenes (o), NUNCA sobre facturas:
+  o.type = 2
+  AND o.status = 5
+  AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%'
+       OR o.seller_code ILIKE 'TELEVENTA%')
+  AND o.seller_code NOT ILIKE 'PVR%'
+Para el rango de fechas de preventa usar o.fecha_entrega (NO fecha_creacion).
+IMPORTANTE: usar SIEMPRE o.status = 5 (orden entregada/cerrada). Es el unico
+status que cuadra con las cards del dashboard. NUNCA usar status IN (2,4,5).
+
+REGLA DE PERIODO POR DEFECTO (CRITICO): Los datos de ordenes se sincronizan con
+retraso; el mes calendario actual puede estar VACIO. Por eso, cuando el usuario
+NO indica un mes/periodo, NO usar CURRENT_DATE: usar el ULTIMO MES CON DATOS,
+anclado al MAX(o.fecha_entrega) existente. Solo usar un mes fijo si el usuario lo
+pide explicitamente (ej: "en abril", "mayo 2026").
+
+REGLA DE PERIODO EN EL RESULTADO (CRITICO): Toda consulta de preventa DEBE
+devolver SIEMPRE columnas que identifiquen el periodo cubierto, para que la
+respuesta nombre el mes correcto y NO lo invente:
+  TO_CHAR(MIN(o.fecha_entrega), 'YYYY-MM-DD') AS periodo_desde,
+  TO_CHAR(MAX(o.fecha_entrega), 'YYYY-MM-DD') AS periodo_hasta
+NUNCA omitir estas dos columnas en consultas de preventa (total, descartable o ranking).
+
+PATRON CANONICO OBLIGATORIO — "cuanto es la preventa de descartable" (sin mes -> ultimo mes con datos):
+SELECT COALESCE(SUM(dd.total), 0)    AS dolares,
+       COALESCE(SUM(dd.cantidad), 0) AS unidades,
+       TO_CHAR(MIN(o.fecha_entrega), 'YYYY-MM-DD') AS periodo_desde,
+       TO_CHAR(MAX(o.fecha_entrega), 'YYYY-MM-DD') AS periodo_hasta
+FROM ordenes o
+JOIN detalle_documento dd ON dd.documento_code = o.code
+WHERE o.type = 2
+  AND o.status = 5
+  AND dd.codigo_categoria = '7'
+  AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%'
+       OR o.seller_code ILIKE 'TELEVENTA%')
+  AND o.seller_code NOT ILIKE 'PVR%'
+  AND o.fecha_entrega >= (
+        SELECT DATE_TRUNC('month', MAX(o2.fecha_entrega))
+        FROM ordenes o2 WHERE o2.type = 2 AND o2.status = 5)
+  AND o.fecha_entrega <  (
+        SELECT DATE_TRUNC('month', MAX(o2.fecha_entrega)) + INTERVAL '1 month'
+        FROM ordenes o2 WHERE o2.type = 2 AND o2.status = 5)
+
+PATRON CANONICO — "cuanto es la preventa" / "preventa total" (TODAS las categorias,
+NO incluir el filtro dd.codigo_categoria; mismo rango "ultimo mes con datos"):
+SELECT COALESCE(SUM(dd.total), 0)    AS dolares,
+       COALESCE(SUM(dd.cantidad), 0) AS unidades,
+       TO_CHAR(MIN(o.fecha_entrega), 'YYYY-MM-DD') AS periodo_desde,
+       TO_CHAR(MAX(o.fecha_entrega), 'YYYY-MM-DD') AS periodo_hasta
+FROM ordenes o
+JOIN detalle_documento dd ON dd.documento_code = o.code
+WHERE o.type = 2
+  AND o.status = 5
+  AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%'
+       OR o.seller_code ILIKE 'TELEVENTA%')
+  AND o.seller_code NOT ILIKE 'PVR%'
+  AND o.fecha_entrega >= (
+        SELECT DATE_TRUNC('month', MAX(o2.fecha_entrega))
+        FROM ordenes o2 WHERE o2.type = 2 AND o2.status = 5)
+  AND o.fecha_entrega <  (
+        SELECT DATE_TRUNC('month', MAX(o2.fecha_entrega)) + INTERVAL '1 month'
+        FROM ordenes o2 WHERE o2.type = 2 AND o2.status = 5)
+
+PATRON CANONICO — "ranking de preventa [de descartable] por prevendedor":
+SELECT o.seller_code               AS prevendedor,
+       COALESCE(SUM(dd.total), 0)    AS dolares,
+       COALESCE(SUM(dd.cantidad), 0) AS unidades
+FROM ordenes o
+JOIN detalle_documento dd ON dd.documento_code = o.code
+WHERE o.type = 2
+  AND o.status = 5
+  AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%'
+       OR o.seller_code ILIKE 'TELEVENTA%')
+  AND o.seller_code NOT ILIKE 'PVR%'
+  AND o.fecha_entrega >= (
+        SELECT DATE_TRUNC('month', MAX(o2.fecha_entrega))
+        FROM ordenes o2 WHERE o2.type = 2 AND o2.status = 5)
+  AND o.fecha_entrega <  (
+        SELECT DATE_TRUNC('month', MAX(o2.fecha_entrega)) + INTERVAL '1 month'
+        FROM ordenes o2 WHERE o2.type = 2 AND o2.status = 5)
+GROUP BY o.seller_code
+ORDER BY dolares DESC
+NOTA: para el ranking SOLO de descartable, agregar  AND dd.codigo_categoria = '7'.
+
+NOTA GENERAL: Si el usuario SI pide un mes especifico (ej. "en abril",
+"preventa de mayo 2026"), reemplazar las dos subconsultas de fecha por el rango
+fijo de ese mes (ej. >= '2026-04-01' AND < '2026-05-01') en TODOS los patrones.
+
+=====================================================
 CONSULTAS FRECUENTES - PATRONES RECOMENDADOS
 =====================================================
 

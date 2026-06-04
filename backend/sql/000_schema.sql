@@ -1,4 +1,12 @@
 -- =========================================================================
+-- ESQUEMA CONSOLIDADO — DASHBOARD AQUA (archivo ÚNICO)
+-- Se ejecuta AUTOMÁTICAMENTE en cada arranque (backend/utils/runStartupSql.js).
+-- 100% idempotente. Incluye: tablas, vista, triggers, índices y migraciones.
+-- Las tablas de modelos no listadas aquí (pos_orders, etc.) las crea
+-- sequelize.sync() al arrancar.
+-- =========================================================================
+
+-- =========================================================================
 -- ESTRUCTURA DE BASE DE DATOS — DASHBOARD AQUA
 -- Versión: 2026-04-18
 -- Motor: PostgreSQL 12+
@@ -1140,3 +1148,130 @@ LEFT JOIN unidades_cliente  uc   ON uc.codigo_cliente = c.codigo_cliente;
 -- (CREATE TABLE IF NOT EXISTS → ALTER TABLE ADD COLUMN IF NOT EXISTS →
 -- constraints dentro de DO blocks → índices → triggers idempotentes).
 -- =========================================================================
+
+-- =========================================================================
+-- MIGRACIÓN 001 — Índices del dashboard de clientes
+-- =========================================================================
+-- ====================================================================
+-- ÍNDICES PARA EL DASHBOARD DE CLIENTES
+--
+-- ⚙ AUTO-EJECUCIÓN: este archivo se ejecuta automáticamente en cada
+-- arranque del backend (ver utils/runStartupSql.js). No requiere
+-- ejecución manual. Es idempotente (CREATE INDEX IF NOT EXISTS).
+--
+-- Aceleran:
+--   - Filtros por status + fecha en facturas
+--   - Lookups de facturas por cliente
+--   - JOINs con detalle_documento
+--   - Filtros por ruta (codigo_usuario_asignado_cliente)
+--   - Búsqueda por RUC
+--   - Lookups de direcciones para el mapa
+--   - Historial de contactos por cliente
+-- ====================================================================
+
+-- Acelera filtros por status + fecha en facturas (todos los endpoints lo usan)
+CREATE INDEX IF NOT EXISTS idx_facturas_status_fecha
+  ON facturas (status, fecha_creacion DESC)
+  WHERE status IN (0,2,3,4,5);
+
+-- Acelera lookup de facturas por cliente
+CREATE INDEX IF NOT EXISTS idx_facturas_customer_fecha
+  ON facturas (customer_code, fecha_creacion DESC)
+  WHERE status IN (0,2,3,4,5);
+
+-- Acelera join con detalle_documento
+CREATE INDEX IF NOT EXISTS idx_detalle_documento_code
+  ON detalle_documento (documento_code);
+
+-- Acelera filtros por ruta (codigo_usuario_asignado_cliente)
+CREATE INDEX IF NOT EXISTS idx_clientes_ruta
+  ON clientes (UPPER(codigo_usuario_asignado_cliente))
+  WHERE codigo_usuario_asignado_cliente IS NOT NULL;
+
+-- Acelera búsqueda por RUC/identificación
+CREATE INDEX IF NOT EXISTS idx_clientes_identificacion
+  ON clientes (identificacion_cliente)
+  WHERE identificacion_cliente IS NOT NULL AND TRIM(identificacion_cliente) <> '';
+
+-- Acelera lookup en direcciones_clientes (para mapa)
+CREATE INDEX IF NOT EXISTS idx_direcciones_clientes_codigo
+  ON direcciones_clientes (codigo_cliente);
+
+-- Acelera consulta de contactos_recuperacion por cliente y fecha
+CREATE INDEX IF NOT EXISTS idx_contactos_group_fecha
+  ON contactos_recuperacion (group_key, fecha_contacto DESC);
+
+-- Estadísticas para que el planner tome buenas decisiones
+ANALYZE clientes;
+ANALYZE facturas;
+ANALYZE detalle_documento;
+ANALYZE direcciones_clientes;
+ANALYZE contactos_recuperacion;
+
+-- =========================================================================
+-- MIGRACIÓN 002 — sincronizaciones_ventas.mensaje → TEXT
+-- =========================================================================
+-- ====================================================================
+-- AJUSTE DE COLUMNA: sincronizaciones_ventas.mensaje
+--
+-- ⚙ AUTO-EJECUCIÓN: este archivo se ejecuta automáticamente en cada
+-- arranque del backend (ver utils/runStartupSql.js). Es idempotente:
+-- ALTER COLUMN TYPE TEXT se puede aplicar repetidamente sin error.
+--
+-- Motivo: el modelo Sequelize SincronizacionVenta define `mensaje` como
+-- TEXT, pero la columna real en BD era VARCHAR(100). Los mensajes de
+-- sincronización (resumen de Pedidos/Facturas/POS/Clientes/etc. y los
+-- errores) superan los 100 caracteres y rompían con:
+--   "value too long for type character varying(100)"
+-- ====================================================================
+
+ALTER TABLE sincronizaciones_ventas
+  ALTER COLUMN mensaje TYPE TEXT;
+
+-- =========================================================================
+-- MIGRACIÓN 003 — Botellón invoice_origin
+-- =========================================================================
+-- ====================================================================
+-- BOTELLÓN — Soporte para clasificación del código 29 (LÍQUIDO/ENVASE)
+--
+-- ⚙ AUTO-EJECUCIÓN: este archivo se ejecuta automáticamente en cada
+-- arranque del backend (ver utils/runStartupSql.js). Idempotente.
+--
+-- Motivo: el filtro tipoProducto del dashboard de botellón clasifica las
+-- líneas del producto código 29 (BOTELLÓN 20L AQUA PREMIUM) según si su
+-- factura tiene una NotCr con DISC asociada. El matching NC↔Factura se
+-- hace por `invoice_origin`. Hasta este cambio la columna no se
+-- persistía (solo se traía temporal de Odoo para resolver equipo_ventas).
+--
+-- Esta migración:
+--   1. Asegura que existan las columnas necesarias en `facturas`.
+--   2. Amplía invoice_origin a TEXT (Odoo a veces concatena varias
+--      referencias y supera 255 chars → causaba error de sincronización).
+--   3. Crea índices para que el EXISTS del filtro sea rápido.
+-- ====================================================================
+
+-- ── Columnas de facturas (idempotente) ─────────────────────────────────
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS odoo_id          INTEGER;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS tipo_movimiento  VARCHAR(20);
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS invoice_origin   TEXT;
+
+-- ── Si invoice_origin ya existía como VARCHAR(n), ampliarla a TEXT ─────
+ALTER TABLE facturas ALTER COLUMN invoice_origin TYPE TEXT;
+
+-- ── Índices para acelerar el matching NC ↔ factura origen ──────────────
+CREATE INDEX IF NOT EXISTS idx_facturas_invoice_origin
+  ON facturas(invoice_origin)
+  WHERE invoice_origin IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_facturas_reversed_entry
+  ON facturas(reversed_entry_id)
+  WHERE reversed_entry_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_facturas_odoo_id
+  ON facturas(odoo_id)
+  WHERE odoo_id IS NOT NULL;
+
+-- ── Índice parcial para localizar líneas DISC rápidamente ──────────────
+CREATE INDEX IF NOT EXISTS idx_dd_codigo_interno_disc
+  ON detalle_documento(producto_codigo_interno)
+  WHERE producto_codigo_interno = 'DISC';

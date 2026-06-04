@@ -5,6 +5,7 @@ const { validarSQL, aplicarLimite }            = require("../../utils/sqlValidat
 const { detectarTipoReporte, generarPDF, construirConfigReporte, validarCalidadDatos } = require("../../services/chatbotservicio/reporte.service");
 const { registrar: registrarAuditoria }        = require("../../services/chatbotservicio/auditoria.service");
 const { construirResumenEstadistico }          = require("../../services/chatbotservicio/respuesta.service");
+const { responderPreventaDashboard, detectarPreguntaPreventa } = require("../../services/chatbotservicio/preventaDashboard.service");
 
 const OpenAI = require("openai");
 const path   = require("path");
@@ -615,6 +616,7 @@ Usa listas con viñetas si hay múltiples registros sin jerarquía clara.
 - "¿Qué vendedor vendió más?" → Toma el primer registro del resultado. Si tiene seller_code en lugar de nombre, preséntalo como código de vendedor.
 - "Ventas por ruta / canal" → Agrupa y presenta por ruta/canal con sus totales siguiendo el orden del resultado.
 - "¿Cuál fue la última factura?" → El primer registro del resultado ES la última (más reciente). Muestra código, cliente, fecha y monto.
+- PERÍODO DE LA CONSULTA: Si los datos incluyen los campos "periodo_desde" y "periodo_hasta", el resultado corresponde EXACTAMENTE a ese rango de fechas. Indica el mes/período usando esas fechas (ej: "corresponde a mayo de 2026" o "del 1 al 16 de mayo de 2026"). NUNCA digas "mes actual" ni inventes el mes: usa siempre las fechas de periodo_desde/periodo_hasta. No muestres los nombres de campo crudos.
 
 ## MANEJO DE DATOS INCOMPLETOS
 
@@ -760,12 +762,67 @@ async function chatHandler(req, res) {
     const preguntaFinal = construirPreguntaConContexto(mensaje, historial, intencion);
 
     // ════════════════════════════════════════════════
+    // INTERCEPTOR: PREVENTA / DESCARTABLE / RANKING / TOP CLIENTES
+    // Estas cifras se calculan con las MISMAS funciones del dashboard
+    // (ventasController) para que el número coincida EXACTAMENTE con lo
+    // que el usuario ve en pantalla. Evita que el LLM "reinvente" el SQL
+    // y entregue totales distintos. Si no aplica o falla, sigue el flujo normal.
+    // ════════════════════════════════════════════════
+    if (intencion === INTENCION.CONSULTA_SQL && !PATRONES_VERIFICACION.some(p => p.test(mensaje))) {
+      try {
+        const resPreventa = await responderPreventaDashboard(preguntaFinal, { rol, sellerCode: seller_code });
+        if (resPreventa) {
+          guardarUltimosDatos(usuario, resPreventa.datos, preguntaFinal);
+          agregarAlHistorial(usuario, "user", mensaje);
+          agregarAlHistorial(usuario, "assistant", resPreventa.texto);
+          console.log(`✅ Preventa (datos dashboard) (${Date.now() - inicio}ms)`);
+          return res.json({ respuesta: resPreventa.texto });
+        }
+      } catch (e) {
+        console.warn("⚠️  Interceptor preventa falló, se usa el flujo SQL normal:", e.message);
+      }
+    }
+
+    // ════════════════════════════════════════════════
     // RAMA A: GENERAR PDF
     // ════════════════════════════════════════════════
     if (intencion === INTENCION.REPORTE_PDF) {
       const esPedidoPDF   = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
       const tieneCriterios = tienecriteriosDatos(mensaje.toLowerCase());
       const datosPrevios  = getUltimosDatos(usuario);
+
+      // ── PDF de PREVENTA: usar datos del dashboard (mismas cifras que en pantalla) ──
+      // Solo cuando la pregunta trae criterios propios de preventa; si pide "el pdf"
+      // a secas, se reutilizan los datos cacheados del turno anterior (más abajo).
+      if (tieneCriterios && detectarPreguntaPreventa(preguntaFinal)) {
+        try {
+          const resPrev = await responderPreventaDashboard(preguntaFinal, { rol, sellerCode: seller_code });
+          if (resPrev && resPrev.datos && resPrev.datos.length > 0) {
+            const config = construirConfigReporte("generico", resPrev.datos, usuario);
+            config.titulo = resPrev.titulo || config.titulo;
+            const pdfBuffer = await generarPDF(config);
+            const filename = `reporte_${crypto.randomBytes(8).toString("hex")}.pdf`;
+            const filePath = path.join(PDF_DIR, filename);
+            fs.writeFileSync(filePath, pdfBuffer);
+            setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 30 * 60 * 1000);
+
+            guardarUltimosDatos(usuario, resPrev.datos, preguntaFinal);
+            const respuesta = `✅ Reporte **${config.titulo}** generado con **${resPrev.datos.length} registros**. Haz clic para descargarlo.`;
+            agregarAlHistorial(usuario, "user", mensaje);
+            agregarAlHistorial(usuario, "assistant", respuesta);
+            console.log(`📄 PDF preventa (datos dashboard) (${Date.now() - inicio}ms)`);
+            return res.json({
+              respuesta,
+              esPDF: true,
+              pdfUrl: `/api/bot/reporte/${filename}`,
+              pdfNombre: `${config.titulo.replace(/\s+/g, "_")}.pdf`,
+              totalRegistros: resPrev.datos.length,
+            });
+          }
+        } catch (e) {
+          console.warn("⚠️  PDF preventa (dashboard) falló, se usa el flujo SQL normal:", e.message);
+        }
+      }
 
       let datos     = null;
       let origenDatos = "bd";

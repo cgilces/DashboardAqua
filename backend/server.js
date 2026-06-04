@@ -59,7 +59,6 @@ app.use("/api/metas-botellon", require("./routes/rutasBotellones/metasBotellonRo
 //  HIELO
 // ======================================================
 app.use("/api/hielo", require("./routes/rutasHielo/rutasHielo"));
-// app.use("/api/hielo", require("./routes/rutasHielo/detalleHieloRoutes"));
 
 // ======================================================
 //  PLUS ELECTROLYTES
@@ -127,12 +126,24 @@ require('./cron/tareasCron');
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`✅ API escuchando en puerto ${PORT}`);
-  // Ejecuta automáticamente los SQL idempotentes de backend/sql/
-  // (índices, migraciones simples). Seguro de re-ejecutar en cada deploy.
+
+  // 1) Esquema completo idempotente (tablas, vista, triggers, índices) desde
+  //    backend/sql/. Seguro de re-ejecutar en cada arranque/deploy.
   try {
     const runStartupSql = require("./utils/runStartupSql");
     await runStartupSql();
   } catch (err) {
     console.error("⚠ Error en runStartupSql:", err.message);
+  }
+
+  // 2) Crea automáticamente cualquier tabla de un modelo Sequelize que aún no
+  //    exista (ej. pos_orders, pos_order_lines, contactos_recuperacion). NO
+  //    altera ni borra tablas existentes (sync sin alter/force).
+  try {
+    const { sequelize } = require("./models");
+    await sequelize.sync();
+    console.log("✅ Modelos sincronizados (tablas faltantes creadas)");
+  } catch (err) {
+    console.error("⚠ Error en sequelize.sync():", err.message);
   }
 });
