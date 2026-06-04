@@ -8,6 +8,8 @@ export type { User };
 interface AuthContextType {
   user: User | null;
   login: (usuario: string, clave: string) => Promise<void>;
+  solicitarCodigoRegistro: (usuario: string, clave: string) => Promise<boolean>;
+  confirmarRegistro: (usuario: string, clave: string, codigo: string) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
   error: string | null;
@@ -158,6 +160,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // ─────────────────────────────────────────────────────────
+  // REGISTRO POR CÓDIGO — PASO 1
+  // Solicita el envío de un código de verificación al correo de
+  // control (cgilces@aqua.com.ec). No crea la cuenta todavía.
+  // Devuelve true si el código se envió correctamente.
+  // ─────────────────────────────────────────────────────────
+  const solicitarCodigoRegistro = async (usuario: string, clave: string): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/login/registro/solicitar-codigo`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ usuario, clave }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        setError(data.msg || "No se pudo enviar el código de verificación");
+        return false;
+      }
+      return true;
+
+    } catch (err: any) {
+      console.error("Solicitar código error:", err);
+      setError("No se pudo conectar con el servidor");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // REGISTRO POR CÓDIGO — PASO 2
+  // Verifica el código; si es correcto el backend crea la cuenta
+  // ADMIN y aquí se inicia sesión automáticamente.
+  // Devuelve true si la cuenta se creó.
+  // ─────────────────────────────────────────────────────────
+  const confirmarRegistro = async (usuario: string, clave: string, codigo: string): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/login/registro/confirmar`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ usuario, clave, codigo }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        setError(data.msg || "No se pudo crear la cuenta");
+        setLoading(false);
+        return false;
+      }
+
+      // Cuenta creada → inicia sesión automáticamente.
+      await login(usuario, clave);
+      return true;
+
+    } catch (err: any) {
+      console.error("Confirmar registro error:", err);
+      setError("No se pudo conectar con el servidor");
+      setLoading(false);
+      return false;
+    }
+  };
+
   const logout = () => {
     setUser(null);
     localStorage.clear();
@@ -165,7 +238,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, error }}>
+    <AuthContext.Provider value={{ user, login, solicitarCodigoRegistro, confirmarRegistro, logout, loading, error }}>
       {children}
     </AuthContext.Provider>
   );

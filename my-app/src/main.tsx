@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import LoginScreen from "./pages/Login";
+import RegistroScreen from "./pages/Registro";
 
 import Dashboardconsolidado from "./pages/pagesConsolidado/Dashboardconsolidado";
 
@@ -64,6 +65,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           {/* RUTAS */}
           <Routes>
             <Route path="/" element={<LoginScreen />} />
+            <Route path="/registro" element={<RegistroScreen />} />
 
             {/* CONSOLIDADO */}
             <Route
