@@ -18,15 +18,7 @@ const MESES_LARGOS: Record<string, number> = {
 };
 
 const TIPOS_DOCUMENTO = [
-  "Todo", "Facturas", "Órdenes", "Transferencias",
-  "Devoluciones", "Solicitudes de devoluciones", "Pagos", "Nuevos clientes",
-];
-
-const GRUPOS_USUARIO = [
-  "Todos los grupos", "POR DEFECTO", "DESCARTABLE T", "DESPACHADOR",
-  "DISTRIBUIDOR", "DOMICILIO", "EMPRESAS", "HIELO", "MAYORISTA",
-  "PREVENTA", "PREVENTA RURAL", "PREVENTA VIP", "QUITO", "RURAL",
-  "SUPERVISOR", "TELEVENTA VIP", "TELEVENTAS", "TIENDAS", "TIENDAS VIP", "VIP",
+  "Todo", "Facturas", "Órdenes", "Pagos", "Nuevos clientes",
 ];
 
 /* ============================================================
@@ -170,15 +162,21 @@ export default function DashboardRutasVisitas() {
       switch (tipoDoc) {
         case "Facturas":               return Number(f.facturas_count) > 0;
         case "Órdenes":                return Number(f.ordenes_count) > 0;
-        case "Transferencias":         return Number(f.transferencias_count) > 0;
-        case "Devoluciones":           return Number(f.devoluciones_count) > 0;
-        case "Solicitudes de devoluciones": return Number(f.devoluciones_count) > 0;
         case "Pagos":                  return Number(f.pagos_count) > 0;
         case "Nuevos clientes":        return true; // campo no disponible aún
         default:                       return true;
       }
     });
   }, [filas, busqueda, grupo, tipoDoc]);
+
+  /* ── Grupos disponibles (derivados de los datos reales) ─
+     codigo_rol_usuario trae roles como VENDEDOR, DESPACHADOR, TELEVENTAS…
+     Se normalizan a mayúsculas para fusionar duplicados (Despachador/DESPACHADOR). */
+  const gruposDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    filas.forEach(f => set.add((f.grupo_usuario || "POR DEFECTO").toUpperCase()));
+    return ["Todos los grupos", ...Array.from(set).sort()];
+  }, [filas]);
 
   /* ── Totales ─ */
   const tot = useMemo(() => ({
@@ -188,16 +186,20 @@ export default function DashboardRutasVisitas() {
     facturas_count:       filasFiltradas.reduce((a,f) => a + Number(f.facturas_count), 0),
     ordenes_monto:        filasFiltradas.reduce((a,f) => a + Number(f.ordenes_monto), 0),
     ordenes_count:        filasFiltradas.reduce((a,f) => a + Number(f.ordenes_count), 0),
-    transferencias_monto: filasFiltradas.reduce((a,f) => a + Number(f.transferencias_monto), 0),
-    transferencias_count: filasFiltradas.reduce((a,f) => a + Number(f.transferencias_count), 0),
-    devoluciones_monto:   filasFiltradas.reduce((a,f) => a + Number(f.devoluciones_monto), 0),
-    devoluciones_count:   filasFiltradas.reduce((a,f) => a + Number(f.devoluciones_count), 0),
     pagos_monto:          filasFiltradas.reduce((a,f) => a + Number(f.pagos_monto), 0),
     pagos_count:          filasFiltradas.reduce((a,f) => a + Number(f.pagos_count), 0),
   }), [filasFiltradas]);
 
-  const conc = (v: number, t: number) =>
-    t > 0 ? `${Math.round((v / t) * 100)}%` : "0%";
+  // Porcentaje genérico (guardado contra división por 0)
+  const pct = (v: number, t: number) =>
+    t > 0 ? `${Math.round((v / t) * 100)}%` : "—";
+
+  // Ventas concretadas = facturas + órdenes generadas en la visita
+  const ventasDe = (f: FilaUsuario) => Number(f.facturas_count) + Number(f.ordenes_count);
+
+  // Concreción: % visita (visitas/paradas) · % venta (ventas/visitas) · # ventas
+  const concreción = (visitas: number, totalRuta: number, ventas: number) =>
+    `${pct(visitas, totalRuta)} / ${pct(ventas, visitas)} / ${ventas}`;
 
   const etiquetaPeriodo = () => {
     const { inicio, fin } = getRango();
@@ -338,7 +340,7 @@ export default function DashboardRutasVisitas() {
             label="Grupo de usuario"
             value={grupo}
             onChange={setGrupo}
-            options={GRUPOS_USUARIO}
+            options={gruposDisponibles}
             color="purple"
           />
           {/* Período — info visual */}
@@ -387,8 +389,8 @@ export default function DashboardRutasVisitas() {
               {/* Nivel 1 — grupos de columnas */}
               <thead>
                 <tr className="bg-[#013d2e] border-b border-[#046C5E]/40">
-                  <th colSpan={2} className="px-3 py-2 border-r border-[#046C5E]/30" />
-                  <th colSpan={5} className="px-3 py-2 text-center text-[10px] uppercase text-emerald-300 border-r border-[#046C5E]/30">
+                  <th className="px-3 py-2 border-r border-[#046C5E]/30" />
+                  <th colSpan={4} className="px-3 py-2 text-center text-[10px] uppercase text-emerald-300 border-r border-[#046C5E]/30">
                     Identificación
                   </th>
                   <th colSpan={2} className="px-3 py-2 text-center text-[10px] uppercase text-emerald-300 border-r border-[#046C5E]/30">
@@ -400,12 +402,6 @@ export default function DashboardRutasVisitas() {
                   <th colSpan={2} className="px-3 py-2 text-center text-[10px] uppercase text-purple-300 border-r border-[#046C5E]/30">
                     Órdenes
                   </th>
-                  <th colSpan={2} className="px-3 py-2 text-center text-[10px] uppercase text-amber-300 border-r border-[#046C5E]/30">
-                    Transferencias
-                  </th>
-                  <th colSpan={2} className="px-3 py-2 text-center text-[10px] uppercase text-red-300 border-r border-[#046C5E]/30">
-                    Devoluciones
-                  </th>
                   <th colSpan={2} className="px-3 py-2 text-center text-[10px] uppercase text-green-300 border-r border-[#046C5E]/30">
                     Pagos
                   </th>
@@ -415,9 +411,7 @@ export default function DashboardRutasVisitas() {
                 {/* Nivel 2 — columnas individuales */}
                 <tr className="bg-[#014434] border-b border-[#046C5E]/50">
                   <Th>#</Th>
-                  <Th center={false}>Usuario</Th>
                   <Th center={false}>Ruta</Th>
-                  <Th center={false}>Sucursal</Th>
                   <Th center={false}>Grupo</Th>
                   <Th>Día inicio</Th>
                   <Th>Día fin</Th>
@@ -426,10 +420,6 @@ export default function DashboardRutasVisitas() {
                   {/* Facturas */}
                   <Th>Monto</Th><Th>#</Th>
                   {/* Órdenes */}
-                  <Th>Monto</Th><Th>#</Th>
-                  {/* Transferencias */}
-                  <Th>Monto</Th><Th>#</Th>
-                  {/* Devoluciones */}
                   <Th>Monto</Th><Th>#</Th>
                   {/* Pagos */}
                   <Th>Monto</Th><Th>#</Th>
@@ -443,7 +433,7 @@ export default function DashboardRutasVisitas() {
               <tbody>
                 {filasFiltradas.length === 0 ? (
                   <tr>
-                    <td colSpan={20} className="px-4 py-16 text-center text-gray-400 text-sm">
+                    <td colSpan={14} className="px-4 py-16 text-center text-gray-400 text-sm">
                       No hay registros para los filtros seleccionados.
                     </td>
                   </tr>
@@ -457,11 +447,7 @@ export default function DashboardRutasVisitas() {
                           ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}`}>
 
                         <td className="px-3 py-2 text-center text-gray-400 border-r border-[#046C5E]/20">{idx + 1}</td>
-                        <td className="px-3 py-2 font-semibold text-white min-w-[160px] border-r border-[#046C5E]/20">
-                          {f.nombre_usuario || f.codigo_usuario}
-                        </td>
-                        <td className="px-3 py-2 text-blue-300 border-r border-[#046C5E]/20">{f.codigo_ruta || "—"}</td>
-                        <td className="px-3 py-2 text-gray-400 text-xs border-r border-[#046C5E]/20">{f.sucursal_usuario || "—"}</td>
+                        <td className="px-3 py-2 font-semibold text-blue-300 min-w-[120px] border-r border-[#046C5E]/20">{f.codigo_ruta || "—"}</td>
                         <td className="px-3 py-2 border-r border-[#046C5E]/20">
                           <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full whitespace-nowrap">
                             {f.grupo_usuario || "POR DEFECTO"}
@@ -491,19 +477,13 @@ export default function DashboardRutasVisitas() {
                         {/* Órdenes */}
                         <td className="px-3 py-2 text-right text-purple-300 border-r border-[#046C5E]/20">{fmt2(Number(f.ordenes_monto))}</td>
                         <td className="px-3 py-2 text-center text-purple-300 border-r border-[#046C5E]/20">{Number(f.ordenes_count)}</td>
-                        {/* Transferencias */}
-                        <td className="px-3 py-2 text-right text-amber-300 border-r border-[#046C5E]/20">{fmt2(Number(f.transferencias_monto))}</td>
-                        <td className="px-3 py-2 text-center text-amber-300 border-r border-[#046C5E]/20">{Number(f.transferencias_count)}</td>
-                        {/* Devoluciones */}
-                        <td className="px-3 py-2 text-right text-red-300 border-r border-[#046C5E]/20">{fmt2(Number(f.devoluciones_monto))}</td>
-                        <td className="px-3 py-2 text-center text-red-300 border-r border-[#046C5E]/20">{Number(f.devoluciones_count)}</td>
                         {/* Pagos */}
                         <td className="px-3 py-2 text-right text-green-300 border-r border-[#046C5E]/20">{fmt2(Number(f.pagos_monto))}</td>
                         <td className="px-3 py-2 text-center text-green-300 border-r border-[#046C5E]/20">{Number(f.pagos_count)}</td>
 
-                        {/* Concreción */}
+                        {/* Concreción: % visita / % venta / # ventas */}
                         <td className="px-3 py-2 text-center font-semibold text-emerald-400 whitespace-nowrap">
-                          {conc(vi, tr)} / 0% / {vi}
+                          {concreción(vi, tr, ventasDe(f))}
                         </td>
                       </tr>
                     );
@@ -515,7 +495,7 @@ export default function DashboardRutasVisitas() {
               {filasFiltradas.length > 0 && (
                 <tfoot>
                   <tr className="bg-[#014434] border-t-2 border-[#046C5E]/60 font-bold text-xs">
-                    <td colSpan={7} className="px-3 py-3 text-emerald-300 uppercase tracking-wider border-r border-[#046C5E]/30">
+                    <td colSpan={5} className="px-3 py-3 text-emerald-300 uppercase tracking-wider border-r border-[#046C5E]/30">
                       Total ({filasFiltradas.length})
                     </td>
                     <td className="px-3 py-3 text-center text-white border-r border-[#046C5E]/30">{tot.total_ruta.toLocaleString("es-EC")}</td>
@@ -524,14 +504,10 @@ export default function DashboardRutasVisitas() {
                     <td className="px-3 py-3 text-center text-blue-300 border-r border-[#046C5E]/30">{tot.facturas_count}</td>
                     <td className="px-3 py-3 text-right text-purple-300 border-r border-[#046C5E]/30">{fmt2(tot.ordenes_monto)}</td>
                     <td className="px-3 py-3 text-center text-purple-300 border-r border-[#046C5E]/30">{tot.ordenes_count}</td>
-                    <td className="px-3 py-3 text-right text-amber-300 border-r border-[#046C5E]/30">{fmt2(tot.transferencias_monto)}</td>
-                    <td className="px-3 py-3 text-center text-amber-300 border-r border-[#046C5E]/30">{tot.transferencias_count}</td>
-                    <td className="px-3 py-3 text-right text-red-300 border-r border-[#046C5E]/30">{fmt2(tot.devoluciones_monto)}</td>
-                    <td className="px-3 py-3 text-center text-red-300 border-r border-[#046C5E]/30">{tot.devoluciones_count}</td>
                     <td className="px-3 py-3 text-right text-green-300 border-r border-[#046C5E]/30">{fmt2(tot.pagos_monto)}</td>
                     <td className="px-3 py-3 text-center text-green-300 border-r border-[#046C5E]/30">{tot.pagos_count}</td>
                     <td className="px-3 py-3 text-center text-emerald-400 whitespace-nowrap">
-                      {conc(tot.visitas, tot.total_ruta)} / 0% / {tot.visitas}
+                      {concreción(tot.visitas, tot.total_ruta, tot.facturas_count + tot.ordenes_count)}
                     </td>
                   </tr>
                 </tfoot>
