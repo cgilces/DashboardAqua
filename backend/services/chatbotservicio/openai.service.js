@@ -1,11 +1,10 @@
 // services/chatbotservicio/generarSQL.js
 // Generador profesional de SQL seguro para PostgreSQL
 // Grupo Aqua ERP — v4 schema completo y corregido
+// Motor IA: Claude (Anthropic). Antes usaba OpenAI gpt-4o-mini.
 
-const OpenAI = require("openai");
+const { claudeChat } = require("./claude.client");
 require("dotenv").config();
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function generarSQL(
   pregunta,
@@ -50,25 +49,7 @@ Analiza el error y genera un SQL corregido y valido.
 `
         : "";
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0,
-      top_p: 0.1,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "sql_response",
-          schema: {
-            type: "object",
-            properties: { sql: { type: "string" } },
-            required: ["sql"],
-          },
-        },
-      },
-      messages: [
-        {
-          role: "system",
-          content: `
+    const systemPrompt = `
 Eres un generador experto de SQL para PostgreSQL del ERP Grupo Aqua.
 Tu unica tarea es generar consultas SELECT validas, seguras y optimizadas.
 
@@ -1343,19 +1324,24 @@ SALIDA - RESPONDER SOLO EN JSON:
 =====================================================
 
 { "sql": "SELECT ..." }
-`,
-        },
-        {
-          role: "user",
-          content: pregunta,
-        },
-      ],
-    });
+`;
 
-    const response = completion.choices[0].message.content;
+    const response = await claudeChat({
+      system: systemPrompt,
+      messages: [{ role: "user", content: pregunta }],
+      maxTokens: 1500,
+      temperature: 0,
+    });
     if (!response) throw new Error("Respuesta vacía del modelo.");
 
-    const parsed = JSON.parse(response);
+    // Claude devuelve el JSON pedido en el prompt; limpiamos posibles fences
+    // ```json y extraemos el primer objeto { ... } por si añade texto alrededor.
+    const limpio = response
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+    const match = limpio.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : limpio);
     let query = parsed.sql.trim().replace(/;$/, "").trim();
 
     console.log("📜 SQL generado:", query);

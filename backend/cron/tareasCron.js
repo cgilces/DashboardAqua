@@ -6,7 +6,7 @@ const cron = require('node-cron');
 const fs   = require('fs');
 const path = require('path');
 
-const { sincronizarVentasRango }       = require('../services/sincronizacionService');
+const { sincronizarVentasRango, sincronizarPromociones } = require('../services/sincronizacionService');
 const { sincronizarOdooCompletoRango } = require('../services/odooServicio/sincronizacionOdooService');
 const { sincronizarRutasYDetalles }    = require('../services/syncRouteDetailsService');
 const { obtenerHistorialDeUsuarios }   = require('../services/syncHistorialVisitasService');
@@ -69,6 +69,7 @@ async function ejecutarSincronizacion(label, startDate, endDate) {
     odoo        : null,
     rutas       : null,
     visitas     : null,
+    promos      : null,
   };
 
   // ── 1. MobilVendor + Odoo en paralelo ───────────────────────
@@ -118,6 +119,17 @@ async function ejecutarSincronizacion(label, startDate, endDate) {
     log(`[Visitas]     ${resultados.visitas}`, 'ERROR');
   }
 
+  // ── 4. Promociones (maestro MobilVendor) ─────────────────────
+  log('[Promos] Iniciando sincronización...');
+  try {
+    await sincronizarPromociones();
+    resultados.promos = 'OK';
+    log('[Promos]      OK');
+  } catch (e) {
+    resultados.promos = `ERROR: ${e.message ?? 'desconocido'}`;
+    log(`[Promos]      ${resultados.promos}`, 'ERROR');
+  }
+
   // ── Resumen final ────────────────────────────────────────────
   const duracion   = ((Date.now() - inicio) / 1000).toFixed(1);
   const hayErrores = Object.values(resultados).some(v => v && v.startsWith('ERROR'));
@@ -128,6 +140,7 @@ async function ejecutarSincronizacion(label, startDate, endDate) {
   log(`  Odoo        : ${resultados.odoo}`);
   log(`  Rutas       : ${resultados.rutas}`);
   log(`  Visitas     : ${resultados.visitas}`);
+  log(`  Promos      : ${resultados.promos}`);
   log('='.repeat(65) + '\n');
 
   isRunning = false;

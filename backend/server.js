@@ -47,6 +47,7 @@ app.use("/api/sync", require("./routes/rutasPreventas/sincronizacionRoutes"));
 app.use("/api/ventas", require("./routes/rutasPreventas/ventasRoutes"));
 app.use("/api/ventas", require("./routes/rutasPreventas/detallePreventaRoutes"));
 app.use("/api/metas", require("./routes/rutasPreventas/metasRoutes"));
+app.use("/api/promos", require("./routes/rutasPromos/promosRoutes"));
 
 // ======================================================
 //  BOTELLONES

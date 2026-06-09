@@ -126,6 +126,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(loggedUser);
       localStorage.setItem('app_user_session', JSON.stringify(loggedUser));
       localStorage.setItem('app_token', data.token);
+      // Señal para que el modal de bienvenida JARVIS salude (una vez) tras el login.
+      try {
+        sessionStorage.setItem('jarvis_saludar', '1');
+        sessionStorage.removeItem('jarvis_modal_sesion');
+      } catch {}
 
       // ── Redirección según rol ──────────────────────
       if (loggedUser.role === "VENDEDOR") {

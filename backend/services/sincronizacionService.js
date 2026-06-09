@@ -19,6 +19,10 @@ const {
   DetalleDocumento,
   SincronizacionVenta,
   Producto,
+  Promo,
+  PromoCondicion,
+  PromoAccion,
+  UsuarioEnPromo,
 } = require("../models");
 
 const DireccionCliente = require("../models/DireccionCliente");
@@ -87,6 +91,44 @@ const sanitizeCoordinate = (value, tipo) => {
   if (tipo === "lat" && (num < -90  || num > 90))  return null;
   if (tipo === "lon" && (num < -180 || num > 180)) return null;
   return Number(num.toFixed(8));
+};
+
+// --- Helpers para promociones -------------------------------------------
+// Número nullable (a diferencia de toNumber, no fuerza 0 cuando es inválido).
+const toNumOrNull = (val) => {
+  if (val == null || val === "") return null;
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
+};
+
+// Bandera 0/1 tolerante con "0"/"1", true/false, 0/1; null si no aplica.
+const toBit = (val) => {
+  if (val === true  || val === 1 || val === "1") return 1;
+  if (val === false || val === 0 || val === "0") return 0;
+  return null;
+};
+
+// Fecha flexible: acepta unix (segundos) o cadena ISO/fecha; null si inválida.
+const parseFlexibleDate = (val) => {
+  if (val == null || val === "") return null;
+  const n = Number(val);
+  if (Number.isFinite(n) && n > 100_000) return parseUnixToEcuador(n);
+  const d = new Date(val);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+// Normaliza campos "lista" (business_types, articles, brands, ...) a algo
+// almacenable en JSONB: array, objeto, JSON serializado o CSV → array.
+const toJsonList = (val) => {
+  if (val == null || val === "") return null;
+  if (Array.isArray(val) || typeof val === "object") return val;
+  const s = String(val).trim();
+  if (!s) return null;
+  if (s.startsWith("[") || s.startsWith("{")) {
+    try { return JSON.parse(s); } catch { /* sigue abajo */ }
+  }
+  if (s.includes(",")) return s.split(",").map((x) => x.trim()).filter(Boolean);
+  return [s];
 };
 
 // ================================================================
@@ -606,18 +648,22 @@ function deduplicateDetails(detallesDoc) {
   const map = new Map();
 
   for (const d of detallesDoc) {
-    const key = d.article_code;
-
-    if (!key) {
+    if (!d.article_code) {
       console.warn("⚠️  Detalle sin article_code ignorado.");
       continue;
     }
+
+    // La promo forma parte de la identidad de la línea: dos líneas del mismo
+    // artículo con promos distintas (o una con promo y otra sin) NO se fusionan,
+    // para no perder la trazabilidad de qué promo se vendió.
+    const key = `${d.article_code}|${d.promo_code || ""}|${d.promo_action_code || ""}`;
 
     if (map.has(key)) {
       const existing    = map.get(key);
       existing.quantity = toNumber(existing.quantity) + toNumber(d.quantity);
       existing.subtotal = toNumber(existing.subtotal) + toNumber(d.subtotal);
       existing.total    = toNumber(existing.total)    + toNumber(d.total);
+      existing.discount = toNumber(existing.discount) + toNumber(d.discount);
       console.log(`🔀 Detalle duplicado fusionado: ${key} (+${d.quantity} uds)`);
     } else {
       map.set(key, { ...d });
@@ -660,6 +706,7 @@ async function syncDetalle(detalle, documentCode, transaction) {
       descripcion          : detalle.article_description || "",
       cantidad             : toNumber(detalle.quantity),
       precio               : toNumber(detalle.price),
+      descuento_linea      : toNumber(detalle.discount),
       subtotal             : toNumber(detalle.subtotal),
       total                : toNumber(detalle.total),
       iva                  : toNumber(detalle.iva),
@@ -667,6 +714,9 @@ async function syncDetalle(detalle, documentCode, transaction) {
       barcode              : detalle.barcode                       || null,
       codigo_categoria     : detalle.article_category_code         || null,
       descripcion_categoria: detalle.article_category_description  || null,
+      // Promoción aplicada en la línea (puede venir null si no hubo promo)
+      promo_code           : detalle.promo_code        || null,
+      promo_action_code    : detalle.promo_action_code || null,
     },
     { transaction }
   );
@@ -871,6 +921,212 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
 };
 
 // ================================================================
+// SINCRONIZACIÓN DE PROMOCIONES (promos + condiciones + acciones + usuarios)
+// ================================================================
+/**
+ * Descarga por completo un schema de MobilVendor (action "get", paginado)
+ * y devuelve todos sus registros acumulados.
+ */
+async function fetchSchemaCompleto(session_id, schema) {
+  const all = [];
+  let page       = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages) {
+    const { data } = await axios.post(
+      API_URL,
+      { session_id, action: "get", schema, page },
+      { headers: { "Content-Type": "application/json" }, timeout: 120_000 }
+    );
+
+    const records = data.records || [];
+    totalPages    = data.pages   || totalPages;
+
+    if (!records.length) break;
+    all.push(...records);
+    page++;
+  }
+
+  console.log(`   → ${schema}: ${all.length} registro(s)`);
+  return all;
+}
+
+/**
+ * Sincroniza el módulo de promociones de MobilVendor:
+ *   promos → promo_conditions → promo_actions → users_in_promos
+ *
+ * Estrategia (snapshot transaccional):
+ *   1. upsert de cada promo (preserva la PK code).
+ *   2. condiciones y acciones se refrescan por completo (DELETE + insert),
+ *      solo para promos existentes (respeta la FK).
+ *   3. users_in_promos se upserta por (promo_code, user_code) → idempotente.
+ *
+ * Toda la carga corre dentro de UNA transacción: si algo falla, rollback total.
+ */
+const sincronizarPromociones = async (syncState = null) => {
+  console.log("\n====================================");
+  console.log("🚀 SINCRONIZACIÓN DE PROMOCIONES");
+  console.log("====================================\n");
+
+  const progress = new SyncProgress(syncState);
+  progress.start("promociones", "completo");
+
+  try {
+    const session_id = await obtenerSesionActual();
+    if (!session_id) throw new Error("No hay sesión activa con MobilVendor.");
+    console.log(`🔐 Sesión MobilVendor OK: ${session_id}`);
+
+    // ── 1. Descargar los 4 schemas ────────────────────────────────
+    console.log("📦 Descargando schemas de promociones...");
+    const [promos, condiciones, acciones, usuarios] = await Promise.all([
+      fetchSchemaCompleto(session_id, "promos"),
+      fetchSchemaCompleto(session_id, "promo_conditions"),
+      fetchSchemaCompleto(session_id, "promo_actions"),
+      fetchSchemaCompleto(session_id, "users_in_promos"),
+    ]);
+
+    if (!promos.length) {
+      console.log("🏁 MobilVendor no devolvió promociones — nada que sincronizar.");
+      progress.finish();
+      return { promos: 0, condiciones: 0, acciones: 0, usuarios: 0 };
+    }
+
+    const t = await sequelize.transaction();
+
+    try {
+      // ── 2. Maestro de promos (upsert) ──────────────────────────
+      const codigosValidos = new Set();
+
+      for (const p of promos) {
+        const code = p.code != null ? String(p.code).trim() : null;
+        if (!code) continue;
+        codigosValidos.add(code);
+
+        await Promo.upsert(
+          {
+            code,
+            description        : p.description    || null,
+            type               : p.type           || null,
+            status             : p.status          || null,
+            start_date         : parseFlexibleDate(p.start_date),
+            end_date           : parseFlexibleDate(p.end_date),
+            priority           : toNumOrNull(p.priority),
+            cyclical           : toBit(p.cyclical),
+            min_sale           : toNumOrNull(p.min_sale),
+            max_sale           : toNumOrNull(p.max_sale),
+            payment_method     : p.payment_method || null,
+            business_types     : toJsonList(p.business_types),
+            customers          : toJsonList(p.customers),
+            payload            : p,
+            fecha_actualizacion: new Date(),
+          },
+          { transaction: t, conflictFields: ["code"] }
+        );
+      }
+
+      // ── 3. Condiciones (refresco total) ────────────────────────
+      await PromoCondicion.destroy({ where: {}, transaction: t });
+      const filasCondiciones = condiciones
+        .filter((c) => codigosValidos.has(String(c.promo_code || "").trim()))
+        .map((c) => ({
+          promo_code        : String(c.promo_code).trim(),
+          condition         : c.condition          || null,
+          amount_condition  : c.amount_condition   || null,
+          amount1           : toNumOrNull(c.amount1),
+          amount2           : toNumOrNull(c.amount2),
+          quantity_condition: c.quantity_condition || null,
+          quantity1         : toNumOrNull(c.quantity1),
+          quantity2         : toNumOrNull(c.quantity2),
+          object            : c.object             || null,
+          code              : c.code               || null,
+          list              : c.list               || null,
+          unit_code         : c.unit_code          || null,
+          payload           : c,
+        }));
+      if (filasCondiciones.length) {
+        await PromoCondicion.bulkCreate(filasCondiciones, { transaction: t });
+      }
+
+      // ── 4. Acciones (refresco total) ───────────────────────────
+      await PromoAccion.destroy({ where: {}, transaction: t });
+      const filasAcciones = acciones
+        .filter((a) => codigosValidos.has(String(a.promo_code || "").trim()))
+        .map((a) => ({
+          promo_code   : String(a.promo_code).trim(),
+          action       : a.action        || null,
+          discount     : toNumOrNull(a.discount),
+          discount_type: a.discount_type || null,
+          price_value  : toNumOrNull(a.price_value),
+          gift         : a.gift      != null ? String(a.gift)      : null,
+          gift_base    : a.gift_base != null ? String(a.gift_base) : null,
+          stepped      : toBit(a.stepped),
+          articles     : toJsonList(a.articles),
+          brands       : toJsonList(a.brands),
+          categories   : toJsonList(a.categories),
+          families     : toJsonList(a.families),
+          payload      : a,
+        }));
+      if (filasAcciones.length) {
+        await PromoAccion.bulkCreate(filasAcciones, { transaction: t });
+      }
+
+      // ── 5. Asignación por vendedor (upsert idempotente) ────────
+      let upsertsUsuarios = 0;
+      for (const u of usuarios) {
+        const promoCode = String(u.promo_code || "").trim();
+        const userCode  = String(u.user_code  || "").trim();
+        if (!promoCode || !userCode || !codigosValidos.has(promoCode)) continue;
+
+        await UsuarioEnPromo.upsert(
+          {
+            promo_code           : promoCode,
+            user_code            : userCode,
+            status               : u.status || null,
+            inventory            : toNumOrNull(u.inventory),
+            inventory_amount     : toNumOrNull(u.inventory_amount),
+            inventory_used       : toNumOrNull(u.inventory_used),
+            inventory_amount_used: toNumOrNull(u.inventory_amount_used),
+            payload              : u,
+            fecha_actualizacion  : new Date(),
+          },
+          { transaction: t, conflictFields: ["promo_code", "user_code"] }
+        );
+        upsertsUsuarios++;
+      }
+
+      await t.commit();
+
+      const resumen = {
+        promos     : codigosValidos.size,
+        condiciones: filasCondiciones.length,
+        acciones   : filasAcciones.length,
+        usuarios   : upsertsUsuarios,
+      };
+
+      console.log("\n====================================");
+      console.log("✅ SINCRONIZACIÓN DE PROMOCIONES COMPLETA");
+      console.log(`   → Promos      : ${resumen.promos}`);
+      console.log(`   → Condiciones : ${resumen.condiciones}`);
+      console.log(`   → Acciones    : ${resumen.acciones}`);
+      console.log(`   → Asignaciones: ${resumen.usuarios}`);
+      console.log("====================================\n");
+
+      progress.finish();
+      return resumen;
+
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+
+  } catch (err) {
+    console.error("\n❌ ERROR SINCRONIZACIÓN PROMOCIONES:", err.message);
+    progress.finish(err.message);
+    throw err;
+  }
+};
+
+// ================================================================
 // EXPORTS
 // ================================================================
-module.exports = { sincronizarVentasRango, sincronizarDirecciones };
+module.exports = { sincronizarVentasRango, sincronizarDirecciones, sincronizarPromociones };

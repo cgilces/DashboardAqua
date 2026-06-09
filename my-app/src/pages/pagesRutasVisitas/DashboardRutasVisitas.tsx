@@ -269,7 +269,7 @@ export default function DashboardRutasVisitas() {
             <h1 className="text-xl md:text-2xl font-bold">DASHBOARD VISITAS RUTAS</h1>
           </div>
 
-          <div className="flex flex-wrap gap-2 items-center  py-6 ">
+          <div className="flex flex-wrap gap-4 items-start justify-center py-2">
             {isAdmin && <BotonRutasyDetalles />}
             {isAdmin && <BotonHistorialRutas />}
           </div>

@@ -44,8 +44,12 @@ const ClienteUsuarioVenta = sequelize.define(
     timestamps: false,
     indexes: [
       {
+        // Debe coincidir con la constraint uq_cliente_seller_direccion del SQL:
+        // un cliente puede ser atendido por el mismo vendedor en direcciones
+        // distintas, por eso la unicidad incluye la dirección.
+        name: 'uq_cliente_seller_direccion',
         unique: true,
-        fields: ['codigo_cliente', 'seller_code'],
+        fields: ['codigo_cliente', 'seller_code', 'codigo_direccion_cliente'],
       },
       {
         fields: ['codigo_cliente'],

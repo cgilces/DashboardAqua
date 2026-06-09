@@ -99,9 +99,9 @@ const [row] = await sequelize.query(
 // ================================================================
 // DESPUÉS
 const queryVentasPorRuta = async (inicio, fin) => {
-  // DIST vende mayormente PT-DISTRINTER (hielo). Excluimos categoría BOTELLN
-  // para que el dashboard de hielo NO contabilice botellones (p.ej. una
-  // orden esporádica como S183426 a GADM Guayaquil con 29 botellones).
+  // DISTRINTER (campania 5): SOLO hielo. Se EXCLUYE botellón (NOT ILIKE '%BOTELL%')
+  // porque el dashboard de hielo debe contener únicamente hielo (confirmado por
+  // gerencia). Ej: la orden a GADM Guayaquil con ~29 botellones NO cuenta aquí.
   const sql = `
     SELECT
       SUM(dd.total)                   AS dolares,

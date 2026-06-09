@@ -48,30 +48,32 @@ function detectarPreguntaPreventa(pregunta) {
   const mencionaPreventa  = RE_PREVENTA.test(t);
   const mencionaDescart   = RE_DESCART.test(t);
 
-  // Top clientes de preventa (requiere contexto de preventa/descartable para no
-  // colisionar con "top clientes" genérico de facturas)
-  if (RE_TOPCLI.test(t) && (mencionaPreventa || mencionaDescart)) {
-    return { tipo: "top_clientes" };
-  }
-
-  // Descartable por canal (DOMICILIO / MAYORISTA / VIP) — tiene prioridad sobre
-  // "ranking" porque "por canal" también lo dispararía.
+  // Descartable POR CANAL (DOMICILIO / MAYORISTA / VIP): SÍ usa funciones reales
+  // de descartable (calcularVentasDescartableConComparativa). Tiene prioridad.
   if (mencionaDescart && /\bcanal(es)?\b|\bdomicilio\b|\bmayorista\b|\bvip\b/i.test(t)) {
     return { tipo: "descartable_canal" };
   }
 
+  // ⚠️ CRÍTICO: el TOTAL/RANKING/TOP de DESCARTABLE NO se calcula con datos de
+  // preventa (eso daba el bug de responder $208k de preventa a "total de
+  // descartable"). Para descartable sin canal, delegamos al agente (categoría 7).
+  if (mencionaDescart && !mencionaPreventa) {
+    return null;
+  }
+
+  // ── A partir de aquí: SOLO preventa ──
+  // Top clientes de preventa
+  if (RE_TOPCLI.test(t) && mencionaPreventa) {
+    return { tipo: "top_clientes" };
+  }
+
   // Ranking por prevendedor / ruta / canal
-  if (RE_RANKING.test(t) && (mencionaPreventa || mencionaDescart)) {
+  if (RE_RANKING.test(t) && mencionaPreventa) {
     return { tipo: "ranking" };
   }
 
-  // Total de preventa / descartable del mes
-  if ((mencionaPreventa || mencionaDescart) && RE_TOTAL.test(t)) {
-    return { tipo: "total" };
-  }
-
-  // "cuanto es la preventa", "la preventa de mayo" → total
-  if (mencionaPreventa || mencionaDescart) {
+  // Total de preventa del mes / "cuanto es la preventa"
+  if (mencionaPreventa) {
     return { tipo: "total" };
   }
 

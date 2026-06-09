@@ -66,6 +66,20 @@ const DetalleDocumento = sequelize.define(
       allowNull: true
     },
 
+    // =========================
+    // PROMOCIÓN APLICADA EN LA LÍNEA (origen MobilVendor: detalle de venta)
+    // Base de la analítica "promos vendidas por prendedor".
+    // =========================
+    promo_code: {
+      type: DataTypes.STRING(50),
+      allowNull: true
+    },
+
+    promo_action_code: {
+      type: DataTypes.STRING(50),
+      allowNull: true
+    },
+
     subtotal: {
       type: DataTypes.DECIMAL(18, 2),
       allowNull: true

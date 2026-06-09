@@ -2,18 +2,18 @@
 const { generarSQL }                           = require("../../services/chatbotservicio/openai.service");
 const { ejecutarSQL }                          = require("../../services/chatbotservicio/query.service");
 const { validarSQL, aplicarLimite }            = require("../../utils/sqlValidator");
-const { detectarTipoReporte, generarPDF, construirConfigReporte, validarCalidadDatos } = require("../../services/chatbotservicio/reporte.service");
+const { detectarTipoReporte, generarPDF, generarExcel, construirConfigReporte, validarCalidadDatos } = require("../../services/chatbotservicio/reporte.service");
 const { registrar: registrarAuditoria }        = require("../../services/chatbotservicio/auditoria.service");
 const { construirResumenEstadistico }          = require("../../services/chatbotservicio/respuesta.service");
 const { responderPreventaDashboard, detectarPreguntaPreventa } = require("../../services/chatbotservicio/preventaDashboard.service");
+const { responderAgente } = require("../../services/chatbotservicio/agente.service");
+const { responderHieloDashboard } = require("../../services/chatbotservicio/hieloDashboard.service");
 
-const OpenAI = require("openai");
+const { claudeChat } = require("../../services/chatbotservicio/claude.client");
 const path   = require("path");
 const fs     = require("fs");
 const crypto = require("crypto");
 require("dotenv").config();
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ═══════════════════════════════════════════════════
 // DIRECTORIO TEMPORAL DE PDFs
@@ -343,9 +343,42 @@ function tienecriteriosDatos(texto) {
   );
 }
 
+// ═══════════════════════════════════════════════════
+// FORMATO DEL REPORTE (PDF por defecto / EXCEL si lo pide)
+// ═══════════════════════════════════════════════════
+const RE_EXCEL = /\bexcel\b|\bxlsx?\b|hoja\s+de\s+c[aá]lculo|spreadsheet/i;
+
+function detectarFormato(mensaje) {
+  return RE_EXCEL.test(mensaje) ? "excel" : "pdf";
+}
+
+// ¿El usuario pidió un archivo descargable? (PDF o Excel)
+function esPedidoArchivo(mensaje) {
+  const t = mensaje.trim();
+  return PATRONES_PEDIR_PDF.some((p) => p.test(t)) || RE_EXCEL.test(mensaje);
+}
+
+// Genera el archivo (pdf|excel) a partir del config, lo guarda temporalmente
+// (30 min) y devuelve los datos para la respuesta de descarga.
+async function construirArchivoReporte(config, formato) {
+  const ext      = formato === "excel" ? "xlsx" : "pdf";
+  const buffer   = formato === "excel" ? await generarExcel(config) : await generarPDF(config);
+  const filename = `reporte_${crypto.randomBytes(8).toString("hex")}.${ext}`;
+  const filePath = path.join(PDF_DIR, filename);
+  fs.writeFileSync(filePath, buffer);
+  setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 30 * 60 * 1000);
+  return {
+    filename,
+    pdfUrl:    `/api/bot/reporte/${filename}`,
+    pdfNombre: `${config.titulo.replace(/\s+/g, "_")}.${ext}`,
+    formato,
+    ext,
+  };
+}
+
 function clasificarIntencion(mensaje, historial = []) {
   const texto = mensaje.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const esPedidoPDF = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
+  const esPedidoPDF = esPedidoArchivo(mensaje);
 
   // ── 1. Pide PDF + tiene criterios propios → REPORTE_PDF directo ─────
   //    Ej: "muestrame el reporte de ventas del 3 de febrero 2026 dame el pdf"
@@ -428,17 +461,15 @@ Nunca menciones SQL, tablas ni términos técnicos.
 Responde siempre en español. Máximo 3 párrafos cortos.`
   };
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.6,
-    max_tokens: 600,
+  return await claudeChat({
+    system: systemPrompt.content,
     messages: [
-      systemPrompt,
       ...historial,                        // ← contexto previo
       { role: "user", content: mensaje }
-    ]
+    ],
+    maxTokens: 600,
+    temperature: 0.6,
   });
-  return completion.choices[0].message.content.trim();
 }
 
 // ═══════════════════════════════════════════════════
@@ -465,7 +496,7 @@ function construirPreguntaConContexto(mensaje, historial, intencion) {
     PATRONES_CORRECCION.some(p => p.test(mensaje.trim())) ||
     mensaje.trim().split(" ").length <= 8;
 
-  const esPedidoPDF = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
+  const esPedidoPDF = esPedidoArchivo(mensaje);
 
   // Si pide PDF → construir pregunta de reporte completa con contexto
   if (esPedidoPDF || intencion === INTENCION.REPORTE_PDF) {
@@ -499,14 +530,7 @@ function construirPreguntaConContexto(mensaje, historial, intencion) {
 // hay registros para lo consultado
 // ═══════════════════════════════════════════════════
 async function generarRespuestaSinDatos(pregunta, historial) {
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.4,
-    max_tokens: 200,
-    messages: [
-      {
-        role: "system",
-        content: `Eres el asistente del ERP Grupo Aqua. El usuario hizo una consulta válida sobre el sistema pero la base de datos no devolvió ningún registro.
+  const systemSinDatos = `Eres el asistente del ERP Grupo Aqua. El usuario hizo una consulta válida sobre el sistema pero la base de datos no devolvió ningún registro.
 
 Tu tarea: redactar UN mensaje corto (máximo 2 oraciones) explicando de forma natural que no hay datos para ese criterio específico.
 
@@ -525,13 +549,17 @@ Ejemplos:
   Respuesta: "No se encontraron clientes activos en la ruta PV1 para el día de hoy."
 
   Pregunta: "facturas del cliente AKI en febrero"
-  Respuesta: "No hay facturas registradas para el cliente AKI durante el mes de febrero."`
-      },
+  Respuesta: "No hay facturas registradas para el cliente AKI durante el mes de febrero."`;
+
+  return await claudeChat({
+    system: systemSinDatos,
+    messages: [
       ...historial.slice(-4),
       { role: "user", content: pregunta }
-    ]
+    ],
+    maxTokens: 200,
+    temperature: 0.4,
   });
-  return completion.choices[0].message.content.trim();
 }
 
 
@@ -633,20 +661,18 @@ Cordial, conciso y ejecutivo. Máximo 3-4 párrafos o la lista numerada cuando a
 Responde siempre en español.`
   };
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.3,
-    max_tokens: 1000,
+  return await claudeChat({
+    system: systemPrompt.content,
     messages: [
-      systemPrompt,
       ...historial,   // ← contexto de la conversación
       {
         role: "user",
         content: `Pregunta: ${pregunta}${notaVolumen}\n\nResultados:\n${JSON.stringify(contenidoDatos)}`
       }
-    ]
+    ],
+    maxTokens: 1000,
+    temperature: 0.3,
   });
-  return completion.choices[0].message.content.trim();
 }
 
 // ═══════════════════════════════════════════════════
@@ -694,14 +720,20 @@ async function ejecutarConReintento(mensaje, rol, seller_code, sql) {
 // ═══════════════════════════════════════════════════
 async function descargarReporteHandler(req, res) {
   const { filename } = req.params;
-  if (!filename || !/^reporte_[a-f0-9]+\.pdf$/.test(filename)) {
+  if (!filename || !/^reporte_[a-f0-9]+\.(pdf|xlsx)$/.test(filename)) {
     return res.status(400).json({ error: "Archivo inválido" });
   }
   const filePath = path.join(PDF_DIR, filename);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: "Reporte no encontrado o expirado (30 min)" });
   }
-  res.setHeader("Content-Type", "application/pdf");
+  const esExcel = filename.endsWith(".xlsx");
+  res.setHeader(
+    "Content-Type",
+    esExcel
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : "application/pdf"
+  );
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   fs.createReadStream(filePath).pipe(res);
 }
@@ -745,301 +777,94 @@ async function chatHandler(req, res) {
     }
 
     // ════════════════════════════════════════════════
-    // RAMA: DESCONOCIDO (sin historial)
+    // CEREBRO PRINCIPAL: AGENTE IA PREMIUM (tool-use)
+    // Maneja consultas, reportes y aclaraciones de forma agéntica: conoce el
+    // glosario de negocio, explora los datos reales cuando no sabe, se
+    // autocorrige si una consulta sale vacía y PREGUNTA cuando hay ambigüedad.
     // ════════════════════════════════════════════════
-    if (intencion === INTENCION.DESCONOCIDO) {
-      // Si pide PDF sin contexto, dar una guía útil
-      const esPedidoPDF = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
-      const respuesta = esPedidoPDF
-        ? "Para generar el reporte necesito saber qué datos incluir. Por ejemplo: \"reporte de ventas de hoy\", \"reporte del cliente TIA de marzo\" o \"reporte por ruta\"."
-        : "No estoy seguro de entender tu consulta. Puedo ayudarte con ventas, clientes, productos, rutas, visitas y reportes. ¿Podrías indicar qué información necesitas?";
-      agregarAlHistorial(usuario, "user", mensaje);
-      agregarAlHistorial(usuario, "assistant", respuesta);
-      return res.json({ respuesta });
-    }
-
-    // ── Construir pregunta con contexto (si es corrección o PDF contextual) ──
-    const preguntaFinal = construirPreguntaConContexto(mensaje, historial, intencion);
-
-    // ════════════════════════════════════════════════
-    // INTERCEPTOR: PREVENTA / DESCARTABLE / RANKING / TOP CLIENTES
-    // Estas cifras se calculan con las MISMAS funciones del dashboard
-    // (ventasController) para que el número coincida EXACTAMENTE con lo
-    // que el usuario ve en pantalla. Evita que el LLM "reinvente" el SQL
-    // y entregue totales distintos. Si no aplica o falla, sigue el flujo normal.
-    // ════════════════════════════════════════════════
-    if (intencion === INTENCION.CONSULTA_SQL && !PATRONES_VERIFICACION.some(p => p.test(mensaje))) {
-      try {
-        const resPreventa = await responderPreventaDashboard(preguntaFinal, { rol, sellerCode: seller_code });
-        if (resPreventa) {
-          guardarUltimosDatos(usuario, resPreventa.datos, preguntaFinal);
-          agregarAlHistorial(usuario, "user", mensaje);
-          agregarAlHistorial(usuario, "assistant", resPreventa.texto);
-          console.log(`✅ Preventa (datos dashboard) (${Date.now() - inicio}ms)`);
-          return res.json({ respuesta: resPreventa.texto });
-        }
-      } catch (e) {
-        console.warn("⚠️  Interceptor preventa falló, se usa el flujo SQL normal:", e.message);
-      }
-    }
-
-    // ════════════════════════════════════════════════
-    // RAMA A: GENERAR PDF
-    // ════════════════════════════════════════════════
-    if (intencion === INTENCION.REPORTE_PDF) {
-      const esPedidoPDF   = PATRONES_PEDIR_PDF.some(p => p.test(mensaje.trim()));
-      const tieneCriterios = tienecriteriosDatos(mensaje.toLowerCase());
-      const datosPrevios  = getUltimosDatos(usuario);
-
-      // ── PDF de PREVENTA: usar datos del dashboard (mismas cifras que en pantalla) ──
-      // Solo cuando la pregunta trae criterios propios de preventa; si pide "el pdf"
-      // a secas, se reutilizan los datos cacheados del turno anterior (más abajo).
-      if (tieneCriterios && detectarPreguntaPreventa(preguntaFinal)) {
+    {
+      // ── Fast-path PREVENTA: cifras EXACTAS del dashboard (cuando aplica) ──
+      if (intencion === INTENCION.CONSULTA_SQL && !PATRONES_VERIFICACION.some(p => p.test(mensaje))) {
         try {
-          const resPrev = await responderPreventaDashboard(preguntaFinal, { rol, sellerCode: seller_code });
-          if (resPrev && resPrev.datos && resPrev.datos.length > 0) {
-            const config = construirConfigReporte("generico", resPrev.datos, usuario);
-            config.titulo = resPrev.titulo || config.titulo;
-            const pdfBuffer = await generarPDF(config);
-            const filename = `reporte_${crypto.randomBytes(8).toString("hex")}.pdf`;
-            const filePath = path.join(PDF_DIR, filename);
-            fs.writeFileSync(filePath, pdfBuffer);
-            setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 30 * 60 * 1000);
-
-            guardarUltimosDatos(usuario, resPrev.datos, preguntaFinal);
-            const respuesta = `✅ Reporte **${config.titulo}** generado con **${resPrev.datos.length} registros**. Haz clic para descargarlo.`;
+          const resPreventa = await responderPreventaDashboard(mensaje, { rol, sellerCode: seller_code });
+          if (resPreventa) {
+            guardarUltimosDatos(usuario, resPreventa.datos, mensaje);
             agregarAlHistorial(usuario, "user", mensaje);
-            agregarAlHistorial(usuario, "assistant", respuesta);
-            console.log(`📄 PDF preventa (datos dashboard) (${Date.now() - inicio}ms)`);
-            return res.json({
-              respuesta,
-              esPDF: true,
-              pdfUrl: `/api/bot/reporte/${filename}`,
-              pdfNombre: `${config.titulo.replace(/\s+/g, "_")}.pdf`,
-              totalRegistros: resPrev.datos.length,
-            });
+            agregarAlHistorial(usuario, "assistant", resPreventa.texto);
+            console.log(`✅ Preventa (datos dashboard) (${Date.now() - inicio}ms)`);
+            return res.json({ respuesta: resPreventa.texto });
           }
         } catch (e) {
-          console.warn("⚠️  PDF preventa (dashboard) falló, se usa el flujo SQL normal:", e.message);
+          console.warn("⚠️  Interceptor preventa falló, sigue el agente:", e.message);
         }
       }
 
-      let datos     = null;
-      let origenDatos = "bd";
-
-      // ── Caso 1: pide PDF sin criterios propios → reusar datos del turno anterior
-      if (esPedidoPDF && !tieneCriterios && datosPrevios) {
-        datos = datosPrevios.datos;
-        origenDatos = "cache_sesion";
-        console.log(`♻️  Reutilizando ${datos.length} registros de sesión para el PDF`);
-      }
-
-      // ── Caso 2: tiene sus propios criterios (o no hay datos previos) → consultar BD
-      if (!datos) {
-        // Limpiar la pregunta: quitar la parte "dame el pdf / muestrame el pdf / necesito el reporte"
-        // para que la IA genere SQL limpio sobre los criterios reales
-        const preguntaSQL = mensaje
-          .replace(/[,.]?\s*(y\s+)?(necesito|quiero|haz(me)?|crea(me)?|manda(me)?|exporta(me)?|descarga(me)?|muestra(me)?|dame|gen[eé]ra?(me)?|pu[eé]des?\s+gen[eé]ra?(me)?|me\s+puedes?\s+gen[eé]ra?r?)\s+(el\s+)?(pdf|reporte)/gi, "")
-          .replace(/\s+/g, " ").trim() || preguntaFinal;
-
-        console.log(`🔍 Pregunta SQL limpia para PDF: "${preguntaSQL}"`);
-
-        let sql = await generarSQL(preguntaSQL, rol, seller_code);
-        console.log("🧠 SQL para PDF:", sql);
-
-        if (/^SELECT\s+1\s+WHERE\s+(FALSE|1\s*=\s*0|0\s*=\s*1)/i.test(sql.trim())) {
-          const respuesta = "No logré interpretar esa consulta para el reporte. ¿Podrías indicar el cliente, la ruta o el período?";
-          agregarAlHistorial(usuario, "user", mensaje);
-          agregarAlHistorial(usuario, "assistant", respuesta);
-          return res.json({ respuesta });
-        }
-
-        if (!validarSQL(sql)) {
-          const respuesta = "Esa consulta no puede procesarse para el reporte. Intenta con una pregunta diferente.";
-          agregarAlHistorial(usuario, "user", mensaje);
-          agregarAlHistorial(usuario, "assistant", respuesta);
-          return res.json({ respuesta });
-        }
-        sql = aplicarLimite(sql, 1000);
-
+      // ── Fast-path HIELO: cifra EXACTA del dashboard "HIELO EMPRESA" (MV+DIST+GA) ──
+      if (!PATRONES_VERIFICACION.some(p => p.test(mensaje))) {
         try {
-          datos = await ejecutarConReintento(preguntaSQL, rol, seller_code, sql);
-          // Auditar la consulta ejecutada (no bloqueante)
-          registrarAuditoria(usuario, rol, mensaje, sql, datos.length, Date.now() - inicio).catch(() => {});
-        } catch (err) {
-          const respuesta =
-            err.message === "NO_REGENERAR"      ? "No pude procesar esa consulta para el reporte." :
-            err.message === "SQL_INVALIDO"       ? "Esa consulta no puede procesarse para el reporte." :
-            err.message === "REINTENTO_FALLIDO"  ? "No logré obtener los datos. Intenta indicar el cliente, ruta o fecha exacta." :
-            (() => { throw err; })();
-          agregarAlHistorial(usuario, "user", mensaje);
-          agregarAlHistorial(usuario, "assistant", respuesta);
-          return res.json({ respuesta });
+          const resHielo = await responderHieloDashboard(mensaje, { rol });
+          if (resHielo) {
+            guardarUltimosDatos(usuario, resHielo.datos, mensaje);
+            agregarAlHistorial(usuario, "user", mensaje);
+            agregarAlHistorial(usuario, "assistant", resHielo.texto);
+
+            // Si pidió PDF/Excel, generarlo desde los datos EXACTOS del dashboard
+            if (esPedidoArchivo(mensaje) && resHielo.datos && resHielo.datos.length) {
+              const formato = detectarFormato(mensaje);
+              const config = construirConfigReporte("generico", resHielo.datos, usuario);
+              config.titulo = resHielo.titulo || config.titulo;
+              const archivo = await construirArchivoReporte(config, formato);
+              console.log(`✅ Hielo dashboard + ${formato.toUpperCase()} (${Date.now() - inicio}ms)`);
+              return res.json({
+                respuesta: resHielo.texto,
+                esPDF: true,
+                formato,
+                pdfUrl: archivo.pdfUrl,
+                pdfNombre: archivo.pdfNombre,
+                totalRegistros: resHielo.datos.length,
+              });
+            }
+            console.log(`✅ Hielo (datos dashboard) (${Date.now() - inicio}ms)`);
+            return res.json({ respuesta: resHielo.texto });
+          }
+        } catch (e) {
+          console.warn("⚠️  Interceptor hielo falló, sigue el agente:", e.message);
         }
       }
 
-      if (!datos || datos.length === 0) {
-        const respuesta = await generarRespuestaSinDatos(preguntaFinal, historial);
-        agregarAlHistorial(usuario, "user", mensaje);
-        agregarAlHistorial(usuario, "assistant", respuesta);
-        return res.json({ respuesta });
-      }
-
-      // ── Validación de calidad: evitar generar PDFs con filas casi vacías ──
-      // Excepción: tipo KPI siempre es UNA fila con valores (posiblemente 0) válidos.
-      const tipoPreliminar = detectarTipoReporte(preguntaFinal) || detectarTipoReporte(mensaje) || "generico";
-      if (tipoPreliminar !== "kpi_dia") {
-        const calidad = validarCalidadDatos(datos);
-        if (!calidad.valido) {
-          console.log(`⚠️  Reporte bloqueado por baja calidad de datos: ${calidad.razon} (${calidad.pctLleno.toFixed(1)}% poblado)`);
-          const respuesta = `${calidad.razon} ¿Quieres que intente con otro criterio (otra fecha, cliente o ruta)?`;
-          agregarAlHistorial(usuario, "user", mensaje);
-          agregarAlHistorial(usuario, "assistant", respuesta);
-          return res.json({ respuesta });
-        }
-      }
-
-      const tipoReporte = tipoPreliminar;
-      console.log(`📄 PDF tipo: ${tipoReporte} — ${datos.length} registros (origen: ${origenDatos})`);
-
-      // ── Transformación especial para KPI: una fila horizontal → filas indicador/valor
-      let datosParaPDF = datos;
-      if (tipoReporte === "kpi_dia" && datos.length > 0) {
-        const LABELS_KPI = {
-          ventas_dia:          "Ventas del Día ($)",
-          facturas_dia:        "Facturas Emitidas",
-          clientes_facturados: "Clientes Facturados",
-          visitas_dia:         "Visitas Realizadas",
-          clientes_visitados:  "Clientes Visitados",
-        };
-        datosParaPDF = Object.entries(datos[0]).map(([key, val]) => ({
-          indicador: LABELS_KPI[key] || key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
-          valor:     val != null ? String(val) : "-",
-        }));
-      }
-
-      const config = construirConfigReporte(tipoReporte, datosParaPDF, usuario);
-      const pdfBuffer = await generarPDF(config);
-      const filename = `reporte_${crypto.randomBytes(8).toString("hex")}.pdf`;
-      const filePath = path.join(PDF_DIR, filename);
-      fs.writeFileSync(filePath, pdfBuffer);
-      setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 30 * 60 * 1000);
-
-      const respuesta = `✅ Reporte **${config.titulo}** generado con **${datos.length} registros**. Haz clic para descargarlo.`;
-      agregarAlHistorial(usuario, "user", mensaje);
-      agregarAlHistorial(usuario, "assistant", respuesta);
-
-      return res.json({
-        respuesta,
-        esPDF: true,
-        pdfUrl: `/api/bot/reporte/${filename}`,
-        pdfNombre: `${config.titulo.replace(/\s+/g, "_")}.pdf`,
-        totalRegistros: datos.length,
+      // ── Agente IA: el cerebro que analiza, consulta y responde ──
+      const { texto, archivo, datos } = await responderAgente(mensaje, {
+        rol, sellerCode: seller_code, historial,
       });
-    }
 
-    // ── Verificación: el usuario duda del resultado o pregunta por el origen de un valor ──
-    // En lugar de generar un SQL diferente que puede dar otro número,
-    // se reutilizan los datos ya obtenidos y se reconfirma la respuesta.
-    const esVerificacion = PATRONES_VERIFICACION.some(p => p.test(mensaje));
-    const datosCacheados = getUltimosDatos(usuario);
-    if (esVerificacion && historial.length > 0) {
-      if (datosCacheados && datosCacheados.datos.length > 0) {
-        // Tenemos datos previos → reconfirmar con los mismos datos
-        console.log(`✅ Verificación detectada — reusando ${datosCacheados.datos.length} registros previos`);
-        const respuestaVerif = await generarRespuestaHumana(datosCacheados.pregunta, datosCacheados.datos, historial);
-        const confirmacion = `He recalculado el resultado con los mismos datos obtenidos. ${respuestaVerif}`;
-        agregarAlHistorial(usuario, "user", mensaje);
-        agregarAlHistorial(usuario, "assistant", confirmacion);
-        return res.json({ respuesta: confirmacion });
-      } else {
-        // La consulta anterior no devolvió datos — aclarar en lugar de generar SQL nuevo
-        console.log("⚠️  Verificación sin datos previos — explicando que no hubo resultados");
-        const ultimaRespBot = [...historial].reverse().find(m => m.role === "assistant");
-        const aclaracion = ultimaRespBot
-          ? `La consulta anterior no encontró registros en la base de datos, por eso no hay valores que mostrar. ¿Podrías reformular la pregunta con otros criterios?`
-          : `No tengo resultados previos que verificar. ¿Podrías repetir la consulta?`;
-        agregarAlHistorial(usuario, "user", mensaje);
-        agregarAlHistorial(usuario, "assistant", aclaracion);
-        return res.json({ respuesta: aclaracion });
+      if (datos && datos.length) guardarUltimosDatos(usuario, datos, mensaje);
+      agregarAlHistorial(usuario, "user", mensaje);
+      agregarAlHistorial(usuario, "assistant", texto);
+
+      // ── Si el agente generó un archivo (PDF/Excel), guardarlo y devolver el link ──
+      if (archivo && archivo.buffer) {
+        const ext      = archivo.formato === "excel" ? "xlsx" : "pdf";
+        const filename = `reporte_${crypto.randomBytes(8).toString("hex")}.${ext}`;
+        const filePath = path.join(PDF_DIR, filename);
+        fs.writeFileSync(filePath, archivo.buffer);
+        setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 30 * 60 * 1000);
+        console.log(`✅ Agente + ${ext.toUpperCase()} (${Date.now() - inicio}ms)`);
+        return res.json({
+          respuesta:      texto,
+          esPDF:          true,
+          formato:        archivo.formato,
+          pdfUrl:         `/api/bot/reporte/${filename}`,
+          pdfNombre:      `${(archivo.titulo || "Reporte").replace(/\s+/g, "_")}.${ext}`,
+          totalRegistros: archivo.totalRegistros,
+        });
       }
+
+      console.log(`✅ Agente (${Date.now() - inicio}ms)`);
+      return res.json({ respuesta: texto });
     }
 
-    // ── Caché (solo consultas normales sin corrección) ──
-    const cacheKey = getCacheKey(preguntaFinal, rol, seller_code);
-    if (intencion === INTENCION.CONSULTA_SQL && preguntaFinal === mensaje) {
-      const cached = getFromCache(cacheKey);
-      if (cached) {
-        console.log(`⚡ Caché (${Date.now() - inicio}ms)`);
-        agregarAlHistorial(usuario, "user", mensaje);
-        agregarAlHistorial(usuario, "assistant", cached);
-        return res.json({ respuesta: cached, fromCache: true });
-      }
-    }
-
-    // ── 1️⃣  Generar SQL ───────────────────────────
-    let sql = await generarSQL(preguntaFinal, rol, seller_code);
-    sql = corregirSQLTotalMonetario(preguntaFinal, sql); // 🔧 corrección programática
-    console.log("🧠 SQL:", sql);
-    if (/^SELECT\s+1\s+WHERE\s+(FALSE|1\s*=\s*0|0\s*=\s*1)/i.test(sql.trim())) {
-      const respuesta = "No logré interpretar esa consulta. ¿Podrías darme más detalles, como el nombre del cliente, la ruta o el período?";
-      agregarAlHistorial(usuario, "user", mensaje);
-      agregarAlHistorial(usuario, "assistant", respuesta);
-      return res.json({ respuesta });
-    }
-
-    // ── 2️⃣  Validar ───────────────────────────────
-    if (!validarSQL(sql)) {
-      const respuesta = "Esa consulta no puede procesarse. Intenta con una pregunta diferente.";
-      agregarAlHistorial(usuario, "user", mensaje);
-      agregarAlHistorial(usuario, "assistant", respuesta);
-      return res.json({ respuesta });
-    }
-
-    // ── 3️⃣  Límite ────────────────────────────────
-    sql = aplicarLimite(sql, 5000);
-
-    // ── 4️⃣  Ejecutar ──────────────────────────────
-    let datos;
-    try {
-      datos = await ejecutarConReintento(preguntaFinal, rol, seller_code, sql);
-      // Auditar la consulta ejecutada (no bloqueante)
-      registrarAuditoria(usuario, rol, mensaje, sql, datos.length, Date.now() - inicio).catch(() => {});
-    } catch (err) {
-      const respuesta =
-        err.message === "NO_REGENERAR"      ? "No pude interpretar esa consulta. ¿Podrías reformularla con más detalle?" :
-        err.message === "SQL_INVALIDO"      ? "Esa consulta no puede procesarse. Intenta con una pregunta diferente." :
-        err.message === "REINTENTO_FALLIDO" ? "No logré obtener los datos. Intenta indicar el nombre exacto del cliente, la ruta o la fecha." :
-        (() => { throw err; })();
-      agregarAlHistorial(usuario, "user", mensaje);
-      agregarAlHistorial(usuario, "assistant", respuesta);
-      return res.json({ respuesta });
-    }
-
-    console.log("📊 Registros:", datos?.length ?? 0);
-
-    if (!datos || datos.length === 0) {
-      // Generar mensaje contextual según lo que el usuario preguntó
-      const respuesta = await generarRespuestaSinDatos(preguntaFinal, historial);
-      agregarAlHistorial(usuario, "user", mensaje);
-      agregarAlHistorial(usuario, "assistant", respuesta);
-      return res.json({ respuesta });
-    }
-
-    // ── Guardar datos en sesión para PDF futuro ────
-    guardarUltimosDatos(usuario, datos, preguntaFinal);
-
-    // ════════════════════════════════════════════════
-    // RAMA B: RESPUESTA NORMAL
-    // ════════════════════════════════════════════════
-    const respuestaHumana = await generarRespuestaHumana(preguntaFinal, datos, historial);
-
-    if (preguntaFinal === mensaje) setCache(cacheKey, respuestaHumana);
-    agregarAlHistorial(usuario, "user", mensaje);
-    agregarAlHistorial(usuario, "assistant", respuestaHumana);
-
-    console.log(`✅ Listo (${Date.now() - inicio}ms)`);
-    return res.json({ respuesta: respuestaHumana });
+    // (El flujo anterior de texto→SQL + ramas de reporte/verificación/caché fue
+    //  reemplazado por el AGENTE IA premium de arriba — ver agente.service.js)
 
   } catch (error) {
     console.error("❌ ERROR:", error);
@@ -1055,7 +880,7 @@ async function chatHandler(req, res) {
       error.name === "SequelizeHostNotFoundError";
 
     const isApiError =
-      msg.includes("openai") || msg.includes("api key") ||
+      msg.includes("anthropic") || msg.includes("claude") || msg.includes("openai") || msg.includes("api key") ||
       msg.includes("rate limit") || msg.includes("quota") ||
       error.status === 429 || error.status === 503;
 
