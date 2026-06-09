@@ -1,6 +1,6 @@
 // controllers/sincronizacionController.js
 const sequelize = require("../../db");
-const { sincronizarVentasRango, sincronizarDirecciones } = require("../../services/sincronizacionService");
+const { sincronizarVentasRango, sincronizarDirecciones, sincronizarPromociones } = require("../../services/sincronizacionService");
 const { sincronizarOdooCompletoRango }  = require("../../services/odooServicio/sincronizacionOdooService");
 const syncState = require("./syncState");
 
@@ -123,7 +123,17 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Direcciones] Error:", errDir.message);
         }
 
-        // FASE 3: Finalizar
+        // FASE 3: Promociones (95% → 99%)
+        syncState.percent = 95;
+        try {
+          console.log("🎁 [Promociones] Iniciando sincronización de promos...");
+          const resPromos = await sincronizarPromociones();
+          console.log(`✅ [Promociones] Completa: ${resPromos.promos} promos, ${resPromos.usuarios} asignaciones`);
+        } catch (errPromo) {
+          console.error("❌ [Promociones] Error:", errPromo.message);
+        }
+
+        // FASE 4: Finalizar
         const hayErrores =
           resMV.status === "rejected" || resOdoo.status === "rejected";
 

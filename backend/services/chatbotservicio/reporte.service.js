@@ -1,8 +1,9 @@
 // services/chatbotservicio/reporte.service.js
-// Genera PDFs profesionales para el ERP Grupo Aqua
-// Instalar: npm install pdfkit
+// Genera PDFs y Excels profesionales para el ERP Grupo Aqua
+// Instalar: npm install pdfkit exceljs
 
 const PDFDocument = require("pdfkit");
+const ExcelJS     = require("exceljs");
 
 // ─── Paleta de colores Grupo Aqua ───────────────────
 const COLORS = {
@@ -109,6 +110,26 @@ function formatNum(val, decimals = 2) {
     .toFixed(decimals)
     .replace(".", ",")
     .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/**
+ * Convierte un string con formato hispano (1.250,50 | 369 | 3,05) a número real,
+ * para que en Excel las cifras sean numéricas (sumables) y no texto.
+ * Si no parece un número, devuelve el valor original sin tocar.
+ * @param {*} val
+ * @returns {number|*}
+ */
+function aNumeroSiAplica(val) {
+  if (typeof val === "number") return val;
+  if (typeof val !== "string") return val;
+  const s = val.trim();
+  if (s === "") return val;
+  // 3.988,82 (miles con punto, decimal con coma) | 369 | 3,05 | -12,5 | +121,84
+  if (/^[+\-]?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s) || /^[+\-]?\d+(,\d+)?$/.test(s)) {
+    const num = Number(s.replace(/\./g, "").replace(",", "."));
+    return isNaN(num) ? val : num;
+  }
+  return val;
 }
 
 /**
@@ -1027,9 +1048,128 @@ function construirConfigReporte(tipoReporte, datos, usuario) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERACIÓN DEL EXCEL (.xlsx)
+// Consume el MISMO config que generarPDF (titulo, subtitulo, columnas, filas,
+// totales, generadoPor) para que ambos formatos salgan idénticos.
+// ─────────────────────────────────────────────────────────────────────────────
+async function generarExcel(config) {
+  const {
+    titulo      = "Reporte",
+    subtitulo   = "",
+    columnas    = [],
+    filas       = [],
+    totales     = null,
+    generadoPor = "Sistema",
+  } = config;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Grupo Aqua ERP";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("Reporte");
+
+  const headers = ["#", ...columnas];
+  const nCols   = Math.max(headers.length, 1);
+
+  // ── Título ──────────────────────────────────────────
+  ws.mergeCells(1, 1, 1, nCols);
+  const cTit = ws.getCell(1, 1);
+  cTit.value = titulo.toUpperCase();
+  cTit.font = { bold: true, size: 16, color: { argb: "FF014434" } };
+  cTit.alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(1).height = 26;
+
+  // ── Subtítulo ───────────────────────────────────────
+  let fila = 2;
+  if (subtitulo) {
+    ws.mergeCells(2, 1, 2, nCols);
+    const cSub = ws.getCell(2, 1);
+    cSub.value = subtitulo;
+    cSub.font = { size: 11, color: { argb: "FF555555" } };
+    cSub.alignment = { horizontal: "center" };
+    fila = 3;
+  }
+
+  // ── Línea de generado ──────────────────────────────
+  ws.mergeCells(fila, 1, fila, nCols);
+  const cInfo = ws.getCell(fila, 1);
+  cInfo.value = `Generado: ${new Date().toLocaleString("es-EC", { timeZone: "America/Guayaquil" })}  |  Por: ${generadoPor}`;
+  cInfo.font = { size: 9, italic: true, color: { argb: "FF888888" } };
+  cInfo.alignment = { horizontal: "right" };
+  fila += 2; // fila en blanco de separación
+
+  // ── Encabezado de tabla ─────────────────────────────
+  const headerRowIdx = fila;
+  const headerRow = ws.getRow(fila);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF025F4B" } };
+    cell.alignment = { horizontal: i === 0 ? "center" : "left", vertical: "middle" };
+    cell.border = { bottom: { style: "thin", color: { argb: "FFD2B858" } } };
+  });
+  headerRow.height = 20;
+  fila++;
+
+  // ── Filas de datos ──────────────────────────────────
+  filas.forEach((f, idx) => {
+    const valores = Array.isArray(f) ? f : Object.values(f);
+    const rowData = [idx + 1, ...valores.map(aNumeroSiAplica)];
+    const row = ws.getRow(fila);
+    rowData.forEach((val, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = val;
+      if (i === 0) {
+        cell.alignment = { horizontal: "center" };
+      } else if (typeof val === "number") {
+        cell.numFmt = Number.isInteger(val) ? "#,##0" : "#,##0.00";
+        cell.alignment = { horizontal: "right" };
+      }
+      if (idx % 2 === 0) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } };
+      }
+    });
+    fila++;
+  });
+
+  // ── Totales al pie ──────────────────────────────────
+  if (totales && Object.keys(totales).length > 0) {
+    fila++; // separación
+    Object.entries(totales).forEach(([k, v]) => {
+      const cLabel = ws.getCell(fila, 1);
+      cLabel.value = k;
+      cLabel.font = { bold: true, color: { argb: "FF014434" } };
+      const cVal = ws.getCell(fila, 2);
+      cVal.value = aNumeroSiAplica(String(v));
+      cVal.font = { bold: true };
+      if (typeof cVal.value === "number") cVal.numFmt = "#,##0.00";
+      fila++;
+    });
+  }
+
+  // ── Anchos de columna automáticos ───────────────────
+  ws.columns.forEach((col, i) => {
+    let maxLen = headers[i] ? String(headers[i]).length : 10;
+    col.eachCell({ includeEmpty: false }, (cell) => {
+      const len = cell.value != null ? String(cell.value).length : 0;
+      if (len > maxLen) maxLen = len;
+    });
+    col.width = Math.min(Math.max(maxLen + 2, 6), 45);
+  });
+
+  // Congelar título + encabezado
+  ws.views = [{ state: "frozen", ySplit: headerRowIdx }];
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
 module.exports = {
   detectarTipoReporte,
   generarPDF,
+  generarExcel,
   construirConfigReporte,
   validarCalidadDatos,
   filtrarClavesNoVacias,

@@ -23,6 +23,10 @@ const CottsaExtraMes = require('./CottsaExtraMes');
 const ContactoRecuperacion = require('./ContactoRecuperacion');
 const PosOrder = require('./posOrder');
 const PosOrderLine = require('./posOrderLine');
+const Promo = require('./Promo');                 // 🔥 NUEVO — promociones MobilVendor
+const PromoCondicion = require('./PromoCondicion');
+const PromoAccion = require('./PromoAccion');
+const UsuarioEnPromo = require('./UsuarioEnPromo');
 
 // =============================
 // RELACIONES
@@ -215,6 +219,41 @@ PosOrderLine.belongsTo(PosOrder, {
   as: 'order',
 });
 
+// ---------- PROMOCIONES (MobilVendor) ----------
+// promos (maestro) → condiciones, acciones y asignaciones por vendedor.
+Promo.hasMany(PromoCondicion, {
+  foreignKey: 'promo_code',
+  sourceKey : 'code',
+  as        : 'condiciones',
+});
+PromoCondicion.belongsTo(Promo, {
+  foreignKey: 'promo_code',
+  targetKey : 'code',
+  as        : 'promo',
+});
+
+Promo.hasMany(PromoAccion, {
+  foreignKey: 'promo_code',
+  sourceKey : 'code',
+  as        : 'acciones',
+});
+PromoAccion.belongsTo(Promo, {
+  foreignKey: 'promo_code',
+  targetKey : 'code',
+  as        : 'promo',
+});
+
+Promo.hasMany(UsuarioEnPromo, {
+  foreignKey: 'promo_code',
+  sourceKey : 'code',
+  as        : 'usuarios',
+});
+UsuarioEnPromo.belongsTo(Promo, {
+  foreignKey: 'promo_code',
+  targetKey : 'code',
+  as        : 'promo',
+});
+
 // =============================
 // EXPORTACIÓN
 // =============================
@@ -239,5 +278,9 @@ module.exports = {
   ContactoRecuperacion,
   PosOrder,
   PosOrderLine,
+  Promo,            // 🔥 NUEVO
+  PromoCondicion,
+  PromoAccion,
+  UsuarioEnPromo,
   sequelize,
 };

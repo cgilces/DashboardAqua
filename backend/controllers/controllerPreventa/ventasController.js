@@ -64,38 +64,10 @@ const getFechaFinQuery = (anioNum, mesNum) => getFechaFinMes(anioNum, mesNum);
 // =====================================
 // 🔧 META HISTÓRICA POR PREVENTA (USD)
 // =====================================
+// Las metas históricas por preventa quedaron deshabilitadas (la meta real viene de
+// objetivosGerencia / metas_preventas). Se devuelve un mapa vacío sin consultar la BD.
 const obtenerMetasHistoricasPreventas = async () => {
-  const sql = `
-    SELECT sub.seller_code,
-       MAX(sub.total_mes) AS meta_historica,
-       mes_max_consumo.mes AS mes_mayor_consumo
-    FROM (
-      SELECT o.seller_code, DATE_TRUNC('month', o.fecha_entrega) AS mes, SUM(dd.total) AS total_mes
-      FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
-      WHERE dd.codigo_categoria = '7' AND o.status IN (2,4,5)
-        AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%'
-          OR o.seller_code ILIKE 'TELEVENTA%' OR o.seller_code ILIKE 'R%')
-      GROUP BY o.seller_code, DATE_TRUNC('month', o.fecha_entrega)
-    ) AS sub
-    LEFT JOIN (
-      SELECT sub2.seller_code, sub2.mes, sub2.total_mes,
-             RANK() OVER (PARTITION BY sub2.seller_code ORDER BY sub2.total_mes DESC) AS rank
-      FROM (
-        SELECT o.seller_code, DATE_TRUNC('month', o.fecha_entrega) AS mes, SUM(dd.total) AS total_mes
-        FROM ordenes o JOIN detalle_documento dd ON dd.documento_code = o.code
-        WHERE dd.codigo_categoria = '7' AND o.status IN (2,4,5)
-          AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%'
-            OR o.seller_code ILIKE 'TELEVENTA%' OR o.seller_code ILIKE 'R%')
-        GROUP BY o.seller_code, DATE_TRUNC('month', o.fecha_entrega)
-      ) AS sub2
-    ) AS mes_max_consumo
-    ON sub.seller_code = mes_max_consumo.seller_code AND mes_max_consumo.rank = 1
-    GROUP BY sub.seller_code, mes_max_consumo.mes;
-  `;
-  const filas = await sequelize.query(sql, { type: Sequelize.QueryTypes.SELECT });
-  const mapa = {};
-  filas.forEach(f => { mapa[f.seller_code] = Number(f.meta_historica); });
-  return mapa;
+  return {};
 };
 
 const obtenerMetaHistoricaGlobal = async () => {
@@ -1316,4 +1288,13 @@ const obtenerDatosDashboard = async (req, res) => {
   }
 };
 
-module.exports = { obtenerDatosDashboard, obtenerDetalleRuta };
+module.exports = {
+  obtenerDatosDashboard,
+  obtenerDetalleRuta,
+  // ── Funciones canónicas reutilizadas por el chatbot para que sus
+  //    cifras coincidan EXACTAMENTE con las del dashboard ──
+  calcularKPIsMes,
+  calcularVentasDescartableConComparativa,
+  agruparDescartablePorCanalResumen,
+  obtenerTop20Clientes,
+};

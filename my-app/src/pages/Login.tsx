@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { AlertTriangle, User, Lock, LogIn } from 'lucide-react';
+import { AlertTriangle, User, Lock, LogIn, UserPlus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Spinner } from '../components/common/Spinner';
 import { useAuth } from '../components/auth/AuthContext';
 import { AquaLogo } from '../components/common/Icons';
@@ -109,6 +110,16 @@ const LoginScreen: React.FC = () => {
             {loading ? <Spinner /> : <><LogIn size={16} /> Iniciar Sesión</>}
           </Button>
         </form>
+
+        {/* Crear cuenta */}
+        <div className="mt-6 text-center">
+          <Link
+            to="/registro"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400/80 hover:text-emerald-300 transition-colors"
+          >
+            <UserPlus size={14} /> ¿No tienes cuenta? Regístrate
+          </Link>
+        </div>
 
         {/* Footer */}
         <p className="mt-8 text-center text-[10px] text-white/20 tracking-wider uppercase">

@@ -7,6 +7,7 @@ import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import GroupAddIcon from "@mui/icons-material/GroupAdd";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
+import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 
 import { useAuth } from "../components/auth/AuthContext";
 
@@ -31,6 +32,7 @@ const ALL_MENU_ITEMS: MenuItem[] = [
   { name: "HIELO",         icon: <img src={imagenhielo}        alt="hielo"       />,  path: "/dashboard/hielo",         roles: ["ADMIN"] },
   { name: "PLUS",          icon: <img src={logo}               alt="plus"        />,  path: "/dashboard/plus",          roles: ["ADMIN"] },
   { name: "CAFÉ",          icon: <img src={capsulamust}        alt="cafe"        />,  path: "/dashboard/cafe",          roles: ["ADMIN"] },
+  { name: "PROMOCIONES",   icon: <LocalOfferIcon />,                                  path: "/dashboard/promociones",   roles: ["ADMIN"] },
   { name: "VISITAS RUTAS", icon: <LocalShippingIcon />,                               path: "/dashboard/rutas-visitas", roles: ["ADMIN"] },
   { name: "CLIENTES",      icon: <PeopleAltIcon />,                                   path: "/dashboard/clientes",      roles: ["ADMIN"] },
   { name: "USUARIOS",      icon: <GroupAddIcon />,                                    path: "/dashboard/crearusuarios", roles: ["ADMIN", "SUPERVISOR"] },

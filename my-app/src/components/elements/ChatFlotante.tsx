@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Zap, FileText, BarChart3, Lightbulb, Check, Clock } from "lucide-react";
+import { Zap, FileText, BarChart3, Lightbulb, Check, Clock, Volume2, VolumeX, Mic, MicOff } from "lucide-react";
+import { hablarConNavegador, precargarVoces, detenerNavegador } from "../../utils/vozNavegador";
 import { useAuth } from "../../components/auth/AuthContext";
 import { API_BASE_URL } from '../../config';
 
@@ -13,6 +14,7 @@ interface Mensaje {
   esPDF?: boolean;
   pdfUrl?: string;
   pdfNombre?: string;
+  formato?: "pdf" | "excel";
   totalRegistros?: number;
   expirado?: boolean;
 }
@@ -22,14 +24,20 @@ interface Mensaje {
 // ═══════════════════════════════════════════════════
 const STORAGE_KEY        = "aqua_chat_mensajes";
 const STORAGE_ABIERTO    = "aqua_chat_abierto";
+const STORAGE_VOZ        = "aqua_chat_voz"; // "true"/"false" — voz JARVIS activa
 const MAX_MENSAJES_LOCAL = 30;
 const PDF_TTL_MS         = 30 * 60 * 1000;
 
 const MSG_BIENVENIDA: Mensaje = {
   tipo: "bot",
-  texto: "Hola, soy el asistente del ERP Grupo Aqua. Puedo responder consultas y generar **reportes PDF**. ¿En qué te puedo ayudar?",
+  texto: "Hola, soy el asistente del ERP Grupo Aqua. Puedo responder consultas y generar **reportes en PDF y Excel**. ¿En qué te puedo ayudar?",
   timestamp: new Date().toISOString(),
 };
+
+// ¿El chat está "fresco"? (solo el saludo por defecto, sin conversación real)
+// Solo en ese caso reemplazamos por el saludo dinámico para no pisar historial.
+const esChatFresco = (msgs: Mensaje[]) =>
+  msgs.length === 1 && msgs[0].tipo === "bot" && !msgs[0].esPDF;
 
 // Placeholders rotativos para el input (mantiene el chat "vivo")
 const PLACEHOLDERS = [
@@ -166,10 +174,12 @@ const TypingIndicator = () => (
 // TARJETA PDF
 // ═══════════════════════════════════════════════════
 const PDFCard: React.FC<{
-  pdfUrl: string; pdfNombre: string; totalRegistros: number; expirado?: boolean;
-}> = ({ pdfUrl, pdfNombre, totalRegistros, expirado }) => {
+  pdfUrl: string; pdfNombre: string; totalRegistros: number; expirado?: boolean; formato?: "pdf" | "excel";
+}> = ({ pdfUrl, pdfNombre, totalRegistros, expirado, formato = "pdf" }) => {
   const [descargando, setDescargando] = useState(false);
   const [descargado,  setDescargado]  = useState(false);
+  const esExcel = formato === "excel";
+  const etiqueta = esExcel ? "Reporte Excel Listo" : "Reporte PDF Listo";
 
   if (expirado) return (
     <div className="mt-2 rounded-xl border border-red-800/40 bg-red-950/30 px-3 py-2.5">
@@ -201,11 +211,11 @@ const PDFCard: React.FC<{
   return (
     <div className="mt-2 rounded-xl border border-[#D2B858]/40 bg-gradient-to-br from-[#1a3020] to-[#0d2010] overflow-hidden">
       <div className="bg-gradient-to-r from-[#D2B858] to-[#b89e3f] px-3 py-2 flex items-center gap-2">
-        <PDFIcon /><span className="text-black font-bold text-xs uppercase tracking-wide">Reporte PDF Listo</span>
+        <PDFIcon /><span className="text-black font-bold text-xs uppercase tracking-wide">{etiqueta}</span>
       </div>
       <div className="px-3 py-2.5">
-        <p className="text-gray-300 text-xs truncate mb-0.5">{pdfNombre.replace(/_/g," ").replace(".pdf","")}</p>
-        <p className="text-emerald-400 text-[11px]">{totalRegistros} registros exportados</p>
+        <p className="text-gray-300 text-xs truncate mb-0.5">{pdfNombre.replace(/_/g," ").replace(/\.(pdf|xlsx)$/i,"")}</p>
+        <p className="text-emerald-400 text-[11px]">{totalRegistros} registros exportados · {esExcel ? "Excel" : "PDF"}</p>
       </div>
       <div className="px-3 pb-3">
         <button onClick={descargar} disabled={descargando}
@@ -266,11 +276,125 @@ const ChatFlotante: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [copiado,     setCopiado]     = useState<number | null>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  const [vozActiva,   setVozActiva]   = useState(() => {
+    try { return localStorage.getItem(STORAGE_VOZ) !== "false"; } catch { return true; }
+  });
+  const [hablando,    setHablando]    = useState(false);
+  const [escuchando,  setEscuchando]  = useState(false);
 
   const mensajesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLInputElement>(null);
+  const bienvenidaPedida = useRef(false);
+  const vozActivaRef   = useRef(vozActiva);
+  const audioRef       = useRef<HTMLAudioElement | null>(null);
+  const saludoHablado  = useRef(false);
+  const recognitionRef = useRef<any>(null);
+  const micToggleRef   = useRef<() => void>(() => {});
+
+  // ¿El navegador soporta reconocimiento de voz (micrófono)?
+  const vozSoportada = typeof window !== "undefined" &&
+    !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
   useEffect(() => { guardarMensajes(mensajes); }, [mensajes]);
+  useEffect(() => { precargarVoces(); }, []); // carga la mejor voz del navegador
+
+  // ── VOZ (TTS ElevenLabs — "JARVIS") ──────────────────────────────────────
+  const detenerVoz = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    detenerNavegador(); // cortar también la voz del navegador
+    setHablando(false);
+  }, []);
+
+  // Voz de respaldo del navegador (premium: mejor voz es, troceado) si ElevenLabs no está.
+  const hablarNavegador = useCallback((texto: string) => {
+    hablarConNavegador(texto, () => setHablando(true)).then(() => setHablando(false));
+  }, []);
+
+  // Pide el audio al backend y lo reproduce. Se auto-silencia si la voz está
+  // desactivada (lee vozActivaRef para funcionar dentro de callbacks async).
+  const hablar = useCallback(async (texto: string) => {
+    if (!vozActivaRef.current || !texto?.trim()) return;
+    try {
+      detenerVoz();
+      const token = localStorage.getItem("app_token") || "";
+      const res = await fetch(`${API_BASE_URL}/api/bot/voz`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ texto }),
+      });
+      if (!res.ok) { hablarNavegador(texto); return; } // sin créditos/error → voz del navegador
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.playbackRate = 1.08;                 // un pelín más rápido, más natural
+      (audio as any).preservesPitch = true;
+      (audio as any).webkitPreservesPitch = true;
+      audioRef.current = audio;
+      setHablando(true);
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setHablando(false);
+        if (audioRef.current === audio) audioRef.current = null;
+      };
+      audio.onerror = () => { URL.revokeObjectURL(url); setHablando(false); };
+      await audio.play().catch(() => { setHablando(false); hablarNavegador(texto); }); // autoplay bloqueado
+    } catch { hablarNavegador(texto); }
+  }, [detenerVoz, hablarNavegador]);
+
+  // Sincroniza el ref, persiste la preferencia y corta el audio al silenciar.
+  useEffect(() => {
+    vozActivaRef.current = vozActiva;
+    try { localStorage.setItem(STORAGE_VOZ, String(vozActiva)); } catch {}
+    if (!vozActiva) detenerVoz();
+  }, [vozActiva, detenerVoz]);
+
+  // Detener audio al desmontar.
+  useEffect(() => () => detenerVoz(), [detenerVoz]);
+
+  // Hablar el saludo de bienvenida cuando el chat se abre (evita el bloqueo de
+  // autoplay: solo suena tras la interacción de abrir el chat).
+  useEffect(() => {
+    if (!abierto || !vozActiva || saludoHablado.current) return;
+    // Si el modal de bienvenida ya saludó con voz esta sesión, no repetir.
+    try { if (sessionStorage.getItem("jarvis_modal_sesion") === "1") { saludoHablado.current = true; return; } } catch {}
+    if (mensajes.length === 1 && mensajes[0].tipo === "bot") {
+      saludoHablado.current = true;
+      hablar(mensajes[0].texto);
+    }
+  }, [abierto, vozActiva, mensajes, hablar]);
+
+  // ── Saludo de bienvenida DINÁMICO (personalizado por nombre, hora y rol) ──
+  // Pide al backend un saludo generado al vuelo y reemplaza el saludo por
+  // defecto solo si el chat está fresco (sin conversación real).
+  const cargarBienvenida = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("app_token") || "";
+      const res = await fetch(`${API_BASE_URL}/api/bot/bienvenida`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data?.respuesta) return;
+      setMensajes(prev =>
+        esChatFresco(prev)
+          ? [{ tipo: "bot", texto: data.respuesta, timestamp: new Date().toISOString() }]
+          : prev
+      );
+    } catch { /* se queda el saludo por defecto */ }
+  }, []);
+
+  // Al montar (sesión activa) pide el saludo personalizado una sola vez.
+  useEffect(() => {
+    if (!user || bienvenidaPedida.current) return;
+    if (esChatFresco(mensajes)) {
+      bienvenidaPedida.current = true;
+      cargarBienvenida();
+    }
+  }, [user, mensajes, cargarBienvenida]);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_ABIERTO, String(abierto)); } catch {}
@@ -309,6 +433,11 @@ const ChatFlotante: React.FC = () => {
         method: "POST", headers: { Authorization: `Bearer ${token}` },
       });
     } catch {}
+    // Regenerar saludo personalizado fresco tras limpiar (y permitir que lo hable de nuevo).
+    bienvenidaPedida.current = false;
+    saludoHablado.current = false;
+    detenerVoz();
+    cargarBienvenida();
   };
 
   const enviarMensaje = async (textoOverride?: string) => {
@@ -341,9 +470,11 @@ const ChatFlotante: React.FC = () => {
         esPDF:          data.esPDF    || false,
         pdfUrl:         data.pdfUrl,
         pdfNombre:      data.pdfNombre,
+        formato:        data.formato  || "pdf",
         totalRegistros: data.totalRegistros,
       };
       setMensajes(prev => [...prev, nuevoBot]);
+      hablar(nuevoBot.texto); // voz JARVIS (se auto-silencia si está desactivada)
 
       if (!abierto) {
         setUnreadCount(c => c + 1);
@@ -357,6 +488,79 @@ const ChatFlotante: React.FC = () => {
       }]);
     } finally { setCargando(false); }
   };
+
+  // ── MICRÓFONO (voz → texto, Web Speech API) ──────────────────────────────
+  // Escucha la pregunta del usuario, la transcribe a español y la envía sola
+  // al terminar de hablar (manos libres, estilo JARVIS).
+  const toggleMicrofono = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+    // Si ya está escuchando → detener.
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      return;
+    }
+    detenerVoz(); // si JARVIS está hablando, callar para escuchar
+    const rec = new SR();
+    rec.lang = "es-EC";
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    let finalText = "";
+    rec.onresult = (e: any) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += t; else interim += t;
+      }
+      setInput((finalText || interim).trim());
+    };
+    rec.onerror = () => { setEscuchando(false); recognitionRef.current = null; };
+    rec.onend = () => {
+      setEscuchando(false);
+      recognitionRef.current = null;
+      const texto = (finalText || "").trim();
+      if (texto) enviarMensaje(texto);
+    };
+    recognitionRef.current = rec;
+    setInput("");
+    setEscuchando(true);
+    try { rec.start(); } catch { setEscuchando(false); recognitionRef.current = null; }
+  };
+
+  // Mantener un ref al toggle actual para los listeners de eventos globales.
+  useEffect(() => { micToggleRef.current = toggleMicrofono; });
+
+  // Detener el reconocimiento al desmontar.
+  useEffect(() => () => { try { recognitionRef.current?.stop(); } catch {} }, []);
+
+  // Eventos del modal de bienvenida JARVIS:
+  //  - "jarvis:escuchar"  → abre el chat y arranca el micrófono
+  //  - "jarvis:abrir-chat"→ solo abre el chat
+  useEffect(() => {
+    const onEscuchar = () => {
+      setAbierto(true);
+      saludoHablado.current = true; // el modal ya saludó; no repetir voz
+      setTimeout(() => micToggleRef.current(), 600);
+    };
+    const onAbrir = () => setAbierto(true);
+    // Reflejar en el chat los turnos que maneja el modal de voz JARVIS.
+    const onTurno = (e: Event) => {
+      const det = (e as CustomEvent).detail || {};
+      const nuevos: Mensaje[] = [];
+      if (det.pregunta)  nuevos.push({ tipo: "user", texto: det.pregunta,  timestamp: new Date().toISOString() });
+      if (det.respuesta) nuevos.push({ tipo: "bot",  texto: det.respuesta, timestamp: new Date().toISOString() });
+      if (nuevos.length) setMensajes(prev => [...prev, ...nuevos]);
+    };
+    window.addEventListener("jarvis:escuchar", onEscuchar);
+    window.addEventListener("jarvis:abrir-chat", onAbrir);
+    window.addEventListener("jarvis:turno", onTurno);
+    return () => {
+      window.removeEventListener("jarvis:escuchar", onEscuchar);
+      window.removeEventListener("jarvis:abrir-chat", onAbrir);
+      window.removeEventListener("jarvis:turno", onTurno);
+    };
+  }, []);
 
   const formatTime = (ts?: string) => {
     if (!ts) return "";
@@ -431,11 +635,20 @@ const ChatFlotante: React.FC = () => {
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
-                  <span className="text-emerald-300/90 text-[11px]">Consultas · Reportes PDF</span>
+                  <span className="text-emerald-300/90 text-[11px]">
+                    {escuchando ? "Escuchando…" : hablando ? "Hablando…" : vozActiva ? "Voz activa · Reportes PDF" : "Consultas · Reportes PDF"}
+                  </span>
                 </div>
               </div>
             </div>
             <div className="relative flex items-center gap-1">
+              <button onClick={() => setVozActiva(v => !v)}
+                title={vozActiva ? "Silenciar voz" : "Activar voz"}
+                className={`transition p-1.5 rounded-md hover:bg-white/10 ${vozActiva ? "text-emerald-300" : "text-gray-500 hover:text-gray-300"}`}>
+                {vozActiva
+                  ? <Volume2 size={15} className={hablando ? "animate-pulse" : ""}/>
+                  : <VolumeX size={15}/>}
+              </button>
               {isAdmin && (
                 <button onClick={limpiarChat} title="Limpiar conversación"
                   className="text-gray-400 hover:text-amber-400 transition p-1.5 rounded-md hover:bg-white/10">
@@ -460,16 +673,22 @@ const ChatFlotante: React.FC = () => {
                   ${m.tipo === "user"
                     ? "bg-gradient-to-br from-emerald-500 to-emerald-700 text-white rounded-br-sm"
                     : "bg-[#1a3d30] text-gray-100 border border-[#2a5a45] rounded-bl-sm"}`}>
-                  <div className={m.tipo === "bot" ? "pr-5" : ""}>{renderMarkdown(m.texto)}</div>
+                  <div className={m.tipo === "bot" ? "pr-10" : ""}>{renderMarkdown(m.texto)}</div>
                   {m.esPDF && m.pdfUrl && (
                     <PDFCard pdfUrl={m.pdfUrl} pdfNombre={m.pdfNombre || "reporte.pdf"}
-                      totalRegistros={m.totalRegistros || 0} expirado={m.expirado}/>
+                      totalRegistros={m.totalRegistros || 0} expirado={m.expirado} formato={m.formato}/>
                   )}
                   {m.tipo === "bot" && (
-                    <button onClick={() => copiarMensaje(m.texto, i)} title="Copiar respuesta"
-                      className="copy-btn absolute top-2 right-2 p-1 rounded text-gray-500 hover:text-emerald-300 hover:bg-white/10 transition">
-                      {copiado === i ? <Check size={12} className="text-emerald-400" /> : <CopyIcon/>}
-                    </button>
+                    <>
+                      <button onClick={() => hablar(m.texto)} title="Reproducir con voz"
+                        className="copy-btn absolute top-2 right-7 p-1 rounded text-gray-500 hover:text-emerald-300 hover:bg-white/10 transition">
+                        <Volume2 size={12}/>
+                      </button>
+                      <button onClick={() => copiarMensaje(m.texto, i)} title="Copiar respuesta"
+                        className="copy-btn absolute top-2 right-2 p-1 rounded text-gray-500 hover:text-emerald-300 hover:bg-white/10 transition">
+                        {copiado === i ? <Check size={12} className="text-emerald-400" /> : <CopyIcon/>}
+                      </button>
+                    </>
                   )}
                 </div>
                 <span className="text-[10px] text-gray-500 mt-1 px-1">{formatTime(m.timestamp)}</span>
@@ -526,11 +745,21 @@ const ChatFlotante: React.FC = () => {
               <>
                 <div className="flex items-center gap-2 bg-[#0a1f18] border border-[#1a4a3a] rounded-xl px-3 py-2 focus-within:border-emerald-500/60 focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.12)] transition-all">
                   <input ref={inputRef} type="text"
-                    placeholder={cargando ? "Procesando tu consulta..." : PLACEHOLDERS[placeholderIdx]}
+                    placeholder={escuchando ? "Escuchando… habla ahora" : cargando ? "Procesando tu consulta..." : PLACEHOLDERS[placeholderIdx]}
                     value={input} onChange={e => setInput(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && !e.shiftKey && enviarMensaje()}
                     disabled={cargando} maxLength={500}
                     className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 focus:outline-none disabled:opacity-50"/>
+                  {vozSoportada && (
+                    <button onClick={toggleMicrofono} disabled={cargando}
+                      title={escuchando ? "Detener micrófono" : "Hablar (voz a texto)"}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 disabled:opacity-40 ${
+                        escuchando
+                          ? "bg-red-500 text-white animate-pulse shadow-[0_0_0_3px_rgba(239,68,68,0.25)]"
+                          : "bg-[#1a3d30] text-emerald-300 hover:bg-[#22503e] hover:text-emerald-200"}`}>
+                      {escuchando ? <MicOff size={16}/> : <Mic size={16}/>}
+                    </button>
+                  )}
                   <button onClick={() => enviarMensaje()} disabled={cargando || !input.trim()}
                     title="Enviar (Enter)"
                     className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition-all hover:scale-105 active:scale-95 shadow-[0_2px_8px_rgba(16,185,129,0.35)] disabled:shadow-none">

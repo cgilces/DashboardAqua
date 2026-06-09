@@ -1,4 +1,12 @@
 -- =========================================================================
+-- ESQUEMA CONSOLIDADO — DASHBOARD AQUA (archivo ÚNICO)
+-- Se ejecuta AUTOMÁTICAMENTE en cada arranque (backend/utils/runStartupSql.js).
+-- 100% idempotente. Incluye: tablas, vista, triggers, índices y migraciones.
+-- Las tablas de modelos no listadas aquí (pos_orders, etc.) las crea
+-- sequelize.sync() al arrancar.
+-- =========================================================================
+
+-- =========================================================================
 -- ESTRUCTURA DE BASE DE DATOS — DASHBOARD AQUA
 -- Versión: 2026-04-18
 -- Motor: PostgreSQL 12+
@@ -393,6 +401,12 @@ ALTER TABLE clientes_usuarios_ventas ADD COLUMN IF NOT EXISTS tipo_atencion     
 ALTER TABLE clientes_usuarios_ventas ADD COLUMN IF NOT EXISTS ultima_atencion          TIMESTAMP;
 ALTER TABLE clientes_usuarios_ventas ADD COLUMN IF NOT EXISTS codigo_direccion_cliente TEXT NOT NULL DEFAULT 'DEFAULT';
 
+-- Limpieza: índice único antiguo de 2 columnas (codigo_cliente, seller_code)
+-- auto-generado por sequelize.sync() en versiones previas. Era incorrecto
+-- porque un cliente puede ser atendido por el mismo vendedor en direcciones
+-- distintas; la unicidad real incluye codigo_direccion_cliente (ver abajo).
+DROP INDEX IF EXISTS clientes_usuarios_ventas_codigo_cliente_seller_code;
+
 -- Unique: cliente + vendedor + dirección (evita duplicar asignaciones)
 DO $$
 BEGIN
@@ -736,6 +750,11 @@ CREATE TABLE IF NOT EXISTS detalle_documento (
     estado_facturacion_linea    VARCHAR(50),
     estado_odoo_linea           VARCHAR(50),
 
+    -- Promoción aplicada en la línea (origen MobilVendor) — base de la
+    -- analítica "promos vendidas por prendedor".
+    promo_code                  VARCHAR(50),
+    promo_action_code           VARCHAR(50),
+
     -- Orden y flags
     secuencia                   INTEGER DEFAULT 0,
     es_anticipo                 BOOLEAN DEFAULT FALSE,
@@ -749,22 +768,30 @@ ALTER TABLE detalle_documento ADD COLUMN IF NOT EXISTS margen_linea             
 ALTER TABLE detalle_documento ADD COLUMN IF NOT EXISTS margen_porcentaje_linea  DECIMAL(6,2) DEFAULT 0;
 ALTER TABLE detalle_documento ADD COLUMN IF NOT EXISTS unidad_medida            VARCHAR(50);
 ALTER TABLE detalle_documento ADD COLUMN IF NOT EXISTS secuencia                INTEGER DEFAULT 0;
+ALTER TABLE detalle_documento ADD COLUMN IF NOT EXISTS promo_code               VARCHAR(50);
+ALTER TABLE detalle_documento ADD COLUMN IF NOT EXISTS promo_action_code        VARCHAR(50);
 
--- Unique: evita duplicar la misma línea en un mismo documento
+-- Unique: evita duplicar la misma línea en un mismo documento.
+-- Incluye la promo, porque dos líneas del mismo artículo con promos distintas
+-- (o una con promo y otra sin) son líneas legítimamente diferentes.
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'unique_detalle_doc'
-  ) THEN
+  -- Migrar la constraint legada (sin promo) si existe.
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_detalle_doc') THEN
+    ALTER TABLE detalle_documento DROP CONSTRAINT unique_detalle_doc;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_detalle_doc_promo') THEN
     ALTER TABLE detalle_documento
-      ADD CONSTRAINT unique_detalle_doc
-      UNIQUE (documento_code, codigo_producto, precio, cantidad);
+      ADD CONSTRAINT unique_detalle_doc_promo
+      UNIQUE (documento_code, codigo_producto, precio, cantidad, promo_code, promo_action_code);
   END IF;
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_doc_code              ON detalle_documento(documento_code);
 CREATE INDEX IF NOT EXISTS idx_doc_producto          ON detalle_documento(codigo_producto);
 CREATE INDEX IF NOT EXISTS idx_detalle_documento_doc ON detalle_documento(documento_code);
+-- Acelera la analítica de promociones (filtra líneas con promo)
+CREATE INDEX IF NOT EXISTS idx_dd_promo_code         ON detalle_documento(promo_code) WHERE promo_code IS NOT NULL;
 -- Acelera el filtro de DISC en facturas (clasificación código 29 con/sin NotCr)
 CREATE INDEX IF NOT EXISTS idx_dd_codigo_interno     ON detalle_documento(producto_codigo_interno) WHERE producto_codigo_interno = 'DISC';
 
@@ -1140,3 +1167,280 @@ LEFT JOIN unidades_cliente  uc   ON uc.codigo_cliente = c.codigo_cliente;
 -- (CREATE TABLE IF NOT EXISTS → ALTER TABLE ADD COLUMN IF NOT EXISTS →
 -- constraints dentro de DO blocks → índices → triggers idempotentes).
 -- =========================================================================
+
+-- =========================================================================
+-- MIGRACIÓN 001 — Índices del dashboard de clientes
+-- =========================================================================
+-- ====================================================================
+-- ÍNDICES PARA EL DASHBOARD DE CLIENTES
+--
+-- ⚙ AUTO-EJECUCIÓN: este archivo se ejecuta automáticamente en cada
+-- arranque del backend (ver utils/runStartupSql.js). No requiere
+-- ejecución manual. Es idempotente (CREATE INDEX IF NOT EXISTS).
+--
+-- Aceleran:
+--   - Filtros por status + fecha en facturas
+--   - Lookups de facturas por cliente
+--   - JOINs con detalle_documento
+--   - Filtros por ruta (codigo_usuario_asignado_cliente)
+--   - Búsqueda por RUC
+--   - Lookups de direcciones para el mapa
+--   - Historial de contactos por cliente
+-- ====================================================================
+
+-- Acelera filtros por status + fecha en facturas (todos los endpoints lo usan)
+CREATE INDEX IF NOT EXISTS idx_facturas_status_fecha
+  ON facturas (status, fecha_creacion DESC)
+  WHERE status IN (0,2,3,4,5);
+
+-- Acelera lookup de facturas por cliente
+CREATE INDEX IF NOT EXISTS idx_facturas_customer_fecha
+  ON facturas (customer_code, fecha_creacion DESC)
+  WHERE status IN (0,2,3,4,5);
+
+-- Acelera join con detalle_documento
+CREATE INDEX IF NOT EXISTS idx_detalle_documento_code
+  ON detalle_documento (documento_code);
+
+-- Acelera filtros por ruta (codigo_usuario_asignado_cliente)
+CREATE INDEX IF NOT EXISTS idx_clientes_ruta
+  ON clientes (UPPER(codigo_usuario_asignado_cliente))
+  WHERE codigo_usuario_asignado_cliente IS NOT NULL;
+
+-- Acelera búsqueda por RUC/identificación
+CREATE INDEX IF NOT EXISTS idx_clientes_identificacion
+  ON clientes (identificacion_cliente)
+  WHERE identificacion_cliente IS NOT NULL AND TRIM(identificacion_cliente) <> '';
+
+-- Acelera lookup en direcciones_clientes (para mapa)
+CREATE INDEX IF NOT EXISTS idx_direcciones_clientes_codigo
+  ON direcciones_clientes (codigo_cliente);
+
+-- Acelera consulta de contactos_recuperacion por cliente y fecha
+CREATE INDEX IF NOT EXISTS idx_contactos_group_fecha
+  ON contactos_recuperacion (group_key, fecha_contacto DESC);
+
+-- Estadísticas para que el planner tome buenas decisiones
+ANALYZE clientes;
+ANALYZE facturas;
+ANALYZE detalle_documento;
+ANALYZE direcciones_clientes;
+ANALYZE contactos_recuperacion;
+
+-- =========================================================================
+-- MIGRACIÓN 002 — sincronizaciones_ventas.mensaje → TEXT
+-- =========================================================================
+-- ====================================================================
+-- AJUSTE DE COLUMNA: sincronizaciones_ventas.mensaje
+--
+-- ⚙ AUTO-EJECUCIÓN: este archivo se ejecuta automáticamente en cada
+-- arranque del backend (ver utils/runStartupSql.js). Es idempotente:
+-- ALTER COLUMN TYPE TEXT se puede aplicar repetidamente sin error.
+--
+-- Motivo: el modelo Sequelize SincronizacionVenta define `mensaje` como
+-- TEXT, pero la columna real en BD era VARCHAR(100). Los mensajes de
+-- sincronización (resumen de Pedidos/Facturas/POS/Clientes/etc. y los
+-- errores) superan los 100 caracteres y rompían con:
+--   "value too long for type character varying(100)"
+-- ====================================================================
+
+ALTER TABLE sincronizaciones_ventas
+  ALTER COLUMN mensaje TYPE TEXT;
+
+-- =========================================================================
+-- MIGRACIÓN 003 — Botellón invoice_origin
+-- =========================================================================
+-- ====================================================================
+-- BOTELLÓN — Soporte para clasificación del código 29 (LÍQUIDO/ENVASE)
+--
+-- ⚙ AUTO-EJECUCIÓN: este archivo se ejecuta automáticamente en cada
+-- arranque del backend (ver utils/runStartupSql.js). Idempotente.
+--
+-- Motivo: el filtro tipoProducto del dashboard de botellón clasifica las
+-- líneas del producto código 29 (BOTELLÓN 20L AQUA PREMIUM) según si su
+-- factura tiene una NotCr con DISC asociada. El matching NC↔Factura se
+-- hace por `invoice_origin`. Hasta este cambio la columna no se
+-- persistía (solo se traía temporal de Odoo para resolver equipo_ventas).
+--
+-- Esta migración:
+--   1. Asegura que existan las columnas necesarias en `facturas`.
+--   2. Amplía invoice_origin a TEXT (Odoo a veces concatena varias
+--      referencias y supera 255 chars → causaba error de sincronización).
+--   3. Crea índices para que el EXISTS del filtro sea rápido.
+-- ====================================================================
+
+-- ── Columnas de facturas (idempotente) ─────────────────────────────────
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS odoo_id          INTEGER;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS tipo_movimiento  VARCHAR(20);
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS invoice_origin   TEXT;
+
+-- ── Si invoice_origin ya existía como VARCHAR(n), ampliarla a TEXT ─────
+ALTER TABLE facturas ALTER COLUMN invoice_origin TYPE TEXT;
+
+-- ── Índices para acelerar el matching NC ↔ factura origen ──────────────
+CREATE INDEX IF NOT EXISTS idx_facturas_invoice_origin
+  ON facturas(invoice_origin)
+  WHERE invoice_origin IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_facturas_reversed_entry
+  ON facturas(reversed_entry_id)
+  WHERE reversed_entry_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_facturas_odoo_id
+  ON facturas(odoo_id)
+  WHERE odoo_id IS NOT NULL;
+
+-- ── Índice parcial para localizar líneas DISC rápidamente ──────────────
+CREATE INDEX IF NOT EXISTS idx_dd_codigo_interno_disc
+  ON detalle_documento(producto_codigo_interno)
+  WHERE producto_codigo_interno = 'DISC';
+
+-- =========================================================================
+-- SECCIÓN 21 — PROMOCIONES (promos)
+-- Modelo: backend/models/Promo.js
+-- Maestro de promociones importado desde MobilVendor (schema "promos").
+-- La PK es code (string) para mantener compatibilidad con MobilVendor y
+-- servir de referencia a condiciones, acciones y asignaciones por vendedor.
+-- Los campos *_list (business_types, customers, articles, etc.) se guardan
+-- como JSONB para no perder estructura aunque MobilVendor cambie el formato.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS promos (
+    code                 VARCHAR(50) PRIMARY KEY,
+    description          TEXT,
+    type                 VARCHAR(50),
+    status               VARCHAR(5),
+    start_date           TIMESTAMP,
+    end_date             TIMESTAMP,
+    priority             INTEGER,
+    cyclical             SMALLINT,
+    min_sale             NUMERIC(14,2),
+    max_sale             NUMERIC(14,2),
+    payment_method       TEXT,
+    business_types       JSONB,
+    customers            JSONB,
+    payload              JSONB,
+    fecha_creacion       TIMESTAMP DEFAULT NOW(),
+    fecha_actualizacion  TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_promos_status   ON promos(status);
+CREATE INDEX IF NOT EXISTS idx_promos_priority ON promos(priority);
+
+-- MobilVendor entrega datos crudos; ampliamos a TEXT para no truncar
+-- (payment_method puede traer listas largas). Idempotente.
+ALTER TABLE promos ALTER COLUMN payment_method TYPE TEXT;
+
+
+-- =========================================================================
+-- SECCIÓN 22 — CONDICIONES DE PROMOCIÓN (promo_conditions)
+-- Modelo: backend/models/PromoCondicion.js
+-- Reglas que se deben cumplir para que aplique una promo (monto/cantidad,
+-- objeto sobre el que aplica, lista, unidad). N condiciones por promo.
+-- Se refresca por completo en cada sincronización (snapshot).
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS promo_conditions (
+    id                  SERIAL PRIMARY KEY,
+    promo_code          VARCHAR(50) NOT NULL,
+    condition           TEXT,
+    amount_condition    TEXT,
+    amount1             NUMERIC(14,2),
+    amount2             NUMERIC(14,2),
+    quantity_condition  TEXT,
+    quantity1           NUMERIC(14,2),
+    quantity2           NUMERIC(14,2),
+    object              TEXT,
+    code                TEXT,
+    list                TEXT,
+    unit_code           VARCHAR(50),
+    payload             JSONB,
+    CONSTRAINT fk_pc_promo
+        FOREIGN KEY (promo_code) REFERENCES promos(code) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pc_promo_code ON promo_conditions(promo_code);
+
+-- Datos crudos de MobilVendor: object/code/list pueden traer listas largas
+-- de artículos. Ampliamos a TEXT para no truncar. Idempotente.
+ALTER TABLE promo_conditions ALTER COLUMN condition          TYPE TEXT;
+ALTER TABLE promo_conditions ALTER COLUMN amount_condition   TYPE TEXT;
+ALTER TABLE promo_conditions ALTER COLUMN quantity_condition TYPE TEXT;
+ALTER TABLE promo_conditions ALTER COLUMN object             TYPE TEXT;
+ALTER TABLE promo_conditions ALTER COLUMN code               TYPE TEXT;
+ALTER TABLE promo_conditions ALTER COLUMN list               TYPE TEXT;
+
+
+-- =========================================================================
+-- SECCIÓN 23 — ACCIONES DE PROMOCIÓN (promo_actions)
+-- Modelo: backend/models/PromoAccion.js
+-- Beneficio que otorga la promo (descuento, precio especial, regalo /
+-- escalonado) y el universo de artículos/marcas/categorías/familias sobre
+-- el que aplica. N acciones por promo. Snapshot en cada sincronización.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS promo_actions (
+    id              SERIAL PRIMARY KEY,
+    promo_code      VARCHAR(50) NOT NULL,
+    action          TEXT,
+    discount        NUMERIC(14,4),
+    discount_type   VARCHAR(50),
+    price_value     NUMERIC(14,4),
+    gift            TEXT,
+    gift_base       TEXT,
+    stepped         SMALLINT,
+    articles        JSONB,
+    brands          JSONB,
+    categories      JSONB,
+    families        JSONB,
+    payload         JSONB,
+    CONSTRAINT fk_pa_promo
+        FOREIGN KEY (promo_code) REFERENCES promos(code) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pa_promo_code ON promo_actions(promo_code);
+
+-- Datos crudos de MobilVendor: action/gift/gift_base pueden traer texto
+-- largo. Ampliamos a TEXT para no truncar. Idempotente.
+ALTER TABLE promo_actions ALTER COLUMN action    TYPE TEXT;
+ALTER TABLE promo_actions ALTER COLUMN gift       TYPE TEXT;
+ALTER TABLE promo_actions ALTER COLUMN gift_base  TYPE TEXT;
+
+
+-- =========================================================================
+-- SECCIÓN 24 — ASIGNACIÓN DE PROMO POR VENDEDOR (users_in_promos)
+-- Modelo: backend/models/UsuarioEnPromo.js
+-- Liga cada promo a un vendedor/prendedor (user_code) con su inventario
+-- asignado y consumido. ES LA BASE DE LA ANALÍTICA "POR PRENDEDOR":
+--   inventory_used / inventory_amount_used → cuánto ha usado/vendido,
+--   (inventory_amount - inventory_amount_used) → monto disponible.
+-- Clave única (promo_code, user_code) → upsert idempotente.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS users_in_promos (
+    id                     SERIAL PRIMARY KEY,
+    promo_code             VARCHAR(50) NOT NULL,
+    user_code              VARCHAR(50) NOT NULL,
+    status                 VARCHAR(5),
+    inventory              NUMERIC(14,2),
+    inventory_amount       NUMERIC(14,2),
+    inventory_used         NUMERIC(14,2),
+    inventory_amount_used  NUMERIC(14,2),
+    payload                JSONB,
+    fecha_actualizacion    TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uq_uip_promo_user UNIQUE (promo_code, user_code),
+    CONSTRAINT fk_uip_promo
+        FOREIGN KEY (promo_code) REFERENCES promos(code) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_uip_promo_code ON users_in_promos(promo_code);
+CREATE INDEX IF NOT EXISTS idx_uip_user_code  ON users_in_promos(user_code);
+
+
+-- ── Auditoría del chatbot IA (consultas y SQL generado) ────────────────
+CREATE TABLE IF NOT EXISTS auditoria_chat (
+  id              SERIAL PRIMARY KEY,
+  usuario         VARCHAR(100),
+  rol             VARCHAR(50),
+  mensaje         TEXT,
+  sql_generado    TEXT,
+  filas_resultado INTEGER,
+  tiempo_ms       INTEGER,
+  creado_en       TIMESTAMP DEFAULT NOW()
+);

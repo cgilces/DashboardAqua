@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import LoginScreen from "./pages/Login";
+import RegistroScreen from "./pages/Registro";
 
 import Dashboardconsolidado from "./pages/pagesConsolidado/Dashboardconsolidado";
 
@@ -40,6 +41,7 @@ import DetalleClientesCafePage from "./pages/pagesCafe/DetalleClientesCafePage";
 import DashboardRutasVisitas from "./pages/pagesRutasVisitas/DashboardRutasVisitas";
 
 import DashboardGerencia from "./pages/pagesGerencia/DashboardGerencia";
+import DashboardPromos from "./pages/pagesPromos/DashboardPromos";
 
 import { AuthProvider } from "./components/auth/AuthContext";
 import { SyncProvider } from "./context/SyncContext";
@@ -64,6 +66,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           {/* RUTAS */}
           <Routes>
             <Route path="/" element={<LoginScreen />} />
+            <Route path="/registro" element={<RegistroScreen />} />
 
             {/* CONSOLIDADO */}
             <Route
@@ -255,6 +258,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/dashboard/gerencia"
               element={<DashboardGerencia />}
+            />
+
+            {/* PROMOCIONES */}
+            <Route
+              path="/dashboard/promociones"
+              element={<DashboardPromos />}
             />
           </Routes>
 
