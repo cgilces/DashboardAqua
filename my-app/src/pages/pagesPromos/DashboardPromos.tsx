@@ -420,6 +420,9 @@ const DashboardPromos: React.FC = () => {
               <h2 className="px-5 py-3 font-semibold flex items-center gap-2 border-b border-[#046C5E]">
                 <Users size={18} /> Vendedores que vendieron «{promoSel.promoNombre}»
               </h2>
+              <p className="px-5 pt-2 text-[11px] text-emerald-200/60">
+                Dólares y Total <b>sin IVA</b> · bruto − descuento = neto. (El "Vendido $" del ranking es <b>con IVA</b>, por eso difiere.)
+              </p>
               {promoLoading ? (
                 <div className="py-16 flex justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-400" />
@@ -473,7 +476,7 @@ const DashboardPromos: React.FC = () => {
                         <SortTh label="Vendedor" col="prendedor" state={predSort} onSort={onPredSort} align="left" className="px-4" />
                         <SortTh label="Promos" col="promosDistintas" state={predSort} onSort={onPredSort} className="px-3" />
                         <SortTh label="Unidades" col="unidades" state={predSort} onSort={onPredSort} className="px-3" />
-                        <SortTh label="Vendido $" col="monto" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
+                        <SortTh label="Vendido $ (c/IVA)" col="monto" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
                         <SortTh label="Descuento $" col="descuento" state={predSort} onSort={onPredSort} className="px-4 whitespace-nowrap" />
                       </tr>
                     </thead>
@@ -525,7 +528,7 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
         <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 w-auto" />
         <SortTh label="Unidades" col="unidades" state={state} onSort={onSort} className="px-3 w-20" />
         <SortTh label="Ventas" col="veces" state={state} onSort={onSort} className="px-3 w-16" />
-        <SortTh label="Vendido $" col="monto" state={state} onSort={onSort} className="px-3 w-28 whitespace-nowrap" />
+        <SortTh label="Vendido $ (c/IVA)" col="monto" state={state} onSort={onSort} className="px-3 w-28 whitespace-nowrap" />
         <SortTh label="Descuento $" col="descuento" state={state} onSort={onSort} className="px-4 w-28 whitespace-nowrap" />
       </tr>
     </thead>
