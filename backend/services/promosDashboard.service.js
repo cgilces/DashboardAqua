@@ -43,6 +43,8 @@ function baseLineasCTE(filtroFecha) {
         d.codigo_producto,
         COALESCE(d.cantidad, 0)                         AS cantidad,
         COALESCE(d.total, 0)                            AS total,
+        COALESCE(d.precio, 0)                           AS precio,
+        COALESCE(d.subtotal, 0)                         AS subtotal,
         COALESCE(d.descuento_linea, 0)                  AS descuento,
         COALESCE(f.seller_code, o.seller_code)          AS seller_code,
         COALESCE(f.fecha_creacion, o.fecha_creacion)    AS fecha,
@@ -186,37 +188,54 @@ async function detallePromo({ promoCode, anio, mes } = {}) {
   );
 
   // b) Quién la vende y totales (redención real)
+  //    Separación "promoción vs sin promoción": el "+1 gratis" viene embebido como
+  //    descuento (no como línea a $0). Unidades-equivalentes regaladas = descuento/precio;
+  //    unidades pagadas = subtotal/precio (subtotal = precio*cantidad − descuento, sin IVA).
+  //    Líneas 100% gratis (precio=0): toda la cantidad cuenta como promoción.
+  //    Dólares = bruto (subtotal+descuento) · Total = neto (subtotal). bruto−desc = neto.
   const sqlVendedores = `
     ${baseLineasCTE(clausulaFecha(rango))}
     SELECT
       l.seller_code                    AS prendedor,
       COUNT(DISTINCT l.documento_code) AS veces,
       SUM(l.cantidad)                  AS unidades,
-      SUM(l.total)                     AS monto,
-      SUM(l.descuento)                 AS descuento
+      SUM(CASE WHEN l.precio > 0 THEN l.descuento / l.precio ELSE l.cantidad END) AS cant_promocion,
+      SUM(CASE WHEN l.precio > 0 THEN l.subtotal  / l.precio ELSE 0          END) AS cant_sin_promocion,
+      SUM(l.subtotal + l.descuento)    AS dolares,
+      SUM(l.descuento)                 AS descuento,
+      SUM(l.subtotal)                  AS total
     FROM lineas l
     WHERE l.promo_code = :promoCode
     GROUP BY l.seller_code
-    ORDER BY unidades DESC
+    ORDER BY total DESC
   `;
   const porPrendedor = (await run(sqlVendedores, { ...(rango || {}), promoCode: String(promoCode) }))
     .map((r) => ({
       prendedor: r.prendedor,
       veces: Number(r.veces) || 0,
       unidades: Number(r.unidades) || 0,
-      monto: Number(r.monto) || 0,
+      cantidadPromocion: Number(Number(r.cant_promocion).toFixed(2)) || 0,
+      cantidadSinPromocion: Number(Number(r.cant_sin_promocion).toFixed(2)) || 0,
+      dolares: Number(r.dolares) || 0,
       descuento: Number(r.descuento) || 0,
+      total: Number(r.total) || 0,
     }));
 
   const totales = porPrendedor.reduce(
     (acc, r) => ({
       veces: acc.veces + r.veces,
       unidades: acc.unidades + r.unidades,
-      monto: acc.monto + r.monto,
+      cantidadPromocion: acc.cantidadPromocion + r.cantidadPromocion,
+      cantidadSinPromocion: acc.cantidadSinPromocion + r.cantidadSinPromocion,
+      dolares: acc.dolares + r.dolares,
       descuento: acc.descuento + r.descuento,
+      total: acc.total + r.total,
     }),
-    { veces: 0, unidades: 0, monto: 0, descuento: 0 }
+    { veces: 0, unidades: 0, cantidadPromocion: 0, cantidadSinPromocion: 0, dolares: 0, descuento: 0, total: 0 }
   );
+  // Redondeo final de las cantidades agregadas (suma de equivalentes)
+  totales.cantidadPromocion = Number(totales.cantidadPromocion.toFixed(2));
+  totales.cantidadSinPromocion = Number(totales.cantidadSinPromocion.toFixed(2));
 
   return {
     definicion: definicion || { promo_codigo: promoCode, promo_nombre: promoCode },

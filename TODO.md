@@ -42,6 +42,27 @@ facturas/ordenes); no se tocó el sync.
       documentos de devolución para poblar la pestaña `Devolucion_SolicitudDev` (hoy sin datos:
       el sync solo pide `type:"1,2"`).
 
+## Drill-down por promo en el Ranking general (misma rama: `feature/promos-reporte-utilizadas`)
+
+Objetivo: clic en una promo del "Ranking general de promociones" → vista de los vendedores
+que la vendieron, mismo diseño que el detalle de "Vendedores", con columnas
+Cant. promoción · Cant. sin promoción · Dólares (bruto) · Descuento · Total (neto).
+
+Decisión validada con datos reales: las promos `DESC*` no guardan el "+1" como línea a $0,
+sino como descuento embebido. Cálculo elegido por el usuario: cantidad promoción =
+descuento ÷ precio (unidades-equivalentes gratis), sin promoción = subtotal ÷ precio.
+Dólares = subtotal+descuento (bruto), Total = subtotal (neto), de modo que bruto−desc = neto.
+
+- [x] **Diagnóstico**: `scripts/probePromoGift.js` + consultas psql para confirmar que el regalo
+      va embebido como descuento (no línea $0) en las promos `DESC*`.
+- [x] **Backend**: `detallePromo` ahora separa cant. promoción/sin promoción y devuelve
+      dólares/descuento/total por vendedor + totales (CTE extendida con `precio`/`subtotal`).
+      Endpoint existente `GET /api/promos/detalle/:promoCode`.
+- [x] **Frontend** (`DashboardPromos`): filas del ranking general clicables → vista por promo
+      (tarjeta + KPIs + `TablaPromoVendedores` con footer de totales), botón "volver".
+- [x] Verificado: `node --check`, `tsc -p tsconfig.app.json`, `vite build` (exit 0).
+      Pendiente: probar con datos reales en el server + revisión/PR.
+
 ## Saludo de bienvenida dinámico del chatbot (rama: `feature/saludo-bienvenida-personalizado`)
 
 Objetivo: que el "Asistente Aqua" salude al iniciar sesión de forma 100% personalizada
