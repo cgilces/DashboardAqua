@@ -4,6 +4,7 @@ import DashboardLayout from "../../layout/DashboardLayout";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
+import ReportePromocionesUtilizadas from "./ReportePromocionesUtilizadas";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 interface PromoRow {
@@ -101,6 +102,14 @@ const DashboardPromos: React.FC = () => {
   const [mes, setMes] = useState(localStorage.getItem("mesPromos") ?? mesActual);
   const [anio, setAnio] = useState(localStorage.getItem("anioPromos") ?? anioActual);
 
+  // Vista: "resumen" (ranking actual) | "reporte" (réplica dashboard86)
+  const [vista, setVista] = useState<"resumen" | "reporte">(
+    (localStorage.getItem("vistaPromos") as "resumen" | "reporte") ?? "resumen"
+  );
+  useEffect(() => {
+    localStorage.setItem("vistaPromos", vista);
+  }, [vista]);
+
   const [promos, setPromos] = useState<PromoRow[]>([]);
   const [prendedores, setPrendedores] = useState<PrendedorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,6 +193,28 @@ const DashboardPromos: React.FC = () => {
       <div className="main-content min-h-screen text-white px-4 md:px-10 py-4 md:py-6">
         <Header />
 
+        {/* Conmutador de vista */}
+        <div className="flex gap-2 mb-4">
+          {([
+            ["resumen", "Resumen"],
+            ["reporte", "Reporte detallado"],
+          ] as ["resumen" | "reporte", string][]).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setVista(key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                vista === key ? "bg-[#046C5E] text-white" : "bg-white/5 text-emerald-200/70 hover:text-white"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {vista === "reporte" && <ReportePromocionesUtilizadas />}
+
+        {vista === "resumen" && (
+        <>
         {/* Cabecera */}
         <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6 md:mb-10 border-b border-[#046C5E] pb-4 py-4 md:py-6">
           <div className="flex items-center gap-4">
@@ -369,6 +400,8 @@ const DashboardPromos: React.FC = () => {
               </section>
             </div>
           </>
+        )}
+        </>
         )}
       </div>
     </DashboardLayout>

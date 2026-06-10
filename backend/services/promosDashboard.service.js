@@ -227,6 +227,112 @@ async function detallePromo({ promoCode, anio, mes } = {}) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 5) REPORTE "PROMOCIONES UTILIZADAS" (réplica del dashboard86 de MobilVendor)
+//    Detalle LÍNEA por LÍNEA (no agregado): cada fila = una línea de venta con
+//    promo. Filtros: rango de fechas (con hora), promo específica y pestaña.
+//
+//    NOTA sobre la spec de MobilVendor:
+//    - FACTOR no se persiste en el sync actual (no lo expone getInvoices por
+//      línea) → se devuelve 1. Capturarlo real es fase 2 (tocar el sync).
+//    - DESC. % no se guarda como porcentaje (solo el monto `descuento_linea`) →
+//      se calcula = descuento / (precio × cantidad) × 100.
+//    - La pestaña "devolucion" (Devolucion_SolicitudDev) no tiene fuente: el sync
+//      solo pide type 1 (factura) y 2 (orden). Hasta sincronizar devoluciones se
+//      responde vacío con soportado:false para que la UI muestre el empty-state.
+// ─────────────────────────────────────────────────────────────────────────────
+async function reporteUtilizadas({ inicio, fin, promoCode, tab = "factura_orden" } = {}) {
+  if (tab === "devolucion") {
+    return { rows: [], totalCantidad: 0, conteo: { factura: 0, orden: 0, total: 0 }, soportado: false };
+  }
+
+  const where = ["d.promo_code IS NOT NULL", "TRIM(d.promo_code) <> ''"];
+  const repl = {};
+  if (inicio) { where.push("COALESCE(f.fecha_creacion, o.fecha_creacion) >= :inicio"); repl.inicio = inicio; }
+  if (fin)    { where.push("COALESCE(f.fecha_creacion, o.fecha_creacion) <= :fin");    repl.fin = fin; }
+  if (promoCode && String(promoCode).trim()) {
+    where.push("d.promo_code = :promoCode");
+    repl.promoCode = String(promoCode).trim();
+  }
+
+  const sql = `
+    SELECT
+      CASE WHEN f.code IS NOT NULL THEN 'FACTURA'
+           WHEN o.code IS NOT NULL THEN 'ORDEN'
+           ELSE '—' END                                  AS tipo,
+      COALESCE(f.seller_code, o.seller_code)              AS vendedor,
+      d.documento_code                                    AS codigo_doc,
+      COALESCE(f.fecha_creacion, o.fecha_creacion)        AS fecha,
+      d.codigo_producto                                   AS articulo,
+      d.descripcion                                       AS descripcion,
+      COALESCE(NULLIF(TRIM(d.unit_alias), ''), NULLIF(TRIM(d.unidad_medida), ''), 'UNI') AS unidad,
+      COALESCE(d.cantidad, 0)                             AS cantidad,
+      COALESCE(d.precio, 0)                               AS precio,
+      COALESCE(d.descuento_linea, 0)                      AS descuento,
+      d.promo_code                                        AS promo_code,
+      d.promo_action_code                                 AS promo_action_code
+    FROM detalle_documento d
+    LEFT JOIN facturas f ON f.code = d.documento_code
+    LEFT JOIN ordenes  o ON o.code = d.documento_code
+    WHERE ${where.join(" AND ")}
+    ORDER BY COALESCE(f.fecha_creacion, o.fecha_creacion) DESC, d.documento_code, d.id_detalle
+  `;
+  const raw = await run(sql, repl);
+
+  let totalCantidad = 0;
+  let cFactura = 0;
+  let cOrden = 0;
+  const rows = raw.map((r) => {
+    const cantidad = Number(r.cantidad) || 0;
+    const precio = Number(r.precio) || 0;
+    const descuento = Number(r.descuento) || 0;
+    const base = precio * cantidad;
+    const descPct = base > 0 ? (descuento / base) * 100 : 0;
+    totalCantidad += cantidad;
+    if (r.tipo === "FACTURA") cFactura++;
+    else if (r.tipo === "ORDEN") cOrden++;
+    // PROMOCION en formato CODIGO/CODIGO (acción = código de la promo si no hay acción)
+    const action = (r.promo_action_code && String(r.promo_action_code).trim()) || r.promo_code;
+    return {
+      tipo: r.tipo,
+      vendedor: r.vendedor,
+      codigoDoc: r.codigo_doc,
+      fecha: r.fecha,
+      articulo: r.articulo,
+      descripcion: r.descripcion,
+      unidad: r.unidad,
+      factor: 1, // MobilVendor no expone el factor por línea en el sync actual
+      cantidad,
+      descPct: Number(descPct.toFixed(2)),
+      promocion: `${r.promo_code}/${action}`,
+    };
+  });
+
+  return {
+    rows,
+    totalCantidad: Number(totalCantidad.toFixed(2)),
+    conteo: { factura: cFactura, orden: cOrden, total: rows.length },
+    soportado: true,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6) LISTA DE PROMOS para el dropdown del reporte (todas las vendidas alguna vez)
+// ─────────────────────────────────────────────────────────────────────────────
+async function listaPromos() {
+  const sql = `
+    SELECT DISTINCT
+      d.promo_code                                            AS codigo,
+      COALESCE(NULLIF(TRIM(p.description), ''), d.promo_code) AS nombre
+    FROM detalle_documento d
+    LEFT JOIN promos p ON p.code = d.promo_code
+    WHERE d.promo_code IS NOT NULL AND TRIM(d.promo_code) <> ''
+    ORDER BY nombre
+  `;
+  const rows = await run(sql, {});
+  return rows.map((r) => ({ codigo: r.codigo, nombre: r.nombre }));
+}
+
 // ── Helper de normalización numérica de una fila de promo ────────────────────
 function normalizaPromoRow(r) {
   return {
@@ -247,4 +353,6 @@ module.exports = {
   rankingPrendedores,
   promosPorPrendedor,
   detallePromo,
+  reporteUtilizadas,
+  listaPromos,
 };
