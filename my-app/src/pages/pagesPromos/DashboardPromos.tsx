@@ -409,8 +409,8 @@ const DashboardPromos: React.FC = () => {
 
             {/* KPIs de la promo */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-              <Kpi label="Cant. promoción" valor={fmtMoney(promoDet?.totales.cantidadPromocion ?? 0)} acento="emerald" />
-              <Kpi label="Cant. sin promoción" valor={fmtMoney(promoDet?.totales.cantidadSinPromocion ?? 0)} />
+              <Kpi label="Cant. promoción" valor={fmt(promoDet?.totales.cantidadPromocion ?? 0)} acento="emerald" />
+              <Kpi label="Cant. sin promoción" valor={fmt(promoDet?.totales.cantidadSinPromocion ?? 0)} />
               <Kpi label="Dólares" valor={`$${fmtMoney(promoDet?.totales.dolares ?? 0)}`} acento="emerald" />
               <Kpi label="Descuento" valor={`$${fmtMoney(promoDet?.totales.descuento ?? 0)}`} acento="amber" />
               <Kpi label="Total" valor={`$${fmtMoney(promoDet?.totales.total ?? 0)}`} acento="emerald" />
@@ -580,8 +580,8 @@ const TablaPromoVendedores: React.FC<{ rows: PromoVendRow[]; totales: DetallePro
           {sorted.map((r) => (
             <tr key={r.prendedor} className="border-t border-white/5 hover:bg-white/5">
               <td className="px-4 py-2 font-medium">{r.prendedor}</td>
-              <td className="px-3 py-2 text-right font-semibold text-emerald-200">{fmtMoney(r.cantidadPromocion)}</td>
-              <td className="px-3 py-2 text-right">{fmtMoney(r.cantidadSinPromocion)}</td>
+              <td className="px-3 py-2 text-right font-semibold text-emerald-200">{fmt(r.cantidadPromocion)}</td>
+              <td className="px-3 py-2 text-right">{fmt(r.cantidadSinPromocion)}</td>
               <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(r.dolares)}</td>
               <td className="px-3 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(r.descuento)}</td>
               <td className="px-4 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(r.total)}</td>
@@ -591,8 +591,8 @@ const TablaPromoVendedores: React.FC<{ rows: PromoVendRow[]; totales: DetallePro
         <tfoot className="sticky bottom-0 bg-[#02463c] font-semibold">
           <tr className="border-t-2 border-emerald-400/40">
             <td className="px-4 py-2">Total</td>
-            <td className="px-3 py-2 text-right text-emerald-200">{fmtMoney(totales.cantidadPromocion)}</td>
-            <td className="px-3 py-2 text-right">{fmtMoney(totales.cantidadSinPromocion)}</td>
+            <td className="px-3 py-2 text-right text-emerald-200">{fmt(totales.cantidadPromocion)}</td>
+            <td className="px-3 py-2 text-right">{fmt(totales.cantidadSinPromocion)}</td>
             <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.dolares)}</td>
             <td className="px-3 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(totales.descuento)}</td>
             <td className="px-4 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.total)}</td>
