@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS app_users (
 
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS token_version   INTEGER DEFAULT 0;
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS rutas_asignadas TEXT[] DEFAULT '{}';
+-- Módulos del dashboard que el usuario puede ver (privilegios editables desde la UI).
+-- Vacío = usa los permisos por defecto del rol/canal. Con valores = lista explícita.
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS modulos_permitidos TEXT[] DEFAULT '{}';
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS creado_en       TIMESTAMP DEFAULT NOW();
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS actualizado_en  TIMESTAMP DEFAULT NOW();
 

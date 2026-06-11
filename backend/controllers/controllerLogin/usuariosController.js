@@ -7,7 +7,7 @@ const { AppUser } = require('../../models');
 
 const crearUsuario = async (req, res) => {
   try {
-    let { usuario, clave, rol, rutas_asignadas } = req.body;
+    let { usuario, clave, rol, rutas_asignadas, modulos_permitidos } = req.body;
 
     console.log("Creando usuario:", { usuario, clave, rol, rutas_asignadas });
 
@@ -47,7 +47,8 @@ const crearUsuario = async (req, res) => {
       usuario,
       clave: claveHasheada,
       rol,
-      rutas_asignadas: rutasFinales  // Se inserta NULL si rutas está vacío
+      rutas_asignadas: rutasFinales,  // Se inserta NULL si rutas está vacío
+      modulos_permitidos: Array.isArray(modulos_permitidos) ? modulos_permitidos : []
     });
     console.log("Nuevo usuario creado:", nuevo);
 
@@ -80,7 +81,7 @@ const crearUsuario = async (req, res) => {
 const obtenerUsuarios = async (req, res) => {
   try {
     const usuarios = await AppUser.findAll({
-      attributes: ["id", "usuario", "rol", "rutas_asignadas"],
+      attributes: ["id", "usuario", "rol", "rutas_asignadas", "modulos_permitidos"],
 
       order: [['id', 'ASC']]
     });
@@ -107,7 +108,7 @@ const obtenerUsuarios = async (req, res) => {
 const editarUsuario = async (req, res) => {
   try {
     const { id } = req.params;
-    let { usuario, clave, rol, rutas_asignadas } = req.body;
+    let { usuario, clave, rol, rutas_asignadas, modulos_permitidos } = req.body;
 
     const user = await AppUser.findByPk(id);
 
@@ -148,6 +149,11 @@ const editarUsuario = async (req, res) => {
 
     if (rutasFinales) {
       user.rutas_asignadas = rutasFinales;
+    }
+
+    // Privilegios de módulos: se acepta array vacío (para limpiar permisos explícitos).
+    if (Array.isArray(modulos_permitidos)) {
+      user.modulos_permitidos = modulos_permitidos;
     }
 
     await user.save();

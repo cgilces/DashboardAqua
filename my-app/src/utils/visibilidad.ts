@@ -30,6 +30,20 @@ export const CANALES_POR_MODULO: Record<string, string[]> = {
   "/dashboard/hielo": ["H"],
 };
 
+// Catálogo de módulos que el ADMIN puede conceder/quitar a un usuario desde la UI
+// (CreacionUsuario). USUARIOS no se incluye: la gestión de usuarios es solo ADMIN.
+export const MODULOS_ASIGNABLES: { path: string; label: string }[] = [
+  { path: "/dashboard/consolidado", label: "Consolidado" },
+  { path: "/dashboard/botellon", label: "Botellón" },
+  { path: "/dashboard/preventa", label: "Descartable / Preventa" },
+  { path: "/dashboard/hielo", label: "Hielo" },
+  { path: "/dashboard/plus", label: "Plus" },
+  { path: "/dashboard/cafe", label: "Café" },
+  { path: "/dashboard/promociones", label: "Promociones" },
+  { path: "/dashboard/rutas-visitas", label: "Visitas Rutas" },
+  { path: "/dashboard/clientes", label: "Clientes" },
+];
+
 // Primer módulo al que debe entrar un no-admin según su canal (para la redirección
 // post-login). Si no calza ningún canal, cae en Clientes (abierto a todos).
 export function moduloInicial(rutas?: string[] | null): string {

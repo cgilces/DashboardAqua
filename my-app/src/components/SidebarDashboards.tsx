@@ -24,6 +24,7 @@ type MenuItem = {
   roles?: string[];
   canales?: string[];       // canales (prefijos de ruta) a los que pertenece el módulo
   abiertoATodos?: boolean;  // visible para cualquier usuario logueado (ej. Clientes)
+  adminOnly?: boolean;      // solo ADMIN, nunca asignable a otros (ej. Usuarios)
 };
 
 const ALL_MENU_ITEMS: MenuItem[] = [
@@ -36,7 +37,7 @@ const ALL_MENU_ITEMS: MenuItem[] = [
   { name: "PROMOCIONES",   icon: <LocalOfferIcon />,                                  path: "/dashboard/promociones",   roles: ["ADMIN"] },
   { name: "VISITAS RUTAS", icon: <LocalShippingIcon />,                               path: "/dashboard/rutas-visitas", roles: ["ADMIN"] },
   { name: "CLIENTES",      icon: <PeopleAltIcon />,                                   path: "/dashboard/clientes",      abiertoATodos: true },
-  { name: "USUARIOS",      icon: <GroupAddIcon />,                                    path: "/dashboard/crearusuarios", roles: ["ADMIN", "SUPERVISOR"] },
+  { name: "USUARIOS",      icon: <GroupAddIcon />,                                    path: "/dashboard/crearusuarios", roles: ["ADMIN"], adminOnly: true },
 ];
 
 const isMobileViewport = () =>
@@ -49,14 +50,19 @@ export default function SidebarDashboards() {
 
   // Visibilidad del menú:
   //  - ADMIN → todo.
-  //  - Módulos con `canales` → los ve quien comparta canal (SUPERVISOR/VENDEDOR).
-  //  - `abiertoATodos` (Clientes) → cualquier usuario logueado.
-  //  - Resto → por rol, como antes.
+  //  - `adminOnly` (Usuarios) → nunca para otros roles.
+  //  - Si el usuario tiene privilegios EXPLÍCITOS (allowed_modules) → solo esos.
+  //  - Si no, defaults: `abiertoATodos` (Clientes) + módulos de su canal + por rol.
   const role = (user?.role ?? "").toUpperCase();
   const canalesUsuario = canalesDeUsuario(user?.assigned_routes);
+  const modulosPermitidos = user?.allowed_modules ?? [];
+  const tienePrivilegiosExplicitos = Array.isArray(modulosPermitidos) && modulosPermitidos.length > 0;
 
   const menuItems = ALL_MENU_ITEMS.filter((item) => {
     if (role === "ADMIN") return true;
+    if (item.adminOnly) return false;
+    if (tienePrivilegiosExplicitos) return modulosPermitidos.includes(item.path);
+    // Defaults cuando no hay privilegios explícitos configurados:
     if (item.abiertoATodos) return true;
     if (item.canales && item.canales.length) {
       return item.canales.some((c) => canalesUsuario.includes(c));

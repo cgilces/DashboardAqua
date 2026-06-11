@@ -18,12 +18,14 @@ import BotonActualizarSincronizacion from "../../components/elements/BotonActual
 import { DeleteIcon, EditIcon } from "lucide-react";
 import { useAuth } from "../../components/auth/AuthContext";
 import { API_BASE_URL } from '../../config';
+import { MODULOS_ASIGNABLES } from "../../utils/visibilidad";
 
 interface User {
     id: number;
     username: string;
     role: string;
     routes: string[];
+    modules: string[];
 }
 
 // ─── Tipos alerta ─────────────────────────────────────
@@ -193,6 +195,7 @@ const CreacionUsuario: React.FC = () => {
     const [password, setPassword] = useState("");
     const [role, setRole] = useState("VENDEDOR");
     const [assignedRoutes, setAssignedRoutes] = useState<string[]>([]);
+    const [allowedModules, setAllowedModules] = useState<string[]>([]);
     const [tempRoute, setTempRoute] = useState("");
     const [editingUserId, setEditingUserId] = useState<number | null>(null);
     const [saving, setSaving] = useState(false);
@@ -211,6 +214,7 @@ const CreacionUsuario: React.FC = () => {
             setUsers((json.usuarios || []).map((u: any) => ({
                 id: u.id, username: u.usuario, role: u.rol,
                 routes: Array.isArray(u.rutas_asignadas) ? u.rutas_asignadas : [],
+                modules: Array.isArray(u.modulos_permitidos) ? u.modulos_permitidos : [],
             })));
         } catch (err: any) {
             showAlert(err.message || "Error cargando usuarios", "error");
@@ -236,7 +240,7 @@ const CreacionUsuario: React.FC = () => {
     // ── Formulario helpers ────────────────────────────
     const resetForm = () => {
         setUsername(""); setPassword(""); setRole("VENDEDOR");
-        setAssignedRoutes([]); setEditingUserId(null);
+        setAssignedRoutes([]); setAllowedModules([]); setEditingUserId(null);
     };
 
     const addRoute = () => {
@@ -244,9 +248,12 @@ const CreacionUsuario: React.FC = () => {
         if (r && !assignedRoutes.includes(r)) { setAssignedRoutes(p => [...p, r]); setTempRoute(""); }
     };
 
+    const toggleModule = (path: string) =>
+        setAllowedModules(p => p.includes(path) ? p.filter(x => x !== path) : [...p, path]);
+
     const handleEditUser = (u: User) => {
         setEditingUserId(u.id); setUsername(u.username);
-        setRole(u.role); setAssignedRoutes(u.routes); setPassword("");
+        setRole(u.role); setAssignedRoutes(u.routes); setAllowedModules(u.modules ?? []); setPassword("");
     };
 
     // ── POST /crear  |  PUT /editar/:id ──────────────
@@ -254,7 +261,13 @@ const CreacionUsuario: React.FC = () => {
         if (!username.trim()) return showAlert("El nombre de usuario es requerido", "error");
         if (!editingUserId && !password.trim()) return showAlert("La contraseña es requerida", "error");
 
-        const body: any = { usuario: username.trim(), rol: role, rutas_asignadas: assignedRoutes };
+        const body: any = {
+            usuario: username.trim(),
+            rol: role,
+            rutas_asignadas: assignedRoutes,
+            // ADMIN ve todo: no se guardan privilegios explícitos para ese rol.
+            modulos_permitidos: role === "ADMIN" ? [] : allowedModules,
+        };
         if (password.trim()) body.clave = password.trim();
 
         try {
@@ -544,6 +557,31 @@ const CreacionUsuario: React.FC = () => {
                                     </div>
                                     <p className="text-[10px] text-white/25 mt-1.5">Enter, coma o "+" para agregar</p>
                                 </div>
+
+                                {/* ── PRIVILEGIOS: módulos visibles (no aplica a ADMIN, que ve todo) ── */}
+                                {role !== "ADMIN" && (
+                                    <div>
+                                        <label className="text-xs font-semibold uppercase tracking-widest text-[#5fa88a]/80 block mb-1.5">
+                                            Módulos visibles
+                                        </label>
+                                        <p className="text-[10px] text-white/30 mb-2 leading-snug">
+                                            Marca lo que este usuario puede ver. Si no marcas nada, se usan los permisos
+                                            por defecto de su rol/canal.
+                                        </p>
+                                        <div className="grid grid-cols-1 gap-1 p-2.5 rounded-xl bg-white/5 border border-[#2d6b52]/30 max-h-56 overflow-y-auto">
+                                            {MODULOS_ASIGNABLES.map(m => (
+                                                <label key={m.path}
+                                                    className="flex items-center gap-2 text-sm text-[#e8f5f0] cursor-pointer px-1.5 py-1 rounded-lg hover:bg-white/5 transition-colors">
+                                                    <input type="checkbox"
+                                                        checked={allowedModules.includes(m.path)}
+                                                        onChange={() => toggleModule(m.path)}
+                                                        className="accent-emerald-500 w-4 h-4" />
+                                                    {m.label}
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="flex gap-2 pt-2">
                                     <button onClick={handleSaveToDatabase} disabled={saving}

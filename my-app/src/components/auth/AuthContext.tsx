@@ -122,6 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         username:        data.user.usuario,
         role:            data.user.rol,
         assigned_routes: data.user.rutas_asignadas,
+        allowed_modules: data.user.modulos_permitidos ?? [],
       };
 
       setUser(loggedUser);
@@ -133,23 +134,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sessionStorage.removeItem('jarvis_modal_sesion');
       } catch {}
 
-      // ── Redirección según rol ──────────────────────
-      if (loggedUser.role === "VENDEDOR") {
+      // ── Redirección según rol / privilegios ──────────────────────
+      if (loggedUser.role === "ADMIN") {
+        navigate('/dashboard/preventa');
+      } else {
+        const modulos = loggedUser.allowed_modules ?? [];
         const tieneRuta = Array.isArray(loggedUser.assigned_routes) && loggedUser.assigned_routes.length > 0;
-        if (!tieneRuta) {
-          setError("Tu usuario no tiene rutas asignadas. Contacta al administrador.");
+        if (!tieneRuta && modulos.length === 0) {
+          setError("Tu usuario no tiene rutas ni módulos asignados. Contacta al administrador.");
           setLoading(false);
           return;
         }
-        // Aterriza en el módulo de su canal (botellón/preventa/hielo) según su ruta.
-        navigate(moduloInicial(loggedUser.assigned_routes));
-
-      } else if (loggedUser.role === "SUPERVISOR") {
-        navigate('/dashboard/crearusuarios');
-
-      } else {
-        // ADMIN → dashboard principal
-        navigate('/dashboard/preventa');
+        // Aterriza en el primer módulo permitido, o en el módulo de su canal.
+        navigate(modulos.length > 0 ? modulos[0] : moduloInicial(loggedUser.assigned_routes));
       }
 
     } catch (err: any) {

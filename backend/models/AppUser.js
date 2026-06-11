@@ -27,6 +27,12 @@ const AppUser = sequelize.define('AppUser', {
     type: DataTypes.ARRAY(DataTypes.STRING), // Almacena las rutas asignadas como un array de strings
     defaultValue: [],  // Si no se asigna ninguna ruta, se almacenará un array vacío
   },
+  // Módulos del dashboard que el usuario puede ver (privilegios editables desde la UI).
+  // Vacío = usa los permisos por defecto del rol/canal. Con valores = lista explícita.
+  modulos_permitidos: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: [],
+  },
   creado_en: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,
