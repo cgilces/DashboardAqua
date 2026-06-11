@@ -11,6 +11,7 @@ const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { filtroVisibilidad } = require('../../utils/visibilidadRutas');
 
 const RUTAS_ODOO_HIELO = [
   "Carmen Garcia", "Estefania Flores", "Tamara Villacres",
@@ -423,10 +424,8 @@ const dasboardventasHielo = async (req, res) => {
 
         console.log("📅 Fechas:", anioNum, mesNum);
 
-        // ── Filtro por rutas si VENDEDOR ──────────────────────────────
-        const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
-          ? req.user.rutas_asignadas.map(r => r.toUpperCase())
-          : null;
+        // ── Visibilidad por rol/canal (ADMIN=todo · SUPERVISOR=canal · VENDEDOR=ruta) ──
+        const vis = filtroVisibilidad(req.user);
 
         // ============================
         // KPIs + TENDENCIA en paralelo
@@ -455,10 +454,10 @@ const dasboardventasHielo = async (req, res) => {
             };
         });
 
-        // ── Filtrar por rutas asignadas si VENDEDOR ───────────────────
-        if (rutasPermitidas) {
+        // ── Filtrar por visibilidad (VENDEDOR=ruta exacta · SUPERVISOR=canal) ──
+        if (vis.restringe) {
           resumenUsuariosVentasHielo = resumenUsuariosVentasHielo.filter(u =>
-            rutasPermitidas.includes((u.usuario || '').toUpperCase())
+            vis.permite(u.usuario)
           );
         }
 

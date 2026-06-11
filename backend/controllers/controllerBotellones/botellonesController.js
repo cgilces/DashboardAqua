@@ -8,6 +8,7 @@ const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
 const MetaPreventa = require("../../models/metaPreventa");
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { filtroVisibilidad } = require('../../utils/visibilidadRutas');
 
 // Secciones que tienen metas configurables (solo autoventas)
 const SECCIONES_CON_METAS = ["TIENDAS_VIP", "TIENDAS", "MAYORISTA", "RURAL"];
@@ -361,7 +362,7 @@ const metaHistoricaBotellon = async () => {
    (lunes–sábado, excluyendo festivos nacionales)
 ====================================================== */
 
-const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}, rutasPermitidas = null, tipoProducto = 'todo') => {
+const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}, vis = null, tipoProducto = 'todo') => {
   const hoyDate = new Date();
   const esMesActual = hoyDate.getFullYear() === anio && hoyDate.getMonth() + 1 === mes;
 
@@ -587,10 +588,10 @@ ORDER BY codigo;
   const numFacturas = Number(countsRes[0]?.num_facturas || 0);
   const numOrdenes = Number(countsRes[0]?.num_ordenes || 0);
 
-  // ── Filtrar por rutas permitidas si VENDEDOR ──────────────────
-  if (rutasPermitidas) {
-    actual = actual.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
-    anterior = anterior.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
+  // ── Filtrar por visibilidad (VENDEDOR=ruta exacta · SUPERVISOR=canal) ──
+  if (vis && vis.restringe) {
+    actual = actual.filter(r => vis.permite(r.codigo));
+    anterior = anterior.filter(r => vis.permite(r.codigo));
   }
 
   // Mapeo de ventas del mes anterior por código de ruta
@@ -776,10 +777,8 @@ const obtenerDashboardBotellones = async (req, res) => {
     const anioNum = Number(anio);
     const mesNum = Number(mes);
 
-    // ── Filtro por rutas si VENDEDOR ──────────────────────────────
-    const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
-      ? req.user.rutas_asignadas.map(r => r.toUpperCase())
-      : null;
+    // ── Visibilidad por rol/canal (ADMIN=todo · SUPERVISOR=canal · VENDEDOR=ruta) ──
+    const vis = filtroVisibilidad(req.user);
 
     // Cargar metas configuradas para este mes/año (solo secciones TV, T, M, R)
     const metasDB = await MetaPreventa.findAll({
@@ -804,7 +803,7 @@ const obtenerDashboardBotellones = async (req, res) => {
         anioNum,
         mesNum,
         metasConfigMap,
-        rutasPermitidas,
+        vis,
         tipoProducto
       );
     }
