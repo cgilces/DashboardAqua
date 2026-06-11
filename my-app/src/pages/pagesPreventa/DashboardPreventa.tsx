@@ -238,7 +238,7 @@ export default function DashboardPreventa() {
             })()}
 
             {/* ── Tarjeta Total Descartable ── */}
-            {isAdmin && totalDescartable && (() => {
+            {totalDescartable && (() => {
               const esMesActual = mesActual === parseInt(mesSeleccionado) && anioActual === parseInt(anioSeleccionado);
               return (
               <div className="mb-8">
@@ -283,8 +283,8 @@ export default function DashboardPreventa() {
               );
             })()}
 
-            {/* ── Cards canal — solo ADMIN ── */}
-            {isAdmin && resumenVentasPorCanal && (() => {
+            {/* ── Cards canal ── */}
+            {resumenVentasPorCanal && (() => {
               // Mismo merge del RANKING: DOMICILIO (preventa) + ODOO Domicilio  y  VIP (preventa) + ODOO Moderno.
               const preventaArr = Object.values(resumenVentasPorCanal) as any[];
               const odooArr     = (datos?.ventasDescartableOdoo || []) as any[];
@@ -497,8 +497,8 @@ export default function DashboardPreventa() {
               />
             )}
 
-            {/* ── Resto — solo ADMIN ── */}
-            {isAdmin && (
+            {/* ── Resto (visible para quien tenga acceso al módulo) ── */}
+            {(
               <>
                 <div
                   id="seccion-ranking-descartable"

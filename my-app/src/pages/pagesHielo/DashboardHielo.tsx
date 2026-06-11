@@ -242,22 +242,20 @@ const DashboardHielo: React.FC = () => {
      
 
         {/* ============================
-            TABLA HIELO ODOO — solo ADMIN
+            TABLA HIELO ODOO (visible para quien tenga acceso al módulo)
         ============================ */}
-        {isAdmin && (
-          <TablaHieloOdoo
-            anio={anioSeleccionado}
-            mes={mesSeleccionado}
-            onTotalesLoaded={(t) => {
-              setProyeccionDolares(t.monto);
-              setProyeccionUnidades(t.proyeccionUnidades);
-              setRealDolares(t.montoReal);
-              setRealUnidades(t.unidades);
-              setMesAnteriorCombinado(t.mesAnterior);
-              setMesAnteriorCombinadoUnid(t.mesAnteriorUnidades);
-            }}
-          />
-        )}
+        <TablaHieloOdoo
+          anio={anioSeleccionado}
+          mes={mesSeleccionado}
+          onTotalesLoaded={(t) => {
+            setProyeccionDolares(t.monto);
+            setProyeccionUnidades(t.proyeccionUnidades);
+            setRealDolares(t.montoReal);
+            setRealUnidades(t.unidades);
+            setMesAnteriorCombinado(t.mesAnterior);
+            setMesAnteriorCombinadoUnid(t.mesAnteriorUnidades);
+          }}
+        />
 
 
 
