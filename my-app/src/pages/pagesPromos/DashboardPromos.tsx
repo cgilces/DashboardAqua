@@ -4,6 +4,7 @@ import DashboardLayout from "../../layout/DashboardLayout";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import { Header } from "../../components/common/Header";
 import { API_BASE_URL } from "../../config";
+import ReportePromocionesUtilizadas from "./ReportePromocionesUtilizadas";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 interface PromoRow {
@@ -22,6 +23,27 @@ interface PrendedorRow {
   unidades: number;
   monto: number;
   descuento: number;
+}
+// Drill-down de una promo: vendedores que la vendieron
+interface PromoVendRow {
+  prendedor: string;
+  cantidadPromocion: number;
+  cantidadSinPromocion: number;
+  dolares: number;
+  descuento: number;
+  total: number;
+}
+interface DetallePromoTotales {
+  cantidadPromocion: number;
+  cantidadSinPromocion: number;
+  dolares: number;
+  descuento: number;
+  total: number;
+}
+interface DetallePromo {
+  definicion: { promo_codigo: string; promo_nombre: string };
+  totales: DetallePromoTotales;
+  porPrendedor: PromoVendRow[];
 }
 
 const meses = {
@@ -101,6 +123,14 @@ const DashboardPromos: React.FC = () => {
   const [mes, setMes] = useState(localStorage.getItem("mesPromos") ?? mesActual);
   const [anio, setAnio] = useState(localStorage.getItem("anioPromos") ?? anioActual);
 
+  // Vista: "resumen" (ranking actual) | "reporte" (réplica dashboard86)
+  const [vista, setVista] = useState<"resumen" | "reporte">(
+    (localStorage.getItem("vistaPromos") as "resumen" | "reporte") ?? "resumen"
+  );
+  useEffect(() => {
+    localStorage.setItem("vistaPromos", vista);
+  }, [vista]);
+
   const [promos, setPromos] = useState<PromoRow[]>([]);
   const [prendedores, setPrendedores] = useState<PrendedorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,6 +195,34 @@ const DashboardPromos: React.FC = () => {
     fetchVend();
   }, [vendedorSel, mes, anio]);
 
+  // Vista por promo (clic en el ranking general → vendedores que la vendieron)
+  const [promoSel, setPromoSel] = useState<PromoRow | null>(null);
+  const [promoDet, setPromoDet] = useState<DetallePromo | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+
+  useEffect(() => {
+    if (!promoSel) {
+      setPromoDet(null);
+      return;
+    }
+    const fetchDet = async () => {
+      setPromoLoading(true);
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/api/promos/detalle/${encodeURIComponent(promoSel.promoCodigo)}?anio=${anio}&mes=${mes}`,
+          { headers: authHeaders() }
+        );
+        if (!res.ok) throw new Error("Error");
+        setPromoDet(await res.json());
+      } catch {
+        setPromoDet(null);
+      } finally {
+        setPromoLoading(false);
+      }
+    };
+    fetchDet();
+  }, [promoSel, mes, anio]);
+
   const top = promos[0];
   const maxUnidades = promos.reduce((m, p) => Math.max(m, p.unidades), 0) || 1;
 
@@ -184,6 +242,28 @@ const DashboardPromos: React.FC = () => {
       <div className="main-content min-h-screen text-white px-4 md:px-10 py-4 md:py-6">
         <Header />
 
+        {/* Conmutador de vista */}
+        <div className="flex gap-2 mb-4">
+          {([
+            ["resumen", "Resumen"],
+            ["reporte", "Reporte detallado"],
+          ] as ["resumen" | "reporte", string][]).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setVista(key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                vista === key ? "bg-[#046C5E] text-white" : "bg-white/5 text-emerald-200/70 hover:text-white"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {vista === "reporte" && <ReportePromocionesUtilizadas />}
+
+        {vista === "resumen" && (
+        <>
         {/* Cabecera */}
         <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6 md:mb-10 border-b border-[#046C5E] pb-4 py-4 md:py-6">
           <div className="flex items-center gap-4">
@@ -207,7 +287,7 @@ const DashboardPromos: React.FC = () => {
               <select
                 className="bg-[#046C5E] text-white pl-9 pr-4 py-2 rounded-lg w-full appearance-none"
                 value={vendedorSel}
-                onChange={(e) => setVendedorSel(e.target.value)}
+                onChange={(e) => { setVendedorSel(e.target.value); setPromoSel(null); }}
               >
                 <option value="">Todos los vendedores</option>
                 {prendedores.map((p) => (
@@ -306,8 +386,58 @@ const DashboardPromos: React.FC = () => {
           </section>
         )}
 
+        {/* ══════════ VISTA POR PROMO (drill-down) ══════════ */}
+        {!loading && !error && !vendedorSel && promoSel && (
+          <section>
+            <button
+              onClick={() => setPromoSel(null)}
+              className="inline-flex items-center gap-2 text-sm text-emerald-300 hover:text-emerald-200 mb-4"
+            >
+              <ArrowLeft size={16} /> Ver todas las promociones
+            </button>
+
+            <div className="rounded-2xl bg-gradient-to-r from-[#046C5E] to-[#02463c] p-5 mb-6 flex items-center gap-4">
+              <span className="grid place-items-center h-12 w-12 rounded-full bg-white/10">
+                <Tag size={24} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wider text-emerald-200">Promoción</p>
+                <p className="text-2xl font-bold truncate">{promoSel.promoNombre}</p>
+                <p className="text-xs text-emerald-100">{promoSel.promoCodigo}</p>
+              </div>
+            </div>
+
+            {/* KPIs de la promo */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+              <Kpi label="Cant. promoción" valor={fmt(promoDet?.totales.cantidadPromocion ?? 0)} acento="emerald" />
+              <Kpi label="Cant. sin promoción" valor={fmt(promoDet?.totales.cantidadSinPromocion ?? 0)} />
+              <Kpi label="Dólares" valor={`$${fmtMoney(promoDet?.totales.dolares ?? 0)}`} acento="emerald" />
+              <Kpi label="Descuento" valor={`$${fmtMoney(promoDet?.totales.descuento ?? 0)}`} acento="amber" />
+              <Kpi label="Total" valor={`$${fmtMoney(promoDet?.totales.total ?? 0)}`} acento="emerald" />
+            </div>
+
+            <div className="rounded-2xl bg-[#0b3b34]/60 border border-[#046C5E] overflow-hidden">
+              <h2 className="px-5 py-3 font-semibold flex items-center gap-2 border-b border-[#046C5E]">
+                <Users size={18} /> Vendedores que vendieron «{promoSel.promoNombre}»
+              </h2>
+              <p className="px-5 pt-2 text-[11px] text-emerald-200/60">
+                Dólares y Total <b>sin IVA</b> · bruto − descuento = neto. (El "Vendido $" del ranking es <b>con IVA</b>, por eso difiere.)
+              </p>
+              {promoLoading ? (
+                <div className="py-16 flex justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-400" />
+                </div>
+              ) : !promoDet || promoDet.porPrendedor.length === 0 ? (
+                <p className="text-center text-gray-400 py-12">Sin ventas de esta promo en el período.</p>
+              ) : (
+                <TablaPromoVendedores rows={promoDet.porPrendedor} totales={promoDet.totales} />
+              )}
+            </div>
+          </section>
+        )}
+
         {/* ══════════ VISTA GENERAL ══════════ */}
-        {!loading && !error && !vendedorSel && promos.length > 0 && (
+        {!loading && !error && !vendedorSel && !promoSel && promos.length > 0 && (
           <>
             {top && (
               <div className="mb-8 rounded-2xl bg-gradient-to-r from-[#046C5E] to-[#02463c] p-5 md:p-6 flex items-center gap-4 shadow-lg">
@@ -327,9 +457,10 @@ const DashboardPromos: React.FC = () => {
               <section className="rounded-2xl bg-[#0b3b34]/60 border border-[#046C5E] overflow-hidden">
                 <h2 className="px-5 py-3 font-semibold flex items-center gap-2 border-b border-[#046C5E]">
                   <Tag size={18} /> Ranking general de promociones
+                  <span className="text-xs font-normal text-emerald-300/70">(clic para ver vendedores)</span>
                 </h2>
                 <div className="overflow-y-auto max-h-[28rem]">
-                  <TablaPromos rows={promos} maxUnidades={maxUnidades} />
+                  <TablaPromos rows={promos} maxUnidades={maxUnidades} onSelect={setPromoSel} />
                 </div>
               </section>
 
@@ -345,7 +476,7 @@ const DashboardPromos: React.FC = () => {
                         <SortTh label="Vendedor" col="prendedor" state={predSort} onSort={onPredSort} align="left" className="px-4" />
                         <SortTh label="Promos" col="promosDistintas" state={predSort} onSort={onPredSort} className="px-3" />
                         <SortTh label="Unidades" col="unidades" state={predSort} onSort={onPredSort} className="px-3" />
-                        <SortTh label="Vendido $" col="monto" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
+                        <SortTh label="Vendido $ (c/IVA)" col="monto" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
                         <SortTh label="Descuento $" col="descuento" state={predSort} onSort={onPredSort} className="px-4 whitespace-nowrap" />
                       </tr>
                     </thead>
@@ -370,6 +501,8 @@ const DashboardPromos: React.FC = () => {
             </div>
           </>
         )}
+        </>
+        )}
       </div>
     </DashboardLayout>
   );
@@ -385,7 +518,7 @@ const Kpi: React.FC<{ label: string; valor: string; acento?: "emerald" | "amber"
   </div>
 );
 
-const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number }> = ({ rows, maxUnidades }) => {
+const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: (p: PromoRow) => void }> = ({ rows, maxUnidades, onSelect }) => {
   const { state, onSort } = useSort();
   const sorted = useMemo(() => sortRows(rows, state), [rows, state]);
   return (
@@ -395,13 +528,17 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number }> = ({ rows
         <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 w-auto" />
         <SortTh label="Unidades" col="unidades" state={state} onSort={onSort} className="px-3 w-20" />
         <SortTh label="Ventas" col="veces" state={state} onSort={onSort} className="px-3 w-16" />
-        <SortTh label="Vendido $" col="monto" state={state} onSort={onSort} className="px-3 w-28 whitespace-nowrap" />
+        <SortTh label="Vendido $ (c/IVA)" col="monto" state={state} onSort={onSort} className="px-3 w-28 whitespace-nowrap" />
         <SortTh label="Descuento $" col="descuento" state={state} onSort={onSort} className="px-4 w-28 whitespace-nowrap" />
       </tr>
     </thead>
     <tbody>
       {sorted.map((p, i) => (
-        <tr key={p.promoCodigo} className="border-t border-white/5 hover:bg-white/5">
+        <tr
+          key={p.promoCodigo}
+          onClick={onSelect ? () => onSelect(p) : undefined}
+          className={`border-t border-white/5 ${onSelect ? "cursor-pointer hover:bg-emerald-400/10" : "hover:bg-white/5"}`}
+        >
           <td className="px-4 py-2">
             <div className="flex items-center gap-2">
               <span className="text-emerald-300/70 w-5 text-right shrink-0">{i + 1}</span>
@@ -421,6 +558,51 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number }> = ({ rows
       ))}
     </tbody>
   </table>
+  );
+};
+
+// Tabla de vendedores que vendieron una promo (mismo diseño que el ranking de
+// prendedores): Cant. promoción · Cant. sin promoción · Dólares · Descuento · Total.
+const TablaPromoVendedores: React.FC<{ rows: PromoVendRow[]; totales: DetallePromoTotales }> = ({ rows, totales }) => {
+  const { state, onSort } = useSort();
+  const sorted = useMemo(() => sortRows(rows, state), [rows, state]);
+  return (
+    <div className="overflow-y-auto max-h-[32rem]">
+      <table className="w-full text-sm">
+        <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
+          <tr>
+            <SortTh label="Vendedor" col="prendedor" state={state} onSort={onSort} align="left" className="px-4" />
+            <SortTh label="Cant. promoción" col="cantidadPromocion" state={state} onSort={onSort} className="px-3 whitespace-nowrap" />
+            <SortTh label="Cant. sin promo" col="cantidadSinPromocion" state={state} onSort={onSort} className="px-3 whitespace-nowrap" />
+            <SortTh label="Dólares" col="dolares" state={state} onSort={onSort} className="px-3" />
+            <SortTh label="Descuento" col="descuento" state={state} onSort={onSort} className="px-3" />
+            <SortTh label="Total" col="total" state={state} onSort={onSort} className="px-4" />
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r) => (
+            <tr key={r.prendedor} className="border-t border-white/5 hover:bg-white/5">
+              <td className="px-4 py-2 font-medium">{r.prendedor}</td>
+              <td className="px-3 py-2 text-right font-semibold text-emerald-200">{fmt(r.cantidadPromocion)}</td>
+              <td className="px-3 py-2 text-right">{fmt(r.cantidadSinPromocion)}</td>
+              <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(r.dolares)}</td>
+              <td className="px-3 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(r.descuento)}</td>
+              <td className="px-4 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(r.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="sticky bottom-0 bg-[#02463c] font-semibold">
+          <tr className="border-t-2 border-emerald-400/40">
+            <td className="px-4 py-2">Total</td>
+            <td className="px-3 py-2 text-right text-emerald-200">{fmt(totales.cantidadPromocion)}</td>
+            <td className="px-3 py-2 text-right">{fmt(totales.cantidadSinPromocion)}</td>
+            <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.dolares)}</td>
+            <td className="px-3 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(totales.descuento)}</td>
+            <td className="px-4 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   );
 };
 

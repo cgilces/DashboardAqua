@@ -19,6 +19,50 @@ y la cabecera trae el vendedor (`seller_code`/`user_code`). De ahí sale "qué p
       + ruta en `main.tsx` + entrada "PROMOCIONES" en el menú lateral.
 - [x] Verificado: `node --check` (backend) y `tsc --noEmit` (frontend) sin errores. Pendiente: revisión + PR.
 
+## Reporte "Promociones Utilizadas" — réplica dashboard86 (rama: `feature/promos-reporte-utilizadas`)
+
+Objetivo: replicar en `/dashboard/promociones` el reporte de MobilVendor `#reporting/dashboard86`
+(detalle línea por línea con filtros), integrado como vista "Reporte detallado" junto al
+"Resumen" (ranking) que ya existía. Solo se usan datos ya sincronizados (detalle_documento ⨝
+facturas/ordenes); no se tocó el sync.
+
+- [x] **Backend**: `promosDashboard.service.reporteUtilizadas` (detalle línea por línea con
+      filtros inicio/fin/promo/tab + total cantidad + conteo factura/orden para la torta) y
+      `listaPromos` (dropdown). Controller `obtenerReporte`/`obtenerListaPromos`; rutas
+      `GET /api/promos/reporte` y `GET /api/promos/lista`.
+- [x] **Frontend**: `ReportePromocionesUtilizadas.tsx` (cabecera con logo + título centrado +
+      fecha de emisión dinámica; filtros Fecha Inicio/Fin con hora + Restablecer/Aceptar +
+      dropdown PROMOCIÓN "(Todos)"; 2 pestañas; tabla con las 11 columnas exactas, encabezados
+      azules, fila seleccionada azul, total CANTIDAD (U) al pie; torta ECharts FACTURA azul /
+      ORDEN rosado con conteo central). Toggle "Resumen / Reporte detallado" en `DashboardPromos`.
+- [x] Verificado: `node --check` (backend), `tsc --noEmit -p tsconfig.app.json` y `vite build` (exit 0).
+      Pendiente: revisión + PR (`main...feature/promos-reporte-utilizadas`).
+- [ ] **Fase 2 (requiere tocar el sync)**: capturar `factor` real por línea (hoy = 1.00);
+      confirmar/ajustar la base de cálculo de `DESC. %` contra dashboard86; sincronizar
+      documentos de devolución para poblar la pestaña `Devolucion_SolicitudDev` (hoy sin datos:
+      el sync solo pide `type:"1,2"`).
+
+## Drill-down por promo en el Ranking general (misma rama: `feature/promos-reporte-utilizadas`)
+
+Objetivo: clic en una promo del "Ranking general de promociones" → vista de los vendedores
+que la vendieron, mismo diseño que el detalle de "Vendedores", con columnas
+Cant. promoción · Cant. sin promoción · Dólares (bruto) · Descuento · Total (neto).
+
+Decisión validada con datos reales: las promos `DESC*` no guardan el "+1" como línea a $0,
+sino como descuento embebido. Cálculo elegido por el usuario: cantidad promoción =
+descuento ÷ precio (unidades-equivalentes gratis), sin promoción = subtotal ÷ precio.
+Dólares = subtotal+descuento (bruto), Total = subtotal (neto), de modo que bruto−desc = neto.
+
+- [x] **Diagnóstico**: `scripts/probePromoGift.js` + consultas psql para confirmar que el regalo
+      va embebido como descuento (no línea $0) en las promos `DESC*`.
+- [x] **Backend**: `detallePromo` ahora separa cant. promoción/sin promoción y devuelve
+      dólares/descuento/total por vendedor + totales (CTE extendida con `precio`/`subtotal`).
+      Endpoint existente `GET /api/promos/detalle/:promoCode`.
+- [x] **Frontend** (`DashboardPromos`): filas del ranking general clicables → vista por promo
+      (tarjeta + KPIs + `TablaPromoVendedores` con footer de totales), botón "volver".
+- [x] Verificado: `node --check`, `tsc -p tsconfig.app.json`, `vite build` (exit 0).
+      Pendiente: probar con datos reales en el server + revisión/PR.
+
 ## Saludo de bienvenida dinámico del chatbot (rama: `feature/saludo-bienvenida-personalizado`)
 
 Objetivo: que el "Asistente Aqua" salude al iniciar sesión de forma 100% personalizada
