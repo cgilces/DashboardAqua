@@ -13,4 +13,8 @@ router.get("/prendedores", verificarTokenOpcional, promos.obtenerPrendedores);
 router.get("/prendedor/:sellerCode", verificarTokenOpcional, promos.obtenerPorPrendedor);
 router.get("/detalle/:promoCode", verificarTokenOpcional, promos.obtenerDetalle);
 
+// Reporte "Promociones Utilizadas" (réplica dashboard86) + catálogo para el dropdown
+router.get("/reporte", verificarTokenOpcional, promos.obtenerReporte);
+router.get("/lista", verificarTokenOpcional, promos.obtenerListaPromos);
+
 module.exports = router;

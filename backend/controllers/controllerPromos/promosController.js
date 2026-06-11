@@ -7,6 +7,8 @@ const {
   rankingPrendedores,
   promosPorPrendedor,
   detallePromo,
+  reporteUtilizadas,
+  listaPromos,
 } = require("../../services/promosDashboard.service");
 
 // GET /api/promos/dashboard?anio=&mes=&limit=
@@ -71,10 +73,34 @@ async function obtenerDetalle(req, res) {
   }
 }
 
+// GET /api/promos/reporte?inicio=&fin=&promo=&tab=
+// Reporte "Promociones Utilizadas" línea por línea (réplica dashboard86).
+async function obtenerReporte(req, res) {
+  try {
+    const { inicio, fin, promo, tab } = req.query;
+    res.json(await reporteUtilizadas({ inicio, fin, promoCode: promo, tab }));
+  } catch (err) {
+    console.error("❌ [Promos] reporte:", err.message);
+    res.status(500).json({ error: "No se pudo cargar el reporte de promociones utilizadas." });
+  }
+}
+
+// GET /api/promos/lista  → catálogo de promos para el dropdown del reporte
+async function obtenerListaPromos(req, res) {
+  try {
+    res.json(await listaPromos());
+  } catch (err) {
+    console.error("❌ [Promos] lista:", err.message);
+    res.status(500).json({ error: "No se pudo cargar la lista de promociones." });
+  }
+}
+
 module.exports = {
   obtenerDashboard,
   obtenerRanking,
   obtenerPrendedores,
   obtenerPorPrendedor,
   obtenerDetalle,
+  obtenerReporte,
+  obtenerListaPromos,
 };

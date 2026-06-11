@@ -6,10 +6,10 @@ import { BarChart, Menu, Close } from "@mui/icons-material";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import GroupAddIcon from "@mui/icons-material/GroupAdd";
-import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 
 import { useAuth } from "../components/auth/AuthContext";
+import { canalesDeUsuario } from "../utils/visibilidad";
 
 import logo from "../assets/icono-plus.png";
 import botellon from "../assets/botellon.png";
@@ -22,20 +22,22 @@ type MenuItem = {
   icon: React.ReactNode;
   path: string;
   roles?: string[];
+  canales?: string[];       // canales (prefijos de ruta) a los que pertenece el módulo
+  abiertoATodos?: boolean;  // visible para cualquier usuario logueado (ej. Clientes)
+  adminOnly?: boolean;      // solo ADMIN, nunca asignable a otros (ej. Usuarios)
 };
 
 const ALL_MENU_ITEMS: MenuItem[] = [
   { name: "CONSOLIDADO",   icon: <BarChart />,                                        path: "/dashboard/consolidado",   roles: ["ADMIN"] },
-  { name: "GERENCIA",      icon: <LeaderboardIcon />,                                 path: "/dashboard/gerencia",      roles: ["ADMIN"] },
-  { name: "BOTELLÓN",      icon: <img src={botellon}           alt="botellon"    />,  path: "/dashboard/botellon",      roles: ["ADMIN"] },
-  { name: "DESCARTABLE",   icon: <img src={botelladescartable} alt="descartable" />,  path: "/dashboard/preventa",      roles: ["ADMIN", "SUPERVISOR"] },
-  { name: "HIELO",         icon: <img src={imagenhielo}        alt="hielo"       />,  path: "/dashboard/hielo",         roles: ["ADMIN"] },
+  { name: "BOTELLÓN",      icon: <img src={botellon}           alt="botellon"    />,  path: "/dashboard/botellon",      roles: ["ADMIN"], canales: ["T"] },
+  { name: "DESCARTABLE",   icon: <img src={botelladescartable} alt="descartable" />,  path: "/dashboard/preventa",      roles: ["ADMIN", "SUPERVISOR"], canales: ["TV", "PV", "R", "A", "M", "V"] },
+  { name: "HIELO",         icon: <img src={imagenhielo}        alt="hielo"       />,  path: "/dashboard/hielo",         roles: ["ADMIN"], canales: ["H"] },
   { name: "PLUS",          icon: <img src={logo}               alt="plus"        />,  path: "/dashboard/plus",          roles: ["ADMIN"] },
   { name: "CAFÉ",          icon: <img src={capsulamust}        alt="cafe"        />,  path: "/dashboard/cafe",          roles: ["ADMIN"] },
   { name: "PROMOCIONES",   icon: <LocalOfferIcon />,                                  path: "/dashboard/promociones",   roles: ["ADMIN"] },
   { name: "VISITAS RUTAS", icon: <LocalShippingIcon />,                               path: "/dashboard/rutas-visitas", roles: ["ADMIN"] },
-  { name: "CLIENTES",      icon: <PeopleAltIcon />,                                   path: "/dashboard/clientes",      roles: ["ADMIN"] },
-  { name: "USUARIOS",      icon: <GroupAddIcon />,                                    path: "/dashboard/crearusuarios", roles: ["ADMIN", "SUPERVISOR"] },
+  { name: "CLIENTES",      icon: <PeopleAltIcon />,                                   path: "/dashboard/clientes",      abiertoATodos: true },
+  { name: "USUARIOS",      icon: <GroupAddIcon />,                                    path: "/dashboard/crearusuarios", roles: ["ADMIN"], adminOnly: true },
 ];
 
 const isMobileViewport = () =>
@@ -46,9 +48,27 @@ export default function SidebarDashboards() {
   const location = useLocation();
   const { user } = useAuth();
 
-  const menuItems = ALL_MENU_ITEMS.filter(
-    (item) => !item.roles || item.roles.includes(user?.role ?? "")
-  );
+  // Visibilidad del menú:
+  //  - ADMIN → todo.
+  //  - `adminOnly` (Usuarios) → nunca para otros roles.
+  //  - Si el usuario tiene privilegios EXPLÍCITOS (allowed_modules) → solo esos.
+  //  - Si no, defaults: `abiertoATodos` (Clientes) + módulos de su canal + por rol.
+  const role = (user?.role ?? "").toUpperCase();
+  const canalesUsuario = canalesDeUsuario(user?.assigned_routes);
+  const modulosPermitidos = user?.allowed_modules ?? [];
+  const tienePrivilegiosExplicitos = Array.isArray(modulosPermitidos) && modulosPermitidos.length > 0;
+
+  const menuItems = ALL_MENU_ITEMS.filter((item) => {
+    if (role === "ADMIN") return true;
+    if (item.adminOnly) return false;
+    if (tienePrivilegiosExplicitos) return modulosPermitidos.includes(item.path);
+    // Defaults cuando no hay privilegios explícitos configurados:
+    if (item.abiertoATodos) return true;
+    if (item.canales && item.canales.length) {
+      return item.canales.some((c) => canalesUsuario.includes(c));
+    }
+    return !item.roles || item.roles.includes(role);
+  });
 
   // Cerrar con Escape
   useEffect(() => {

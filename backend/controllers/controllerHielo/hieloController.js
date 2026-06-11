@@ -11,6 +11,7 @@ const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { filtroVisibilidad, permisosModulo } = require('../../utils/visibilidadRutas');
 
 const RUTAS_ODOO_HIELO = [
   "Carmen Garcia", "Estefania Flores", "Tamara Villacres",
@@ -423,10 +424,10 @@ const dasboardventasHielo = async (req, res) => {
 
         console.log("📅 Fechas:", anioNum, mesNum);
 
-        // ── Filtro por rutas si VENDEDOR ──────────────────────────────
-        const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
-          ? req.user.rutas_asignadas.map(r => r.toUpperCase())
-          : null;
+        // ── Visibilidad: si el módulo Hielo se concedió completo (sin secciones)
+        //    el usuario ve todo; si no, se filtra por su canal/ruta. ──
+        const vis = filtroVisibilidad(req.user);
+        const verTodoHielo = permisosModulo(req.user, '/dashboard/hielo').modo === 'todo';
 
         // ============================
         // KPIs + TENDENCIA en paralelo
@@ -455,10 +456,10 @@ const dasboardventasHielo = async (req, res) => {
             };
         });
 
-        // ── Filtrar por rutas asignadas si VENDEDOR ───────────────────
-        if (rutasPermitidas) {
+        // ── Filtrar por visibilidad salvo que el módulo se haya concedido completo ──
+        if (vis.restringe && !verTodoHielo) {
           resumenUsuariosVentasHielo = resumenUsuariosVentasHielo.filter(u =>
-            rutasPermitidas.includes((u.usuario || '').toUpperCase())
+            vis.permite(u.usuario)
           );
         }
 

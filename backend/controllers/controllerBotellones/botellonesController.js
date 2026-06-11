@@ -8,6 +8,8 @@ const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
 const MetaPreventa = require("../../models/metaPreventa");
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { filtroVisibilidad, permiteSeccion } = require('../../utils/visibilidadRutas');
+const MODULO_BOTELLON = '/dashboard/botellon';
 
 // Secciones que tienen metas configurables (solo autoventas)
 const SECCIONES_CON_METAS = ["TIENDAS_VIP", "TIENDAS", "MAYORISTA", "RURAL"];
@@ -15,42 +17,53 @@ const SECCIONES_CON_METAS = ["TIENDAS_VIP", "TIENDAS", "MAYORISTA", "RURAL"];
 /* ======================================================
    CONFIGURACIÓN DE GRUPOS BOTELLÓN
 ====================================================== */
+// `canal` = canal de ruta al que pertenece el grupo (para visibilidad por rol).
+// '__ADMIN__' = grupo especial sin canal de ruta (solo lo ve ADMIN).
 const GRUPOS = {
   DOMICILIO: {
     campo: "o.route_code",
     filtro: "o.route_code ILIKE 'A%'",
+    canal: "A",
   },
   EMPRESAS: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'E%'",
+    canal: "E",
   },
   MAYORISTA: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'M%'",
+    canal: "M",
   },
   QUITO: {
     campo: "o.seller_code",
     filtro: "o.seller_code = 'U1'",
+    canal: "U",
   },
   RURAL: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'R%'",
+    canal: "R",
   },
   TELEVENTA_VIP: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE '148399%'",
+    canal: "__ADMIN__",
   },
   TIENDAS: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%'",
+    canal: "T",
   },
   TIENDAS_VIP: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'TV%'",
+    canal: "TV",
   },
   VIP: {
     campo: "f.codigo_tipo_negocio",
     filtro: "f.codigo_tipo_negocio = '29'",
+    canal: "__ADMIN__",
   },
 };
 
@@ -361,7 +374,7 @@ const metaHistoricaBotellon = async () => {
    (lunes–sábado, excluyendo festivos nacionales)
 ====================================================== */
 
-const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}, rutasPermitidas = null, tipoProducto = 'todo') => {
+const obtenerGrupoBotellon = async (nombreGrupo, anio, mes, metasConfigMap = {}, vis = null, tipoProducto = 'todo') => {
   const hoyDate = new Date();
   const esMesActual = hoyDate.getFullYear() === anio && hoyDate.getMonth() + 1 === mes;
 
@@ -587,10 +600,11 @@ ORDER BY codigo;
   const numFacturas = Number(countsRes[0]?.num_facturas || 0);
   const numOrdenes = Number(countsRes[0]?.num_ordenes || 0);
 
-  // ── Filtrar por rutas permitidas si VENDEDOR ──────────────────
-  if (rutasPermitidas) {
-    actual = actual.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
-    anterior = anterior.filter(r => rutasPermitidas.includes((r.codigo || '').toUpperCase()));
+  // ── Filtrar filas solo para VENDEDOR (ruta exacta). El SUPERVISOR ve toda la
+  //    tabla del grupo/canal que ya se le permitió mostrar. ──
+  if (vis && vis.rol === 'VENDEDOR') {
+    actual = actual.filter(r => vis.permite(r.codigo));
+    anterior = anterior.filter(r => vis.permite(r.codigo));
   }
 
   // Mapeo de ventas del mes anterior por código de ruta
@@ -776,10 +790,8 @@ const obtenerDashboardBotellones = async (req, res) => {
     const anioNum = Number(anio);
     const mesNum = Number(mes);
 
-    // ── Filtro por rutas si VENDEDOR ──────────────────────────────
-    const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
-      ? req.user.rutas_asignadas.map(r => r.toUpperCase())
-      : null;
+    // ── Visibilidad por rol/canal (ADMIN=todo · SUPERVISOR=canal · VENDEDOR=ruta) ──
+    const vis = filtroVisibilidad(req.user);
 
     // Cargar metas configuradas para este mes/año (solo secciones TV, T, M, R)
     const metasDB = await MetaPreventa.findAll({
@@ -795,6 +807,10 @@ const obtenerDashboardBotellones = async (req, res) => {
     const botellones = {};
 
     for (const nombre of Object.keys(GRUPOS)) {
+      // Visibilidad por módulo/sección: el ADMIN ve todo; el resto ve la sección
+      // solo si se le concedió (sección explícita, módulo completo, o por canal).
+      if (!permiteSeccion(req.user, MODULO_BOTELLON, nombre, GRUPOS[nombre].canal)) continue;
+
       const metasConfigMap = SECCIONES_CON_METAS.includes(nombre)
         ? (metasPorSeccion[nombre] || {})
         : {};
@@ -804,7 +820,7 @@ const obtenerDashboardBotellones = async (req, res) => {
         anioNum,
         mesNum,
         metasConfigMap,
-        rutasPermitidas,
+        vis,
         tipoProducto
       );
     }
@@ -1137,6 +1153,8 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
 ====================================================== */
 const obtenerEmpresasConsolidado = async (req, res) => {
   try {
+    // Visibilidad: sección EMPRESAS (canal 'E') del módulo botellón.
+    if (!permiteSeccion(req.user, MODULO_BOTELLON, 'EMPRESAS', 'E')) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
@@ -2745,6 +2763,8 @@ const buildConsolidadoResponse = (actual, anterior, esMesActual, diasTrans, dias
 
 const obtenerQuitoConsolidado = async (req, res) => {
   try {
+    // Visibilidad: sección QUITO (canal 'U') del módulo botellón.
+    if (!permiteSeccion(req.user, MODULO_BOTELLON, 'QUITO', 'U')) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
@@ -2779,6 +2799,8 @@ const obtenerQuitoConsolidado = async (req, res) => {
 
 const obtenerWebsiteConsolidado = async (req, res) => {
   try {
+    // WEBSITE no es un canal de ruta → solo ADMIN o módulo botellón concedido completo.
+    if (!permiteSeccion(req.user, MODULO_BOTELLON, 'WEBSITE', '__ADMIN__')) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });

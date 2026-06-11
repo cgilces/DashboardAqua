@@ -9,6 +9,7 @@ const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { filtroVisibilidad, permisosModulo } = require('../../utils/visibilidadRutas');
 
 // ==========================================
 //  SOLO RUTAS DE PREVENTA PERMITIDAS
@@ -1065,10 +1066,20 @@ const obtenerDatosDashboard = async (req, res) => {
     if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
       return res.status(400).json({ error: "Parámetros anio/mes inválidos." });
 
-    // ── Filtro por rutas si el usuario es VENDEDOR ─────────────
-    const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
-      ? req.user.rutas_asignadas.map(r => r.toUpperCase())
-      : null;
+    // ── Visibilidad por rol/canal/sección ──
+    //    'todo' → ve todo · 'secciones' → solo las secciones elegidas · 'canal' → por ruta.
+    const vis = filtroVisibilidad(req.user);
+    const pmPreventa = permisosModulo(req.user, '/dashboard/preventa');
+    const verTodoPreventa = pmPreventa.modo === 'todo';
+    const seccionesPreventa = pmPreventa.modo === 'secciones' ? pmPreventa.secciones : null; // Set | null
+    // Mapea el seller_code de descartable a su sección (A→Domicilio, M→Mayorista, V→VIP).
+    const seccionDescartable = (sc) => {
+      const s = String(sc || '').toUpperCase();
+      if (s.startsWith('A')) return 'DOMICILIO';
+      if (s.startsWith('M')) return 'MAYORISTA';
+      if (s.startsWith('V')) return 'VIP';
+      return null;
+    };
 
     const resumenActual     = await calcularKPIsMes(anioNum, mesNum);
     const objetivosGerencia = await obtenerObjetivosGerencia(anioNum, mesNum);
@@ -1138,12 +1149,15 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     });
 
-    // ── Aplicar filtro de rutas si VENDEDOR ───────────────────────
-    if (rutasPermitidas) {
+    // ── Aplicar visibilidad a los rankings (Tiendas / Rural) ──
+    if (seccionesPreventa) {
+      if (!seccionesPreventa.has('TIENDAS')) resumenActual.rankingPreventas = [];
+      if (!seccionesPreventa.has('RURAL'))   resumenActual.rankingRutasR = [];
+    } else if (vis.restringe && !verTodoPreventa) {
       resumenActual.rankingPreventas = (resumenActual.rankingPreventas || [])
-        .filter(r => rutasPermitidas.includes((r.preventa || '').toUpperCase()));
+        .filter(r => vis.permite(r.preventa));
       resumenActual.rankingRutasR = (resumenActual.rankingRutasR || [])
-        .filter(r => rutasPermitidas.includes((r.usuario || '').toUpperCase()));
+        .filter(r => vis.permite(r.usuario));
     }
 
     // ── Descartable con comparativa (usa fecha fin dinámica internamente) ──
@@ -1161,11 +1175,12 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     });
 
-    // ── Filtrar descartable por rutas si VENDEDOR ─────────────────
-    if (rutasPermitidas) {
+    // ── Filtrar descartable por visibilidad (ruta/canal). En modo 'secciones'
+    //    el recorte se hace al final (tras las correcciones de mes anterior). ──
+    if (vis.restringe && !verTodoPreventa && !seccionesPreventa) {
       Object.keys(ventasDescartableConComparativa).forEach(key => {
-        const sc = (ventasDescartableConComparativa[key]?.seller_code || key).toUpperCase();
-        if (!rutasPermitidas.includes(sc)) delete ventasDescartableConComparativa[key];
+        const sc = ventasDescartableConComparativa[key]?.seller_code || key;
+        if (!vis.permite(sc)) delete ventasDescartableConComparativa[key];
       });
     }
 
@@ -1221,10 +1236,10 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     }
 
-    // ── Filtrar top clientes por rutas si VENDEDOR ────────────────
-    if (rutasPermitidas) {
+    // ── Filtrar top clientes por visibilidad (ruta/canal) ────────────────
+    if (vis.restringe && !verTodoPreventa && !seccionesPreventa) {
       resumenActual.topClientes = (resumenActual.topClientes || [])
-        .filter(c => rutasPermitidas.includes((c.preventa || c.ruta || '').toUpperCase()));
+        .filter(c => vis.permite(c.preventa || c.ruta));
     }
 
     const { _raw, clientesDetalle, topClientes: _tc, ...publicResumen } = resumenActual;
@@ -1270,6 +1285,29 @@ const obtenerDatosDashboard = async (req, res) => {
         vsMesAnterior: { monto_anterior: montoAnt, variacion_abs: varAbs, variacion_porc: varPorc },
       };
     });
+
+    // ── Recorte final por SECCIONES elegidas (módulo Preventa/Descartable) ──
+    //    Se hace aquí, después de todos los cálculos, para no romper las
+    //    correcciones de mes anterior (que asumen todos los canales presentes).
+    if (seccionesPreventa) {
+      // Descartable MobilVendor (keyed por seller_code)
+      Object.keys(ventasDescartableConComparativa).forEach(k => {
+        const sec = seccionDescartable(ventasDescartableConComparativa[k]?.seller_code || k);
+        if (!sec || !seccionesPreventa.has(sec)) delete ventasDescartableConComparativa[k];
+      });
+      // Cards por canal (TIENDAS, RURAL, DOMICILIO, MAYORISTA, VIP)
+      Object.keys(resumenVentasPorCanal).forEach(k => {
+        if (!seccionesPreventa.has(k)) delete resumenVentasPorCanal[k];
+      });
+      // Descartable Odoo (por nombre de canal, best-effort; si no se mapea, se conserva)
+      for (let i = ventasDescartableOdoo.length - 1; i >= 0; i--) {
+        const c = String(ventasDescartableOdoo[i].canal || '').toUpperCase();
+        const sec = c.includes('DOMICIL') ? 'DOMICILIO'
+                  : c.includes('MAYOR')   ? 'MAYORISTA'
+                  : (c.includes('VIP') || c.includes('MODERNO')) ? 'VIP' : null;
+        if (sec && !seccionesPreventa.has(sec)) ventasDescartableOdoo.splice(i, 1);
+      }
+    }
 
     return res.status(200).json({
       ...publicResumen,

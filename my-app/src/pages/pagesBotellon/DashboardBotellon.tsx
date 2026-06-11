@@ -111,6 +111,7 @@ export default function DashboardBotellon() {
       const jsonQuito = await resQuito.json();
       const jsonWeb = await resWeb.json();
 
+      // El backend ya filtra por visibilidad (módulo/sección/canal); el front refleja.
       setBotellones(jsonDash.botellones);
       setEmpresasData(jsonEmp);
       setQuitoData(jsonQuito);

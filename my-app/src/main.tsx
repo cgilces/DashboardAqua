@@ -40,7 +40,6 @@ import DetalleClientesCafePage from "./pages/pagesCafe/DetalleClientesCafePage";
 
 import DashboardRutasVisitas from "./pages/pagesRutasVisitas/DashboardRutasVisitas";
 
-import DashboardGerencia from "./pages/pagesGerencia/DashboardGerencia";
 import DashboardPromos from "./pages/pagesPromos/DashboardPromos";
 
 import { AuthProvider } from "./components/auth/AuthContext";
@@ -252,12 +251,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route
               path="/dashboard/crearusuarios"
               element={<CreacionUsuario/>}
-            />
-
-            {/* GERENCIA */}
-            <Route
-              path="/dashboard/gerencia"
-              element={<DashboardGerencia />}
             />
 
             {/* PROMOCIONES */}

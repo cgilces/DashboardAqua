@@ -220,20 +220,18 @@ const DashboardPlus: React.FC = () => {
           />
         )}
 
-        {isAdmin && (
-          <TablaPlusOdoo
-            anio={anioSeleccionado}
-            mes={mesSeleccionado}
-            onTotalesLoaded={(t) => {
-              setProyeccionDolares(t.monto);
-              setProyeccionUnidades(t.proyeccionUnidades);
-              setRealDolares(t.montoReal);
-              setRealUnidades(t.unidades);
-              setMesAnteriorCombinado(t.mesAnterior);
-              setMesAnteriorCombinadoUnid(t.mesAnteriorUnidades);
-            }}
-          />
-        )}
+        <TablaPlusOdoo
+          anio={anioSeleccionado}
+          mes={mesSeleccionado}
+          onTotalesLoaded={(t) => {
+            setProyeccionDolares(t.monto);
+            setProyeccionUnidades(t.proyeccionUnidades);
+            setRealDolares(t.montoReal);
+            setRealUnidades(t.unidades);
+            setMesAnteriorCombinado(t.mesAnterior);
+            setMesAnteriorCombinadoUnid(t.mesAnteriorUnidades);
+          }}
+        />
 
       </div>
     </DashboardLayout>

@@ -84,7 +84,9 @@ const login = async (req, res) => {
           ? Array.isArray(user.rutas_asignadas)
             ? user.rutas_asignadas
             : user.rutas_asignadas.split(',').map(r => r.trim())
-          : []
+          : [],
+        modulos_permitidos: Array.isArray(user.modulos_permitidos) ? user.modulos_permitidos : [],
+        modulo_secciones: (user.modulo_secciones && typeof user.modulo_secciones === 'object') ? user.modulo_secciones : {}
       },
       config.JWT_SECRET,
       {
@@ -112,6 +114,8 @@ const login = async (req, res) => {
             ? user.rutas_asignadas
             : user.rutas_asignadas.split(',').map(r => r.trim())
           : [],
+        modulos_permitidos: Array.isArray(user.modulos_permitidos) ? user.modulos_permitidos : [],
+        modulo_secciones: (user.modulo_secciones && typeof user.modulo_secciones === 'object') ? user.modulo_secciones : {},
         creado_en: user.creado_en
       },
       token

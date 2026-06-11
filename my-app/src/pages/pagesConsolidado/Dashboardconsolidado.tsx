@@ -1,16 +1,35 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
   AreaChart, Area,
 } from "recharts";
 import { BarChart2, TrendingUp, TrendingDown, DollarSign, Package, Users, FileText, Calendar } from "lucide-react";
+
+// MUI Icons (pestañas + secciones de Gerencia)
+import AssessmentIcon         from "@mui/icons-material/Assessment";
+import TrendingUpIcon         from "@mui/icons-material/TrendingUp";
+import EmojiEventsIcon        from "@mui/icons-material/EmojiEvents";
+import CreditCardIcon         from "@mui/icons-material/CreditCard";
+import PersonOffIcon          from "@mui/icons-material/PersonOff";
+import AttachMoneyIcon        from "@mui/icons-material/AttachMoney";
+import Inventory2Icon         from "@mui/icons-material/Inventory2";
+import PeopleIcon             from "@mui/icons-material/People";
+import WarningAmberIcon       from "@mui/icons-material/WarningAmber";
+import ErrorOutlineIcon       from "@mui/icons-material/ErrorOutline";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
+import AccountBalanceIcon     from "@mui/icons-material/AccountBalance";
+import PaymentsIcon           from "@mui/icons-material/Payments";
+import DonutLargeIcon         from "@mui/icons-material/DonutLarge";
+import WorkspacePremiumIcon   from "@mui/icons-material/WorkspacePremium";
+
 import DashboardLayout from "../../layout/DashboardLayout";
 import { Header } from "../../components/common/Header";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import { API_BASE_URL } from "../../config";
 
-// ── Types ──────────────────────────────────────────────────────
+// ── Types: Consolidado ─────────────────────────────────────────
 interface Empresa {
   empresa: string;
   color: string;
@@ -53,11 +72,23 @@ interface DatosConsolidado {
   porEmpresa:   Empresa[];
 }
 
+// ── Types: Gerencia (cobranza / vendedores / riesgo / márgenes) ──
+interface CobranzaRow { codigo_cliente:string; nombre_cliente:string; telefono_cliente:string; facturas_pendientes:number; saldo_total:number; fecha_mas_antigua:string; dias_vencido:number; estado:"CRITICO"|"ALERTA"|"OK" }
+interface CobranzaData { resumen:{total_cartera:number;clientes_criticos:number;clientes_alerta:number;clientes_ok:number}; detalle:CobranzaRow[] }
+interface Vendedor { nombre_vendedor:string; codigo_vendedor:string; clientes_visitados:number; pedidos:number; ventas_total:number; margen_total:number; clientes_con_pedido:number; tasa_cierre_pct:number; margen_pct:number }
+interface ClienteRiesgo { codigo_cliente:string; nombre_cliente:string; telefono_cliente:string; vendedor:string; ultima_fecha:string; dias_sin_comprar:number; total_facturas:number; ventas_acumuladas:number; ticket_promedio:number; estado:"PERDIDO"|"RIESGO"|"ALERTA" }
+interface MargenCanal { canal:string; ventas_total:number; margen_total:number; num_pedidos:number; margen_pct:number }
+interface MargenCategoria { categoria:string; ventas_total:number; margen_total:number; unidades:number; margen_pct:number }
+interface MargenData { porCanal:MargenCanal[]; porCategoria:MargenCategoria[]; resumen:{ totalVentas:number; totalMargen:number; margenGlobal:number } }
+interface RiesgoData { resumen:{ perdidos:number; en_riesgo:number; en_alerta:number; cartera_en_riesgo:number }; clientes:ClienteRiesgo[] }
+
 // ── Constants ──────────────────────────────────────────────────
 const MESES: Record<string, number> = {
   Enero:1, Febrero:2, Marzo:3, Abril:4, Mayo:5, Junio:6,
   Julio:7, Agosto:8, Septiembre:9, Octubre:10, Noviembre:11, Diciembre:12,
 };
+const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const CANAL_COLORS: Record<string, string> = {
   PREVENTA:    "#60a5fa",
   BOTELLONES:  "#34d399",
@@ -72,10 +103,23 @@ const CANAL_LABELS: Record<string, string> = {
   COTTSA:       "COTTSA",
   "DESC. ODOO":"Descartable",
 };
+const COLORS = ["#34d399","#60a5fa","#fbbf24","#a78bfa","#f87171","#38bdf8","#fb7185","#a3e635","#fb923c","#e879f9"];
+const ESTADO_CL: Record<string,string> = {
+  CRITICO:"bg-red-500/20 text-red-300 border-red-500/40",
+  ALERTA: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+  OK:     "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+  PERDIDO:"bg-red-500/20 text-red-300 border-red-500/40",
+  RIESGO: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+};
 
 // ── Helpers ─────────────────────────────────────────────────────
 const fmt  = (n: number) => n.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtI = (n: number) => n.toLocaleString("es-EC");
+const fmtK = (n: number) => {
+  if (n >= 1_000_000) return `$${(n/1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `$${(n/1_000).toFixed(1)}k`;
+  return `$${fmt(n)}`;
+};
 
 // ── Custom Tooltips ─────────────────────────────────────────────
 const TooltipBars = ({ active, payload, label }: any) => {
@@ -109,8 +153,17 @@ const TooltipHBar = ({ active, payload }: any) => {
     </div>
   );
 };
+const TipDol = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-[#012E24] border border-[#046C5E]/40 rounded-lg px-3 py-2 text-xs text-white shadow-xl">
+      <p className="font-bold mb-1">{label}</p>
+      {payload.map((p: any) => <p key={p.name} style={{color:p.color||p.fill}}>{p.name}: ${fmt(Number(p.value))}</p>)}
+    </div>
+  );
+};
 
-// ── KPI Card ────────────────────────────────────────────────────
+// ── KPI Card (vista General) ────────────────────────────────────
 const KpiCard = ({
   icon: Icon, label, value, sub, subColor = "text-gray-400", color = "text-white", accent = false
 }: any) => (
@@ -129,6 +182,24 @@ const KpiCard = ({
   </div>
 );
 
+// ── KPI Card (secciones Gerencia: con icono MUI + badge) ─────────
+function KpiCardG({ label, value, sub, color="text-white", icon, badge, badgeColor="text-emerald-300" }: {
+  label:string; value:string; sub?:string; color?:string;
+  icon?: React.ReactNode; badge?:string; badgeColor?:string;
+}) {
+  return (
+    <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/40 rounded-xl p-4 flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-widest text-gray-400">{label}</p>
+        {icon && <span className="text-gray-400">{icon}</span>}
+      </div>
+      <p className={`text-2xl font-extrabold leading-tight ${color}`}>{value}</p>
+      {badge && <span className={`self-start text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 border border-white/10 ${badgeColor}`}>{badge}</span>}
+      {sub && <p className="text-[11px] text-gray-500 leading-tight">{sub}</p>}
+    </div>
+  );
+}
+
 // ── Progress Bar ────────────────────────────────────────────────
 const MiniProgress = ({ value, color }: { value: number; color: string }) => (
   <div className="w-full bg-[#011f1a] rounded-full h-1.5 mt-1">
@@ -136,25 +207,59 @@ const MiniProgress = ({ value, color }: { value: number; color: string }) => (
   </div>
 );
 
+// ── Medallas (ranking vendedores) ──────────────────────────────
+function Medalla({ pos }: { pos: number }) {
+  if (pos === 0) return <WorkspacePremiumIcon sx={{ fontSize:18, color:"#fbbf24" }} />;
+  if (pos === 1) return <WorkspacePremiumIcon sx={{ fontSize:18, color:"#9ca3af" }} />;
+  if (pos === 2) return <WorkspacePremiumIcon sx={{ fontSize:18, color:"#b45309" }} />;
+  return <span className="text-gray-400 text-xs">{pos + 1}</span>;
+}
+
+// ── Tabs ────────────────────────────────────────────────────────
+const TABS = [
+  { id:"general",    label:"General",     icon: <AssessmentIcon  sx={{fontSize:16}}/> },
+  { id:"margenes",   label:"Márgenes",    icon: <TrendingUpIcon  sx={{fontSize:16}}/> },
+  { id:"vendedores", label:"Vendedores",  icon: <EmojiEventsIcon sx={{fontSize:16}}/> },
+  { id:"cobranza",   label:"Cobranza",    icon: <CreditCardIcon  sx={{fontSize:16}}/> },
+  { id:"riesgo",     label:"Riesgo Fuga", icon: <PersonOffIcon   sx={{fontSize:16}}/> },
+];
+
 // ── MAIN COMPONENT ───────────────────────────────────────────────
 export default function Dashboardconsolidado() {
   const hoy = new Date();
   const [mesSeleccionado,  setMesSeleccionado]  = useState(hoy.getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState(hoy.getFullYear());
-  const [datos,    setDatos]    = useState<DatosConsolidado | null>(null);
-  const [cargando, setCargando] = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
+  const [tab, setTab] = useState("general");
 
-  useEffect(() => {
+  const [datos,     setDatos]     = useState<DatosConsolidado | null>(null);
+  const [cobranza,  setCobranza]  = useState<CobranzaData | null>(null);
+  const [vendedores,setVendedores]= useState<Vendedor[]>([]);
+  const [riesgo,    setRiesgo]    = useState<RiesgoData | null>(null);
+  const [margen,    setMargen]    = useState<MargenData | null>(null);
+  const [cargando,  setCargando]  = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
+
+  const fetchAll = useCallback(() => {
     setCargando(true);
     setError(null);
-    setDatos(null);
-    fetch(`${API_BASE_URL}/api/consolidado/dashboard?anio=${anioSeleccionado}&mes=${mesSeleccionado}`)
-      .then(res => { if (!res.ok) throw new Error("Error al obtener datos"); return res.json(); })
-      .then(data => setDatos(data))
-      .catch(err => setError(err.message))
-      .finally(() => setCargando(false));
+    const qs = `anio=${anioSeleccionado}&mes=${mesSeleccionado}`;
+    const j = (u: string) => fetch(`${API_BASE_URL}${u}`).then(r => { if (!r.ok) throw new Error("Error de red"); return r.json(); });
+    Promise.all([
+      j(`/api/consolidado/dashboard?${qs}`).catch(() => { setError("Error al obtener datos consolidados"); return null; }),
+      j(`/api/gerencia/cobranza?${qs}`).catch(() => null),
+      j(`/api/gerencia/vendedores?${qs}`).catch(() => null),
+      j(`/api/gerencia/clientes-riesgo`).catch(() => null),
+      j(`/api/gerencia/margen?${qs}`).catch(() => null),
+    ]).then(([d, c, v, r, mg]) => {
+      setDatos(d);
+      setCobranza(c);
+      setVendedores(v?.vendedores || []);
+      setRiesgo(r);
+      setMargen(mg);
+    }).finally(() => setCargando(false));
   }, [mesSeleccionado, anioSeleccionado]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const { kpis, canales = [], tendencia = [], topProductos = [], topClientes = [], periodo, porEmpresa = [] } = datos || {};
 
@@ -187,14 +292,14 @@ export default function Dashboardconsolidado() {
         <Header />
 
         {/* ── HEADER ────────────────────────────────────────── */}
-        <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-8 border-b border-[#046C5E]/50 pb-5">
+        <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6 border-b border-[#046C5E]/50 pb-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
               <BarChart2 className="text-emerald-400 w-5 h-5" />
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Consolidado General</h1>
-              <p className="text-xs text-gray-400 tracking-wide">Grupo AQUA S.A. — {periodo?.label || "—"}</p>
+              <p className="text-xs text-gray-400 tracking-wide">Grupo AQUA S.A. — {periodo?.label || `${MESES_LABEL[mesSeleccionado]} ${anioSeleccionado}`}</p>
             </div>
           </div>
           <div className="flex justify-center w-full md:w-auto">
@@ -226,27 +331,41 @@ export default function Dashboardconsolidado() {
           </div>
         </header>
 
+        {/* ── TABS ──────────────────────────────────────────── */}
+        <div className="flex flex-wrap gap-1.5 mb-6 overflow-x-auto scroll-x-thin">
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition
+                ${tab === t.id
+                  ? "bg-emerald-600 text-white shadow"
+                  : "bg-[#012E24] border border-[#046C5E]/30 text-gray-400 hover:text-white hover:border-emerald-500/40"}`}>
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
+
         {/* ── LOADING ─────────────────────────────────────────── */}
         {cargando && (
           <div className="flex flex-col justify-center items-center py-32 gap-4">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400" />
-            <p className="text-gray-400 text-sm">Cargando datos consolidados…</p>
+            <p className="text-gray-400 text-sm">Cargando datos…</p>
           </div>
         )}
 
         {/* ── ERROR ───────────────────────────────────────────── */}
-        {error && (
+        {error && !cargando && (
           <div className="bg-red-900/20 border border-red-500 rounded-xl p-4 text-red-400 mb-6">
             Error: {error}
           </div>
         )}
 
-        {datos && !cargando && kpis && (
+        {/* ══════════════════════════════════════════════════════
+            PESTAÑA: GENERAL (Consolidado)
+        ══════════════════════════════════════════════════════ */}
+        {tab === "general" && datos && !cargando && kpis && (
           <>
-            {/* ══════════════════════════════════════════════════
-                KPI CARDS
-            ══════════════════════════════════════════════════ */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+            {/* KPI CARDS */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
               <KpiCard
                 icon={DollarSign}
                 label={periodo?.esMesActual ? "Proyección mes" : "Ventas mes"}
@@ -283,6 +402,13 @@ export default function Dashboardconsolidado() {
                 value={fmtI(kpis.totalClientes)}
                 sub="Con compras este mes"
                 color="text-purple-300"
+              />
+              <KpiCard
+                icon={TrendingUp}
+                label="Margen bruto"
+                value={margen?.resumen ? `$${fmt(margen.resumen.totalMargen)}` : "—"}
+                sub={margen?.resumen ? `${margen.resumen.margenGlobal}% sobre ventas` : "Sin datos de margen"}
+                color="text-emerald-400"
               />
             </div>
 
@@ -639,6 +765,258 @@ export default function Dashboardconsolidado() {
               </div>
             </div>
           </>
+        )}
+
+        {/* ══════════════════════════════════════════════════════
+            PESTAÑA: MÁRGENES
+        ══════════════════════════════════════════════════════ */}
+        {tab === "margenes" && !cargando && (
+          margen ? (
+            <section className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <KpiCardG label="Ventas Totales"  value={`$${fmt(margen.resumen.totalVentas)}`} color="text-white"       icon={<AttachMoneyIcon sx={{fontSize:18}}/>}/>
+                <KpiCardG label="Margen Bruto"    value={`$${fmt(margen.resumen.totalMargen)}`} color="text-emerald-300" icon={<TrendingUpIcon sx={{fontSize:18}}/>}/>
+                <KpiCardG label="% Margen Global" value={`${margen.resumen.margenGlobal}%`}
+                  color={margen.resumen.margenGlobal>=20?"text-emerald-300":"text-amber-300"} icon={<DonutLargeIcon sx={{fontSize:18}}/>}/>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <AssessmentIcon sx={{fontSize:14,color:"#9ca3af"}}/>
+                    <p className="text-xs text-gray-400 uppercase tracking-widest">Distribución por Canal</p>
+                  </div>
+                  {margen.porCanal.length>0 && (
+                    <>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <PieChart>
+                          <Pie data={margen.porCanal} dataKey="ventas_total" nameKey="canal"
+                            cx="50%" cy="50%" outerRadius={80} innerRadius={40}>
+                            {margen.porCanal.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                          </Pie>
+                          <Tooltip formatter={(v:number)=>`$${fmt(v)}`}
+                            contentStyle={{background:"#012E24",border:"1px solid #046C5E55",borderRadius:8,fontSize:12}}/>
+                          <Legend formatter={(v)=><span className="text-xs text-gray-300">{v}</span>}/>
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="mt-3 space-y-2">
+                        {margen.porCanal.map((c,i)=>(
+                          <div key={i} className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{background:COLORS[i%COLORS.length]}}/>
+                              <span className="text-gray-300">{c.canal}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-white font-bold">${fmt(Number(c.ventas_total))}</span>
+                              <span className={`font-bold ${Number(c.margen_pct)>=20?"text-emerald-400":"text-amber-400"}`}>{Number(c.margen_pct).toFixed(1)}%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Inventory2Icon sx={{fontSize:14,color:"#9ca3af"}}/>
+                    <p className="text-xs text-gray-400 uppercase tracking-widest">Top Categorías por Ventas</p>
+                  </div>
+                  <div className="space-y-2">
+                    {margen.porCategoria.slice(0,12).map((c,i)=>(
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-gray-500 w-4 shrink-0">{i+1}</span>
+                          <span className="text-gray-300 truncate">{c.categoria}</span>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 ml-2">
+                          <span className="text-white font-bold">${fmt(Number(c.ventas_total))}</span>
+                          <span className={`font-bold w-12 text-right ${Number(c.margen_pct)>=20?"text-emerald-400":"text-amber-400"}`}>{Number(c.margen_pct).toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    ))}
+                    {margen.porCategoria.length===0&&<p className="text-center py-8 text-gray-400">Sin datos de categorías.</p>}
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <p className="text-gray-400 text-center py-16">No se pudieron cargar los datos de márgenes.</p>
+          )
+        )}
+
+        {/* ══════════════════════════════════════════════════════
+            PESTAÑA: VENDEDORES
+        ══════════════════════════════════════════════════════ */}
+        {tab === "vendedores" && !cargando && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2">
+              <EmojiEventsIcon sx={{fontSize:14,color:"#9ca3af"}}/>
+              <p className="text-xs text-gray-400 uppercase tracking-widest">Eficiencia de Vendedores — {MESES_LABEL[mesSeleccionado]} {anioSeleccionado}</p>
+            </div>
+            {vendedores.length>0 && (
+              <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl p-4">
+                <p className="text-xs text-gray-400 uppercase tracking-widest mb-3">Ventas por Vendedor</p>
+                <ResponsiveContainer width="100%" height={Math.max(200, vendedores.length*28)}>
+                  <BarChart data={vendedores.slice(0,15)} layout="vertical" margin={{top:0,right:20,left:90,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#046C5E22" horizontal={false}/>
+                    <XAxis type="number" tick={{fill:"#9ca3af",fontSize:10}} tickFormatter={v=>fmtK(v)}/>
+                    <YAxis type="category" dataKey="nombre_vendedor" tick={{fill:"#9ca3af",fontSize:10}} width={85}/>
+                    <Tooltip content={<TipDol/>}/>
+                    <Bar dataKey="ventas_total" name="Ventas" radius={[0,4,4,0]}>
+                      {vendedores.slice(0,15).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="bg-[#014434] text-[10px] uppercase text-green-300">
+                      <th className="px-3 py-3 text-left">N°</th>
+                      <th className="px-3 py-3 text-left">Vendedor</th>
+                      <th className="px-3 py-3 text-right">Visit.</th>
+                      <th className="px-3 py-3 text-right">Pedidos</th>
+                      <th className="px-3 py-3 text-right">Ventas $</th>
+                      <th className="px-3 py-3 text-right">Margen $</th>
+                      <th className="px-3 py-3 text-right">Margen %</th>
+                      <th className="px-3 py-3 text-right">Tasa Cierre</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vendedores.length===0
+                      ? <tr><td colSpan={8} className="text-center py-12 text-gray-400">Sin datos de vendedores.</td></tr>
+                      : vendedores.map((v,i)=>(
+                        <tr key={v.codigo_vendedor||i}
+                          className={`${i===0?"bg-amber-900/20 border-l-2 border-amber-500":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#025940] transition`}>
+                          <td className="px-3 py-2"><Medalla pos={i}/></td>
+                          <td className="px-3 py-2"><p className="font-semibold text-white">{v.nombre_vendedor}</p><p className="text-[10px] text-blue-400 font-mono">{v.codigo_vendedor}</p></td>
+                          <td className="px-3 py-2 text-right text-white">{fmtI(v.clientes_visitados)}</td>
+                          <td className="px-3 py-2 text-right text-white">{fmtI(v.pedidos)}</td>
+                          <td className="px-3 py-2 text-right font-bold text-emerald-300">${fmt(Number(v.ventas_total))}</td>
+                          <td className="px-3 py-2 text-right text-blue-300">${fmt(Number(v.margen_total))}</td>
+                          <td className="px-3 py-2 text-right"><span className={`font-bold ${Number(v.margen_pct)>=20?"text-emerald-400":Number(v.margen_pct)>=10?"text-amber-400":"text-red-400"}`}>{Number(v.margen_pct).toFixed(1)}%</span></td>
+                          <td className="px-3 py-2 text-right"><span className={`font-bold ${Number(v.tasa_cierre_pct)>=60?"text-emerald-400":Number(v.tasa_cierre_pct)>=30?"text-amber-400":"text-red-400"}`}>{Number(v.tasa_cierre_pct).toFixed(1)}%</span></td>
+                        </tr>
+                      ))
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ══════════════════════════════════════════════════════
+            PESTAÑA: COBRANZA
+        ══════════════════════════════════════════════════════ */}
+        {tab === "cobranza" && !cargando && (
+          cobranza ? (
+            <section className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <KpiCardG label="Total Cartera"     value={`$${fmt(cobranza.resumen.total_cartera)}`}  color="text-red-300"     icon={<AccountBalanceIcon sx={{fontSize:18}}/>}/>
+                <KpiCardG label="Clientes Críticos" value={String(cobranza.resumen.clientes_criticos)} color="text-red-300"     icon={<ErrorOutlineIcon sx={{fontSize:18}}/>} sub="> 45 días vencido"/>
+                <KpiCardG label="En Alerta"         value={String(cobranza.resumen.clientes_alerta)}   color="text-amber-300"   icon={<WarningAmberIcon sx={{fontSize:18}}/>} sub="> 20 días vencido"/>
+                <KpiCardG label="Al Día"            value={String(cobranza.resumen.clientes_ok)}       color="text-emerald-300" icon={<CheckCircleOutlineIcon sx={{fontSize:18}}/>}/>
+              </div>
+              <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="bg-[#014434] text-[10px] uppercase text-green-300">
+                        <th className="px-3 py-3 text-left">N°</th>
+                        <th className="px-3 py-3 text-left">Cliente</th>
+                        <th className="px-3 py-3 text-center">Teléfono</th>
+                        <th className="px-3 py-3 text-right">Facturas</th>
+                        <th className="px-3 py-3 text-right">Saldo Total</th>
+                        <th className="px-3 py-3 text-center">Venc. + Antigua</th>
+                        <th className="px-3 py-3 text-right">Días Vencido</th>
+                        <th className="px-3 py-3 text-center">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cobranza.detalle.length===0
+                        ? <tr><td colSpan={8} className="text-center py-12 text-gray-400">Sin cartera pendiente.</td></tr>
+                        : cobranza.detalle.map((r,i)=>(
+                          <tr key={r.codigo_cliente||i}
+                            className={`${r.estado==="CRITICO"?"bg-red-900/20":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#025940] transition`}>
+                            <td className="px-3 py-2 text-gray-400 text-xs">{i+1}</td>
+                            <td className="px-3 py-2"><p className="font-semibold text-white">{r.nombre_cliente}</p><p className="text-[10px] text-blue-400 font-mono">{r.codigo_cliente}</p></td>
+                            <td className="px-3 py-2 text-center text-gray-300 text-xs">{r.telefono_cliente||"—"}</td>
+                            <td className="px-3 py-2 text-right text-white">{r.facturas_pendientes}</td>
+                            <td className="px-3 py-2 text-right font-bold text-red-300">${fmt(Number(r.saldo_total))}</td>
+                            <td className="px-3 py-2 text-center text-gray-400 text-xs">{r.fecha_mas_antigua?new Date(r.fecha_mas_antigua).toLocaleDateString("es-EC"):"—"}</td>
+                            <td className={`px-3 py-2 text-right font-extrabold text-lg ${r.dias_vencido>45?"text-red-400":r.dias_vencido>20?"text-amber-400":"text-emerald-400"}`}>{r.dias_vencido}d</td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ESTADO_CL[r.estado]||""}`}>{r.estado}</span>
+                            </td>
+                          </tr>
+                        ))
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <p className="text-gray-400 text-center py-16">No se pudieron cargar los datos de cobranza.</p>
+          )
+        )}
+
+        {/* ══════════════════════════════════════════════════════
+            PESTAÑA: RIESGO DE FUGA
+        ══════════════════════════════════════════════════════ */}
+        {tab === "riesgo" && !cargando && (
+          riesgo ? (
+            <section className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <KpiCardG label="Clientes Perdidos" value={String(riesgo.resumen.perdidos)}   color="text-red-300"     icon={<ErrorOutlineIcon sx={{fontSize:18}}/>} sub="> 60 días sin comprar"/>
+                <KpiCardG label="En Riesgo"         value={String(riesgo.resumen.en_riesgo)}  color="text-amber-300"   icon={<WarningAmberIcon sx={{fontSize:18}}/>} sub="> 30 días sin comprar"/>
+                <KpiCardG label="En Alerta"         value={String(riesgo.resumen.en_alerta)}  color="text-yellow-300"  icon={<NotificationsActiveIcon sx={{fontSize:18}}/>} sub="= 30 días sin comprar"/>
+                <KpiCardG label="Cartera en Riesgo" value={`$${fmt(riesgo.resumen.cartera_en_riesgo)}`} color="text-red-300" icon={<PaymentsIcon sx={{fontSize:18}}/>}/>
+              </div>
+              <div className="bg-gradient-to-br from-[#012E24] to-[#013d30] border border-[#046C5E]/30 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="bg-[#014434] text-[10px] uppercase text-green-300">
+                        <th className="px-3 py-3 text-left">N°</th>
+                        <th className="px-3 py-3 text-left">Cliente</th>
+                        <th className="px-3 py-3 text-left">Vendedor</th>
+                        <th className="px-3 py-3 text-center">Última Compra</th>
+                        <th className="px-3 py-3 text-right">Días Sin Comprar</th>
+                        <th className="px-3 py-3 text-right">Facturas</th>
+                        <th className="px-3 py-3 text-right">Ventas Históricas</th>
+                        <th className="px-3 py-3 text-right">Ticket Prom.</th>
+                        <th className="px-3 py-3 text-center">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {riesgo.clientes.length===0
+                        ? <tr><td colSpan={9} className="text-center py-12 text-gray-400">No hay clientes en riesgo.</td></tr>
+                        : riesgo.clientes.map((c,i)=>(
+                          <tr key={c.codigo_cliente||i}
+                            className={`${c.estado==="PERDIDO"?"bg-red-900/20":c.estado==="RIESGO"?"bg-amber-900/10":i%2===0?"bg-[#013d32]":"bg-[#014f3e]"} hover:bg-[#025940] transition`}>
+                            <td className="px-3 py-2 text-gray-400 text-xs">{i+1}</td>
+                            <td className="px-3 py-2"><p className="font-semibold text-white">{c.nombre_cliente}</p><p className="text-[10px] text-blue-400 font-mono">{c.codigo_cliente}</p>{c.telefono_cliente&&<p className="text-[10px] text-gray-400">{c.telefono_cliente}</p>}</td>
+                            <td className="px-3 py-2 text-gray-300 text-xs">{c.vendedor||"—"}</td>
+                            <td className="px-3 py-2 text-center text-gray-400 text-xs">{c.ultima_fecha?new Date(c.ultima_fecha).toLocaleDateString("es-EC"):"—"}</td>
+                            <td className={`px-3 py-2 text-right font-extrabold text-lg ${c.dias_sin_comprar>60?"text-red-400":c.dias_sin_comprar>30?"text-amber-400":"text-yellow-400"}`}>{c.dias_sin_comprar}d</td>
+                            <td className="px-3 py-2 text-right text-white">{c.total_facturas}</td>
+                            <td className="px-3 py-2 text-right text-emerald-300 font-bold">${fmt(Number(c.ventas_acumuladas))}</td>
+                            <td className="px-3 py-2 text-right text-gray-300">${fmt(Number(c.ticket_promedio))}</td>
+                            <td className="px-3 py-2 text-center"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ESTADO_CL[c.estado]||""}`}>{c.estado}</span></td>
+                          </tr>
+                        ))
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <p className="text-gray-400 text-center py-16">No se pudieron cargar los datos de riesgo.</p>
+          )
         )}
       </div>
     </DashboardLayout>
