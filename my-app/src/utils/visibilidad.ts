@@ -60,6 +60,13 @@ export const SECCIONES_POR_MODULO: Record<string, { key: string; label: string }
     { key: "TELEVENTA_VIP", label: "Televenta VIP" },
     { key: "WEBSITE", label: "Website" },
   ],
+  "/dashboard/preventa": [
+    { key: "TIENDAS", label: "Tiendas / Preventa (PV, TV)" },
+    { key: "RURAL", label: "Rural (R)" },
+    { key: "DOMICILIO", label: "Domicilio (A)" },
+    { key: "MAYORISTA", label: "Mayorista (M)" },
+    { key: "VIP", label: "VIP (V)" },
+  ],
 };
 
 // Primer módulo al que debe entrar un no-admin según su canal (para la redirección
