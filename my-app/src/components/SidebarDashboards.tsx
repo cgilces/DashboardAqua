@@ -6,7 +6,6 @@ import { BarChart, Menu, Close } from "@mui/icons-material";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import GroupAddIcon from "@mui/icons-material/GroupAdd";
-import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 
 import { useAuth } from "../components/auth/AuthContext";
@@ -26,7 +25,6 @@ type MenuItem = {
 
 const ALL_MENU_ITEMS: MenuItem[] = [
   { name: "CONSOLIDADO",   icon: <BarChart />,                                        path: "/dashboard/consolidado",   roles: ["ADMIN"] },
-  { name: "GERENCIA",      icon: <LeaderboardIcon />,                                 path: "/dashboard/gerencia",      roles: ["ADMIN"] },
   { name: "BOTELLÓN",      icon: <img src={botellon}           alt="botellon"    />,  path: "/dashboard/botellon",      roles: ["ADMIN"] },
   { name: "DESCARTABLE",   icon: <img src={botelladescartable} alt="descartable" />,  path: "/dashboard/preventa",      roles: ["ADMIN", "SUPERVISOR"] },
   { name: "HIELO",         icon: <img src={imagenhielo}        alt="hielo"       />,  path: "/dashboard/hielo",         roles: ["ADMIN"] },
