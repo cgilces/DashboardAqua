@@ -18,7 +18,7 @@ import BotonActualizarSincronizacion from "../../components/elements/BotonActual
 import { DeleteIcon, EditIcon } from "lucide-react";
 import { useAuth } from "../../components/auth/AuthContext";
 import { API_BASE_URL } from '../../config';
-import { MODULOS_ASIGNABLES } from "../../utils/visibilidad";
+import { MODULOS_ASIGNABLES, SECCIONES_POR_MODULO } from "../../utils/visibilidad";
 
 interface User {
     id: number;
@@ -26,6 +26,7 @@ interface User {
     role: string;
     routes: string[];
     modules: string[];
+    moduleSections: Record<string, string[]>;
 }
 
 // ─── Tipos alerta ─────────────────────────────────────
@@ -196,6 +197,7 @@ const CreacionUsuario: React.FC = () => {
     const [role, setRole] = useState("VENDEDOR");
     const [assignedRoutes, setAssignedRoutes] = useState<string[]>([]);
     const [allowedModules, setAllowedModules] = useState<string[]>([]);
+    const [moduleSections, setModuleSections] = useState<Record<string, string[]>>({});
     const [tempRoute, setTempRoute] = useState("");
     const [editingUserId, setEditingUserId] = useState<number | null>(null);
     const [saving, setSaving] = useState(false);
@@ -215,6 +217,7 @@ const CreacionUsuario: React.FC = () => {
                 id: u.id, username: u.usuario, role: u.rol,
                 routes: Array.isArray(u.rutas_asignadas) ? u.rutas_asignadas : [],
                 modules: Array.isArray(u.modulos_permitidos) ? u.modulos_permitidos : [],
+                moduleSections: (u.modulo_secciones && typeof u.modulo_secciones === "object") ? u.modulo_secciones : {},
             })));
         } catch (err: any) {
             showAlert(err.message || "Error cargando usuarios", "error");
@@ -240,7 +243,7 @@ const CreacionUsuario: React.FC = () => {
     // ── Formulario helpers ────────────────────────────
     const resetForm = () => {
         setUsername(""); setPassword(""); setRole("VENDEDOR");
-        setAssignedRoutes([]); setAllowedModules([]); setEditingUserId(null);
+        setAssignedRoutes([]); setAllowedModules([]); setModuleSections({}); setEditingUserId(null);
     };
 
     const addRoute = () => {
@@ -249,11 +252,28 @@ const CreacionUsuario: React.FC = () => {
     };
 
     const toggleModule = (path: string) =>
-        setAllowedModules(p => p.includes(path) ? p.filter(x => x !== path) : [...p, path]);
+        setAllowedModules(p => {
+            if (p.includes(path)) {
+                // Al quitar un módulo, también se limpian sus secciones.
+                setModuleSections(s => { const c = { ...s }; delete c[path]; return c; });
+                return p.filter(x => x !== path);
+            }
+            return [...p, path];
+        });
+
+    const toggleSeccion = (modulePath: string, key: string) =>
+        setModuleSections(s => {
+            const cur = s[modulePath] ?? [];
+            const next = cur.includes(key) ? cur.filter(x => x !== key) : [...cur, key];
+            const c = { ...s };
+            if (next.length) c[modulePath] = next; else delete c[modulePath];
+            return c;
+        });
 
     const handleEditUser = (u: User) => {
         setEditingUserId(u.id); setUsername(u.username);
-        setRole(u.role); setAssignedRoutes(u.routes); setAllowedModules(u.modules ?? []); setPassword("");
+        setRole(u.role); setAssignedRoutes(u.routes); setAllowedModules(u.modules ?? []);
+        setModuleSections(u.moduleSections ?? {}); setPassword("");
     };
 
     // ── POST /crear  |  PUT /editar/:id ──────────────
@@ -267,6 +287,7 @@ const CreacionUsuario: React.FC = () => {
             rutas_asignadas: assignedRoutes,
             // ADMIN ve todo: no se guardan privilegios explícitos para ese rol.
             modulos_permitidos: role === "ADMIN" ? [] : allowedModules,
+            modulo_secciones: role === "ADMIN" ? {} : moduleSections,
         };
         if (password.trim()) body.clave = password.trim();
 
@@ -568,17 +589,41 @@ const CreacionUsuario: React.FC = () => {
                                             Marca lo que este usuario puede ver. Si no marcas nada, se usan los permisos
                                             por defecto de su rol/canal.
                                         </p>
-                                        <div className="grid grid-cols-1 gap-1 p-2.5 rounded-xl bg-white/5 border border-[#2d6b52]/30 max-h-56 overflow-y-auto">
-                                            {MODULOS_ASIGNABLES.map(m => (
-                                                <label key={m.path}
-                                                    className="flex items-center gap-2 text-sm text-[#e8f5f0] cursor-pointer px-1.5 py-1 rounded-lg hover:bg-white/5 transition-colors">
-                                                    <input type="checkbox"
-                                                        checked={allowedModules.includes(m.path)}
-                                                        onChange={() => toggleModule(m.path)}
-                                                        className="accent-emerald-500 w-4 h-4" />
-                                                    {m.label}
-                                                </label>
-                                            ))}
+                                        <div className="grid grid-cols-1 gap-1 p-2.5 rounded-xl bg-white/5 border border-[#2d6b52]/30 max-h-72 overflow-y-auto">
+                                            {MODULOS_ASIGNABLES.map(m => {
+                                                const marcado = allowedModules.includes(m.path);
+                                                const secciones = SECCIONES_POR_MODULO[m.path] ?? [];
+                                                const seleccionadas = moduleSections[m.path] ?? [];
+                                                return (
+                                                    <div key={m.path}>
+                                                        <label className="flex items-center gap-2 text-sm text-[#e8f5f0] cursor-pointer px-1.5 py-1 rounded-lg hover:bg-white/5 transition-colors">
+                                                            <input type="checkbox"
+                                                                checked={marcado}
+                                                                onChange={() => toggleModule(m.path)}
+                                                                className="accent-emerald-500 w-4 h-4" />
+                                                            {m.label}
+                                                        </label>
+                                                        {/* Submenú de secciones (solo si el módulo está marcado y tiene secciones) */}
+                                                        {marcado && secciones.length > 0 && (
+                                                            <div className="ml-6 mb-1 pl-2 border-l border-[#2d6b52]/40">
+                                                                <p className="text-[10px] text-white/30 py-0.5">
+                                                                    Secciones (vacío = todo el módulo):
+                                                                </p>
+                                                                {secciones.map(s => (
+                                                                    <label key={s.key}
+                                                                        className="flex items-center gap-2 text-xs text-[#cfe9df] cursor-pointer px-1 py-0.5 rounded hover:bg-white/5">
+                                                                        <input type="checkbox"
+                                                                            checked={seleccionadas.includes(s.key)}
+                                                                            onChange={() => toggleSeccion(m.path, s.key)}
+                                                                            className="accent-emerald-500 w-3.5 h-3.5" />
+                                                                        {s.label}
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}

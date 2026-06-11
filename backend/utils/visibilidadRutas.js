@@ -72,4 +72,40 @@ function filtroVisibilidad(user) {
   };
 }
 
-module.exports = { canalDeRuta, filtroVisibilidad };
+// ════════════════════════════════════════════════════════════════════════════
+// VISIBILIDAD POR MÓDULO / SECCIÓN (privilegios finos desde la UI)
+//
+// Por usuario se guardan:
+//   - modulos_permitidos: string[]            → qué módulos abre.
+//   - modulo_secciones:   { [modulo]: string[] } → qué secciones ve por módulo.
+//
+// Reglas (precedencia) para un módulo dado:
+//   1) ADMIN                              → ve TODO.
+//   2) modulo_secciones[modulo] con items → solo esas secciones.
+//   3) módulo en modulos_permitidos       → ve TODO el módulo (concedido sin filtro).
+//   4) si no hay nada explícito           → default por CANAL de las rutas.
+// ════════════════════════════════════════════════════════════════════════════
+function permisosModulo(user, modulePath) {
+  const rol = norm(user && user.rol);
+  if (rol === "ADMIN") return { modo: "todo" };
+
+  const modulos = Array.isArray(user && user.modulos_permitidos) ? user.modulos_permitidos : [];
+  const secMap = (user && user.modulo_secciones) || {};
+  const secs = Array.isArray(secMap[modulePath]) ? secMap[modulePath] : [];
+
+  if (secs.length) return { modo: "secciones", secciones: new Set(secs) };
+  if (modulos.includes(modulePath)) return { modo: "todo" };
+  return { modo: "canal" };
+}
+
+// ¿Puede el usuario ver esta sección del módulo? `canal` = canal de ruta de la
+// sección (para el fallback por canal). `seccionKey` = clave de la sección.
+function permiteSeccion(user, modulePath, seccionKey, canal) {
+  const pm = permisosModulo(user, modulePath);
+  if (pm.modo === "todo") return true;
+  if (pm.modo === "secciones") return pm.secciones.has(seccionKey);
+  // modo "canal" → auto-scope por el canal de las rutas asignadas
+  return filtroVisibilidad(user).permiteCanal(canal);
+}
+
+module.exports = { canalDeRuta, filtroVisibilidad, permisosModulo, permiteSeccion };

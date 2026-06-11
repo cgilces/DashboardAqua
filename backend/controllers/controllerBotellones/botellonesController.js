@@ -8,7 +8,8 @@ const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
 const MetaPreventa = require("../../models/metaPreventa");
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
-const { filtroVisibilidad } = require('../../utils/visibilidadRutas');
+const { filtroVisibilidad, permiteSeccion } = require('../../utils/visibilidadRutas');
+const MODULO_BOTELLON = '/dashboard/botellon';
 
 // Secciones que tienen metas configurables (solo autoventas)
 const SECCIONES_CON_METAS = ["TIENDAS_VIP", "TIENDAS", "MAYORISTA", "RURAL"];
@@ -599,8 +600,9 @@ ORDER BY codigo;
   const numFacturas = Number(countsRes[0]?.num_facturas || 0);
   const numOrdenes = Number(countsRes[0]?.num_ordenes || 0);
 
-  // ── Filtrar por visibilidad (VENDEDOR=ruta exacta · SUPERVISOR=canal) ──
-  if (vis && vis.restringe) {
+  // ── Filtrar filas solo para VENDEDOR (ruta exacta). El SUPERVISOR ve toda la
+  //    tabla del grupo/canal que ya se le permitió mostrar. ──
+  if (vis && vis.rol === 'VENDEDOR') {
     actual = actual.filter(r => vis.permite(r.codigo));
     anterior = anterior.filter(r => vis.permite(r.codigo));
   }
@@ -805,9 +807,9 @@ const obtenerDashboardBotellones = async (req, res) => {
     const botellones = {};
 
     for (const nombre of Object.keys(GRUPOS)) {
-      // Visibilidad por canal: omitir grupos que no pertenecen al canal del usuario
-      // (SUPERVISOR/VENDEDOR). ADMIN ve todos.
-      if (vis.restringe && !vis.permiteCanal(GRUPOS[nombre].canal)) continue;
+      // Visibilidad por módulo/sección: el ADMIN ve todo; el resto ve la sección
+      // solo si se le concedió (sección explícita, módulo completo, o por canal).
+      if (!permiteSeccion(req.user, MODULO_BOTELLON, nombre, GRUPOS[nombre].canal)) continue;
 
       const metasConfigMap = SECCIONES_CON_METAS.includes(nombre)
         ? (metasPorSeccion[nombre] || {})
@@ -1151,9 +1153,8 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
 ====================================================== */
 const obtenerEmpresasConsolidado = async (req, res) => {
   try {
-    // Visibilidad: EMPRESAS es canal 'E'. Si el usuario no lo ve, no enviar datos.
-    const vis = filtroVisibilidad(req.user);
-    if (vis.restringe && !vis.permiteCanal('E')) return res.json(null);
+    // Visibilidad: sección EMPRESAS (canal 'E') del módulo botellón.
+    if (!permiteSeccion(req.user, MODULO_BOTELLON, 'EMPRESAS', 'E')) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
@@ -2762,9 +2763,8 @@ const buildConsolidadoResponse = (actual, anterior, esMesActual, diasTrans, dias
 
 const obtenerQuitoConsolidado = async (req, res) => {
   try {
-    // Visibilidad: QUITO es canal 'U'. Si el usuario no lo ve, no enviar datos.
-    const vis = filtroVisibilidad(req.user);
-    if (vis.restringe && !vis.permiteCanal('U')) return res.json(null);
+    // Visibilidad: sección QUITO (canal 'U') del módulo botellón.
+    if (!permiteSeccion(req.user, MODULO_BOTELLON, 'QUITO', 'U')) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
@@ -2799,9 +2799,8 @@ const obtenerQuitoConsolidado = async (req, res) => {
 
 const obtenerWebsiteConsolidado = async (req, res) => {
   try {
-    // WEBSITE no es un canal de ruta → solo ADMIN.
-    const vis = filtroVisibilidad(req.user);
-    if (vis.restringe) return res.json(null);
+    // WEBSITE no es un canal de ruta → solo ADMIN o módulo botellón concedido completo.
+    if (!permiteSeccion(req.user, MODULO_BOTELLON, 'WEBSITE', '__ADMIN__')) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });

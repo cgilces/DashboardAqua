@@ -33,6 +33,12 @@ const AppUser = sequelize.define('AppUser', {
     type: DataTypes.ARRAY(DataTypes.STRING),
     defaultValue: [],
   },
+  // Secciones permitidas por módulo: { "/dashboard/botellon": ["TIENDAS"], ... }.
+  // Módulo concedido sin secciones aquí = ve todo ese módulo.
+  modulo_secciones: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+  },
   creado_en: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,

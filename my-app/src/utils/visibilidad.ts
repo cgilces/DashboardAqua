@@ -44,6 +44,24 @@ export const MODULOS_ASIGNABLES: { path: string; label: string }[] = [
   { path: "/dashboard/clientes", label: "Clientes" },
 ];
 
+// Secciones seleccionables dentro de cada módulo (submenú de privilegios).
+// Si un módulo no aparece aquí, no tiene sub-secciones → concederlo = ver todo.
+// Si se concede el módulo pero NO se marca ninguna sección → también ve todo.
+export const SECCIONES_POR_MODULO: Record<string, { key: string; label: string }[]> = {
+  "/dashboard/botellon": [
+    { key: "TIENDAS", label: "Tiendas (T)" },
+    { key: "TIENDAS_VIP", label: "Tiendas VIP (TV)" },
+    { key: "MAYORISTA", label: "Mayorista (M)" },
+    { key: "RURAL", label: "Rural (R)" },
+    { key: "DOMICILIO", label: "Domicilio (A)" },
+    { key: "EMPRESAS", label: "Empresas (E)" },
+    { key: "QUITO", label: "Quito (U)" },
+    { key: "VIP", label: "VIP" },
+    { key: "TELEVENTA_VIP", label: "Televenta VIP" },
+    { key: "WEBSITE", label: "Website" },
+  ],
+};
+
 // Primer módulo al que debe entrar un no-admin según su canal (para la redirección
 // post-login). Si no calza ningún canal, cae en Clientes (abierto a todos).
 export function moduloInicial(rutas?: string[] | null): string {
