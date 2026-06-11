@@ -2,6 +2,29 @@
 
 Fuente de verdad del backlog. Solo se trabajan tareas en `[ ]`. Al entregar, marcar `[x]` con la rama/PR.
 
+## Visibilidad por rol/canal en todo el dashboard (rama: `feature/visibilidad-por-rol-canal`)
+
+Regla: ADMIN ve todo · SUPERVISOR ve toda la tabla del/los CANAL(es) de sus rutas
+asignadas (basta una ruta del canal) · VENDEDOR ve solo su(s) ruta(s) exactas ·
+CLIENTES abierto a todos. Canal = letras iniciales del código (T1→T, TV1→TV, distingue
+T de TV). Antes solo se filtraba a VENDEDOR por ruta exacta; ADMIN/SUPERVISOR veían todo.
+
+- [x] **Helper backend** `utils/visibilidadRutas.js` (`canalDeRuta`, `filtroVisibilidad`):
+      fuente única del filtrado. ADMIN no restringe; SUPERVISOR por canal; VENDEDOR exacto.
+- [x] **Controladores** refactorizados al helper (sin cambiar ADMIN/VENDEDOR, agregando
+      canal de SUPERVISOR): Botellón (`botellonesController`), Preventa/Descartable
+      (`ventasController`, 3 sitios), Hielo (`hieloController`).
+- [x] **Helper frontend** `utils/visibilidad.ts` (espejo) + **menú por canal** en
+      `SidebarDashboards` (módulos con `canales`; Clientes `abiertoATodos`) + **redirección
+      post-login** del VENDEDOR al módulo de su canal (`moduloInicial`).
+- [x] Verificado: `node --check` (helper + 3 controladores), `tsc -p tsconfig.app.json`,
+      `vite build` (exit 0). Pendiente: prueba real con usuarios SUPERVISOR/VENDEDOR + PR.
+- [ ] **Fase 2 (requiere input del usuario)**: mapeo canal→módulo de Plus/Café/Visitas/
+      Consolidado (qué prefijos de ruta los alimentan) + filtrado de datos en esos módulos.
+      Confirmar solapes de prefijos (TV/M/R aparecen en Botellón y Preventa).
+- [ ] **Endurecimiento**: las rutas de `main.tsx` no tienen guard por rol (solo el menú
+      oculta); un no-admin podría navegar por URL a un módulo aún sin filtro. Agregar guard.
+
 ## Promociones — Analítica por prendedor + IA (rama: `feature/promos-analitica-prendedor`)
 
 Contexto: el web-service de MobilVendor NO expone `users_in_promos` (confirmado: "Schema not found").

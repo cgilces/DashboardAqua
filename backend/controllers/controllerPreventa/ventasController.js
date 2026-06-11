@@ -9,6 +9,7 @@ const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { filtroVisibilidad } = require('../../utils/visibilidadRutas');
 
 // ==========================================
 //  SOLO RUTAS DE PREVENTA PERMITIDAS
@@ -1065,10 +1066,8 @@ const obtenerDatosDashboard = async (req, res) => {
     if (isNaN(anioNum) || isNaN(mesNum) || mesNum < 1 || mesNum > 12)
       return res.status(400).json({ error: "Parámetros anio/mes inválidos." });
 
-    // ── Filtro por rutas si el usuario es VENDEDOR ─────────────
-    const rutasPermitidas = req.user?.rol === 'VENDEDOR' && Array.isArray(req.user.rutas_asignadas) && req.user.rutas_asignadas.length > 0
-      ? req.user.rutas_asignadas.map(r => r.toUpperCase())
-      : null;
+    // ── Visibilidad por rol/canal (ADMIN=todo · SUPERVISOR=canal · VENDEDOR=ruta) ──
+    const vis = filtroVisibilidad(req.user);
 
     const resumenActual     = await calcularKPIsMes(anioNum, mesNum);
     const objetivosGerencia = await obtenerObjetivosGerencia(anioNum, mesNum);
@@ -1138,12 +1137,12 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     });
 
-    // ── Aplicar filtro de rutas si VENDEDOR ───────────────────────
-    if (rutasPermitidas) {
+    // ── Aplicar visibilidad (VENDEDOR=ruta exacta · SUPERVISOR=canal) ──
+    if (vis.restringe) {
       resumenActual.rankingPreventas = (resumenActual.rankingPreventas || [])
-        .filter(r => rutasPermitidas.includes((r.preventa || '').toUpperCase()));
+        .filter(r => vis.permite(r.preventa));
       resumenActual.rankingRutasR = (resumenActual.rankingRutasR || [])
-        .filter(r => rutasPermitidas.includes((r.usuario || '').toUpperCase()));
+        .filter(r => vis.permite(r.usuario));
     }
 
     // ── Descartable con comparativa (usa fecha fin dinámica internamente) ──
@@ -1161,11 +1160,11 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     });
 
-    // ── Filtrar descartable por rutas si VENDEDOR ─────────────────
-    if (rutasPermitidas) {
+    // ── Filtrar descartable por visibilidad (ruta/canal) ─────────────────
+    if (vis.restringe) {
       Object.keys(ventasDescartableConComparativa).forEach(key => {
-        const sc = (ventasDescartableConComparativa[key]?.seller_code || key).toUpperCase();
-        if (!rutasPermitidas.includes(sc)) delete ventasDescartableConComparativa[key];
+        const sc = ventasDescartableConComparativa[key]?.seller_code || key;
+        if (!vis.permite(sc)) delete ventasDescartableConComparativa[key];
       });
     }
 
@@ -1221,10 +1220,10 @@ const obtenerDatosDashboard = async (req, res) => {
       };
     }
 
-    // ── Filtrar top clientes por rutas si VENDEDOR ────────────────
-    if (rutasPermitidas) {
+    // ── Filtrar top clientes por visibilidad (ruta/canal) ────────────────
+    if (vis.restringe) {
       resumenActual.topClientes = (resumenActual.topClientes || [])
-        .filter(c => rutasPermitidas.includes((c.preventa || c.ruta || '').toUpperCase()));
+        .filter(c => vis.permite(c.preventa || c.ruta));
     }
 
     const { _raw, clientesDetalle, topClientes: _tc, ...publicResumen } = resumenActual;

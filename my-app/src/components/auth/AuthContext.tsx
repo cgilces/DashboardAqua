@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../../types';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
+import { moduloInicial } from '../../utils/visibilidad';
 
 export type { User };
 
@@ -134,20 +135,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // ── Redirección según rol ──────────────────────
       if (loggedUser.role === "VENDEDOR") {
-        const ruta = Array.isArray(loggedUser.assigned_routes) && loggedUser.assigned_routes.length > 0
-          ? loggedUser.assigned_routes[0]
-          : null;
-
-        if (!ruta) {
+        const tieneRuta = Array.isArray(loggedUser.assigned_routes) && loggedUser.assigned_routes.length > 0;
+        if (!tieneRuta) {
           setError("Tu usuario no tiene rutas asignadas. Contacta al administrador.");
           setLoading(false);
           return;
         }
-
-        const now  = new Date();
-        const anio = now.getFullYear();
-        const mes  = now.getMonth() + 1;
-        navigate(`/dashboard/preventa`);
+        // Aterriza en el módulo de su canal (botellón/preventa/hielo) según su ruta.
+        navigate(moduloInicial(loggedUser.assigned_routes));
 
       } else if (loggedUser.role === "SUPERVISOR") {
         navigate('/dashboard/crearusuarios');
