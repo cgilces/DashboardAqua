@@ -9,7 +9,7 @@ const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
-const { filtroVisibilidad } = require('../../utils/visibilidadRutas');
+const { filtroVisibilidad, permisosModulo } = require('../../utils/visibilidadRutas');
 
 // ==========================================
 //  SOLO RUTAS DE PREVENTA PERMITIDAS
@@ -1067,7 +1067,9 @@ const obtenerDatosDashboard = async (req, res) => {
       return res.status(400).json({ error: "Parámetros anio/mes inválidos." });
 
     // ── Visibilidad por rol/canal (ADMIN=todo · SUPERVISOR=canal · VENDEDOR=ruta) ──
+    //    Si el módulo Preventa/Descartable se concedió completo → ve todo (sin filtro).
     const vis = filtroVisibilidad(req.user);
+    const verTodoPreventa = permisosModulo(req.user, '/dashboard/preventa').modo === 'todo';
 
     const resumenActual     = await calcularKPIsMes(anioNum, mesNum);
     const objetivosGerencia = await obtenerObjetivosGerencia(anioNum, mesNum);
@@ -1138,7 +1140,7 @@ const obtenerDatosDashboard = async (req, res) => {
     });
 
     // ── Aplicar visibilidad (VENDEDOR=ruta exacta · SUPERVISOR=canal) ──
-    if (vis.restringe) {
+    if (vis.restringe && !verTodoPreventa) {
       resumenActual.rankingPreventas = (resumenActual.rankingPreventas || [])
         .filter(r => vis.permite(r.preventa));
       resumenActual.rankingRutasR = (resumenActual.rankingRutasR || [])
@@ -1161,7 +1163,7 @@ const obtenerDatosDashboard = async (req, res) => {
     });
 
     // ── Filtrar descartable por visibilidad (ruta/canal) ─────────────────
-    if (vis.restringe) {
+    if (vis.restringe && !verTodoPreventa) {
       Object.keys(ventasDescartableConComparativa).forEach(key => {
         const sc = ventasDescartableConComparativa[key]?.seller_code || key;
         if (!vis.permite(sc)) delete ventasDescartableConComparativa[key];
@@ -1221,7 +1223,7 @@ const obtenerDatosDashboard = async (req, res) => {
     }
 
     // ── Filtrar top clientes por visibilidad (ruta/canal) ────────────────
-    if (vis.restringe) {
+    if (vis.restringe && !verTodoPreventa) {
       resumenActual.topClientes = (resumenActual.topClientes || [])
         .filter(c => vis.permite(c.preventa || c.ruta));
     }
