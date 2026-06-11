@@ -16,42 +16,53 @@ const SECCIONES_CON_METAS = ["TIENDAS_VIP", "TIENDAS", "MAYORISTA", "RURAL"];
 /* ======================================================
    CONFIGURACIÓN DE GRUPOS BOTELLÓN
 ====================================================== */
+// `canal` = canal de ruta al que pertenece el grupo (para visibilidad por rol).
+// '__ADMIN__' = grupo especial sin canal de ruta (solo lo ve ADMIN).
 const GRUPOS = {
   DOMICILIO: {
     campo: "o.route_code",
     filtro: "o.route_code ILIKE 'A%'",
+    canal: "A",
   },
   EMPRESAS: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'E%'",
+    canal: "E",
   },
   MAYORISTA: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'M%'",
+    canal: "M",
   },
   QUITO: {
     campo: "o.seller_code",
     filtro: "o.seller_code = 'U1'",
+    canal: "U",
   },
   RURAL: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'R%'",
+    canal: "R",
   },
   TELEVENTA_VIP: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE '148399%'",
+    canal: "__ADMIN__",
   },
   TIENDAS: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%'",
+    canal: "T",
   },
   TIENDAS_VIP: {
     campo: "o.seller_code",
     filtro: "o.seller_code ILIKE 'TV%'",
+    canal: "TV",
   },
   VIP: {
     campo: "f.codigo_tipo_negocio",
     filtro: "f.codigo_tipo_negocio = '29'",
+    canal: "__ADMIN__",
   },
 };
 
@@ -794,6 +805,10 @@ const obtenerDashboardBotellones = async (req, res) => {
     const botellones = {};
 
     for (const nombre of Object.keys(GRUPOS)) {
+      // Visibilidad por canal: omitir grupos que no pertenecen al canal del usuario
+      // (SUPERVISOR/VENDEDOR). ADMIN ve todos.
+      if (vis.restringe && !vis.permiteCanal(GRUPOS[nombre].canal)) continue;
+
       const metasConfigMap = SECCIONES_CON_METAS.includes(nombre)
         ? (metasPorSeccion[nombre] || {})
         : {};
@@ -1136,6 +1151,9 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
 ====================================================== */
 const obtenerEmpresasConsolidado = async (req, res) => {
   try {
+    // Visibilidad: EMPRESAS es canal 'E'. Si el usuario no lo ve, no enviar datos.
+    const vis = filtroVisibilidad(req.user);
+    if (vis.restringe && !vis.permiteCanal('E')) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
@@ -2744,6 +2762,9 @@ const buildConsolidadoResponse = (actual, anterior, esMesActual, diasTrans, dias
 
 const obtenerQuitoConsolidado = async (req, res) => {
   try {
+    // Visibilidad: QUITO es canal 'U'. Si el usuario no lo ve, no enviar datos.
+    const vis = filtroVisibilidad(req.user);
+    if (vis.restringe && !vis.permiteCanal('U')) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
@@ -2778,6 +2799,9 @@ const obtenerQuitoConsolidado = async (req, res) => {
 
 const obtenerWebsiteConsolidado = async (req, res) => {
   try {
+    // WEBSITE no es un canal de ruta → solo ADMIN.
+    const vis = filtroVisibilidad(req.user);
+    if (vis.restringe) return res.json(null);
     const { anio, mes } = req.query;
     const tipoProducto = normalizarTipoProducto(req.query.tipoProducto);
     if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });

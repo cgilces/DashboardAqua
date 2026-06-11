@@ -15,6 +15,7 @@ import TablaQuitoBotellon from "../../components/ComponentBotellon/TablaQuitoBot
 import TablaWebsiteBotellon from "../../components/ComponentBotellon/TablaWebsiteBotellon";
 import { API_BASE_URL } from "../../config";
 import GraficoTendencia from "../../components/common/GraficoTendencia";
+import { canalesDeUsuario } from "../../utils/visibilidad";
 
 
 /* ================================
@@ -45,6 +46,21 @@ const SECCIONES = [
   { key: "RURAL", titulo: "Rural", excel: "rural" },
   { key: "TELEVENTA_VIP", titulo: "Televentas VIP", excel: "televentas_vip" },
 ];
+
+// Canal (prefijo de ruta) de cada sección/grupo de botellón, para gating por
+// rol/canal. '__ADMIN__' = sección sin canal de ruta → solo ADMIN la ve.
+const SECCION_CANAL: Record<string, string> = {
+  TIENDAS_VIP: "TV",
+  TIENDAS: "T",
+  MAYORISTA: "M",
+  RURAL: "R",
+  DOMICILIO: "A",
+  EMPRESAS: "E",
+  QUITO: "U",
+  TELEVENTA_VIP: "__ADMIN__",
+  VIP: "__ADMIN__",
+  WEBSITE: "__ADMIN__",
+};
 
 export default function DashboardBotellon() {
   const hoy = new Date();
@@ -78,6 +94,11 @@ export default function DashboardBotellon() {
 
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  // Canales del usuario (ADMIN ve todo). Una sección se muestra solo si su canal
+  // pertenece al usuario (SUPERVISOR/VENDEDOR ven solo la tabla de su canal).
+  const canalesUsuario = useMemo(() => canalesDeUsuario(user?.assigned_routes), [user]);
+  const puedeVerSeccion = (key: string) =>
+    isAdmin || canalesUsuario.includes(SECCION_CANAL[key] ?? "__ADMIN__");
 
   useEffect(() => {
     cargarDashboard();
@@ -111,10 +132,17 @@ export default function DashboardBotellon() {
       const jsonQuito = await resQuito.json();
       const jsonWeb = await resWeb.json();
 
-      setBotellones(jsonDash.botellones);
-      setEmpresasData(jsonEmp);
-      setQuitoData(jsonQuito);
-      setWebsiteData(jsonWeb);
+      // Gating por canal: el ADMIN ve todo; el resto solo las secciones de su canal.
+      const filtrarGrupos = (data: any) => {
+        if (!data || isAdmin) return data;
+        const out: any = {};
+        Object.keys(data).forEach((k) => { if (puedeVerSeccion(k)) out[k] = data[k]; });
+        return out;
+      };
+      setBotellones(filtrarGrupos(jsonDash.botellones));
+      setEmpresasData(puedeVerSeccion("EMPRESAS") ? jsonEmp : null);
+      setQuitoData(puedeVerSeccion("QUITO") ? jsonQuito : null);
+      setWebsiteData(puedeVerSeccion("WEBSITE") ? jsonWeb : null);
       setTendencia6Meses(jsonDash.tendencia6Meses ?? []);
     } catch (error) {
       console.error("Error cargando dashboard botellones", error);

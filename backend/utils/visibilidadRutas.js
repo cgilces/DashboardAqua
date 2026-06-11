@@ -39,27 +39,36 @@ function filtroVisibilidad(user) {
 
   // ADMIN → todo
   if (rol === "ADMIN") {
-    return { rol, restringe: false, permite: () => true };
+    return { rol, restringe: false, permite: () => true, permiteCanal: () => true };
   }
 
-  // SUPERVISOR → todo el canal de sus rutas
+  // Canales del usuario (derivados de sus rutas) — sirve para gatear módulos/grupos.
+  const canales = new Set(rutas.map(canalDeRuta).filter(Boolean));
+  // ¿El usuario puede ver este canal? (mismo criterio para SUPERVISOR y VENDEDOR:
+  // un grupo/tabla del canal de alguna de sus rutas).
+  const permiteCanal = (canal) => canales.has(canalDeRuta(canal));
+
+  // SUPERVISOR → todo el canal de sus rutas (filas = todo el canal)
   if (rol === "SUPERVISOR") {
-    const canales = new Set(rutas.map(canalDeRuta).filter(Boolean));
     return {
       rol,
       restringe: true,
       canales: [...canales],
       permite: (code) => canales.has(canalDeRuta(code)),
+      permiteCanal,
     };
   }
 
-  // VENDEDOR (y cualquier otro rol) → solo sus rutas exactas
+  // VENDEDOR (y cualquier otro rol) → solo sus rutas exactas (pero el GRUPO de su
+  // canal sí aplica; dentro se filtra a su(s) ruta(s)).
   const set = new Set(rutas);
   return {
     rol,
     restringe: true,
     rutas: [...set],
+    canales: [...canales],
     permite: (code) => set.has(norm(code)),
+    permiteCanal,
   };
 }
 
