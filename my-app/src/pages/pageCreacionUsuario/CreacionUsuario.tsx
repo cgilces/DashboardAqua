@@ -621,6 +621,11 @@ const CreacionUsuario: React.FC = () => {
                                                                 ))}
                                                             </div>
                                                         )}
+                                                        {marcado && secciones.length === 0 && (
+                                                            <p className="ml-6 text-[10px] text-white/25 py-0.5 italic">
+                                                                Se ve completo (módulo sin secciones)
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
