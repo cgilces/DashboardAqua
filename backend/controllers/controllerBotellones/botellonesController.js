@@ -9,6 +9,7 @@ const { sequelize } = require("../../models");
 const MetaPreventa = require("../../models/metaPreventa");
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
 const { filtroVisibilidad, permiteSeccion } = require('../../utils/visibilidadRutas');
+const { dedupeProductosVendidos } = require('../../utils/dedupeProductos');
 const MODULO_BOTELLON = '/dashboard/botellon';
 
 // Secciones que tienen metas configurables (solo autoventas)
@@ -1034,7 +1035,7 @@ const obtenerClientesVipBotellon = async (req, res) => {
     return res.json({
       clientes,
       resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
-      productosVendidos,
+      productosVendidos: dedupeProductosVendidos(productosVendidos),
     });
   } catch (error) {
     console.error('❌ ERROR CLIENTES VIP BOTELLÓN:', error);
@@ -1480,7 +1481,7 @@ ORDER BY unidades_vendidas DESC;
     return res.json({
       clientes,
       resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
-      productosVendidos,
+      productosVendidos: dedupeProductosVendidos(productosVendidos),
     });
   } catch (error) {
     console.error('❌ ERROR CLIENTES DOMICILIO BOTELLÓN:', error);
@@ -1702,7 +1703,7 @@ const obtenerClientesEmpresasBotellon = async (req, res) => {
     return res.json({
       clientes,
       resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
-      productosVendidos: productosVendidos.map(p => ({
+      productosVendidos: dedupeProductosVendidos(productosVendidos).map(p => ({
         producto: p.producto,
         unidades: Number(p.unidades_vendidas || 0),
         monto: Number(p.monto_usd || 0),
@@ -1834,7 +1835,7 @@ const obtenerVipSubcanales = async (req, res) => {
       ORDER BY unidades_vendidas DESC
     `, { replacements: { inicio, fin }, type: Sequelize.QueryTypes.SELECT });
 
-    return res.json({ subcanales, productosVendidos });
+    return res.json({ subcanales, productosVendidos: dedupeProductosVendidos(productosVendidos) });
   } catch (error) {
     console.error('❌ ERROR VIP SUBCANALES:', error);
     return res.status(500).json({ message: 'Error al obtener subcanales VIP', detail: error.message });
@@ -2244,7 +2245,7 @@ const obtenerEmpresasSubcanales = async (req, res) => {
       ORDER BY unidades_vendidas DESC
     `, { replacements: { inicio, fin, ...rutasRepl }, type: Sequelize.QueryTypes.SELECT });
 
-    return res.json({ subcanales, productosVendidos });
+    return res.json({ subcanales, productosVendidos: dedupeProductosVendidos(productosVendidos) });
   } catch (error) {
     console.error('❌ ERROR EMPRESAS SUBCANALES:', error);
     return res.status(500).json({ message: 'Error al obtener subcanales Empresas', detail: error.message });
@@ -2870,7 +2871,7 @@ const buildClientesOdooBotellon = (fuenteQuery) => async (req, res) => {
     return res.json({
       clientes,
       resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
-      productosVendidos,
+      productosVendidos: dedupeProductosVendidos(productosVendidos),
     });
   } catch (error) {
     console.error('❌ ERROR CLIENTES BOTELLÓN ODOO:', error);
@@ -3189,7 +3190,7 @@ const obtenerEmpresasProductosSucursal = async (req, res) => {
       acc.unidades_vendidas += Number(f.unidades_vendidas) || 0;
       acc.monto_usd         += Number(f.monto_usd)         || 0;
     }
-    const productos = Array.from(map.values()).sort((a, b) => b.monto_usd - a.monto_usd);
+    const productos = dedupeProductosVendidos(Array.from(map.values())).sort((a, b) => b.monto_usd - a.monto_usd);
 
     return res.json({ ok: true, productos });
   } catch (error) {
@@ -3252,7 +3253,7 @@ const obtenerVipProductosSucursal = async (req, res) => {
       acc.unidades_vendidas += Number(f.unidades_vendidas) || 0;
       acc.monto_usd         += Number(f.monto_usd)         || 0;
     }
-    const productos = Array.from(map.values()).sort((a, b) => b.monto_usd - a.monto_usd);
+    const productos = dedupeProductosVendidos(Array.from(map.values())).sort((a, b) => b.monto_usd - a.monto_usd);
 
     return res.json({ ok: true, productos });
   } catch (error) {
@@ -3491,7 +3492,7 @@ const buildClientesGrupoBotellon = (filtroSellerColumn, label) => async (req, re
     return res.json({
       clientes,
       resumen: { totalClientes, clientesConConsumo, clientesSinConsumo },
-      productosVendidos,
+      productosVendidos: dedupeProductosVendidos(productosVendidos),
     });
   } catch (error) {
     console.error(`❌ ERROR CLIENTES ${label}:`, error);

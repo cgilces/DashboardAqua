@@ -5,6 +5,7 @@
 const db        = require("../../db");
 const Sequelize = require("sequelize");
 const { QueryTypes } = require("sequelize");
+const { dedupeProductosVendidos } = require("../../utils/dedupeProductos");
 
 // ================================================================
 // RUTAS ODOO QUE FORMAN EL CANAL EMPRESAS
@@ -1138,7 +1139,7 @@ const obtenerClientesCanal = async (req, res) => {
       },
       totalesCanal,
       clientes        : clientesEnriquecidos,
-      productosVendidos,
+      productosVendidos: dedupeProductosVendidos(productosVendidos),
     });
 
   } catch (error) {
@@ -1326,7 +1327,7 @@ const obtenerProductosSucursal = async (req, res) => {
 
     return res.json({
       ok: true,
-      productos: productos.map(p => ({
+      productos: dedupeProductosVendidos(productos).map(p => ({
         producto:          p.producto,
         unidades_vendidas: Number(p.unidades_vendidas) || 0,
         monto_usd:         Number(p.monto_usd)         || 0,

@@ -6,6 +6,7 @@
 "use strict";
 const { sequelize } = require("../../models");
 const Sequelize = require("sequelize");
+const { dedupeProductosVendidos } = require("../../utils/dedupeProductos");
 
 // ================================================================
 // HELPERS
@@ -445,7 +446,7 @@ exports.getTopProductos = async (req, res) => {
       type: Sequelize.QueryTypes.SELECT,
     });
 
-    res.json({ productos: rows, anio, mes });
+    res.json({ productos: dedupeProductosVendidos(rows), anio, mes });
   } catch (err) {
     console.error("getTopProductos:", err.message);
     res.status(500).json({ error: err.message });

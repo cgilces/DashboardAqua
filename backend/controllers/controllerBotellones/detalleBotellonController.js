@@ -1,5 +1,6 @@
 const db = require("../../db");
 const Sequelize = require("sequelize");
+const { dedupeProductosVendidos } = require("../../utils/dedupeProductos");
 
 /* ========================================================
    🧩 HELPERS
@@ -830,7 +831,7 @@ GROUP BY customer_code
         clientesConConsumo: conConsumo,
         clientesSinConsumo: totalAsignados - conConsumo,
       },
-      productosVendidos,
+      productosVendidos: dedupeProductosVendidos(productosVendidos),
       clientesRuta: clientesRutaFinal,
     });
   } catch (error) {

@@ -161,6 +161,26 @@ Causa detectada en logs: la cuenta ElevenLabs se quedó **sin créditos** (`quot
 - [x] **DRY**: módulo único usado por el modal JARVIS y el ChatFlotante; `detenerNavegador()` corta la voz
       al silenciar/detener. Verificado: `tsc --noEmit` + `vite build` (exit 0).
 
+## Deduplicar "Productos Vendidos" en todo el dashboard (rama: `feature/dedupe-productos-vendidos`)
+
+Problema: `detalle_documento.descripcion` a veces trae el código como prefijo
+(`[28] BOTELLÓN 20L AQUA PREMIUM`) y a veces no (`BOTELLÓN 20L AQUA PREMIUM`), así que el
+mismo producto aparece duplicado en las tablas de Productos Vendidos. Ejemplo real:
+`/domicilio-botellon/clientes/2026/6`.
+
+- [x] **Helper único** `utils/dedupeProductos.js` (`limpiarNombreProducto` quita `[NN] `/`[código] `;
+      `dedupeProductosVendidos` fusiona por nombre normalizado, suma unidades/dólares y recalcula
+      precio promedio). Auto-detecta los nombres de campo de cada módulo. Probado con el caso real.
+- [x] **Aplicado** en todas las tablas de productos vendidos: Botellón (`botellonesController` ×9,
+      `detalleBotellonController`), Descartable Odoo, Preventa (`ventasController`,
+      `detalleCanalController`, `detallePreventaController`), Plus (2º endpoint), Hielo Odoo (2º
+      endpoint), COTTSA, Clientes (`dashboardClientes` ×3) y Gerencia (top productos). Café y los
+      1ºs endpoints de Plus/Hielo ya tenían su propia limpieza (sin cambios).
+- [x] Verificado: `node --check` en los 12 archivos + prueba unitaria del helper. Pendiente: PR.
+- [ ] **Fase 2 (opcional):** la "tabla de precio promedio" de preventa (keyed por vendedor+producto,
+      `obtenerProductosVendidosMes`/`procesarTablaPrecioPromedio`) no se tocó; si también muestra
+      duplicados por prefijo, normalizar ahí.
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.
