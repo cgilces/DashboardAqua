@@ -868,7 +868,8 @@ const sincronizarOdooCompletoRango = async (startDate, endDate, syncState = null
     if (!syncState) return;
     syncState.odooFrac = Math.max(syncState.odooFrac || 0, frac);
     const pct = Math.round((((syncState.mvFrac || 0) + (syncState.odooFrac || 0)) / 2) * 75);
-    syncState.percent = Math.max(syncState.percent || 0, pct);
+    // Escribe el OBJETIVO real; el valor mostrado lo sube suave el controller.
+    syncState.percentObjetivo = Math.max(syncState.percentObjetivo || 0, pct);
   };
   console.log("\n==================================================");
   console.log("🚀 INICIANDO SINCRONIZACIÓN ODOO");

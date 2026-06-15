@@ -2,7 +2,8 @@ module.exports = {
   running: false,
   startDate: null,
   endDate: null,
-  percent: 0,
+  percent: 0,          // valor MOSTRADO en la barra (sube suave hacia percentObjetivo)
+  percentObjetivo: 0,  // avance REAL calculado por las fases
   error: null,
   startedAt: null,
   finishedAt: null,

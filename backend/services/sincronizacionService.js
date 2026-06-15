@@ -161,7 +161,8 @@ const flushErrorLog = (errores) => {
 function aplicarProgresoFase1(s) {
   if (!s) return;
   const pct = Math.round((((s.mvFrac || 0) + (s.odooFrac || 0)) / 2) * 75);
-  s.percent = Math.max(s.percent || 0, pct);
+  // Escribe el OBJETIVO real; el valor mostrado lo sube suave el controller.
+  s.percentObjetivo = Math.max(s.percentObjetivo || 0, pct);
 }
 
 class SyncProgress {
@@ -196,9 +197,8 @@ class SyncProgress {
       return;
     }
     const pct = this._from + Math.round((page / totalPages) * (this._to - this._from));
-    // Monótono: la barra solo avanza, nunca retrocede (coexiste con el avance
-    // suave del controller).
-    this._s.percent = Math.max(this._s.percent || 0, pct);
+    // Escribe el OBJETIVO real; el valor mostrado sube suave (controller). Monótono.
+    this._s.percentObjetivo = Math.max(this._s.percentObjetivo || 0, pct);
   }
 
   finish(error = null) {

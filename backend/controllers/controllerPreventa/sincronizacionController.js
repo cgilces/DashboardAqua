@@ -79,7 +79,10 @@ const sincronizarVentas = async (req, res) => {
       endDate,
       page      : 0,
       total     : 0,
-      percent   : 0,
+      percent        : 0,
+      percentObjetivo: 0,
+      mvFrac         : 0,
+      odooFrac       : 0,
       error     : null,
       startedAt : new Date(),
       finishedAt: null,
@@ -91,31 +94,32 @@ const sincronizarVentas = async (req, res) => {
     // ── Ejecutar todo en background ────────────────
     (async () => {
       // La barra mide el avance REAL de todo, de 0% a 100%:
-      //   FASE 1 (MobilVendor + Odoo EN PARALELO) = 0→75% (promedio de ambas;
-      //           avanza mientras cualquiera descargue, no espera a una sola),
+      //   FASE 1 (MobilVendor + Odoo EN PARALELO) = 0→75% (promedio de ambas),
       //   Direcciones = 75→95%, Promociones = 95→100%.
-      // Un avance suave solo rellena las pausas (login/búsquedas) sin pasar del
-      // techo de la fase, para no adelantarse al trabajo real ni congelarse.
-      let techo = 74;
-      const creeper = setInterval(() => {
+      // SUAVIZADOR: el valor mostrado (percent) sube poco a poco hacia el avance
+      // real (percentObjetivo), nunca de un salto. Así siempre ARRANCA EN 0% y
+      // trepa suave, aunque una fuente termine al instante (no aparece "en 43%").
+      const suavizador = setInterval(() => {
         if (!syncState.running) return;
-        if (syncState.percent < techo) {
-          syncState.percent = Math.min(techo, syncState.percent + 1);
+        const obj = syncState.percentObjetivo || 0;
+        if (syncState.percent < obj) {
+          const paso = Math.max(1, Math.ceil((obj - syncState.percent) / 8));
+          syncState.percent = Math.min(obj, syncState.percent + paso);
         }
-      }, 4000);
+      }, 1500);
 
       try {
         // FASE 1: MobilVendor + Odoo EN PARALELO. Ambos reportan su avance real y
-        // la barra muestra el promedio (0→75%); llega a 75% cuando ambos terminan.
+        // el objetivo es el promedio (0→75%); llega a 75% cuando ambos terminan.
         syncState.percent = 0;
+        syncState.percentObjetivo = 0;
         syncState.mvFrac = 0;
         syncState.odooFrac = 0;
-        techo = 74;
         const [resMV, resOdoo] = await Promise.allSettled([
           sincronizarVentasRango(startDate, endDate, syncState),
           sincronizarOdooCompletoRango(startDate, endDate, syncState),
         ]);
-        if (syncState.percent < 75) syncState.percent = 75; // ambos terminaron
+        if (syncState.percentObjetivo < 75) syncState.percentObjetivo = 75; // ambos terminaron
 
         // MobilVendor
         if (resMV.status === "fulfilled") {
@@ -139,7 +143,6 @@ const sincronizarVentas = async (req, res) => {
         }
 
         // FASE 2: Direcciones — reporta progreso real por páginas (75→95%).
-        techo = 94;
         try {
           console.log("📍 [Direcciones] Iniciando sincronización de customer_addresses...");
           const resDirecciones = await sincronizarDirecciones(syncState);
@@ -148,9 +151,9 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Direcciones] Error:", errDir.message);
         }
 
-        // FASE 3: Promociones (rápida) — el avance suave sube 95→99 mientras corre.
-        techo = 99;
-        if (syncState.percent < 95) syncState.percent = 95;
+        // FASE 3: Promociones (rápida, no reporta por ítem). Fijamos el objetivo en
+        // 99 para que la barra suba suave 95→99 mientras corre; 100 al terminar.
+        if (syncState.percentObjetivo < 99) syncState.percentObjetivo = 99;
         try {
           console.log("🎁 [Promociones] Iniciando sincronización de promos...");
           const resPromos = await sincronizarPromociones();
@@ -163,11 +166,12 @@ const sincronizarVentas = async (req, res) => {
         const hayErrores =
           resMV.status === "rejected" || resOdoo.status === "rejected";
 
-        clearInterval(creeper);
-        syncState.running    = false;
-        syncState.percent    = 100;
-        syncState.finishedAt = new Date();
-        syncState.error      = hayErrores
+        clearInterval(suavizador);
+        syncState.running        = false;
+        syncState.percentObjetivo = 100;
+        syncState.percent        = 100;
+        syncState.finishedAt     = new Date();
+        syncState.error          = hayErrores
           ? "Una o más fuentes terminaron con errores. Revisar logs."
           : null;
 
@@ -176,7 +180,7 @@ const sincronizarVentas = async (req, res) => {
         console.log(`   Odoo        : ${syncState.odoo.estado}`);
 
       } catch (err) {
-        clearInterval(creeper);
+        clearInterval(suavizador);
         syncState.running    = false;
         syncState.percent    = 0;
         syncState.finishedAt = new Date();
