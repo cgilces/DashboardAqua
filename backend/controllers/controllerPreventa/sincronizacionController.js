@@ -40,7 +40,13 @@ const getLastSync = async (req, res) => {
 const sincronizarVentas = async (req, res) => {
   try {
     if (syncState.running) {
-      return res.status(409).json({ error: "Ya existe una sincronización en curso" });
+      // Auto-recuperación: si la sync previa lleva colgada >40 min (proceso muerto,
+      // estado en memoria sin cerrar), la damos por perdida y dejamos arrancar otra.
+      const edadMs = syncState.startedAt ? Date.now() - new Date(syncState.startedAt).getTime() : Infinity;
+      if (edadMs < 40 * 60 * 1000) {
+        return res.status(409).json({ error: "Ya existe una sincronización en curso" });
+      }
+      console.warn(`⚠️  [SYNC] Sincronización previa colgada (~${Math.round(edadMs / 60000)} min). Reiniciando estado.`);
     }
 
     // ── Parsear fechas ──────────────────────────────────────────
@@ -84,30 +90,28 @@ const sincronizarVentas = async (req, res) => {
 
     // ── Ejecutar todo en background ────────────────
     (async () => {
-      // Avance suave DECELERADO: la barra siempre sube hacia un tope alto (95%),
-      // rápido al inicio y más lento al final. Así NUNCA se queda congelada,
-      // sin importar qué fase tarde (Odoo en paralelo, Direcciones, Promos).
-      // Los hitos reales (MobilVendor) la empujan hacia adelante; al terminar
-      // todo, salta a 100%.
-      const TOPE = 95;
+      // El % lo llevan los reportes REALES de cada fase (Odoo por lotes 5→65,
+      // Direcciones por páginas 66→90). Un avance suave adicional solo cubre las
+      // pausas (login/búsquedas en Odoo, descargas) SIN pasar del techo de la fase
+      // actual, para no adelantarse al trabajo real ni quedarse congelado.
+      let techo = 64;
       const creeper = setInterval(() => {
         if (!syncState.running) return;
-        if (syncState.percent < TOPE) {
-          const paso = Math.max(1, Math.round((TOPE - syncState.percent) / 18));
-          syncState.percent = Math.min(TOPE, syncState.percent + paso);
+        if (syncState.percent < techo) {
+          syncState.percent = Math.min(techo, syncState.percent + 1);
         }
-      }, 3000);
+      }, 4000);
 
       try {
-        // FASE 1: MobilVendor + Odoo en paralelo
+        // FASE 1: MobilVendor + Odoo en paralelo. Odoo (el lento) reporta progreso
+        // real por lotes (5→65%); MobilVendor corre en paralelo sin mover la barra.
         syncState.percent = 5;
+        techo = 64;
         const [resMV, resOdoo] = await Promise.allSettled([
-          // Sin syncState: el % de la barra lo lleva SOLO el avance decelerado, para
-          // que arranque baja y suba suave (si MobilVendor termina rápido, su tramo
-          // saltaba directo a 55% y parecía "empezar en 55%").
           sincronizarVentasRango(startDate, endDate),
-          sincronizarOdooCompletoRango(startDate, endDate),
+          sincronizarOdooCompletoRango(startDate, endDate, syncState),
         ]);
+        if (syncState.percent < 65) syncState.percent = 65;
 
         // MobilVendor
         if (resMV.status === "fulfilled") {
@@ -130,16 +134,19 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Odoo] Error:", resOdoo.reason?.message);
         }
 
-        // FASE 2: Direcciones — el avance decelerado sigue subiendo mientras procesa.
+        // FASE 2: Direcciones — reporta progreso real por páginas (66→90%).
+        techo = 89;
         try {
           console.log("📍 [Direcciones] Iniciando sincronización de customer_addresses...");
-          const resDirecciones = await sincronizarDirecciones();
+          const resDirecciones = await sincronizarDirecciones(syncState);
           console.log(`✅ [Direcciones] Completa: ${resDirecciones.totalProcessed} procesadas, ${resDirecciones.totalErrors} errores`);
         } catch (errDir) {
           console.error("❌ [Direcciones] Error:", errDir.message);
         }
 
-        // FASE 3: Promociones — el avance decelerado sigue subiendo mientras procesa.
+        // FASE 3: Promociones (rápida) — el avance suave sube 90→97 mientras corre.
+        techo = 97;
+        if (syncState.percent < 90) syncState.percent = 90;
         try {
           console.log("🎁 [Promociones] Iniciando sincronización de promos...");
           const resPromos = await sincronizarPromociones();

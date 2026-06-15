@@ -40,6 +40,24 @@ const BotonActualizarSincronizacion = () => {
   }, []);
 
   /* =====================================================
+   * 🔄 Retomar una sincronización en curso al cargar
+   * (si el backend sigue sincronizando, muestra la barra
+   *  en vez de un 409 confuso al volver a la página)
+   * ===================================================== */
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/sync/status`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (data?.running) {
+          console.log("🔄 Sincronización en curso detectada — retomando barra:", data.percent);
+          setProgress(data.percent ?? 0);
+          setIsSyncing(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  /* =====================================================
    * 🔁 Polling de estado
    * ===================================================== */
   useEffect(() => {

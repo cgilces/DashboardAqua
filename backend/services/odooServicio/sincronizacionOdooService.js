@@ -859,7 +859,12 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
 // ========================================================
 // SERVICIO PRINCIPAL
 // ========================================================
-const sincronizarOdooCompletoRango = async (startDate, endDate) => {
+const sincronizarOdooCompletoRango = async (startDate, endDate, syncState = null) => {
+  // Reporta progreso REAL al estado de sincronización (la barra del front).
+  // Odoo es la parte más lenta: pedidos ocupan 5→35%, facturas 35→65%.
+  const reportar = (pct) => {
+    if (syncState) syncState.percent = Math.max(syncState.percent || 0, Math.round(pct));
+  };
   console.log("\n==================================================");
   console.log("🚀 INICIANDO SINCRONIZACIÓN ODOO");
   console.log("📅 Rango:", startDate, "→", endDate);
@@ -907,6 +912,7 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
       console.log(`\n⚙️  Pedidos — Chunk ${i + 1}/${chunksPedidos.length} (${chunksPedidos[i].length} pedidos)...`);
       try {
         await procesarChunkPedidos(uid, chunksPedidos[i], errores, contadores);
+        reportar(5 + ((i + 1) / chunksPedidos.length) * 30); // 5% → 35%
       } catch (err) {
         // Un chunk fallido NO debe matar la sincronización entera.
         // Logueamos el detalle, agregamos al contador de errores y seguimos.
@@ -949,6 +955,7 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
       console.log(`\n⚙️  Facturas — Chunk ${i + 1}/${chunksFacturas.length} (${chunksFacturas[i].length} facturas)...`);
       try {
         await procesarChunkFacturas(uid, chunksFacturas[i], errores, contadores);
+        reportar(35 + ((i + 1) / chunksFacturas.length) * 30); // 35% → 65%
       } catch (err) {
         // Un chunk fallido NO debe matar la sincronización entera.
         // Logueamos el detalle (con ids para diagnóstico) y seguimos.

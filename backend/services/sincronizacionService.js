@@ -429,7 +429,7 @@ const sincronizarDirecciones = async (syncState = null) => {
   console.log("🚀 SINCRONIZACIÓN DE DIRECCIONES (customer_addresses)");
   console.log("====================================\n");
 
-  const progress = new SyncProgress(syncState);
+  const progress = new SyncProgress(syncState, 66, 90); // Direcciones: 66% → 90%
   progress.start("direcciones", "completo");
 
   try {
