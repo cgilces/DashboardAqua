@@ -48,10 +48,10 @@ export function instalarInterceptorErrores(): void {
     const silenciar = esDominioBot || pideSinModal(init, input);
     try {
       const res = await fetchOriginal(input, init);
-      // 401 = sesión expirada (lo maneja el guard/redirección). 4xx = error de
-      // negocio que cada pantalla suele mostrar. Solo alertamos de fallos del
-      // servidor (>=500, incluye 503 "sin créditos").
-      if (!silenciar && res.status >= 500) {
+      // Alertamos de cualquier error HTTP (4xx de negocio + 5xx de servidor,
+      // incluye 503 "sin créditos"). Solo se excluye 401 (sesión expirada, que
+      // ya redirige al login).
+      if (!silenciar && res.status >= 400 && res.status !== 401) {
         const mensaje = await mensajeDesdeRespuesta(res);
         notificarErrorGlobal({
           titulo: "Ocurrió un problema",

@@ -178,7 +178,7 @@ Claude falla. El front no leía el cuerpo del error.
       Plans & Billing (o cambiar `ANTHROPIC_API_KEY`) para que la IA vuelva a funcionar.
 - [x] **Fase 2 — modal de error GLOBAL** (rama `feature/modal-error-global`): cubre toda la app.
       `utils/errorGlobal.ts` (bus de eventos + lector del mensaje del backend),
-      `utils/interceptorErrores.ts` (intercepta `fetch`: red caída + HTTP ≥500/503; +
+      `utils/interceptorErrores.ts` (intercepta `fetch`: red caída + HTTP ≥400 excepto 401; +
       `unhandledrejection` y `window.error`; excluye `/api/bot/*` que tiene su propio modal),
       `ErrorModalGlobal.tsx` (modal único, con cola) y `ErrorBoundary.tsx` (errores de render).
       Montados en `main.tsx`. Verificado: `tsc --noEmit` + `vite build` (exit 0).
