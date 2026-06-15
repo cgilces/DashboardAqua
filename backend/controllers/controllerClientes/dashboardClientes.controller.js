@@ -1,5 +1,6 @@
 const sequelize = require("../../db");
 const { ContactoRecuperacion } = require("../../models");
+const { dedupeProductosVendidos } = require("../../utils/dedupeProductos");
 
 // Crea la tabla si no existe (idempotente, igual que cottsa_extra_mes)
 ContactoRecuperacion.sync().catch(err =>
@@ -298,7 +299,7 @@ exports.obtenerProductosCliente = async (req, res) => {
     `;
 
     const [rows] = await sequelize.query(sql, { replacements: params });
-    return res.json({ ok: true, codigo_cliente, productos: rows });
+    return res.json({ ok: true, codigo_cliente, productos: dedupeProductosVendidos(rows) });
 
   } catch (error) {
     console.error('❌ obtenerProductosCliente:', error);
@@ -359,7 +360,7 @@ exports.obtenerProductosSucursal = async (req, res) => {
       LIMIT 200
     `;
     const [rows] = await sequelize.query(sql, { replacements: params });
-    return res.json({ ok: true, productos: rows });
+    return res.json({ ok: true, productos: dedupeProductosVendidos(rows) });
   } catch (error) {
     console.error('❌ obtenerProductosSucursal:', error);
     return res.status(500).json({ ok: false, message: 'Error obteniendo productos de sucursal' });
@@ -1537,7 +1538,7 @@ exports.obtenerProductosRecientes = async (req, res) => {
       LIMIT 3
     `;
     const [productos] = await sequelize.query(sql, { replacements: { codigo_cliente } });
-    return res.json({ ok: true, productos });
+    return res.json({ ok: true, productos: dedupeProductosVendidos(productos) });
   } catch (err) {
     console.error('❌ obtenerProductosRecientes:', err);
     return res.status(500).json({ ok: false, message: 'Error obteniendo productos' });

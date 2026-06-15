@@ -5,6 +5,7 @@
 const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { dedupeProductosVendidos } = require('../../utils/dedupeProductos');
 
 // ================================================================
 // RUTAS QUE FACTURAN EN ODOO
@@ -401,7 +402,7 @@ const obtenerClientesDescartableOdoo = async (req, res) => {
         clientesConConsumo: conConsumo,
         clientesSinConsumo: resultado.length - conConsumo,
       },
-      productosVendidos,
+      productosVendidos: dedupeProductosVendidos(productosVendidos),
     });
 
   } catch (error) {
