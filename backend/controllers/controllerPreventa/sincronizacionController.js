@@ -90,11 +90,13 @@ const sincronizarVentas = async (req, res) => {
 
     // ── Ejecutar todo en background ────────────────
     (async () => {
-      // El % lo llevan los reportes REALES de cada fase (Odoo por lotes 5→65,
-      // Direcciones por páginas 66→90). Un avance suave adicional solo cubre las
-      // pausas (login/búsquedas en Odoo, descargas) SIN pasar del techo de la fase
-      // actual, para no adelantarse al trabajo real ni quedarse congelado.
-      let techo = 64;
+      // La barra mide el avance REAL de todo, de 0% a 100%:
+      //   FASE 1 (MobilVendor + Odoo EN PARALELO) = 0→75% (promedio de ambas;
+      //           avanza mientras cualquiera descargue, no espera a una sola),
+      //   Direcciones = 75→95%, Promociones = 95→100%.
+      // Un avance suave solo rellena las pausas (login/búsquedas) sin pasar del
+      // techo de la fase, para no adelantarse al trabajo real ni congelarse.
+      let techo = 74;
       const creeper = setInterval(() => {
         if (!syncState.running) return;
         if (syncState.percent < techo) {
@@ -103,15 +105,17 @@ const sincronizarVentas = async (req, res) => {
       }, 4000);
 
       try {
-        // FASE 1: MobilVendor + Odoo en paralelo. Odoo (el lento) reporta progreso
-        // real por lotes (5→65%); MobilVendor corre en paralelo sin mover la barra.
-        syncState.percent = 5;
-        techo = 64;
+        // FASE 1: MobilVendor + Odoo EN PARALELO. Ambos reportan su avance real y
+        // la barra muestra el promedio (0→75%); llega a 75% cuando ambos terminan.
+        syncState.percent = 0;
+        syncState.mvFrac = 0;
+        syncState.odooFrac = 0;
+        techo = 74;
         const [resMV, resOdoo] = await Promise.allSettled([
-          sincronizarVentasRango(startDate, endDate),
+          sincronizarVentasRango(startDate, endDate, syncState),
           sincronizarOdooCompletoRango(startDate, endDate, syncState),
         ]);
-        if (syncState.percent < 65) syncState.percent = 65;
+        if (syncState.percent < 75) syncState.percent = 75; // ambos terminaron
 
         // MobilVendor
         if (resMV.status === "fulfilled") {
@@ -134,8 +138,8 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Odoo] Error:", resOdoo.reason?.message);
         }
 
-        // FASE 2: Direcciones — reporta progreso real por páginas (66→90%).
-        techo = 89;
+        // FASE 2: Direcciones — reporta progreso real por páginas (75→95%).
+        techo = 94;
         try {
           console.log("📍 [Direcciones] Iniciando sincronización de customer_addresses...");
           const resDirecciones = await sincronizarDirecciones(syncState);
@@ -144,9 +148,9 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Direcciones] Error:", errDir.message);
         }
 
-        // FASE 3: Promociones (rápida) — el avance suave sube 90→97 mientras corre.
-        techo = 97;
-        if (syncState.percent < 90) syncState.percent = 90;
+        // FASE 3: Promociones (rápida) — el avance suave sube 95→99 mientras corre.
+        techo = 99;
+        if (syncState.percent < 95) syncState.percent = 95;
         try {
           console.log("🎁 [Promociones] Iniciando sincronización de promos...");
           const resPromos = await sincronizarPromociones();

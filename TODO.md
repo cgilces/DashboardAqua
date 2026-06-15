@@ -247,10 +247,12 @@ reportaban → todo se apilaba en 70% y la fase larga (Direcciones) lo dejaba co
       mismo artículo con promos distintas lo violaban. `000_schema.sql` ahora elimina `unique_detalle`
       (constraint e índice) en el arranque, dejando solo `unique_detalle_doc_promo` (que sí incluye
       promo). Requiere **reiniciar el servidor** para que el esquema idempotente lo aplique.
-- [x] **Progreso REAL** (la barra se quedaba en 95% mientras seguía descargando): Odoo ahora
-      reporta por lotes (pedidos 5→35%, facturas 35→65%) y Direcciones por páginas (66→90%);
-      Promos 90→97; 100 al terminar. El avance suave solo cubre pausas (login/búsquedas) sin
-      pasar del techo de la fase. La barra avanza al ritmo de la descarga real.
+- [x] **Progreso REAL 0→100 combinado** (la barra se quedaba en 95% y luego en 64%): ahora va de
+      0% a 100% midiendo el avance real. FASE 1 = MobilVendor + Odoo **en paralelo**, mostrando el
+      **promedio** de ambas fracciones (0→75%): la barra avanza mientras CUALQUIERA descargue y
+      llega a 75% solo cuando ambas terminan (ya no se queda esperando a la fuente que no
+      reportaba). Direcciones 75→95% (por páginas), Promos 95→100%. `syncState.mvFrac/odooFrac` +
+      `aplicarProgresoFase1`. Verificado con simulación de ambas fuentes a ritmos distintos.
 - [x] **Retomar sync en curso**: el front consulta `/api/sync/status` al cargar y, si hay una
       sincronización corriendo, muestra la barra y reanuda el polling (antes salía un 409 confuso
       "ya en curso" sin barra visible al recargar la página).
