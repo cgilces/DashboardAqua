@@ -156,31 +156,31 @@ const flushErrorLog = (errores) => {
 // CLASE: SyncProgress
 // ================================================================
 class SyncProgress {
-  constructor(state) {
+  // from/to = rango global de % que ocupa esta fase (por defecto MobilVendor 5→70).
+  constructor(state, from = 5, to = 70) {
     this._s = state;
+    this._from = from;
+    this._to = to;
   }
 
   start(startDate, endDate) {
     if (!this._s) return;
+    // No reseteamos `percent`/`running`: el controller los gestiona globalmente
+    // (varias fases comparten el mismo syncState). Resetear aquí haría que la
+    // barra "retroceda" al iniciar cada fase.
     Object.assign(this._s, {
-      running   : true,
       startDate,
       endDate,
-      page      : 0,
-      total     : 0,
-      percent   : 0,
-      error     : null,
-      startedAt : new Date(),
-      finishedAt: null,
+      error: null,
     });
   }
 
   updatePage(page, totalPages) {
-    if (!this._s) return;
-    // MobilVendor ocupa del 5% al 70% del progreso total
-    if (totalPages) {
-      this._s.percent = 5 + Math.round((page / totalPages) * 65);
-    }
+    if (!this._s || !totalPages) return;
+    const pct = this._from + Math.round((page / totalPages) * (this._to - this._from));
+    // Monótono: la barra solo avanza, nunca retrocede (coexiste con el avance
+    // suave del controller).
+    this._s.percent = Math.max(this._s.percent || 0, pct);
   }
 
   finish(error = null) {
@@ -780,7 +780,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
   console.log(`🚀 SINCRONIZACIÓN ${startDate} → ${endDate}`);
   console.log("====================================\n");
 
-  const progress = new SyncProgress(syncState);
+  const progress = new SyncProgress(syncState, 5, 55); // MobilVendor: 5% → 55%
   const stats    = new SyncStats();
   const erroresPorDocumento = [];
 

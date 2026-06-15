@@ -84,9 +84,21 @@ const sincronizarVentas = async (req, res) => {
 
     // ── Ejecutar todo en background ────────────────
     (async () => {
+      // Avance suave: aunque una fase no reporte progreso (Odoo en paralelo,
+      // Direcciones, Promos), la barra sube de a poco hacia el "techo" de la
+      // fase actual, para que NUNCA se quede congelada hasta el 100%.
+      let techo = 55;
+      const creeper = setInterval(() => {
+        if (!syncState.running) return;
+        if (syncState.percent < techo) {
+          syncState.percent = Math.min(techo, syncState.percent + 1);
+        }
+      }, 2500);
+
       try {
-        // FASE 1: MobilVendor + Odoo en paralelo (0% → 70%)
+        // FASE 1: MobilVendor + Odoo en paralelo (5% → 55%)
         syncState.percent = 5;
+        techo = 55;
         const [resMV, resOdoo] = await Promise.allSettled([
           sincronizarVentasRango(startDate, endDate, syncState),
           sincronizarOdooCompletoRango(startDate, endDate),
@@ -113,8 +125,9 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Odoo] Error:", resOdoo.reason?.message);
         }
 
-        // FASE 2: Direcciones (70% → 95%)
-        syncState.percent = 70;
+        // FASE 2: Direcciones (55% → 85%) — el creeper anima mientras procesa.
+        techo = 85;
+        if (syncState.percent < 56) syncState.percent = 56;
         try {
           console.log("📍 [Direcciones] Iniciando sincronización de customer_addresses...");
           const resDirecciones = await sincronizarDirecciones();
@@ -123,8 +136,9 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Direcciones] Error:", errDir.message);
         }
 
-        // FASE 3: Promociones (95% → 99%)
-        syncState.percent = 95;
+        // FASE 3: Promociones (85% → 97%) — el creeper anima mientras procesa.
+        techo = 97;
+        if (syncState.percent < 86) syncState.percent = 86;
         try {
           console.log("🎁 [Promociones] Iniciando sincronización de promos...");
           const resPromos = await sincronizarPromociones();
@@ -137,6 +151,7 @@ const sincronizarVentas = async (req, res) => {
         const hayErrores =
           resMV.status === "rejected" || resOdoo.status === "rejected";
 
+        clearInterval(creeper);
         syncState.running    = false;
         syncState.percent    = 100;
         syncState.finishedAt = new Date();
@@ -149,6 +164,7 @@ const sincronizarVentas = async (req, res) => {
         console.log(`   Odoo        : ${syncState.odoo.estado}`);
 
       } catch (err) {
+        clearInterval(creeper);
         syncState.running    = false;
         syncState.percent    = 0;
         syncState.finishedAt = new Date();
