@@ -281,6 +281,7 @@ const ChatFlotante: React.FC = () => {
   });
   const [hablando,    setHablando]    = useState(false);
   const [escuchando,  setEscuchando]  = useState(false);
+  const [errorModal,  setErrorModal]  = useState<{ titulo: string; mensaje: string } | null>(null);
 
   const mensajesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLInputElement>(null);
@@ -460,7 +461,17 @@ const ChatFlotante: React.FC = () => {
         body:    JSON.stringify({ mensaje: texto }),
       });
       if (res.status === 401) { localStorage.clear(); window.location.href = "/"; return; }
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      if (!res.ok) {
+        // Leer el mensaje real que envía el backend para mostrarlo en el modal,
+        // en vez de un genérico que confunde al usuario.
+        let mensaje = `Error ${res.status}. Intenta de nuevo en un momento.`;
+        try {
+          const errData = await res.json();
+          if (errData?.respuesta) mensaje = errData.respuesta;
+        } catch {}
+        setErrorModal({ titulo: "No se pudo procesar tu solicitud", mensaje });
+        return;
+      }
 
       const data      = await res.json();
       const nuevoBot: Mensaje = {
@@ -482,10 +493,10 @@ const ChatFlotante: React.FC = () => {
         if ("vibrate" in navigator) navigator.vibrate([80, 40, 80]);
       }
     } catch {
-      setMensajes(prev => [...prev, {
-        tipo: "bot", texto: "No pude conectarme con el servidor.",
-        timestamp: new Date().toISOString(),
-      }]);
+      setErrorModal({
+        titulo: "Sin conexión",
+        mensaje: "No se pudo conectar con el servidor. Revisa tu conexión a internet e intenta de nuevo.",
+      });
     } finally { setCargando(false); }
   };
 
@@ -786,6 +797,41 @@ const ChatFlotante: React.FC = () => {
             )}
           </div>
 
+        </div>
+      )}
+
+      {/* ── MODAL DE ERROR ── visible en pantalla para que el usuario sepa qué pasó ── */}
+      {errorModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+          onClick={() => setErrorModal(null)}
+        >
+          <div
+            className="chat-window w-full max-w-sm bg-[#0a1f18] border border-[#9a7c28]/60 rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="alertdialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-[#7a1f1f] to-[#9a2c2c]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <h3 className="text-white font-semibold text-sm flex-1">{errorModal.titulo}</h3>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-gray-200 text-sm leading-relaxed">{errorModal.mensaje}</p>
+            </div>
+            <div className="px-4 pb-4 flex justify-end">
+              <button
+                onClick={() => setErrorModal(null)}
+                className="px-4 py-2 rounded-lg bg-gradient-to-br from-[#D2B858] to-[#9a7c28] text-black text-sm font-semibold hover:scale-105 active:scale-95 transition-transform"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

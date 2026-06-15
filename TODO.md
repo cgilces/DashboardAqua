@@ -161,6 +161,31 @@ Causa detectada en logs: la cuenta ElevenLabs se quedó **sin créditos** (`quot
 - [x] **DRY**: módulo único usado por el modal JARVIS y el ChatFlotante; `detenerNavegador()` corta la voz
       al silenciar/detener. Verificado: `tsc --noEmit` + `vite build` (exit 0).
 
+## Errores del chatbot en modal en pantalla (rama: `feature/chatbot-errores-modal`)
+
+Contexto: el chatbot mostraba "No pude conectarme con el servidor" para cualquier fallo,
+ocultando la causa real. Diagnóstico (logs): la cuenta de Anthropic se quedó **sin créditos**
+(`400 invalid_request_error: "credit balance is too low"`) → todo lo que pasa por el agente
+Claude falla. El front no leía el cuerpo del error.
+
+- [x] **Backend** (`chat.controller.js`): clasificar el error de saldo agotado (`credit balance`)
+      y devolver `503` con mensaje honesto (`codigo: "sin_creditos"`) en vez del genérico.
+- [x] **Frontend** (`ChatFlotante.tsx`): leer el `respuesta` real del backend en `!res.ok` y
+      mostrarlo en un **modal de error** en pantalla (título + mensaje + "Entendido");
+      `catch` de red muestra modal "Sin conexión".
+- [ ] Verificar: `node --check` (backend) + `tsc --noEmit` (frontend) + PR.
+- [ ] **Acción del usuario (no es código):** recargar créditos en console.anthropic.com →
+      Plans & Billing (o cambiar `ANTHROPIC_API_KEY`) para que la IA vuelva a funcionar.
+- [ ] **Fase 2 (opcional):** extender el modal de error a otros módulos del dashboard
+      (hoy solo cubre el chatbot).
+
+## Preventa "no cuadra" vs guías de entrega MobilVendor (rama: por crear)
+
+- [ ] **Diagnóstico:** el total de preventa del dashboard no coincide con el total de las
+      **guías de entrega** de preventa en MobilVendor. Identificar qué número del dashboard
+      es el que se compara y revisar la consulta (status, filtro seller_code PVR%, fecha
+      entrega vs creación, categoría). Confirmar con el usuario la pantalla exacta.
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.

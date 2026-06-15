@@ -874,6 +874,23 @@ async function chatHandler(req, res) {
 
     // Detectar errores de conexión a la base de datos o a la API
     const msg = (error.message || "").toLowerCase();
+
+    // Saldo de Anthropic agotado: llega como 400 invalid_request_error con
+    // "credit balance is too low". Mensaje honesto para que el usuario sepa qué pasa.
+    const isCreditError =
+      msg.includes("credit balance") ||
+      msg.includes("creditos") || msg.includes("créditos") ||
+      (error.status === 400 && msg.includes("credit"));
+
+    if (isCreditError) {
+      return res.status(503).json({
+        respuesta:
+          "El asistente de IA no está disponible temporalmente: la cuenta de Anthropic se quedó sin créditos. Avisa al administrador para recargar saldo (console.anthropic.com → Plans & Billing).",
+        error: true,
+        codigo: "sin_creditos",
+      });
+    }
+
     const isDbError =
       msg.includes("connect") || msg.includes("connection") ||
       msg.includes("econnrefused") || msg.includes("etimedout") ||
