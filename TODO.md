@@ -241,8 +241,12 @@ reportaban → todo se apilaba en 70% y la fase larga (Direcciones) lo dejaba co
 - [x] **Errores de documento más claros**: el log `❌ ERROR documento ...` ahora muestra el campo
       y valor que falla (Sequelize `ValidationError`/`parent`), no solo "Validation error", para
       poder diagnosticar qué documentos/campos rechaza la BD.
-- [ ] **Pendiente (diagnóstico):** con el nuevo log, revisar qué campo hace fallar a documentos
-      como `FA001-086-*` (posible `varchar` corto / dato nulo) y corregir el modelo o el mapeo.
+- [x] **Causa hallada y corregida:** los errores eran `llave duplicada viola unique_detalle`.
+      Producción tenía un constraint único LEGADO `unique_detalle` (solo documento+producto, sin
+      promo) que el esquema nunca eliminaba; como el dedup separa líneas por promo, dos líneas del
+      mismo artículo con promos distintas lo violaban. `000_schema.sql` ahora elimina `unique_detalle`
+      (constraint e índice) en el arranque, dejando solo `unique_detalle_doc_promo` (que sí incluye
+      promo). Requiere **reiniciar el servidor** para que el esquema idempotente lo aplique.
 - [ ] **Fase 2 (opcional):** que Odoo reporte su propio % real (hoy el avance es estimado durante
       esa fase); requiere instrumentar `sincronizacionOdooService` (loops de pedidos/facturas).
 
