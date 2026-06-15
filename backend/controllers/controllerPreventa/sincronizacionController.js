@@ -102,7 +102,10 @@ const sincronizarVentas = async (req, res) => {
         // FASE 1: MobilVendor + Odoo en paralelo
         syncState.percent = 5;
         const [resMV, resOdoo] = await Promise.allSettled([
-          sincronizarVentasRango(startDate, endDate, syncState),
+          // Sin syncState: el % de la barra lo lleva SOLO el avance decelerado, para
+          // que arranque baja y suba suave (si MobilVendor termina rápido, su tramo
+          // saltaba directo a 55% y parecía "empezar en 55%").
+          sincronizarVentasRango(startDate, endDate),
           sincronizarOdooCompletoRango(startDate, endDate),
         ]);
 
