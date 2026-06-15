@@ -178,7 +178,7 @@ async function responderAgente(pregunta, { rol, sellerCode, historial = [] } = {
       model: CLAUDE_MODEL,
       max_tokens: 3000,
       thinking: { type: "adaptive" },      // razona en profundidad cuando hace falta
-      output_config: { effort: "high" },   // usa todo su poder de análisis
+      output_config: { effort: "medium" }, // equilibrio velocidad/calidad (más ágil que "high")
       system,
       tools: TOOLS,
       messages,

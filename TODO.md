@@ -161,6 +161,67 @@ Causa detectada en logs: la cuenta ElevenLabs se quedó **sin créditos** (`quot
 - [x] **DRY**: módulo único usado por el modal JARVIS y el ChatFlotante; `detenerNavegador()` corta la voz
       al silenciar/detener. Verificado: `tsc --noEmit` + `vite build` (exit 0).
 
+## Errores del chatbot en modal en pantalla (rama: `feature/chatbot-errores-modal`)
+
+Contexto: el chatbot mostraba "No pude conectarme con el servidor" para cualquier fallo,
+ocultando la causa real. Diagnóstico (logs): la cuenta de Anthropic se quedó **sin créditos**
+(`400 invalid_request_error: "credit balance is too low"`) → todo lo que pasa por el agente
+Claude falla. El front no leía el cuerpo del error.
+
+- [x] **Backend** (`chat.controller.js`): clasificar el error de saldo agotado (`credit balance`)
+      y devolver `503` con mensaje honesto (`codigo: "sin_creditos"`) en vez del genérico.
+- [x] **Frontend** (`ChatFlotante.tsx`): leer el `respuesta` real del backend en `!res.ok` y
+      mostrarlo en un **modal de error** en pantalla (título + mensaje + "Entendido");
+      `catch` de red muestra modal "Sin conexión".
+- [ ] Verificar: `node --check` (backend) + `tsc --noEmit` (frontend) + PR.
+- [ ] **Acción del usuario (no es código):** recargar créditos en console.anthropic.com →
+      Plans & Billing (o cambiar `ANTHROPIC_API_KEY`) para que la IA vuelva a funcionar.
+- [x] **Fase 2 — modal de error GLOBAL** (rama `feature/modal-error-global`): cubre toda la app.
+      `utils/errorGlobal.ts` (bus de eventos + lector del mensaje del backend),
+      `utils/interceptorErrores.ts` (intercepta `fetch`: red caída + HTTP ≥400 excepto 401; +
+      `unhandledrejection` y `window.error`; excluye `/api/bot/*` que tiene su propio modal),
+      `ErrorModalGlobal.tsx` (modal único, con cola) y `ErrorBoundary.tsx` (errores de render).
+      Montados en `main.tsx`. Verificado: `tsc --noEmit` + `vite build` (exit 0).
+
+## Preventa "no cuadra" vs guías de entrega MobilVendor (rama: por crear)
+
+- [ ] **Diagnóstico:** el total de preventa del dashboard no coincide con el total de las
+      **guías de entrega** de preventa en MobilVendor. Identificar qué número del dashboard
+      es el que se compara y revisar la consulta (status, filtro seller_code PVR%, fecha
+      entrega vs creación, categoría). Confirmar con el usuario la pantalla exacta.
+
+## Deduplicar "Productos Vendidos" en todo el dashboard (rama: `feature/dedupe-productos-vendidos`)
+
+Problema: `detalle_documento.descripcion` a veces trae el código como prefijo
+(`[28] BOTELLÓN 20L AQUA PREMIUM`) y a veces no (`BOTELLÓN 20L AQUA PREMIUM`), así que el
+mismo producto aparece duplicado en las tablas de Productos Vendidos. Ejemplo real:
+`/domicilio-botellon/clientes/2026/6`.
+
+- [x] **Helper único** `utils/dedupeProductos.js` (`limpiarNombreProducto` quita `[NN] `/`[código] `;
+      `dedupeProductosVendidos` fusiona por nombre normalizado, suma unidades/dólares y recalcula
+      precio promedio). Auto-detecta los nombres de campo de cada módulo. Probado con el caso real.
+- [x] **Aplicado** en todas las tablas de productos vendidos: Botellón (`botellonesController` ×9,
+      `detalleBotellonController`), Descartable Odoo, Preventa (`ventasController`,
+      `detalleCanalController`, `detallePreventaController`), Plus (2º endpoint), Hielo Odoo (2º
+      endpoint), COTTSA, Clientes (`dashboardClientes` ×3) y Gerencia (top productos). Café y los
+      1ºs endpoints de Plus/Hielo ya tenían su propia limpieza (sin cambios).
+- [x] Verificado: `node --check` en los 12 archivos + prueba unitaria del helper. Pendiente: PR.
+- [ ] **Fase 2 (opcional):** la "tabla de precio promedio" de preventa (keyed por vendedor+producto,
+      `obtenerProductosVendidosMes`/`procesarTablaPrecioPromedio`) no se tocó; si también muestra
+      duplicados por prefijo, normalizar ahí.
+
+## Fluidez del chatbot: voz sin demora + respuesta más ágil (rama: `feat/chatbot-fluidez`)
+
+- [x] **Voz sin demora** (`utils/vozEstado.ts`): se mantienen las DOS opciones (ElevenLabs premium
+      → navegador/Google), pero al detectar que ElevenLabs no tiene saldo se **recuerda por sesión**
+      (`sessionStorage`) y los siguientes mensajes van **directo** a la voz del navegador, sin esperar
+      el round-trip que falla. Aplicado en `ChatFlotante.hablar()` y `JarvisBienvenida.hablar()`.
+      (El STT ya tenía su propio short-circuit `jarvis_stt_navegador`.)
+- [x] **Respuesta más ágil**: `agente.service.js` baja `effort` de `high` a `medium` (equilibrio
+      velocidad/calidad; reversible). Verificado: `node --check` + `tsc --noEmit`.
+- [ ] **Fluidez (fase 2, opcional):** streaming de la respuesta del chat (SSE) para que el texto/voz
+      empiecen a aparecer mientras el agente sigue redactando — sensación más natural y rápida.
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.

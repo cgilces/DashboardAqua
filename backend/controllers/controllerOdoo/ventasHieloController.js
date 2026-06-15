@@ -5,6 +5,7 @@
 const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { dedupeProductosVendidos } = require('../../utils/dedupeProductos');
 
 // ================================================================
 // RUTAS QUE FACTURAN EN ODOO
@@ -807,10 +808,10 @@ const obtenerProductosClienteHielo = async (req, res) => {
       fin,
     };
 
-    const productos = await sequelize.query(sql, {
+    const productos = dedupeProductosVendidos(await sequelize.query(sql, {
       replacements,
       type: Sequelize.QueryTypes.SELECT,
-    });
+    }));
 
     return res.json({ ok: true, productos });
   } catch (error) {

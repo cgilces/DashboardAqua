@@ -2,6 +2,7 @@
 const { sequelize, MetaPreventa, CottsaExtraMes, PosOrder, PosOrderLine } = require('../../models');
 const Sequelize = require('sequelize');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { dedupeProductosVendidos } = require('../../utils/dedupeProductos');
 
 CottsaExtraMes.sync().catch(err =>
   console.error('⚠️ sync CottsaExtraMes:', err.message)
@@ -877,7 +878,7 @@ const obtenerClientesCOTTSA = async (req, res) => {
         clientesConConsumo: conConsumo,
         clientesSinConsumo: resultado.length - conConsumo,
       },
-      productosVendidos,
+      productosVendidos: dedupeProductosVendidos(productosVendidos),
       extra,
       huerfanos: huerfanosResumen,
     });

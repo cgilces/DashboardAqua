@@ -6,6 +6,7 @@
 const Sequelize = require("sequelize");
 const { sequelize } = require("../../models");
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
+const { dedupeProductosVendidos } = require('../../utils/dedupeProductos');
 
 // Productos PLUS separados por sistema (verificados directo en Odoo).
 const PRODUCTOS_PLUS_MV   = ['1725', '1727', '1726'];
@@ -515,12 +516,12 @@ const obtenerProductosClientePlus = async (req, res) => {
       fin,
     };
 
-    const productos = await sequelize.query(sql, {
+    const productosRaw = await sequelize.query(sql, {
       replacements,
       type: Sequelize.QueryTypes.SELECT,
     });
 
-    return res.json({ ok: true, productos });
+    return res.json({ ok: true, productos: dedupeProductosVendidos(productosRaw) });
   } catch (error) {
     console.error('ERROR productos cliente plus:', error);
     return res.status(500).json({ ok: false, error: error.message });

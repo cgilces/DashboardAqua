@@ -10,6 +10,7 @@ const Op = Sequelize.Op;
 const { sequelize } = require('../../models');
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require('../../utils/diasFestivos');
 const { filtroVisibilidad, permisosModulo } = require('../../utils/visibilidadRutas');
+const { dedupeProductosVendidos } = require('../../utils/dedupeProductos');
 
 // ==========================================
 //  SOLO RUTAS DE PREVENTA PERMITIDAS
@@ -845,7 +846,7 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
   const rankingRutasR    = await obtenerRankingRutasDescartable(
     anioNum, mesNum, metasPorPreventa, diasTranscurridos, diasLaborablesMes
   );
-  const ventaPorProducto = await obtenerVentaPorProducto(anioNum, mesNum);
+  const ventaPorProducto = dedupeProductosVendidos(await obtenerVentaPorProducto(anioNum, mesNum));
 
   // ventasDescartable en calcularKPIsMes usa fin de mes completo
   // (la versión con comparativa se llama aparte en obtenerDatosDashboard)

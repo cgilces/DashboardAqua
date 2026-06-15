@@ -5,6 +5,7 @@ const db = require("../../db");
 const Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 const { QueryTypes } = require("sequelize");
+const { dedupeProductosVendidos } = require("../../utils/dedupeProductos");
 
 
 // ========================================================
@@ -495,7 +496,7 @@ GROUP BY customer_code;
         clientesConConsumo: totalClientesRuta - totalSin,  // Clientes con consumo
         clientesSinConsumo: totalSin,  // Clientes sin consumo
       },
-      productosVendidos,  // Aquí se incluyen los productos vendidos
+      productosVendidos: dedupeProductosVendidos(productosVendidos),  // Aquí se incluyen los productos vendidos
       clientesRuta: clientesRutaConDetalles,  // Aquí se incluyen todos los clientes con detalles
     });
 

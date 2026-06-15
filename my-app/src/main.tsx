@@ -47,6 +47,9 @@ import { SyncProvider } from "./context/SyncContext";
 
 import { Toaster } from "react-hot-toast";
 import ChatGlobal from "./components/elements/ChatGlobal";
+import ErrorBoundary from "./components/elements/ErrorBoundary";
+import ErrorModalGlobal from "./components/elements/ErrorModalGlobal";
+import { instalarInterceptorErrores } from "./utils/interceptorErrores";
 
 import "./index.css";
 import DashboardClientes from "./pages/pagesClientesGeneral/DashboardClientes";
@@ -54,10 +57,16 @@ import EmpresaDetalle from "./pages/pagesClientesGeneral/EmpresaDetalle";
 import CreacionUsuario from "./pages/pageCreacionUsuario/CreacionUsuario";
 
 
+// Cazador GLOBAL de errores (fetch 5xx/red, promesas/errores no capturados).
+instalarInterceptorErrores();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
+      <ErrorBoundary>
       <Toaster position="top-right" reverseOrder={false} />
+      {/* Modal de error global — visible en cualquier pantalla */}
+      <ErrorModalGlobal />
 
       <AuthProvider>
         <SyncProvider>
@@ -265,6 +274,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
         </SyncProvider>
       </AuthProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   </React.StrictMode>
 );
