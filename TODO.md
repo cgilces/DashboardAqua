@@ -235,6 +235,16 @@ reportaban → todo se apilaba en 70% y la fase larga (Direcciones) lo dejaba co
       poco hacia el "techo" de cada fase (FASE1 55 · Direcciones 85 · Promos 97), así nunca se
       congela aunque la fase no reporte. Se limpia al terminar (éxito y error) y cierra en 100%.
 - [x] Verificado: `node --check` + simulación de la progresión (5→55→85→97→100, monótona).
+- [x] **Refinado** (se quedaba ahora en 55%, techo de FASE 1 mientras Odoo —el lento— terminaba):
+      reemplazado por **avance decelerado** hacia un tope alto (95%), rápido al inicio y lento al
+      final, así nunca se congela sin importar qué fase tarde; al terminar todo salta a 100%.
+- [x] **Errores de documento más claros**: el log `❌ ERROR documento ...` ahora muestra el campo
+      y valor que falla (Sequelize `ValidationError`/`parent`), no solo "Validation error", para
+      poder diagnosticar qué documentos/campos rechaza la BD.
+- [ ] **Pendiente (diagnóstico):** con el nuevo log, revisar qué campo hace fallar a documentos
+      como `FA001-086-*` (posible `varchar` corto / dato nulo) y corregir el modelo o el mapeo.
+- [ ] **Fase 2 (opcional):** que Odoo reporte su propio % real (hoy el avance es estimado durante
+      esa fase); requiere instrumentar `sincronizacionOdooService` (loops de pedidos/facturas).
 
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese

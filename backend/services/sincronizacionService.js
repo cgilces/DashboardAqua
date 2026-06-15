@@ -882,7 +882,12 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
             },
           };
           erroresPorDocumento.push(errorEntry);
-          console.error(`❌ ERROR documento ${code}: ${errDoc.message}`);
+          // Detalle legible: si es ValidationError de Sequelize, mostrar campo(s)
+          // que fallan (ej. "value too long for column..."), no solo "Validation error".
+          const detalleErr = Array.isArray(errDoc.errors) && errDoc.errors.length
+            ? errDoc.errors.map(e => `${e.path}=${JSON.stringify(e.value)} (${e.message})`).join("; ")
+            : (errDoc.parent?.message || errDoc.original?.message || "");
+          console.error(`❌ ERROR documento ${code}: ${errDoc.message}${detalleErr ? " → " + detalleErr : ""}`);
         }
       }
 

@@ -84,21 +84,23 @@ const sincronizarVentas = async (req, res) => {
 
     // ── Ejecutar todo en background ────────────────
     (async () => {
-      // Avance suave: aunque una fase no reporte progreso (Odoo en paralelo,
-      // Direcciones, Promos), la barra sube de a poco hacia el "techo" de la
-      // fase actual, para que NUNCA se quede congelada hasta el 100%.
-      let techo = 55;
+      // Avance suave DECELERADO: la barra siempre sube hacia un tope alto (95%),
+      // rápido al inicio y más lento al final. Así NUNCA se queda congelada,
+      // sin importar qué fase tarde (Odoo en paralelo, Direcciones, Promos).
+      // Los hitos reales (MobilVendor) la empujan hacia adelante; al terminar
+      // todo, salta a 100%.
+      const TOPE = 95;
       const creeper = setInterval(() => {
         if (!syncState.running) return;
-        if (syncState.percent < techo) {
-          syncState.percent = Math.min(techo, syncState.percent + 1);
+        if (syncState.percent < TOPE) {
+          const paso = Math.max(1, Math.round((TOPE - syncState.percent) / 18));
+          syncState.percent = Math.min(TOPE, syncState.percent + paso);
         }
-      }, 2500);
+      }, 3000);
 
       try {
-        // FASE 1: MobilVendor + Odoo en paralelo (5% → 55%)
+        // FASE 1: MobilVendor + Odoo en paralelo
         syncState.percent = 5;
-        techo = 55;
         const [resMV, resOdoo] = await Promise.allSettled([
           sincronizarVentasRango(startDate, endDate, syncState),
           sincronizarOdooCompletoRango(startDate, endDate),
@@ -125,9 +127,7 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Odoo] Error:", resOdoo.reason?.message);
         }
 
-        // FASE 2: Direcciones (55% → 85%) — el creeper anima mientras procesa.
-        techo = 85;
-        if (syncState.percent < 56) syncState.percent = 56;
+        // FASE 2: Direcciones — el avance decelerado sigue subiendo mientras procesa.
         try {
           console.log("📍 [Direcciones] Iniciando sincronización de customer_addresses...");
           const resDirecciones = await sincronizarDirecciones();
@@ -136,9 +136,7 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Direcciones] Error:", errDir.message);
         }
 
-        // FASE 3: Promociones (85% → 97%) — el creeper anima mientras procesa.
-        techo = 97;
-        if (syncState.percent < 86) syncState.percent = 86;
+        // FASE 3: Promociones — el avance decelerado sigue subiendo mientras procesa.
         try {
           console.log("🎁 [Promociones] Iniciando sincronización de promos...");
           const resPromos = await sincronizarPromociones();
