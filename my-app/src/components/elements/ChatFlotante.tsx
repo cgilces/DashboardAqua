@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Zap, FileText, BarChart3, Lightbulb, Check, Clock, Volume2, VolumeX, Mic, MicOff } from "lucide-react";
 import { hablarConNavegador, precargarVoces, detenerNavegador } from "../../utils/vozNavegador";
+import { ttsPremiumAgotado, marcarTtsPremiumAgotado } from "../../utils/vozEstado";
 import { useAuth } from "../../components/auth/AuthContext";
 import { API_BASE_URL } from '../../config';
 
@@ -319,6 +320,9 @@ const ChatFlotante: React.FC = () => {
   // desactivada (lee vozActivaRef para funcionar dentro de callbacks async).
   const hablar = useCallback(async (texto: string) => {
     if (!vozActivaRef.current || !texto?.trim()) return;
+    // Si ya sabemos que la voz premium no tiene saldo, ir directo a la del
+    // navegador (Google) sin esperar el round-trip que falla.
+    if (ttsPremiumAgotado()) { hablarNavegador(texto); return; }
     try {
       detenerVoz();
       const token = localStorage.getItem("app_token") || "";
@@ -327,7 +331,7 @@ const ChatFlotante: React.FC = () => {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body:    JSON.stringify({ texto }),
       });
-      if (!res.ok) { hablarNavegador(texto); return; } // sin créditos/error → voz del navegador
+      if (!res.ok) { marcarTtsPremiumAgotado(); hablarNavegador(texto); return; } // sin créditos/error → voz del navegador
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
       const audio = new Audio(url);

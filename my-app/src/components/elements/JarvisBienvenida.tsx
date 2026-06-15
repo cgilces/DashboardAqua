@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import { API_BASE_URL } from "../../config";
 import { Mic, Volume2, X, Square } from "lucide-react";
 import { hablarConNavegador, precargarVoces, detenerNavegador } from "../../utils/vozNavegador";
+import { ttsPremiumAgotado, marcarTtsPremiumAgotado } from "../../utils/vozEstado";
 
 // ════════════════════════════════════════════════════════════════════════════
 // MODAL "JARVIS" — saludo por voz + MODO CONVERSACIÓN manos libres
@@ -150,6 +151,9 @@ const JarvisBienvenida: React.FC = () => {
     if (!vozPreferida() || !t) { seguirTrasHablar(); return; }
     ttsFallbackRef.current = false;
 
+    // Si ya sabemos que la voz premium no tiene saldo → directo al navegador (Google).
+    if (ttsPremiumAgotado()) { await hablarNavegador(t); seguirTrasHablar(); return; }
+
     // 1) Intentar ElevenLabs (voz premium con ondas reactivas).
     try {
       const token = localStorage.getItem("app_token") || "";
@@ -207,7 +211,8 @@ const JarvisBienvenida: React.FC = () => {
         });
         return;
       }
-      // res no OK (p.ej. 402 sin créditos) → fallback navegador.
+      // res no OK (p.ej. 402 sin créditos) → recordar y usar el navegador.
+      marcarTtsPremiumAgotado();
     } catch { /* error de red → fallback navegador */ }
 
     // 2) Fallback: voz del navegador.

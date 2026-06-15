@@ -210,6 +210,18 @@ mismo producto aparece duplicado en las tablas de Productos Vendidos. Ejemplo re
       `obtenerProductosVendidosMes`/`procesarTablaPrecioPromedio`) no se tocó; si también muestra
       duplicados por prefijo, normalizar ahí.
 
+## Fluidez del chatbot: voz sin demora + respuesta más ágil (rama: `feat/chatbot-fluidez`)
+
+- [x] **Voz sin demora** (`utils/vozEstado.ts`): se mantienen las DOS opciones (ElevenLabs premium
+      → navegador/Google), pero al detectar que ElevenLabs no tiene saldo se **recuerda por sesión**
+      (`sessionStorage`) y los siguientes mensajes van **directo** a la voz del navegador, sin esperar
+      el round-trip que falla. Aplicado en `ChatFlotante.hablar()` y `JarvisBienvenida.hablar()`.
+      (El STT ya tenía su propio short-circuit `jarvis_stt_navegador`.)
+- [x] **Respuesta más ágil**: `agente.service.js` baja `effort` de `high` a `medium` (equilibrio
+      velocidad/calidad; reversible). Verificado: `node --check` + `tsc --noEmit`.
+- [ ] **Fluidez (fase 2, opcional):** streaming de la respuesta del chat (SSE) para que el texto/voz
+      empiecen a aparecer mientras el agente sigue redactando — sensación más natural y rápida.
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.
