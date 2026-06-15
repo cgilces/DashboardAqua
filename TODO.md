@@ -222,6 +222,20 @@ mismo producto aparece duplicado en las tablas de Productos Vendidos. Ejemplo re
 - [ ] **Fluidez (fase 2, opcional):** streaming de la respuesta del chat (SSE) para que el texto/voz
       empiecen a aparecer mientras el agente sigue redactando — sensación más natural y rápida.
 
+## Barra de sincronización congelada en 70% (rama: `fix/sync-progreso-barra`)
+
+Síntoma (producción): la barra salta a 70% y se queda ahí hasta el final. Causa: solo
+MobilVendor reportaba progreso (5→70%); Odoo (en paralelo), Direcciones y Promos no
+reportaban → todo se apilaba en 70% y la fase larga (Direcciones) lo dejaba congelado.
+
+- [x] `SyncProgress`: `updatePage` ahora usa **rango configurable** (from/to) y es **monótono**
+      (la barra solo avanza, nunca retrocede); `start()` ya no resetea `percent` a 0.
+- [x] MobilVendor reporta 5→55% (antes 5→70).
+- [x] **Avance suave ("creeper")** en `sincronizacionController`: un intervalo sube la barra de a
+      poco hacia el "techo" de cada fase (FASE1 55 · Direcciones 85 · Promos 97), así nunca se
+      congela aunque la fase no reporte. Se limpia al terminar (éxito y error) y cierra en 100%.
+- [x] Verificado: `node --check` + simulación de la progresión (5→55→85→97→100, monótona).
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.
