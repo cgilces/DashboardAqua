@@ -13,7 +13,8 @@ interface PromoRow {
   veces: number;
   prendedores?: number;
   unidades: number;
-  monto: number;
+  subtotal: number; // sin IVA
+  monto: number;    // con IVA
   descuento: number;
 }
 interface PrendedorRow {
@@ -21,7 +22,8 @@ interface PrendedorRow {
   promosDistintas: number;
   ventasConPromo: number;
   unidades: number;
-  monto: number;
+  subtotal: number; // sin IVA
+  monto: number;    // con IVA
   descuento: number;
 }
 // Drill-down de una promo: vendedores que la vendieron
@@ -362,10 +364,11 @@ const DashboardPromos: React.FC = () => {
             </div>
 
             {/* KPIs del vendedor */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <Kpi label="Promos distintas" valor={fmt(vendInfo?.promosDistintas ?? vendPromos.length)} />
               <Kpi label="Unidades" valor={fmt(vendInfo?.unidades ?? vendPromos.reduce((s, p) => s + p.unidades, 0))} />
-              <Kpi label="Vendido $" valor={`$${fmtMoney(vendInfo?.monto ?? vendPromos.reduce((s, p) => s + p.monto, 0))}`} acento="emerald" />
+              <Kpi label="Subtotal $ (s/IVA)" valor={`$${fmtMoney(vendInfo?.subtotal ?? vendPromos.reduce((s, p) => s + p.subtotal, 0))}`} />
+              <Kpi label="Total $ (c/IVA)" valor={`$${fmtMoney(vendInfo?.monto ?? vendPromos.reduce((s, p) => s + p.monto, 0))}`} acento="emerald" />
               <Kpi label="Descuento $" valor={`$${fmtMoney(vendInfo?.descuento ?? vendPromos.reduce((s, p) => s + p.descuento, 0))}`} acento="amber" />
             </div>
 
@@ -380,7 +383,9 @@ const DashboardPromos: React.FC = () => {
               ) : vendPromos.length === 0 ? (
                 <p className="text-center text-gray-400 py-12">Sin promos en el período.</p>
               ) : (
-                <TablaPromos rows={vendPromos} maxUnidades={vendMaxUnidades} />
+                <div className="overflow-x-auto">
+                  <TablaPromos rows={vendPromos} maxUnidades={vendMaxUnidades} />
+                </div>
               )}
             </div>
           </section>
@@ -459,7 +464,7 @@ const DashboardPromos: React.FC = () => {
                   <Tag size={18} /> Ranking general de promociones
                   <span className="text-xs font-normal text-emerald-300/70">(clic para ver vendedores)</span>
                 </h2>
-                <div className="overflow-y-auto max-h-[28rem]">
+                <div className="overflow-auto max-h-[28rem]">
                   <TablaPromos rows={promos} maxUnidades={maxUnidades} onSelect={setPromoSel} />
                 </div>
               </section>
@@ -469,15 +474,16 @@ const DashboardPromos: React.FC = () => {
                 <h2 className="px-5 py-3 font-semibold flex items-center gap-2 border-b border-[#046C5E]">
                   <Users size={18} /> Vendedores (clic para ver su detalle)
                 </h2>
-                <div className="overflow-y-auto max-h-[28rem]">
-                  <table className="w-full text-sm">
+                <div className="overflow-auto max-h-[28rem]">
+                  <table className="w-full min-w-[680px] text-sm">
                     <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
                       <tr>
-                        <th className="py-2 px-3 text-right font-normal w-10">#</th>
+                        <th className="py-2 px-4 text-right font-normal w-12">#</th>
                         <SortTh label="Vendedor" col="prendedor" state={predSort} onSort={onPredSort} align="left" className="px-4" />
                         <SortTh label="Promos" col="promosDistintas" state={predSort} onSort={onPredSort} className="px-3" />
                         <SortTh label="Unidades" col="unidades" state={predSort} onSort={onPredSort} className="px-3" />
-                        <SortTh label="Vendido $ (c/IVA)" col="monto" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
+                        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
+                        <SortTh label="Total (c/IVA)" col="monto" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
                         <SortTh label="Descuento $" col="descuento" state={predSort} onSort={onPredSort} className="px-4 whitespace-nowrap" />
                       </tr>
                     </thead>
@@ -492,6 +498,7 @@ const DashboardPromos: React.FC = () => {
                           <td className="px-4 py-2 font-medium">{p.prendedor}</td>
                           <td className="px-3 py-2 text-right">{fmt(p.promosDistintas)}</td>
                           <td className="px-3 py-2 text-right font-semibold">{fmt(p.unidades)}</td>
+                          <td className="px-3 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
                           <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
                           <td className="px-4 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
                         </tr>
@@ -524,15 +531,16 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
   const { state, onSort } = useSort();
   const sorted = useMemo(() => sortRows(rows, state), [rows, state]);
   return (
-  <table className="w-full text-sm table-fixed">
+  <table className="w-full min-w-[780px] text-sm table-fixed">
     <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
       <tr>
-        <th className="py-2 px-3 text-right font-normal w-10">#</th>
-        <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 w-auto" />
-        <SortTh label="Unidades" col="unidades" state={state} onSort={onSort} className="px-3 w-20" />
-        <SortTh label="Ventas" col="veces" state={state} onSort={onSort} className="px-3 w-16" />
-        <SortTh label="Vendido $ (c/IVA)" col="monto" state={state} onSort={onSort} className="px-3 w-28 whitespace-nowrap" />
-        <SortTh label="Descuento $" col="descuento" state={state} onSort={onSort} className="px-4 w-28 whitespace-nowrap" />
+        <th className="py-2 px-3 text-right font-normal w-12">#</th>
+        <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 w-auto min-w-[180px]" />
+        <SortTh label="Unidades" col="unidades" state={state} onSort={onSort} className="px-4 w-24" />
+        <SortTh label="Ventas" col="veces" state={state} onSort={onSort} className="px-4 w-20" />
+        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={state} onSort={onSort} className="px-4 w-32 whitespace-nowrap" />
+        <SortTh label="Total (c/IVA)" col="monto" state={state} onSort={onSort} className="px-4 w-32 whitespace-nowrap" />
+        <SortTh label="Descuento $" col="descuento" state={state} onSort={onSort} className="px-4 w-32 whitespace-nowrap" />
       </tr>
     </thead>
     <tbody>
@@ -551,9 +559,10 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
               </div>
             </div>
           </td>
-          <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{fmt(p.unidades)}</td>
-          <td className="px-3 py-2 text-right text-gray-300 whitespace-nowrap">{fmt(p.veces)}</td>
-          <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
+          <td className="px-4 py-2 text-right font-semibold whitespace-nowrap">{fmt(p.unidades)}</td>
+          <td className="px-4 py-2 text-right text-gray-300 whitespace-nowrap">{fmt(p.veces)}</td>
+          <td className="px-4 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
+          <td className="px-4 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
           <td className="px-4 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
         </tr>
       ))}
@@ -568,11 +577,11 @@ const TablaPromoVendedores: React.FC<{ rows: PromoVendRow[]; totales: DetallePro
   const { state, onSort } = useSort();
   const sorted = useMemo(() => sortRows(rows, state), [rows, state]);
   return (
-    <div className="overflow-y-auto max-h-[32rem]">
-      <table className="w-full text-sm">
+    <div className="overflow-auto max-h-[32rem]">
+      <table className="w-full min-w-[720px] text-sm">
         <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
           <tr>
-            <th className="py-2 px-3 text-right font-normal w-10">#</th>
+            <th className="py-2 px-4 text-right font-normal w-12">#</th>
             <SortTh label="Vendedor" col="prendedor" state={state} onSort={onSort} align="left" className="px-4" />
             <SortTh label="Cant. promoción" col="cantidadPromocion" state={state} onSort={onSort} className="px-3 whitespace-nowrap" />
             <SortTh label="Cant. sin promo" col="cantidadSinPromocion" state={state} onSort={onSort} className="px-3 whitespace-nowrap" />
