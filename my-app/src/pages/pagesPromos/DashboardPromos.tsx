@@ -64,6 +64,17 @@ const authHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+// Búsqueda por límite de palabra (V6 matchea "V6" pero no "PV6"; "GALON" matchea
+// "PROMO GALON"). Vacío = no filtra.
+const norm = (s: unknown) =>
+  (s ?? "").toString().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+const coincide = (valor: unknown, filtro: string): boolean => {
+  const f = norm(filtro);
+  if (!f) return true;
+  const esc = f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Z0-9])${esc}([^A-Z0-9]|$)`).test(norm(valor));
+};
+
 // ── Ordenamiento reutilizable ────────────────────────────────────────────────
 type SortDir = "asc" | "desc";
 type SortState = { key: string; dir: SortDir } | null;
@@ -238,6 +249,18 @@ const DashboardPromos: React.FC = () => {
   // Orden de la tabla de vendedores
   const { state: predSort, onSort: onPredSort } = useSort();
   const prendedoresSorted = useMemo(() => sortRows(prendedores, predSort), [prendedores, predSort]);
+
+  // Buscadores del Resumen: por nombre/código de promo y por vendedor.
+  const [qPromo, setQPromo] = useState("");
+  const [qVend, setQVend] = useState("");
+  const promosVista = useMemo(
+    () => promos.filter((p) => !qPromo || coincide(p.promoNombre, qPromo) || coincide(p.promoCodigo, qPromo)),
+    [promos, qPromo]
+  );
+  const prendedoresVista = useMemo(
+    () => prendedoresSorted.filter((p) => !qVend || coincide(p.prendedor, qVend)),
+    [prendedoresSorted, qVend]
+  );
 
   return (
     <DashboardLayout>
@@ -460,47 +483,60 @@ const DashboardPromos: React.FC = () => {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {/* Ranking general de promos */}
               <section className="rounded-2xl bg-[#0b3b34]/60 border border-[#046C5E] overflow-hidden">
-                <h2 className="px-5 py-3 font-semibold flex items-center gap-2 border-b border-[#046C5E]">
+                <h2 className="px-5 py-3 font-semibold flex flex-wrap items-center gap-2 border-b border-[#046C5E]">
                   <Tag size={18} /> Ranking general de promociones
                   <span className="text-xs font-normal text-emerald-300/70">(clic para ver vendedores)</span>
+                  <input
+                    value={qPromo}
+                    onChange={(e) => setQPromo(e.target.value)}
+                    placeholder="Buscar promoción…"
+                    className="ml-auto bg-[#046C5E] text-white text-sm font-normal px-3 py-1.5 rounded-lg placeholder-emerald-200/50 w-44"
+                  />
                 </h2>
                 <div className="overflow-auto max-h-[28rem]">
-                  <TablaPromos rows={promos} maxUnidades={maxUnidades} onSelect={setPromoSel} />
+                  <TablaPromos rows={promosVista} maxUnidades={maxUnidades} onSelect={setPromoSel} />
                 </div>
               </section>
 
               {/* Ranking de prendedores */}
               <section className="rounded-2xl bg-[#0b3b34]/60 border border-[#046C5E] overflow-hidden">
-                <h2 className="px-5 py-3 font-semibold flex items-center gap-2 border-b border-[#046C5E]">
-                  <Users size={18} /> Vendedores (clic para ver su detalle)
+                <h2 className="px-5 py-3 font-semibold flex flex-wrap items-center gap-2 border-b border-[#046C5E]">
+                  <Users size={18} /> Vendedores
+                  <span className="text-xs font-normal text-emerald-300/70">(clic para ver su detalle)</span>
+                  <input
+                    value={qVend}
+                    onChange={(e) => setQVend(e.target.value)}
+                    placeholder="Buscar vendedor…"
+                    className="ml-auto bg-[#046C5E] text-white text-sm font-normal px-3 py-1.5 rounded-lg placeholder-emerald-200/50 w-40"
+                  />
                 </h2>
                 <div className="overflow-auto max-h-[28rem]">
-                  <table className="w-full min-w-[680px] text-sm">
+                  <table className="w-full min-w-[840px] text-sm">
                     <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
                       <tr>
                         <th className="py-2 px-4 text-right font-normal w-12">#</th>
-                        <SortTh label="Vendedor" col="prendedor" state={predSort} onSort={onPredSort} align="left" className="px-4" />
-                        <SortTh label="Promos" col="promosDistintas" state={predSort} onSort={onPredSort} className="px-3" />
-                        <SortTh label="Unidades" col="unidades" state={predSort} onSort={onPredSort} className="px-3" />
-                        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
-                        <SortTh label="Total (c/IVA)" col="monto" state={predSort} onSort={onPredSort} className="px-3 whitespace-nowrap" />
-                        <SortTh label="Descuento $" col="descuento" state={predSort} onSort={onPredSort} className="px-4 whitespace-nowrap" />
+                        <SortTh label="Vendedor" col="prendedor" state={predSort} onSort={onPredSort} align="left" className="px-4 min-w-[120px]" />
+                        <SortTh label="Promos" col="promosDistintas" state={predSort} onSort={onPredSort} className="px-6" />
+                        <SortTh label="Unidades" col="unidades" state={predSort} onSort={onPredSort} className="px-6" />
+                        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
+                        <SortTh label="Total (c/IVA)" col="monto" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
+                        <SortTh label="Descuento $" col="descuento" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
                       </tr>
                     </thead>
                     <tbody>
-                      {prendedoresSorted.map((p, i) => (
+                      {prendedoresVista.map((p, i) => (
                         <tr
                           key={p.prendedor}
                           onClick={() => setVendedorSel(p.prendedor)}
                           className="border-t border-white/5 hover:bg-emerald-400/10 cursor-pointer"
                         >
-                          <td className="px-3 py-2 text-right text-emerald-300/60">{i + 1}</td>
+                          <td className="px-4 py-2 text-right text-emerald-300/60">{i + 1}</td>
                           <td className="px-4 py-2 font-medium">{p.prendedor}</td>
-                          <td className="px-3 py-2 text-right">{fmt(p.promosDistintas)}</td>
-                          <td className="px-3 py-2 text-right font-semibold">{fmt(p.unidades)}</td>
-                          <td className="px-3 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
-                          <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
-                          <td className="px-4 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
+                          <td className="px-6 py-2 text-right">{fmt(p.promosDistintas)}</td>
+                          <td className="px-6 py-2 text-right font-semibold">{fmt(p.unidades)}</td>
+                          <td className="px-6 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
+                          <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
+                          <td className="px-6 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -531,16 +567,16 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
   const { state, onSort } = useSort();
   const sorted = useMemo(() => sortRows(rows, state), [rows, state]);
   return (
-  <table className="w-full min-w-[780px] text-sm table-fixed">
+  <table className="w-full min-w-[880px] text-sm">
     <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
       <tr>
-        <th className="py-2 px-3 text-right font-normal w-12">#</th>
-        <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 w-auto min-w-[180px]" />
-        <SortTh label="Unidades" col="unidades" state={state} onSort={onSort} className="px-4 w-24" />
-        <SortTh label="Ventas" col="veces" state={state} onSort={onSort} className="px-4 w-20" />
-        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={state} onSort={onSort} className="px-4 w-32 whitespace-nowrap" />
-        <SortTh label="Total (c/IVA)" col="monto" state={state} onSort={onSort} className="px-4 w-32 whitespace-nowrap" />
-        <SortTh label="Descuento $" col="descuento" state={state} onSort={onSort} className="px-4 w-32 whitespace-nowrap" />
+        <th className="py-2 px-4 text-right font-normal">#</th>
+        <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 min-w-[200px]" />
+        <SortTh label="Unidades" col="unidades" state={state} onSort={onSort} className="px-6" />
+        <SortTh label="Ventas" col="veces" state={state} onSort={onSort} className="px-6" />
+        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={state} onSort={onSort} className="px-6 whitespace-nowrap" />
+        <SortTh label="Total (c/IVA)" col="monto" state={state} onSort={onSort} className="px-6 whitespace-nowrap" />
+        <SortTh label="Descuento $" col="descuento" state={state} onSort={onSort} className="px-6 whitespace-nowrap" />
       </tr>
     </thead>
     <tbody>
@@ -550,8 +586,8 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
           onClick={onSelect ? () => onSelect(p) : undefined}
           className={`border-t border-white/5 ${onSelect ? "cursor-pointer hover:bg-emerald-400/10" : "hover:bg-white/5"}`}
         >
-          <td className="px-3 py-2 text-right text-emerald-300/60 align-top">{i + 1}</td>
-          <td className="px-4 py-2">
+          <td className="px-4 py-2 text-right text-emerald-300/60 align-top">{i + 1}</td>
+          <td className="px-4 py-2 max-w-[320px]">
             <div className="min-w-0">
               <p className="truncate font-medium">{p.promoNombre}</p>
               <div className="h-1.5 mt-1 rounded bg-white/10 overflow-hidden w-full max-w-xs">
@@ -559,11 +595,11 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
               </div>
             </div>
           </td>
-          <td className="px-4 py-2 text-right font-semibold whitespace-nowrap">{fmt(p.unidades)}</td>
-          <td className="px-4 py-2 text-right text-gray-300 whitespace-nowrap">{fmt(p.veces)}</td>
-          <td className="px-4 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
-          <td className="px-4 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
-          <td className="px-4 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
+          <td className="px-6 py-2 text-right font-semibold whitespace-nowrap">{fmt(p.unidades)}</td>
+          <td className="px-6 py-2 text-right text-gray-300 whitespace-nowrap">{fmt(p.veces)}</td>
+          <td className="px-6 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
+          <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
+          <td className="px-6 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
         </tr>
       ))}
     </tbody>
@@ -578,39 +614,39 @@ const TablaPromoVendedores: React.FC<{ rows: PromoVendRow[]; totales: DetallePro
   const sorted = useMemo(() => sortRows(rows, state), [rows, state]);
   return (
     <div className="overflow-auto max-h-[32rem]">
-      <table className="w-full min-w-[720px] text-sm">
+      <table className="w-full min-w-[860px] text-sm">
         <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
           <tr>
-            <th className="py-2 px-4 text-right font-normal w-12">#</th>
-            <SortTh label="Vendedor" col="prendedor" state={state} onSort={onSort} align="left" className="px-4" />
-            <SortTh label="Cant. promoción" col="cantidadPromocion" state={state} onSort={onSort} className="px-3 whitespace-nowrap" />
-            <SortTh label="Cant. sin promo" col="cantidadSinPromocion" state={state} onSort={onSort} className="px-3 whitespace-nowrap" />
-            <SortTh label="Dólares" col="dolares" state={state} onSort={onSort} className="px-3" />
-            <SortTh label="Descuento" col="descuento" state={state} onSort={onSort} className="px-3" />
-            <SortTh label="Total" col="total" state={state} onSort={onSort} className="px-4" />
+            <th className="py-2 px-4 text-right font-normal">#</th>
+            <SortTh label="Vendedor" col="prendedor" state={state} onSort={onSort} align="left" className="px-4 min-w-[120px]" />
+            <SortTh label="Cant. promoción" col="cantidadPromocion" state={state} onSort={onSort} className="px-6 whitespace-nowrap" />
+            <SortTh label="Cant. sin promo" col="cantidadSinPromocion" state={state} onSort={onSort} className="px-6 whitespace-nowrap" />
+            <SortTh label="Dólares" col="dolares" state={state} onSort={onSort} className="px-6" />
+            <SortTh label="Descuento" col="descuento" state={state} onSort={onSort} className="px-6" />
+            <SortTh label="Total" col="total" state={state} onSort={onSort} className="px-6" />
           </tr>
         </thead>
         <tbody>
           {sorted.map((r, i) => (
             <tr key={r.prendedor} className="border-t border-white/5 hover:bg-white/5">
-              <td className="px-3 py-2 text-right text-emerald-300/60">{i + 1}</td>
+              <td className="px-4 py-2 text-right text-emerald-300/60">{i + 1}</td>
               <td className="px-4 py-2 font-medium">{r.prendedor}</td>
-              <td className="px-3 py-2 text-right font-semibold text-emerald-200">{fmt(r.cantidadPromocion)}</td>
-              <td className="px-3 py-2 text-right">{fmt(r.cantidadSinPromocion)}</td>
-              <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(r.dolares)}</td>
-              <td className="px-3 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(r.descuento)}</td>
-              <td className="px-4 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(r.total)}</td>
+              <td className="px-6 py-2 text-right font-semibold text-emerald-200">{fmt(r.cantidadPromocion)}</td>
+              <td className="px-6 py-2 text-right">{fmt(r.cantidadSinPromocion)}</td>
+              <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(r.dolares)}</td>
+              <td className="px-6 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(r.descuento)}</td>
+              <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(r.total)}</td>
             </tr>
           ))}
         </tbody>
         <tfoot className="sticky bottom-0 bg-[#02463c] font-semibold">
           <tr className="border-t-2 border-emerald-400/40">
             <td className="px-4 py-2" colSpan={2}>Total</td>
-            <td className="px-3 py-2 text-right text-emerald-200">{fmt(totales.cantidadPromocion)}</td>
-            <td className="px-3 py-2 text-right">{fmt(totales.cantidadSinPromocion)}</td>
-            <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.dolares)}</td>
-            <td className="px-3 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(totales.descuento)}</td>
-            <td className="px-4 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.total)}</td>
+            <td className="px-6 py-2 text-right text-emerald-200">{fmt(totales.cantidadPromocion)}</td>
+            <td className="px-6 py-2 text-right">{fmt(totales.cantidadSinPromocion)}</td>
+            <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.dolares)}</td>
+            <td className="px-6 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(totales.descuento)}</td>
+            <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.total)}</td>
           </tr>
         </tfoot>
       </table>
