@@ -487,11 +487,15 @@ const DashboardPromos: React.FC = () => {
                   <Tag size={18} /> Ranking general de promociones
                   <span className="text-xs font-normal text-emerald-300/70">(clic para ver vendedores)</span>
                   <input
+                    list="dl-buscar-promo"
                     value={qPromo}
                     onChange={(e) => setQPromo(e.target.value)}
                     placeholder="Buscar promoción…"
                     className="ml-auto bg-[#046C5E] text-white text-sm font-normal px-3 py-1.5 rounded-lg placeholder-emerald-200/50 w-44"
                   />
+                  <datalist id="dl-buscar-promo">
+                    {promos.map((p) => <option key={p.promoCodigo} value={p.promoNombre} />)}
+                  </datalist>
                 </h2>
                 <div className="overflow-auto max-h-[28rem]">
                   <TablaPromos rows={promosVista} maxUnidades={maxUnidades} onSelect={setPromoSel} />
@@ -504,11 +508,15 @@ const DashboardPromos: React.FC = () => {
                   <Users size={18} /> Vendedores
                   <span className="text-xs font-normal text-emerald-300/70">(clic para ver su detalle)</span>
                   <input
+                    list="dl-buscar-vend"
                     value={qVend}
                     onChange={(e) => setQVend(e.target.value)}
                     placeholder="Buscar vendedor…"
                     className="ml-auto bg-[#046C5E] text-white text-sm font-normal px-3 py-1.5 rounded-lg placeholder-emerald-200/50 w-40"
                   />
+                  <datalist id="dl-buscar-vend">
+                    {prendedores.map((p) => <option key={p.prendedor} value={p.prendedor} />)}
+                  </datalist>
                 </h2>
                 <div className="overflow-auto max-h-[28rem]">
                   <table className="w-full min-w-[840px] text-sm">
