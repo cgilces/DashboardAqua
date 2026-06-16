@@ -74,6 +74,10 @@ const fechaEmision = () => {
 const fmtNum = (n: number) =>
   new Intl.NumberFormat("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
+// Normaliza para comparar (mayúsculas, sin acentos) — usado por los filtros.
+const norm = (s: unknown) =>
+  (s ?? "").toString().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
 const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem("app_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -90,6 +94,12 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState<number | null>(null);
   const [promos, setPromos] = useState<PromoOpt[]>([]);
+
+  // Filtros de la tabla (cliente, instantáneos): vendedor / descripción / tipo.
+  // Combobox: se puede ESCRIBIR o elegir de la lista.
+  const [fVendedor, setFVendedor]       = useState("");
+  const [fDescripcion, setFDescripcion] = useState("");
+  const [fTipo, setFTipo]               = useState("");
 
   // Catálogo de promos para el dropdown (una sola vez)
   useEffect(() => {
@@ -136,6 +146,9 @@ const ReportePromocionesUtilizadas: React.FC = () => {
     const d = { ...defaultFiltros(), tab: draft.tab };
     setDraft(d);
     setFiltros(d);
+    setFVendedor("");
+    setFDescripcion("");
+    setFTipo("");
   };
   const cambiarTab = (tab: Tab) => {
     setDraft((d) => ({ ...d, tab }));
@@ -143,7 +156,38 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   };
 
   const rows = data?.rows ?? [];
-  const conteo = data?.conteo ?? { factura: 0, orden: 0, total: 0 };
+
+  // Opciones de cada combobox = valores únicos de los datos cargados.
+  const opcionesVendedor = useMemo(
+    () => [...new Set(rows.map((r) => r.vendedor).filter(Boolean))].sort(), [rows]);
+  const opcionesDescripcion = useMemo(
+    () => [...new Set(rows.map((r) => r.descripcion).filter(Boolean))].sort(), [rows]);
+  const opcionesTipo = useMemo(
+    () => [...new Set(rows.map((r) => r.tipo).filter(Boolean))].sort(), [rows]);
+
+  // Filtrado en cliente (instantáneo): contiene texto en vendedor/descripción/tipo.
+  const filteredRows = useMemo(
+    () => rows.filter((r) =>
+      (!fVendedor    || norm(r.vendedor).includes(norm(fVendedor))) &&
+      (!fDescripcion || norm(r.descripcion).includes(norm(fDescripcion))) &&
+      (!fTipo        || norm(r.tipo).includes(norm(fTipo)))
+    ),
+    [rows, fVendedor, fDescripcion, fTipo]
+  );
+
+  // El total del pie y el conteo del gráfico reflejan lo FILTRADO.
+  const conteo = useMemo(() => ({
+    factura: filteredRows.filter((r) => norm(r.tipo) === "FACTURA").length,
+    orden:   filteredRows.filter((r) => norm(r.tipo) === "ORDEN").length,
+    total:   filteredRows.length,
+  }), [filteredRows]);
+  const totalCantidadFiltrado = useMemo(
+    () => filteredRows.reduce((a, r) => a + (Number(r.cantidad) || 0), 0),
+    [filteredRows]
+  );
+
+  // Al cambiar un filtro cambian los índices → limpiar la fila seleccionada.
+  useEffect(() => { setSeleccion(null); }, [fVendedor, fDescripcion, fTipo]);
 
   const pieOption = useMemo(
     () => ({
@@ -245,6 +289,66 @@ const ReportePromocionesUtilizadas: React.FC = () => {
         </label>
       </div>
 
+      {/* ── Filtros de tabla (combobox: se puede ESCRIBIR o elegir) ── */}
+      <div className="flex flex-wrap items-end gap-3 px-5 py-3 border-b border-[#046C5E] bg-[#0b3b34]/30">
+        <span className="text-xs text-emerald-200/70 self-center font-medium">Filtrar tabla:</span>
+
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[180px]">
+          VENDEDOR
+          <input
+            list="dl-vendedor"
+            value={fVendedor}
+            onChange={(e) => setFVendedor(e.target.value)}
+            placeholder="Escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-vendedor">
+            {opcionesVendedor.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
+
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[220px]">
+          DESCRIPCIÓN
+          <input
+            list="dl-descripcion"
+            value={fDescripcion}
+            onChange={(e) => setFDescripcion(e.target.value)}
+            placeholder="Escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-descripcion">
+            {opcionesDescripcion.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
+
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[150px]">
+          TIPO
+          <input
+            list="dl-tipo"
+            value={fTipo}
+            onChange={(e) => setFTipo(e.target.value)}
+            placeholder="Escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-tipo">
+            {opcionesTipo.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
+
+        {(fVendedor || fDescripcion || fTipo) && (
+          <button
+            onClick={() => { setFVendedor(""); setFDescripcion(""); setFTipo(""); }}
+            className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-xs"
+          >
+            <RotateCcw size={13} /> Limpiar filtros
+          </button>
+        )}
+
+        <span className="text-xs text-emerald-200/60 self-center ml-auto">
+          {filteredRows.length} de {rows.length} líneas
+        </span>
+      </div>
+
       {/* ── Pestañas ── */}
       <div className="flex gap-1 px-5 pt-3 bg-[#0b3b34]/40">
         {([
@@ -285,9 +389,11 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                 documentos de devolución (pendiente fase 2).
               </p>
             </div>
-          ) : rows.length === 0 ? (
+          ) : filteredRows.length === 0 ? (
             <p className="text-center text-gray-400 py-20">
-              No se registraron promociones en este rango.
+              {rows.length === 0
+                ? "No se registraron promociones en este rango."
+                : "Ningún registro coincide con los filtros."}
             </p>
           ) : (
             <div className="overflow-auto max-h-[34rem]">
@@ -312,7 +418,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, idx) => {
+                  {filteredRows.map((r, idx) => {
                     const sel = seleccion === idx;
                     return (
                       <tr
@@ -342,7 +448,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                     <td className="px-3 py-2" colSpan={8}>
                       Total
                     </td>
-                    <td className="px-3 py-2 text-right">{fmtNum(data?.totalCantidad ?? 0)}</td>
+                    <td className="px-3 py-2 text-right">{fmtNum(totalCantidadFiltrado)}</td>
                     <td colSpan={2} />
                   </tr>
                 </tfoot>

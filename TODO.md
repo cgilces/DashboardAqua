@@ -260,6 +260,15 @@ reportaban → todo se apilaba en 70% y la fase larga (Direcciones) lo dejaba co
 - [x] **Auto-recuperación**: si una sync quedó marcada "en curso" >40 min (proceso muerto), se
       considera colgada y se permite arrancar otra (antes bloqueaba con 409 para siempre).
 
+## Filtros combobox en "Reporte detallado" de Promociones (main)
+
+- [x] En `ReportePromocionesUtilizadas.tsx` (dashboard/promociones → Reporte detallado) se
+      agregaron filtros por **vendedor, descripción y tipo** como **combobox** (input + datalist:
+      se puede escribir o elegir de la lista; opciones = valores únicos de los datos cargados).
+      Filtrado en cliente e instantáneo; el total al pie y la torta (FACTURA/ORDEN) se recalculan
+      según lo filtrado; contador "N de M líneas"; "Limpiar filtros" y se limpian al Restablecer.
+      Verificado: `tsc --noEmit` + `vite build` (exit 0).
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.
