@@ -473,6 +473,7 @@ const DashboardPromos: React.FC = () => {
                   <table className="w-full text-sm">
                     <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
                       <tr>
+                        <th className="py-2 px-3 text-right font-normal w-10">#</th>
                         <SortTh label="Vendedor" col="prendedor" state={predSort} onSort={onPredSort} align="left" className="px-4" />
                         <SortTh label="Promos" col="promosDistintas" state={predSort} onSort={onPredSort} className="px-3" />
                         <SortTh label="Unidades" col="unidades" state={predSort} onSort={onPredSort} className="px-3" />
@@ -481,12 +482,13 @@ const DashboardPromos: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {prendedoresSorted.map((p) => (
+                      {prendedoresSorted.map((p, i) => (
                         <tr
                           key={p.prendedor}
                           onClick={() => setVendedorSel(p.prendedor)}
                           className="border-t border-white/5 hover:bg-emerald-400/10 cursor-pointer"
                         >
+                          <td className="px-3 py-2 text-right text-emerald-300/60">{i + 1}</td>
                           <td className="px-4 py-2 font-medium">{p.prendedor}</td>
                           <td className="px-3 py-2 text-right">{fmt(p.promosDistintas)}</td>
                           <td className="px-3 py-2 text-right font-semibold">{fmt(p.unidades)}</td>
@@ -525,6 +527,7 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
   <table className="w-full text-sm table-fixed">
     <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
       <tr>
+        <th className="py-2 px-3 text-right font-normal w-10">#</th>
         <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 w-auto" />
         <SortTh label="Unidades" col="unidades" state={state} onSort={onSort} className="px-3 w-20" />
         <SortTh label="Ventas" col="veces" state={state} onSort={onSort} className="px-3 w-16" />
@@ -539,14 +542,12 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
           onClick={onSelect ? () => onSelect(p) : undefined}
           className={`border-t border-white/5 ${onSelect ? "cursor-pointer hover:bg-emerald-400/10" : "hover:bg-white/5"}`}
         >
+          <td className="px-3 py-2 text-right text-emerald-300/60 align-top">{i + 1}</td>
           <td className="px-4 py-2">
-            <div className="flex items-center gap-2">
-              <span className="text-emerald-300/70 w-5 text-right shrink-0">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{p.promoNombre}</p>
-                <div className="h-1.5 mt-1 rounded bg-white/10 overflow-hidden w-full max-w-xs">
-                  <div className="h-full bg-emerald-400" style={{ width: `${(p.unidades / maxUnidades) * 100}%` }} />
-                </div>
+            <div className="min-w-0">
+              <p className="truncate font-medium">{p.promoNombre}</p>
+              <div className="h-1.5 mt-1 rounded bg-white/10 overflow-hidden w-full max-w-xs">
+                <div className="h-full bg-emerald-400" style={{ width: `${(p.unidades / maxUnidades) * 100}%` }} />
               </div>
             </div>
           </td>
@@ -571,6 +572,7 @@ const TablaPromoVendedores: React.FC<{ rows: PromoVendRow[]; totales: DetallePro
       <table className="w-full text-sm">
         <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
           <tr>
+            <th className="py-2 px-3 text-right font-normal w-10">#</th>
             <SortTh label="Vendedor" col="prendedor" state={state} onSort={onSort} align="left" className="px-4" />
             <SortTh label="Cant. promoción" col="cantidadPromocion" state={state} onSort={onSort} className="px-3 whitespace-nowrap" />
             <SortTh label="Cant. sin promo" col="cantidadSinPromocion" state={state} onSort={onSort} className="px-3 whitespace-nowrap" />
@@ -580,8 +582,9 @@ const TablaPromoVendedores: React.FC<{ rows: PromoVendRow[]; totales: DetallePro
           </tr>
         </thead>
         <tbody>
-          {sorted.map((r) => (
+          {sorted.map((r, i) => (
             <tr key={r.prendedor} className="border-t border-white/5 hover:bg-white/5">
+              <td className="px-3 py-2 text-right text-emerald-300/60">{i + 1}</td>
               <td className="px-4 py-2 font-medium">{r.prendedor}</td>
               <td className="px-3 py-2 text-right font-semibold text-emerald-200">{fmt(r.cantidadPromocion)}</td>
               <td className="px-3 py-2 text-right">{fmt(r.cantidadSinPromocion)}</td>
@@ -593,7 +596,7 @@ const TablaPromoVendedores: React.FC<{ rows: PromoVendRow[]; totales: DetallePro
         </tbody>
         <tfoot className="sticky bottom-0 bg-[#02463c] font-semibold">
           <tr className="border-t-2 border-emerald-400/40">
-            <td className="px-4 py-2">Total</td>
+            <td className="px-4 py-2" colSpan={2}>Total</td>
             <td className="px-3 py-2 text-right text-emerald-200">{fmt(totales.cantidadPromocion)}</td>
             <td className="px-3 py-2 text-right">{fmt(totales.cantidadSinPromocion)}</td>
             <td className="px-3 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(totales.dolares)}</td>
