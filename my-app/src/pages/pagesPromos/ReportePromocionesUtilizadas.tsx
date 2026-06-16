@@ -100,6 +100,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   const [fVendedor, setFVendedor]       = useState("");
   const [fDescripcion, setFDescripcion] = useState("");
   const [fTipo, setFTipo]               = useState("");
+  const [fCodigoDoc, setFCodigoDoc]     = useState("");
 
   // Catálogo de promos para el dropdown (una sola vez)
   useEffect(() => {
@@ -149,6 +150,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
     setFVendedor("");
     setFDescripcion("");
     setFTipo("");
+    setFCodigoDoc("");
   };
   const cambiarTab = (tab: Tab) => {
     setDraft((d) => ({ ...d, tab }));
@@ -164,15 +166,18 @@ const ReportePromocionesUtilizadas: React.FC = () => {
     () => [...new Set(rows.map((r) => r.descripcion).filter(Boolean))].sort(), [rows]);
   const opcionesTipo = useMemo(
     () => [...new Set(rows.map((r) => r.tipo).filter(Boolean))].sort(), [rows]);
+  const opcionesCodigoDoc = useMemo(
+    () => [...new Set(rows.map((r) => r.codigoDoc).filter(Boolean))].sort(), [rows]);
 
-  // Filtrado en cliente (instantáneo): contiene texto en vendedor/descripción/tipo.
+  // Filtrado en cliente (instantáneo): vendedor/descripción/tipo/código documento.
   const filteredRows = useMemo(
     () => rows.filter((r) =>
       (!fVendedor    || norm(r.vendedor).includes(norm(fVendedor))) &&
       (!fDescripcion || norm(r.descripcion).includes(norm(fDescripcion))) &&
-      (!fTipo        || norm(r.tipo).includes(norm(fTipo)))
+      (!fTipo        || norm(r.tipo).includes(norm(fTipo))) &&
+      (!fCodigoDoc   || norm(r.codigoDoc).includes(norm(fCodigoDoc)))
     ),
-    [rows, fVendedor, fDescripcion, fTipo]
+    [rows, fVendedor, fDescripcion, fTipo, fCodigoDoc]
   );
 
   // El total del pie y el conteo del gráfico reflejan lo FILTRADO.
@@ -187,7 +192,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   );
 
   // Al cambiar un filtro cambian los índices → limpiar la fila seleccionada.
-  useEffect(() => { setSeleccion(null); }, [fVendedor, fDescripcion, fTipo]);
+  useEffect(() => { setSeleccion(null); }, [fVendedor, fDescripcion, fTipo, fCodigoDoc]);
 
   const pieOption = useMemo(
     () => ({
@@ -335,9 +340,23 @@ const ReportePromocionesUtilizadas: React.FC = () => {
           </datalist>
         </label>
 
-        {(fVendedor || fDescripcion || fTipo) && (
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[200px]">
+          CÓDIGO DOC.
+          <input
+            list="dl-codigodoc"
+            value={fCodigoDoc}
+            onChange={(e) => setFCodigoDoc(e.target.value)}
+            placeholder="Escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-codigodoc">
+            {opcionesCodigoDoc.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
+
+        {(fVendedor || fDescripcion || fTipo || fCodigoDoc) && (
           <button
-            onClick={() => { setFVendedor(""); setFDescripcion(""); setFTipo(""); }}
+            onClick={() => { setFVendedor(""); setFDescripcion(""); setFTipo(""); setFCodigoDoc(""); }}
             className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-xs"
           >
             <RotateCcw size={13} /> Limpiar filtros
