@@ -78,6 +78,18 @@ const fmtNum = (n: number) =>
 const norm = (s: unknown) =>
   (s ?? "").toString().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
+// Coincidencia por LÍMITE DE PALABRA: el texto buscado debe estar delimitado por
+// inicio/fin o por un carácter no alfanumérico. Así "V6" matchea "V6" pero NO
+// "PV6", y a la vez "GALON" sigue matcheando "PACK x6 GALON" y "FA001-081" matchea
+// "FA001-081-000004732". Vacío = no filtra.
+const coincide = (valor: unknown, filtro: string): boolean => {
+  const f = norm(filtro);
+  if (!f) return true;
+  const v = norm(valor);
+  const esc = f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Z0-9])${esc}([^A-Z0-9]|$)`).test(v);
+};
+
 const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem("app_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -172,10 +184,10 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   // Filtrado en cliente (instantáneo): vendedor/descripción/tipo/código documento.
   const filteredRows = useMemo(
     () => rows.filter((r) =>
-      (!fVendedor    || norm(r.vendedor).includes(norm(fVendedor))) &&
-      (!fDescripcion || norm(r.descripcion).includes(norm(fDescripcion))) &&
-      (!fTipo        || norm(r.tipo).includes(norm(fTipo))) &&
-      (!fCodigoDoc   || norm(r.codigoDoc).includes(norm(fCodigoDoc)))
+      coincide(r.vendedor, fVendedor) &&
+      coincide(r.descripcion, fDescripcion) &&
+      coincide(r.tipo, fTipo) &&
+      coincide(r.codigoDoc, fCodigoDoc)
     ),
     [rows, fVendedor, fDescripcion, fTipo, fCodigoDoc]
   );
