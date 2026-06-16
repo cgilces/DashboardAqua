@@ -235,6 +235,30 @@ reportaban → todo se apilaba en 70% y la fase larga (Direcciones) lo dejaba co
       poco hacia el "techo" de cada fase (FASE1 55 · Direcciones 85 · Promos 97), así nunca se
       congela aunque la fase no reporte. Se limpia al terminar (éxito y error) y cierra en 100%.
 - [x] Verificado: `node --check` + simulación de la progresión (5→55→85→97→100, monótona).
+- [x] **Refinado** (se quedaba ahora en 55%, techo de FASE 1 mientras Odoo —el lento— terminaba):
+      reemplazado por **avance decelerado** hacia un tope alto (95%), rápido al inicio y lento al
+      final, así nunca se congela sin importar qué fase tarde; al terminar todo salta a 100%.
+- [x] **Errores de documento más claros**: el log `❌ ERROR documento ...` ahora muestra el campo
+      y valor que falla (Sequelize `ValidationError`/`parent`), no solo "Validation error", para
+      poder diagnosticar qué documentos/campos rechaza la BD.
+- [x] **Causa hallada y corregida:** los errores eran `llave duplicada viola unique_detalle`.
+      Producción tenía un constraint único LEGADO `unique_detalle` (solo documento+producto, sin
+      promo) que el esquema nunca eliminaba; como el dedup separa líneas por promo, dos líneas del
+      mismo artículo con promos distintas lo violaban. `000_schema.sql` ahora elimina `unique_detalle`
+      (constraint e índice) en el arranque, dejando solo `unique_detalle_doc_promo` (que sí incluye
+      promo). Requiere **reiniciar el servidor** para que el esquema idempotente lo aplique.
+- [x] **Progreso REAL 0→100 combinado** (la barra se quedaba en 95%, luego en 64%): ahora va de
+      0% a 100% midiendo el avance real. FASE 1 = MobilVendor + Odoo **en paralelo**, promedio de
+      ambas fracciones (0→75%); Direcciones 75→95%; Promos 95→100%. `syncState.mvFrac/odooFrac`.
+- [x] **Suavizador anti-salto** (la barra "empezaba en 43%" si una fuente terminaba al instante):
+      se separó el avance REAL (`percentObjetivo`) del valor MOSTRADO (`percent`). Un intervalo
+      sube `percent` poco a poco hacia el objetivo (≈1/8 del gap cada 1.5s), nunca de golpe → la
+      barra SIEMPRE arranca en 0% y trepa suave. Verificado con simulación.
+- [x] **Retomar sync en curso**: el front consulta `/api/sync/status` al cargar y, si hay una
+      sincronización corriendo, muestra la barra y reanuda el polling (antes salía un 409 confuso
+      "ya en curso" sin barra visible al recargar la página).
+- [x] **Auto-recuperación**: si una sync quedó marcada "en curso" >40 min (proceso muerto), se
+      considera colgada y se permite arrancar otra (antes bloqueaba con 409 para siempre).
 
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese

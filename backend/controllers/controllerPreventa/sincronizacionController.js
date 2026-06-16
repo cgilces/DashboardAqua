@@ -40,7 +40,13 @@ const getLastSync = async (req, res) => {
 const sincronizarVentas = async (req, res) => {
   try {
     if (syncState.running) {
-      return res.status(409).json({ error: "Ya existe una sincronización en curso" });
+      // Auto-recuperación: si la sync previa lleva colgada >40 min (proceso muerto,
+      // estado en memoria sin cerrar), la damos por perdida y dejamos arrancar otra.
+      const edadMs = syncState.startedAt ? Date.now() - new Date(syncState.startedAt).getTime() : Infinity;
+      if (edadMs < 40 * 60 * 1000) {
+        return res.status(409).json({ error: "Ya existe una sincronización en curso" });
+      }
+      console.warn(`⚠️  [SYNC] Sincronización previa colgada (~${Math.round(edadMs / 60000)} min). Reiniciando estado.`);
     }
 
     // ── Parsear fechas ──────────────────────────────────────────
@@ -73,7 +79,10 @@ const sincronizarVentas = async (req, res) => {
       endDate,
       page      : 0,
       total     : 0,
-      percent   : 0,
+      percent        : 0,
+      percentObjetivo: 0,
+      mvFrac         : 0,
+      odooFrac       : 0,
       error     : null,
       startedAt : new Date(),
       finishedAt: null,
@@ -84,25 +93,33 @@ const sincronizarVentas = async (req, res) => {
 
     // ── Ejecutar todo en background ────────────────
     (async () => {
-      // Avance suave: aunque una fase no reporte progreso (Odoo en paralelo,
-      // Direcciones, Promos), la barra sube de a poco hacia el "techo" de la
-      // fase actual, para que NUNCA se quede congelada hasta el 100%.
-      let techo = 55;
-      const creeper = setInterval(() => {
+      // La barra mide el avance REAL de todo, de 0% a 100%:
+      //   FASE 1 (MobilVendor + Odoo EN PARALELO) = 0→75% (promedio de ambas),
+      //   Direcciones = 75→95%, Promociones = 95→100%.
+      // SUAVIZADOR: el valor mostrado (percent) sube poco a poco hacia el avance
+      // real (percentObjetivo), nunca de un salto. Así siempre ARRANCA EN 0% y
+      // trepa suave, aunque una fuente termine al instante (no aparece "en 43%").
+      const suavizador = setInterval(() => {
         if (!syncState.running) return;
-        if (syncState.percent < techo) {
-          syncState.percent = Math.min(techo, syncState.percent + 1);
+        const obj = syncState.percentObjetivo || 0;
+        if (syncState.percent < obj) {
+          const paso = Math.max(1, Math.ceil((obj - syncState.percent) / 8));
+          syncState.percent = Math.min(obj, syncState.percent + paso);
         }
-      }, 2500);
+      }, 1500);
 
       try {
-        // FASE 1: MobilVendor + Odoo en paralelo (5% → 55%)
-        syncState.percent = 5;
-        techo = 55;
+        // FASE 1: MobilVendor + Odoo EN PARALELO. Ambos reportan su avance real y
+        // el objetivo es el promedio (0→75%); llega a 75% cuando ambos terminan.
+        syncState.percent = 0;
+        syncState.percentObjetivo = 0;
+        syncState.mvFrac = 0;
+        syncState.odooFrac = 0;
         const [resMV, resOdoo] = await Promise.allSettled([
           sincronizarVentasRango(startDate, endDate, syncState),
-          sincronizarOdooCompletoRango(startDate, endDate),
+          sincronizarOdooCompletoRango(startDate, endDate, syncState),
         ]);
+        if (syncState.percentObjetivo < 75) syncState.percentObjetivo = 75; // ambos terminaron
 
         // MobilVendor
         if (resMV.status === "fulfilled") {
@@ -125,20 +142,18 @@ const sincronizarVentas = async (req, res) => {
           console.error("❌ [Odoo] Error:", resOdoo.reason?.message);
         }
 
-        // FASE 2: Direcciones (55% → 85%) — el creeper anima mientras procesa.
-        techo = 85;
-        if (syncState.percent < 56) syncState.percent = 56;
+        // FASE 2: Direcciones — reporta progreso real por páginas (75→95%).
         try {
           console.log("📍 [Direcciones] Iniciando sincronización de customer_addresses...");
-          const resDirecciones = await sincronizarDirecciones();
+          const resDirecciones = await sincronizarDirecciones(syncState);
           console.log(`✅ [Direcciones] Completa: ${resDirecciones.totalProcessed} procesadas, ${resDirecciones.totalErrors} errores`);
         } catch (errDir) {
           console.error("❌ [Direcciones] Error:", errDir.message);
         }
 
-        // FASE 3: Promociones (85% → 97%) — el creeper anima mientras procesa.
-        techo = 97;
-        if (syncState.percent < 86) syncState.percent = 86;
+        // FASE 3: Promociones (rápida, no reporta por ítem). Fijamos el objetivo en
+        // 99 para que la barra suba suave 95→99 mientras corre; 100 al terminar.
+        if (syncState.percentObjetivo < 99) syncState.percentObjetivo = 99;
         try {
           console.log("🎁 [Promociones] Iniciando sincronización de promos...");
           const resPromos = await sincronizarPromociones();
@@ -151,11 +166,12 @@ const sincronizarVentas = async (req, res) => {
         const hayErrores =
           resMV.status === "rejected" || resOdoo.status === "rejected";
 
-        clearInterval(creeper);
-        syncState.running    = false;
-        syncState.percent    = 100;
-        syncState.finishedAt = new Date();
-        syncState.error      = hayErrores
+        clearInterval(suavizador);
+        syncState.running        = false;
+        syncState.percentObjetivo = 100;
+        syncState.percent        = 100;
+        syncState.finishedAt     = new Date();
+        syncState.error          = hayErrores
           ? "Una o más fuentes terminaron con errores. Revisar logs."
           : null;
 
@@ -164,7 +180,7 @@ const sincronizarVentas = async (req, res) => {
         console.log(`   Odoo        : ${syncState.odoo.estado}`);
 
       } catch (err) {
-        clearInterval(creeper);
+        clearInterval(suavizador);
         syncState.running    = false;
         syncState.percent    = 0;
         syncState.finishedAt = new Date();

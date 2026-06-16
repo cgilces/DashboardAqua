@@ -859,7 +859,18 @@ const procesarChunkFacturas = async (uid, facturas, errores, contadores) => {
 // ========================================================
 // SERVICIO PRINCIPAL
 // ========================================================
-const sincronizarOdooCompletoRango = async (startDate, endDate) => {
+const sincronizarOdooCompletoRango = async (startDate, endDate, syncState = null) => {
+  // Reporta progreso REAL a la barra: Odoo aporta su FRACCIÓN (0..1) a la FASE 1,
+  // que es el promedio MobilVendor+Odoo (0→75%). Así la barra avanza mientras
+  // CUALQUIERA de los dos descargue, en paralelo. (pedidos = primera mitad de la
+  // fracción de Odoo, facturas = segunda mitad).
+  const reportarOdoo = (frac) => {
+    if (!syncState) return;
+    syncState.odooFrac = Math.max(syncState.odooFrac || 0, frac);
+    const pct = Math.round((((syncState.mvFrac || 0) + (syncState.odooFrac || 0)) / 2) * 75);
+    // Escribe el OBJETIVO real; el valor mostrado lo sube suave el controller.
+    syncState.percentObjetivo = Math.max(syncState.percentObjetivo || 0, pct);
+  };
   console.log("\n==================================================");
   console.log("🚀 INICIANDO SINCRONIZACIÓN ODOO");
   console.log("📅 Rango:", startDate, "→", endDate);
@@ -907,6 +918,7 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
       console.log(`\n⚙️  Pedidos — Chunk ${i + 1}/${chunksPedidos.length} (${chunksPedidos[i].length} pedidos)...`);
       try {
         await procesarChunkPedidos(uid, chunksPedidos[i], errores, contadores);
+        reportarOdoo(((i + 1) / chunksPedidos.length) * 0.5); // pedidos = 1ª mitad de Odoo
       } catch (err) {
         // Un chunk fallido NO debe matar la sincronización entera.
         // Logueamos el detalle, agregamos al contador de errores y seguimos.
@@ -949,6 +961,7 @@ const sincronizarOdooCompletoRango = async (startDate, endDate) => {
       console.log(`\n⚙️  Facturas — Chunk ${i + 1}/${chunksFacturas.length} (${chunksFacturas[i].length} facturas)...`);
       try {
         await procesarChunkFacturas(uid, chunksFacturas[i], errores, contadores);
+        reportarOdoo(0.5 + ((i + 1) / chunksFacturas.length) * 0.5); // facturas = 2ª mitad de Odoo
       } catch (err) {
         // Un chunk fallido NO debe matar la sincronización entera.
         // Logueamos el detalle (con ids para diagnóstico) y seguimos.

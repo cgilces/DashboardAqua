@@ -782,7 +782,13 @@ ALTER TABLE detalle_documento ADD COLUMN IF NOT EXISTS promo_action_code        
 -- (o una con promo y otra sin) son líneas legítimamente diferentes.
 DO $$
 BEGIN
-  -- Migrar la constraint legada (sin promo) si existe.
+  -- Migrar/eliminar constraints únicos LEGADOS que NO incluyen la promo. En
+  -- producción quedó una constraint vieja llamada "unique_detalle" (solo
+  -- documento+producto) que rechazaba dos líneas del mismo artículo con promos
+  -- distintas → "llave duplicada viola unique_detalle". Las eliminamos todas.
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_detalle') THEN
+    ALTER TABLE detalle_documento DROP CONSTRAINT unique_detalle;
+  END IF;
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_detalle_doc') THEN
     ALTER TABLE detalle_documento DROP CONSTRAINT unique_detalle_doc;
   END IF;
@@ -792,6 +798,9 @@ BEGIN
       UNIQUE (documento_code, codigo_producto, precio, cantidad, promo_code, promo_action_code);
   END IF;
 END $$;
+
+-- Por si "unique_detalle" quedó como índice único (no constraint) en algún entorno.
+DROP INDEX IF EXISTS unique_detalle;
 
 CREATE INDEX IF NOT EXISTS idx_doc_code              ON detalle_documento(documento_code);
 CREATE INDEX IF NOT EXISTS idx_doc_producto          ON detalle_documento(codigo_producto);

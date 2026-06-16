@@ -155,12 +155,24 @@ const flushErrorLog = (errores) => {
 // ================================================================
 // CLASE: SyncProgress
 // ================================================================
+// FASE 1 (MobilVendor + Odoo en paralelo): el % es el PROMEDIO de las fracciones
+// de ambas fuentes → 0%→75%. Así la barra avanza mientras cualquiera trabaje y
+// solo llega a 75% cuando ambas terminan (luego Direcciones 75→95, Promos 95→100).
+function aplicarProgresoFase1(s) {
+  if (!s) return;
+  const pct = Math.round((((s.mvFrac || 0) + (s.odooFrac || 0)) / 2) * 75);
+  // Escribe el OBJETIVO real; el valor mostrado lo sube suave el controller.
+  s.percentObjetivo = Math.max(s.percentObjetivo || 0, pct);
+}
+
 class SyncProgress {
   // from/to = rango global de % que ocupa esta fase (por defecto MobilVendor 5→70).
-  constructor(state, from = 5, to = 70) {
+  // fase1Source = 'mvFrac'|'odooFrac' → modo FASE 1 combinada (promedio de ambas).
+  constructor(state, from = 5, to = 70, fase1Source = null) {
     this._s = state;
     this._from = from;
     this._to = to;
+    this._fase1 = fase1Source;
   }
 
   start(startDate, endDate) {
@@ -177,10 +189,16 @@ class SyncProgress {
 
   updatePage(page, totalPages) {
     if (!this._s || !totalPages) return;
+    // Modo FASE 1 combinada: guardamos la fracción de esta fuente y el % global
+    // es el promedio de ambas fuentes (MobilVendor + Odoo).
+    if (this._fase1) {
+      this._s[this._fase1] = page / totalPages;
+      aplicarProgresoFase1(this._s);
+      return;
+    }
     const pct = this._from + Math.round((page / totalPages) * (this._to - this._from));
-    // Monótono: la barra solo avanza, nunca retrocede (coexiste con el avance
-    // suave del controller).
-    this._s.percent = Math.max(this._s.percent || 0, pct);
+    // Escribe el OBJETIVO real; el valor mostrado sube suave (controller). Monótono.
+    this._s.percentObjetivo = Math.max(this._s.percentObjetivo || 0, pct);
   }
 
   finish(error = null) {
@@ -429,7 +447,7 @@ const sincronizarDirecciones = async (syncState = null) => {
   console.log("🚀 SINCRONIZACIÓN DE DIRECCIONES (customer_addresses)");
   console.log("====================================\n");
 
-  const progress = new SyncProgress(syncState);
+  const progress = new SyncProgress(syncState, 75, 95); // Direcciones: 75% → 95%
   progress.start("direcciones", "completo");
 
   try {
@@ -780,7 +798,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
   console.log(`🚀 SINCRONIZACIÓN ${startDate} → ${endDate}`);
   console.log("====================================\n");
 
-  const progress = new SyncProgress(syncState, 5, 55); // MobilVendor: 5% → 55%
+  const progress = new SyncProgress(syncState, 0, 0, "mvFrac"); // MobilVendor: aporta a FASE 1 (0→75% combinado con Odoo)
   const stats    = new SyncStats();
   const erroresPorDocumento = [];
 
@@ -882,7 +900,12 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
             },
           };
           erroresPorDocumento.push(errorEntry);
-          console.error(`❌ ERROR documento ${code}: ${errDoc.message}`);
+          // Detalle legible: si es ValidationError de Sequelize, mostrar campo(s)
+          // que fallan (ej. "value too long for column..."), no solo "Validation error".
+          const detalleErr = Array.isArray(errDoc.errors) && errDoc.errors.length
+            ? errDoc.errors.map(e => `${e.path}=${JSON.stringify(e.value)} (${e.message})`).join("; ")
+            : (errDoc.parent?.message || errDoc.original?.message || "");
+          console.error(`❌ ERROR documento ${code}: ${errDoc.message}${detalleErr ? " → " + detalleErr : ""}`);
         }
       }
 
