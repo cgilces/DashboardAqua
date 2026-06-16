@@ -95,6 +95,23 @@ const authHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+// Columnas de la tabla (orden, etiqueta, campo, tipo de dato y alineación).
+type ColKey = keyof ReporteRow;
+interface ColDef { label: string; key: ColKey; tipo: "num" | "fecha" | "texto"; align: "left" | "right"; ancha?: boolean; }
+const COLUMNAS: ColDef[] = [
+  { label: "TIPO",         key: "tipo",        tipo: "texto", align: "left" },
+  { label: "VENDEDOR",     key: "vendedor",    tipo: "texto", align: "left" },
+  { label: "CODIGO DOC.",  key: "codigoDoc",   tipo: "texto", align: "left" },
+  { label: "FECHA",        key: "fecha",       tipo: "fecha", align: "left" },
+  { label: "ARTICULO",     key: "articulo",    tipo: "texto", align: "left" },
+  { label: "DESCRIPCION",  key: "descripcion", tipo: "texto", align: "left", ancha: true },
+  { label: "UNIDAD",       key: "unidad",      tipo: "texto", align: "left" },
+  { label: "FACTOR",       key: "factor",      tipo: "num",   align: "right" },
+  { label: "CANTIDAD (U)", key: "cantidad",    tipo: "num",   align: "right" },
+  { label: "DESC. %",      key: "descPct",     tipo: "num",   align: "right" },
+  { label: "PROMOCION",    key: "promocion",   tipo: "texto", align: "left" },
+];
+
 // ── Componente ─────────────────────────────────────────────────────────────────
 const ReportePromocionesUtilizadas: React.FC = () => {
   // Borrador (lo que el usuario edita) vs aplicado (lo que dispara el fetch).
@@ -113,6 +130,14 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   const [fDescripcion, setFDescripcion] = useState("");
   const [fTipo, setFTipo]               = useState("");
   const [fCodigoDoc, setFCodigoDoc]     = useState("");
+
+  // Ordenamiento por columna (clic en encabezado: asc → desc → …).
+  const [sortCol, setSortCol] = useState<ColKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const ordenarPor = (key: ColKey) => {
+    if (sortCol === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(key); setSortDir("asc"); }
+  };
 
   // Catálogo de promos para el dropdown (una sola vez)
   useEffect(() => {
@@ -203,8 +228,26 @@ const ReportePromocionesUtilizadas: React.FC = () => {
     [filteredRows]
   );
 
-  // Al cambiar un filtro cambian los índices → limpiar la fila seleccionada.
-  useEffect(() => { setSeleccion(null); }, [fVendedor, fDescripcion, fTipo, fCodigoDoc]);
+  // Filas ordenadas según la columna elegida (num/fecha/texto). Vacío = orden original.
+  const sortedRows = useMemo(() => {
+    if (!sortCol) return filteredRows;
+    const col = COLUMNAS.find((c) => c.key === sortCol);
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filteredRows].sort((a, b) => {
+      let cmp: number;
+      if (col?.tipo === "num") {
+        cmp = (Number(a[sortCol]) || 0) - (Number(b[sortCol]) || 0);
+      } else if (col?.tipo === "fecha") {
+        cmp = new Date(a[sortCol] as string).getTime() - new Date(b[sortCol] as string).getTime();
+      } else {
+        cmp = String(a[sortCol] ?? "").localeCompare(String(b[sortCol] ?? ""), "es", { numeric: true });
+      }
+      return cmp * dir;
+    });
+  }, [filteredRows, sortCol, sortDir]);
+
+  // Al cambiar un filtro u orden cambian los índices → limpiar la fila seleccionada.
+  useEffect(() => { setSeleccion(null); }, [fVendedor, fDescripcion, fTipo, fCodigoDoc, sortCol, sortDir]);
 
   const pieOption = useMemo(
     () => ({
@@ -431,25 +474,26 @@ const ReportePromocionesUtilizadas: React.FC = () => {
               <table className="w-full text-xs whitespace-nowrap">
                 <thead className="sticky top-0 bg-[#1e3a8a] text-white">
                   <tr>
-                    {[
-                      "TIPO", "VENDEDOR", "CODIGO DOC.", "FECHA", "ARTICULO",
-                      "DESCRIPCION", "UNIDAD", "FACTOR", "CANTIDAD (U)", "DESC. %", "PROMOCION",
-                    ].map((h, i) => (
+                    <th className="px-3 py-2 font-semibold text-right">#</th>
+                    {COLUMNAS.map((col) => (
                       <th
-                        key={h}
-                        className={`px-3 py-2 font-semibold ${
-                          ["FACTOR", "CANTIDAD (U)", "DESC. %"].includes(h)
-                            ? "text-right"
-                            : "text-left"
-                        } ${i === 5 ? "min-w-[220px]" : ""}`}
+                        key={col.key}
+                        onClick={() => ordenarPor(col.key)}
+                        title="Ordenar"
+                        className={`px-3 py-2 font-semibold cursor-pointer select-none hover:bg-[#27489c] ${
+                          col.align === "right" ? "text-right" : "text-left"
+                        } ${col.ancha ? "min-w-[220px]" : ""}`}
                       >
-                        {h}
+                        {col.label}
+                        <span className="text-emerald-300">
+                          {sortCol === col.key ? (sortDir === "asc" ? " ▲" : " ▼") : " ⇅"}
+                        </span>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.map((r, idx) => {
+                  {sortedRows.map((r, idx) => {
                     const sel = seleccion === idx;
                     return (
                       <tr
@@ -459,6 +503,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                           sel ? "bg-[#1e3a8a] text-white" : "hover:bg-white/5"
                         }`}
                       >
+                        <td className="px-3 py-1.5 text-right text-emerald-200/60">{idx + 1}</td>
                         <td className="px-3 py-1.5">{r.tipo}</td>
                         <td className="px-3 py-1.5">{r.vendedor}</td>
                         <td className="px-3 py-1.5">{r.codigoDoc}</td>
@@ -476,7 +521,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                 </tbody>
                 <tfoot className="sticky bottom-0 bg-[#02463c] text-white font-semibold">
                   <tr className="border-t-2 border-emerald-400/50">
-                    <td className="px-3 py-2" colSpan={8}>
+                    <td className="px-3 py-2" colSpan={9}>
                       Total
                     </td>
                     <td className="px-3 py-2 text-right">{fmtNum(totalCantidadFiltrado)}</td>
