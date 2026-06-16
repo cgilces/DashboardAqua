@@ -74,10 +74,43 @@ const fechaEmision = () => {
 const fmtNum = (n: number) =>
   new Intl.NumberFormat("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
+// Normaliza para comparar (mayúsculas, sin acentos) — usado por los filtros.
+const norm = (s: unknown) =>
+  (s ?? "").toString().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+// Coincidencia por LÍMITE DE PALABRA: el texto buscado debe estar delimitado por
+// inicio/fin o por un carácter no alfanumérico. Así "V6" matchea "V6" pero NO
+// "PV6", y a la vez "GALON" sigue matcheando "PACK x6 GALON" y "FA001-081" matchea
+// "FA001-081-000004732". Vacío = no filtra.
+const coincide = (valor: unknown, filtro: string): boolean => {
+  const f = norm(filtro);
+  if (!f) return true;
+  const v = norm(valor);
+  const esc = f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Z0-9])${esc}([^A-Z0-9]|$)`).test(v);
+};
+
 const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem("app_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
+
+// Columnas de la tabla (orden, etiqueta, campo, tipo de dato y alineación).
+type ColKey = keyof ReporteRow;
+interface ColDef { label: string; key: ColKey; tipo: "num" | "fecha" | "texto"; align: "left" | "right"; ancha?: boolean; }
+const COLUMNAS: ColDef[] = [
+  { label: "TIPO",         key: "tipo",        tipo: "texto", align: "left" },
+  { label: "VENDEDOR",     key: "vendedor",    tipo: "texto", align: "left" },
+  { label: "CODIGO DOC.",  key: "codigoDoc",   tipo: "texto", align: "left" },
+  { label: "FECHA",        key: "fecha",       tipo: "fecha", align: "left" },
+  { label: "ARTICULO",     key: "articulo",    tipo: "texto", align: "left" },
+  { label: "DESCRIPCION",  key: "descripcion", tipo: "texto", align: "left", ancha: true },
+  { label: "UNIDAD",       key: "unidad",      tipo: "texto", align: "left" },
+  { label: "FACTOR",       key: "factor",      tipo: "num",   align: "right" },
+  { label: "CANTIDAD (U)", key: "cantidad",    tipo: "num",   align: "right" },
+  { label: "DESC. %",      key: "descPct",     tipo: "num",   align: "right" },
+  { label: "PROMOCION",    key: "promocion",   tipo: "texto", align: "left" },
+];
 
 // ── Componente ─────────────────────────────────────────────────────────────────
 const ReportePromocionesUtilizadas: React.FC = () => {
@@ -90,6 +123,21 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState<number | null>(null);
   const [promos, setPromos] = useState<PromoOpt[]>([]);
+
+  // Filtros de la tabla (cliente, instantáneos): vendedor / descripción / tipo.
+  // Combobox: se puede ESCRIBIR o elegir de la lista.
+  const [fVendedor, setFVendedor]       = useState("");
+  const [fDescripcion, setFDescripcion] = useState("");
+  const [fTipo, setFTipo]               = useState("");
+  const [fCodigoDoc, setFCodigoDoc]     = useState("");
+
+  // Ordenamiento por columna (clic en encabezado: asc → desc → …).
+  const [sortCol, setSortCol] = useState<ColKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const ordenarPor = (key: ColKey) => {
+    if (sortCol === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(key); setSortDir("asc"); }
+  };
 
   // Catálogo de promos para el dropdown (una sola vez)
   useEffect(() => {
@@ -136,6 +184,10 @@ const ReportePromocionesUtilizadas: React.FC = () => {
     const d = { ...defaultFiltros(), tab: draft.tab };
     setDraft(d);
     setFiltros(d);
+    setFVendedor("");
+    setFDescripcion("");
+    setFTipo("");
+    setFCodigoDoc("");
   };
   const cambiarTab = (tab: Tab) => {
     setDraft((d) => ({ ...d, tab }));
@@ -143,7 +195,59 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   };
 
   const rows = data?.rows ?? [];
-  const conteo = data?.conteo ?? { factura: 0, orden: 0, total: 0 };
+
+  // Opciones de cada combobox = valores únicos de los datos cargados.
+  const opcionesVendedor = useMemo(
+    () => [...new Set(rows.map((r) => r.vendedor).filter(Boolean))].sort(), [rows]);
+  const opcionesDescripcion = useMemo(
+    () => [...new Set(rows.map((r) => r.descripcion).filter(Boolean))].sort(), [rows]);
+  const opcionesTipo = useMemo(
+    () => [...new Set(rows.map((r) => r.tipo).filter(Boolean))].sort(), [rows]);
+  const opcionesCodigoDoc = useMemo(
+    () => [...new Set(rows.map((r) => r.codigoDoc).filter(Boolean))].sort(), [rows]);
+
+  // Filtrado en cliente (instantáneo): vendedor/descripción/tipo/código documento.
+  const filteredRows = useMemo(
+    () => rows.filter((r) =>
+      coincide(r.vendedor, fVendedor) &&
+      coincide(r.descripcion, fDescripcion) &&
+      coincide(r.tipo, fTipo) &&
+      coincide(r.codigoDoc, fCodigoDoc)
+    ),
+    [rows, fVendedor, fDescripcion, fTipo, fCodigoDoc]
+  );
+
+  // El total del pie y el conteo del gráfico reflejan lo FILTRADO.
+  const conteo = useMemo(() => ({
+    factura: filteredRows.filter((r) => norm(r.tipo) === "FACTURA").length,
+    orden:   filteredRows.filter((r) => norm(r.tipo) === "ORDEN").length,
+    total:   filteredRows.length,
+  }), [filteredRows]);
+  const totalCantidadFiltrado = useMemo(
+    () => filteredRows.reduce((a, r) => a + (Number(r.cantidad) || 0), 0),
+    [filteredRows]
+  );
+
+  // Filas ordenadas según la columna elegida (num/fecha/texto). Vacío = orden original.
+  const sortedRows = useMemo(() => {
+    if (!sortCol) return filteredRows;
+    const col = COLUMNAS.find((c) => c.key === sortCol);
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filteredRows].sort((a, b) => {
+      let cmp: number;
+      if (col?.tipo === "num") {
+        cmp = (Number(a[sortCol]) || 0) - (Number(b[sortCol]) || 0);
+      } else if (col?.tipo === "fecha") {
+        cmp = new Date(a[sortCol] as string).getTime() - new Date(b[sortCol] as string).getTime();
+      } else {
+        cmp = String(a[sortCol] ?? "").localeCompare(String(b[sortCol] ?? ""), "es", { numeric: true });
+      }
+      return cmp * dir;
+    });
+  }, [filteredRows, sortCol, sortDir]);
+
+  // Al cambiar un filtro u orden cambian los índices → limpiar la fila seleccionada.
+  useEffect(() => { setSeleccion(null); }, [fVendedor, fDescripcion, fTipo, fCodigoDoc, sortCol, sortDir]);
 
   const pieOption = useMemo(
     () => ({
@@ -245,6 +349,80 @@ const ReportePromocionesUtilizadas: React.FC = () => {
         </label>
       </div>
 
+      {/* ── Filtros de tabla (combobox: se puede ESCRIBIR o elegir) ── */}
+      <div className="flex flex-wrap items-end gap-3 px-5 py-3 border-b border-[#046C5E] bg-[#0b3b34]/30">
+        <span className="text-xs text-emerald-200/70 self-center font-medium">Filtrar tabla:</span>
+
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[180px]">
+          VENDEDOR
+          <input
+            list="dl-vendedor"
+            value={fVendedor}
+            onChange={(e) => setFVendedor(e.target.value)}
+            placeholder="Escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-vendedor">
+            {opcionesVendedor.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
+
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[220px]">
+          DESCRIPCIÓN
+          <input
+            list="dl-descripcion"
+            value={fDescripcion}
+            onChange={(e) => setFDescripcion(e.target.value)}
+            placeholder="Escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-descripcion">
+            {opcionesDescripcion.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
+
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[150px]">
+          TIPO
+          <input
+            list="dl-tipo"
+            value={fTipo}
+            onChange={(e) => setFTipo(e.target.value)}
+            placeholder="Escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-tipo">
+            {opcionesTipo.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
+
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[200px]">
+          CÓDIGO DOC.
+          <input
+            list="dl-codigodoc"
+            value={fCodigoDoc}
+            onChange={(e) => setFCodigoDoc(e.target.value)}
+            placeholder="Escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-codigodoc">
+            {opcionesCodigoDoc.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
+
+        {(fVendedor || fDescripcion || fTipo || fCodigoDoc) && (
+          <button
+            onClick={() => { setFVendedor(""); setFDescripcion(""); setFTipo(""); setFCodigoDoc(""); }}
+            className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-xs"
+          >
+            <RotateCcw size={13} /> Limpiar filtros
+          </button>
+        )}
+
+        <span className="text-xs text-emerald-200/60 self-center ml-auto">
+          {filteredRows.length} de {rows.length} líneas
+        </span>
+      </div>
+
       {/* ── Pestañas ── */}
       <div className="flex gap-1 px-5 pt-3 bg-[#0b3b34]/40">
         {([
@@ -285,34 +463,37 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                 documentos de devolución (pendiente fase 2).
               </p>
             </div>
-          ) : rows.length === 0 ? (
+          ) : filteredRows.length === 0 ? (
             <p className="text-center text-gray-400 py-20">
-              No se registraron promociones en este rango.
+              {rows.length === 0
+                ? "No se registraron promociones en este rango."
+                : "Ningún registro coincide con los filtros."}
             </p>
           ) : (
             <div className="overflow-auto max-h-[34rem]">
               <table className="w-full text-xs whitespace-nowrap">
                 <thead className="sticky top-0 bg-[#1e3a8a] text-white">
                   <tr>
-                    {[
-                      "TIPO", "VENDEDOR", "CODIGO DOC.", "FECHA", "ARTICULO",
-                      "DESCRIPCION", "UNIDAD", "FACTOR", "CANTIDAD (U)", "DESC. %", "PROMOCION",
-                    ].map((h, i) => (
+                    <th className="px-3 py-2 font-semibold text-right">#</th>
+                    {COLUMNAS.map((col) => (
                       <th
-                        key={h}
-                        className={`px-3 py-2 font-semibold ${
-                          ["FACTOR", "CANTIDAD (U)", "DESC. %"].includes(h)
-                            ? "text-right"
-                            : "text-left"
-                        } ${i === 5 ? "min-w-[220px]" : ""}`}
+                        key={col.key}
+                        onClick={() => ordenarPor(col.key)}
+                        title="Ordenar"
+                        className={`px-3 py-2 font-semibold cursor-pointer select-none hover:bg-[#27489c] ${
+                          col.align === "right" ? "text-right" : "text-left"
+                        } ${col.ancha ? "min-w-[220px]" : ""}`}
                       >
-                        {h}
+                        {col.label}
+                        <span className="text-emerald-300">
+                          {sortCol === col.key ? (sortDir === "asc" ? " ▲" : " ▼") : " ⇅"}
+                        </span>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, idx) => {
+                  {sortedRows.map((r, idx) => {
                     const sel = seleccion === idx;
                     return (
                       <tr
@@ -322,6 +503,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                           sel ? "bg-[#1e3a8a] text-white" : "hover:bg-white/5"
                         }`}
                       >
+                        <td className="px-3 py-1.5 text-right text-emerald-200/60">{idx + 1}</td>
                         <td className="px-3 py-1.5">{r.tipo}</td>
                         <td className="px-3 py-1.5">{r.vendedor}</td>
                         <td className="px-3 py-1.5">{r.codigoDoc}</td>
@@ -339,10 +521,10 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                 </tbody>
                 <tfoot className="sticky bottom-0 bg-[#02463c] text-white font-semibold">
                   <tr className="border-t-2 border-emerald-400/50">
-                    <td className="px-3 py-2" colSpan={8}>
+                    <td className="px-3 py-2" colSpan={9}>
                       Total
                     </td>
-                    <td className="px-3 py-2 text-right">{fmtNum(data?.totalCantidad ?? 0)}</td>
+                    <td className="px-3 py-2 text-right">{fmtNum(totalCantidadFiltrado)}</td>
                     <td colSpan={2} />
                   </tr>
                 </tfoot>

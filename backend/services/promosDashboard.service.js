@@ -87,6 +87,7 @@ async function rankingGeneral({ anio, mes, limit = 50 } = {}) {
       COUNT(DISTINCT l.documento_code)               AS veces,
       COUNT(DISTINCT l.seller_code)                  AS prendedores,
       SUM(l.cantidad)                                AS unidades,
+      SUM(l.subtotal)                                AS subtotal,
       SUM(l.total)                                   AS monto,
       SUM(l.descuento)                               AS descuento
     FROM lineas l
@@ -112,6 +113,7 @@ async function rankingPrendedores({ anio, mes, limit = 100 } = {}) {
       COUNT(DISTINCT l.promo_code)        AS promos_distintas,
       COUNT(DISTINCT l.documento_code)    AS ventas_con_promo,
       SUM(l.cantidad)                     AS unidades,
+      SUM(l.subtotal)                     AS subtotal,
       SUM(l.total)                        AS monto,
       SUM(l.descuento)                    AS descuento
     FROM lineas l
@@ -126,7 +128,8 @@ async function rankingPrendedores({ anio, mes, limit = 100 } = {}) {
     promosDistintas: Number(r.promos_distintas) || 0,
     ventasConPromo: Number(r.ventas_con_promo) || 0,
     unidades: Number(r.unidades) || 0,
-    monto: Number(r.monto) || 0,
+    subtotal: Number(r.subtotal) || 0, // sin IVA
+    monto: Number(r.monto) || 0,       // con IVA
     descuento: Number(r.descuento) || 0,
   }));
 }
@@ -144,6 +147,7 @@ async function promosPorPrendedor({ sellerCode, anio, mes } = {}) {
       COALESCE(NULLIF(TRIM(p.description), ''), l.promo_code) AS promo_nombre,
       COUNT(DISTINCT l.documento_code)               AS veces,
       SUM(l.cantidad)                                AS unidades,
+      SUM(l.subtotal)                                AS subtotal,
       SUM(l.total)                                   AS monto,
       SUM(l.descuento)                               AS descuento
     FROM lineas l
@@ -364,7 +368,8 @@ function normalizaPromoRow(r) {
     veces: Number(r.veces) || 0,
     prendedores: r.prendedores != null ? Number(r.prendedores) : undefined,
     unidades: Number(r.unidades) || 0,
-    monto: Number(r.monto) || 0,
+    subtotal: Number(r.subtotal) || 0, // sin IVA
+    monto: Number(r.monto) || 0,       // con IVA
     descuento: Number(r.descuento) || 0,
   };
 }
