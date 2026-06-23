@@ -2,6 +2,12 @@
 
 Fuente de verdad del backlog. Solo se trabajan tareas en `[ ]`. Al entregar, marcar `[x]` con la rama/PR.
 
+## Sesión sin cierre automático (rama: `feature/sesion-sin-cierre-automatico`)
+
+- [x] Quitado el auto-logout por inactividad (timer de 5 min) en `AuthContext.tsx` y
+      extendido el JWT de `8h` → `30d` (`backend/config/index.js`) para que la sesión
+      se mantenga abierta. Verificado: `node --check` + `tsc --noEmit` (exit 0).
+
 ## Visibilidad por rol/canal en todo el dashboard (rama: `feature/visibilidad-por-rol-canal`)
 
 Regla: ADMIN ve todo · SUPERVISOR ve toda la tabla del/los CANAL(es) de sus rutas
