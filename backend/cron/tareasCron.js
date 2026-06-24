@@ -147,20 +147,32 @@ async function ejecutarSincronizacion(label, startDate, endDate) {
 }
 
 // ================================================================
+// VENTANA RETROACTIVA
+// MobilVendor entrega los documentos por FECHA DE CREACIÓN. Una orden creada
+// hace varios días pero ENTREGADA recién (la entrega ocurre días después del
+// pedido) NO se vuelve a pedir si la ventana es solo "ayer + hoy" → su
+// fecha_entrega queda congelada en el día de creación y, si eso cruza el borde
+// de mes, "falta" en el ranking (que filtra por fecha_entrega).
+// Mirando atrás N días re-traemos esas órdenes y su fecha_entrega real se
+// actualiza. Es idempotente: lo ya correcto se reescribe igual.
+// ================================================================
+const DIAS_RETRO = 10;
+
+// ================================================================
 // CRON 1 — 12:00 AM (medianoche)
-// Sincroniza ayer + hoy: captura el día anterior completo y el
-// inicio del día actual
+// Sincroniza los últimos DIAS_RETRO días + hoy.
 // ================================================================
 cron.schedule('0 0 * * *', async () => {
-  await ejecutarSincronizacion('CRON 12:00 AM', fechaStr(-1), fechaStr(0));
+  await ejecutarSincronizacion('CRON 12:00 AM', fechaStr(-DIAS_RETRO), fechaStr(0));
 }, { timezone: 'America/Guayaquil' });
 
 // ================================================================
 // CRON 2 — 12:00 PM (mediodía)
-// Sincroniza solo el día en curso: actualización intradiaria
+// Sincroniza los últimos DIAS_RETRO días + hoy: actualización intradiaria
+// que además refresca la fecha_entrega de pedidos entregados hoy.
 // ================================================================
 cron.schedule('0 12 * * *', async () => {
-  await ejecutarSincronizacion('CRON 12:00 PM', fechaStr(0), fechaStr(0));
+  await ejecutarSincronizacion('CRON 12:00 PM', fechaStr(-DIAS_RETRO), fechaStr(0));
 }, { timezone: 'America/Guayaquil' });
 
 log('CRON inicializado — ejecuciones diarias: 12:00 AM y 12:00 PM (America/Guayaquil)');

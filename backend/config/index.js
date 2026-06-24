@@ -9,5 +9,6 @@ function required(name) {
 
 module.exports = {
   JWT_SECRET: required("JWT_SECRET"),
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "8h"
+  // La sesión se mantiene abierta: el token dura 30 días por defecto.
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "30d"
 };
