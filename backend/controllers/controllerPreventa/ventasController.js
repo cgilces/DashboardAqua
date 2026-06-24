@@ -723,6 +723,10 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
         WHERE
             o.type   = 2
             AND o.status = 5
+            -- Solo descartable (categoría '7'): cuadra con la guía de entrega de
+            -- MobilVendor y con tendencia6MesesPreventa. Sin este filtro se sumaban
+            -- líneas no-descartable / anticipos / envíos e inflaban cada ruta.
+            AND dd.codigo_categoria = '7'
             AND (
                 o.seller_code ILIKE 'PV%'
                 OR o.seller_code ILIKE 'PREVENTA%'
@@ -759,6 +763,8 @@ const calcularKPIsMes = async (anioNum, mesNum) => {
     WHERE
         o.type   = 2
         AND o.status = 5
+        -- Mismo universo descartable que el ranking (categoría '7').
+        AND dd.codigo_categoria = '7'
         AND (
             o.seller_code ILIKE 'PV%'
             OR o.seller_code ILIKE 'PREVENTA%'

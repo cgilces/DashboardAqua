@@ -63,7 +63,23 @@ const sincronizarVentas = async (req, res) => {
         return res.status(400).json({ error: "anio y mes deben ser numéricos" });
 
       const mesStr = String(mesNum).padStart(2, "0");
-      startDate    = `${anioNum}-${mesStr}-01`;
+
+      // ── Solapamiento con el fin del mes anterior ───────────────────────────
+      // MobilVendor entrega los documentos por FECHA DE CREACIÓN. Una orden
+      // creada a fin del mes anterior pero ENTREGADA en este mes (p.ej. creada
+      // 30/05, entregada 02/06) NO se vuelve a pedir si la ventana arranca el
+      // día 1 → conserva su fecha_entrega vieja (mayo) y "falta" en el ranking,
+      // que filtra por fecha_entrega. Arrancando unos días antes la re-traemos y
+      // su fecha_entrega real (de este mes) se actualiza. Lo entregado el mes
+      // anterior conserva su fecha y se queda en su mes (no contamina este).
+      const DIAS_SOLAPE_MES_ANTERIOR = 10;
+      const inicio = new Date(anioNum, mesNum - 1, 1);
+      inicio.setDate(inicio.getDate() - DIAS_SOLAPE_MES_ANTERIOR);
+      const sYYYY = inicio.getFullYear();
+      const sMM   = String(inicio.getMonth() + 1).padStart(2, "0");
+      const sDD   = String(inicio.getDate()).padStart(2, "0");
+      startDate     = `${sYYYY}-${sMM}-${sDD}`;
+
       const lastDay = new Date(anioNum, mesNum, 0).getDate();
       endDate      = `${anioNum}-${mesStr}-${String(lastDay).padStart(2, "0")}`;
     } else {

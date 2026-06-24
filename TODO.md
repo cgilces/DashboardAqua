@@ -189,12 +189,31 @@ Claude falla. El front no leía el cuerpo del error.
       `ErrorModalGlobal.tsx` (modal único, con cola) y `ErrorBoundary.tsx` (errores de render).
       Montados en `main.tsx`. Verificado: `tsc --noEmit` + `vite build` (exit 0).
 
-## Preventa "no cuadra" vs guías de entrega MobilVendor (rama: por crear)
+## Preventa "no cuadra" vs guías de entrega MobilVendor (rama: `fix/preventa-cuadre-guias-entrega`)
 
-- [ ] **Diagnóstico:** el total de preventa del dashboard no coincide con el total de las
-      **guías de entrega** de preventa en MobilVendor. Identificar qué número del dashboard
-      es el que se compara y revisar la consulta (status, filtro seller_code PVR%, fecha
-      entrega vs creación, categoría). Confirmar con el usuario la pantalla exacta.
+- [x] **Causa hallada:** el RANKING PREVENTA (`calcularKPIsMes` en `ventasController.js`) era el
+      único query del módulo que **no filtraba `dd.codigo_categoria = '7'`**, así que sumaba TODAS
+      las líneas del pedido (no-descartable, anticipos, envíos) e inflaba los dólares de cada ruta
+      → por eso "ninguna ruta cuadraba" con la guía de entrega (status terminado). `status = 5` y
+      `dd.total` (c/IVA) sí eran correctos (convención del módulo; `tendencia6MesesPreventa` ya
+      usaba esos mismos filtros + categoría '7').
+- [x] **Fix:** agregado `AND dd.codigo_categoria = '7'` a las 2 consultas afectadas (ranking de
+      dólares/unidades + unidades por presentación). Ahora cuadra con `tendencia6MesesPreventa`.
+- [x] **Diagnóstico/verificación:** `scripts/diagRankingPreventaVsGuia.js` imprime por ruta los
+      candidatos de suma (total/subtotal, con/sin cat '7', sin anticipo/envío) y el desglose por
+      status, para comparar contra la guía. Verificado: `node --check` (controller + script).
+- [x] **2ª causa — órdenes faltantes (borde de mes):** MobilVendor entrega los documentos por
+      FECHA DE CREACIÓN. Un pedido creado a fin del mes anterior pero ENTREGADO este mes (ej.
+      creado 30/05, entregado 02/06) se sincroniza cuando aún no está entregado → `dispatch_date`
+      vacío → `fecha_entrega` queda en mayo; y como ninguna sync posterior lo vuelve a pedir (su
+      fecha de creación ya pasó), queda congelado y "falta" en el ranking de junio (filtra por
+      `fecha_entrega`). El cron (`tareasCron.js`) solo miraba "ayer+hoy", agravándolo.
+- [x] **Fix sync:** ventana retroactiva de 10 días: `tareasCron.js` (ambos crons miran los últimos
+      10 días) y `sincronizacionController.js` (la sync por mes solapa 10 días del mes anterior).
+      Re-trae esas órdenes y actualiza su `fecha_entrega` real (idempotente). Verificado: `node --check`.
+- [ ] **Acción del usuario:** tras desplegar, correr **una sync manual de junio** (ahora con el
+      solape) para reparar las órdenes ya guardadas con la fecha de mayo. Luego comparar con la guía
+      con `node scripts/diagRankingPreventaVsGuia.js 2026 6`.
 
 ## Deduplicar "Productos Vendidos" en todo el dashboard (rama: `feature/dedupe-productos-vendidos`)
 
