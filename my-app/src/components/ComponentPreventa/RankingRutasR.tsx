@@ -129,6 +129,25 @@ const RankingRutasInner = ({
     }
   };
 
+  // Variación y % calculados con la MISMA lógica mostrada en la tabla,
+  // para que el ordenamiento coincida con lo que ve el usuario.
+  const calcVariacionAbs = (r: any) => {
+    const cupo = Number(r.objetivo_gerencia || 0);
+    const proy = Number(r.proyeccion || 0);
+    const montoAnterior = Number(r.vsMesAnterior?.monto_anterior || 0);
+    return cupo > 0 ? proy - cupo : proy - montoAnterior;
+  };
+
+  const calcVariacionPorc = (r: any) => {
+    const cupo = Number(r.objetivo_gerencia || 0);
+    const montoAnterior = Number(r.vsMesAnterior?.monto_anterior || 0);
+    const baseVar = cupo > 0 ? cupo : montoAnterior;
+    return baseVar > 0 ? (calcVariacionAbs(r) / baseVar) * 100 : 0;
+  };
+
+  const calcPrecioPromedio = (r: any) =>
+    Number(r.unidades) > 0 ? Number(r.dolares) / Number(r.unidades) : 0;
+
   const requestSort = (key: any) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -137,14 +156,16 @@ const RankingRutasInner = ({
 
     setSortConfig({ key, direction });
 
-    const sorted = [...dataFiltrada].sort((a, b) => {
-      const aValue = key === 'vsMesAnterior'
-        ? a[key]?.monto_anterior
-        : a[key];
+    const getValue = (r: any) => {
+      if (key === 'variacion') return calcVariacionAbs(r);
+      if (key === 'variacionPorc') return calcVariacionPorc(r);
+      if (key === 'precioPromedio') return calcPrecioPromedio(r);
+      return r[key];
+    };
 
-      const bValue = key === 'vsMesAnterior'
-        ? b[key]?.monto_anterior
-        : b[key];
+    const sorted = [...dataFiltrada].sort((a, b) => {
+      const aValue = getValue(a);
+      const bValue = getValue(b);
 
       if (typeof aValue === 'string' && typeof bValue === 'string') {
         return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
@@ -241,8 +262,8 @@ const RankingRutasInner = ({
                 Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
 
-              <th className="px-4 py-3 text-right">
-                Precio Promedio
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('precioPromedio')}>
+                Precio Promedio <span className="text-green-300">{sortConfig.key === 'precioPromedio' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
               <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
                 CUPO <span className="text-amber-300">{sortConfig.key === 'objetivo_gerencia' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
@@ -250,11 +271,11 @@ const RankingRutasInner = ({
               <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('proyeccion')}>
                 Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('vsMesAnterior')}>
-                Variación <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('variacion')}>
+                Variación <span className="text-green-300">{sortConfig.key === 'variacion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('vsMesAnterior')}>
-                % <span className="text-green-300">{sortConfig.key === 'vsMesAnterior' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('variacionPorc')}>
+                % <span className="text-green-300">{sortConfig.key === 'variacionPorc' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
             </tr>
           </thead>
