@@ -294,6 +294,45 @@ reportaban → todo se apilaba en 70% y la fase larga (Direcciones) lo dejaba co
       según lo filtrado; contador "N de M líneas"; "Limpiar filtros" y se limpian al Restablecer.
       Verificado: `tsc --noEmit` + `vite build` (exit 0).
 
+## Facturas con promo desaparecen del reporte — Odoo pisa a MobilVendor (rama: `fix/promo-facturas-odoo-overwrite`)
+
+Síntoma: en `/dashboard/promociones` (Reporte de Promociones Utilizadas) solo salían las
+ÓRDENES con promo; las FACTURAS del mismo vendedor/promo (visibles en MobilVendor dashboard86)
+faltaban. Ejemplo real T9: se veían `PDT9-007558`/`PDT9-007634` pero no `FA001-014-000025465`/
+`FA001-014-000025468`.
+
+- [x] **Causa raíz (confirmada con probes):** el botón "Sincronizar" corre MobilVendor y Odoo
+      **en paralelo** (`sincronizacionController.js`). Ambos escriben la MISMA factura en
+      `detalle_documento` keyada por `documento_code` = número fiscal (`FA001-...`), que los dos
+      sistemas comparten. MobilVendor trae la línea de promo (art. 285 + `promo_code`); Odoo hace
+      `DetalleDocumento.destroy` + `bulkCreate` con SUS líneas (art. = product_id, p.ej. 189, sin
+      promo) y **pisa** la de MobilVendor. Gana el último commit → la factura queda sin `promo_code`.
+      Las ÓRDENES no chocan porque Odoo nombra sus pedidos distinto (`S00...`). El mapeo de promos y
+      la consulta del reporte estaban BIEN; el problema era de propiedad del dato.
+- [x] **Fix (tabla aislada, elegido por el usuario):** nueva tabla `promo_lineas_venta` que escribe
+      **solo** MobilVendor (facturas Y órdenes con promo), con vendedor/fecha/tipo desnormalizados;
+      Odoo nunca la toca. Modelo `PromoLineaVenta` + `000_schema.sql` (sección 24b, idempotente) +
+      `syncPromoLineasVenta` en `sincronizacionService` (destroy+insert por documento, misma
+      transacción). `promosDashboard.service` (baseLineasCTE, clausulaFecha, reporteUtilizadas,
+      listaPromos) ahora lee de esa tabla → arregla de una el reporte, el ranking general, el de
+      prendedores y la ficha por promo.
+- [x] **Verificado end-to-end:** `node --check` (4 archivos) + resync real del rango → el reporte para
+      T9 pasó de **2 → 4 filas** (2 facturas + 2 órdenes, art. 285/PROMOBOT, = dashboard86) y el total
+      de facturas con promo de **173 → 1711**. Odoo confirmado que no referencia la tabla nueva.
+- [ ] **Acción del usuario:** desplegar y correr **una sync** (o esperar el cron) para poblar
+      `promo_lineas_venta` en todo el histórico que se quiera ver en el reporte (la tabla arranca vacía;
+      el rango 2026-07-01…09 ya quedó backfilleado en esta sesión).
+
+## Ordenamiento Variación/% en rankings de Preventa (rama: `fix/ranking-orden-variacion`)
+
+- [x] **Bug:** en `RankingPreventas.tsx` y `RankingRutasR.tsx` las columnas **Variación** y **%**
+      no ordenaban bien: mostraban valores calculados en el render (proyección/cupo/monto anterior)
+      pero ordenaban por otro dato (`vsMesAnterior.variacion_abs` / `.monto_anterior`), y ambas
+      columnas compartían la misma clave (el `%` ni siquiera ordenaba por porcentaje).
+- [x] **Fix:** helpers `calcVariacionAbs`/`calcVariacionPorc` que replican la fórmula mostrada;
+      cada columna con su propia clave (`variacion` / `variacionPorc`). En `RankingRutasR` además se
+      hizo ordenable **Precio Promedio**. Verificado con diagnósticos del IDE (sin errores nuevos).
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.

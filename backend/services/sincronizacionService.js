@@ -23,6 +23,7 @@ const {
   PromoCondicion,
   PromoAccion,
   UsuarioEnPromo,
+  PromoLineaVenta,
 } = require("../models");
 
 const DireccionCliente = require("../models/DireccionCliente");
@@ -741,6 +742,50 @@ async function syncDetalle(detalle, documentCode, transaction) {
 }
 
 // ================================================================
+// LÍNEAS DE VENTA CON PROMOCIÓN (tabla aislada de Odoo)
+// ================================================================
+// Escribe promo_lineas_venta con las líneas del documento que llevan promo.
+// SOLO la escribe MobilVendor; Odoo nunca la toca → las promos de las facturas
+// (cuyo número fiscal comparten con Odoo) no se pierden. Desnormaliza vendedor,
+// fecha y tipo para que el reporte no dependa de facturas/ordenes (que Odoo
+// reescribe). Reemplazo completo por documento (destroy + insert) idempotente.
+async function syncPromoLineasVenta(doc, code, tipoDoc, dedupDetails, transaction) {
+  await PromoLineaVenta.destroy({ where: { documento_code: code }, transaction });
+
+  const conPromo = dedupDetails.filter(
+    (d) => d.promo_code && String(d.promo_code).trim() !== ""
+  );
+  if (!conPromo.length) return;
+
+  const tipo =
+    tipoDoc === "factura" ? "FACTURA" : tipoDoc === "orden" ? "ORDEN" : "—";
+  const sellerCode = String(doc.seller_code || doc.user_code || "").trim() || null;
+  const fecha = parseUnixToEcuador(doc.create_date || doc.store_date);
+
+  await PromoLineaVenta.bulkCreate(
+    conPromo.map((d) => ({
+      documento_code   : code,
+      tipo,
+      seller_code      : sellerCode,
+      fecha,
+      codigo_producto  : d.article_code || "SIN-CODIGO",
+      descripcion      : d.article_description || "",
+      unidad           : (d.unit_alias && String(d.unit_alias).trim()) || "UNI",
+      cantidad         : toNumber(d.quantity),
+      precio           : toNumber(d.price),
+      descuento_linea  : toNumber(d.discount),
+      subtotal         : toNumber(d.subtotal),
+      total            : toNumber(d.total),
+      iva              : toNumber(d.iva),
+      promo_code       : String(d.promo_code).trim(),
+      promo_action_code:
+        (d.promo_action_code && String(d.promo_action_code).trim()) || null,
+    })),
+    { transaction }
+  );
+}
+
+// ================================================================
 // PROCESADOR DE UN DOCUMENTO COMPLETO
 // ================================================================
 async function procesarDocumento(doc, detallesPorDocumento, stats) {
@@ -780,6 +825,9 @@ async function procesarDocumento(doc, detallesPorDocumento, stats) {
     for (const detalle of dedupDetails) {
       await syncDetalle(detalle, code, t);
     }
+
+    // Tabla aislada de promos (Odoo no la toca) — misma transacción.
+    await syncPromoLineasVenta(doc, code, tipoDoc, dedupDetails, t);
 
     await t.commit();
     console.log(`   ✅ ${code} confirmado (${dedupDetails.length} detalles)`);

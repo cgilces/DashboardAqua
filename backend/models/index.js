@@ -27,6 +27,7 @@ const Promo = require('./Promo');                 // 🔥 NUEVO — promociones 
 const PromoCondicion = require('./PromoCondicion');
 const PromoAccion = require('./PromoAccion');
 const UsuarioEnPromo = require('./UsuarioEnPromo');
+const PromoLineaVenta = require('./PromoLineaVenta'); // líneas de venta con promo (aisladas de Odoo)
 
 // =============================
 // RELACIONES
@@ -282,5 +283,6 @@ module.exports = {
   PromoCondicion,
   PromoAccion,
   UsuarioEnPromo,
+  PromoLineaVenta,
   sequelize,
 };
