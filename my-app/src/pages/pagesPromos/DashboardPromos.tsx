@@ -526,7 +526,6 @@ const DashboardPromos: React.FC = () => {
                         <SortTh label="Vendedor" col="prendedor" state={predSort} onSort={onPredSort} align="left" className="px-4 min-w-[120px]" />
                         <SortTh label="Promos" col="promosDistintas" state={predSort} onSort={onPredSort} className="px-6" />
                         <SortTh label="Unidades" col="unidades" state={predSort} onSort={onPredSort} className="px-6" />
-                        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
                         <SortTh label="Total (c/IVA)" col="monto" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
                         <SortTh label="Descuento $" col="descuento" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
                       </tr>
@@ -542,7 +541,6 @@ const DashboardPromos: React.FC = () => {
                           <td className="px-4 py-2 font-medium">{p.prendedor}</td>
                           <td className="px-6 py-2 text-right">{fmt(p.promosDistintas)}</td>
                           <td className="px-6 py-2 text-right font-semibold">{fmt(p.unidades)}</td>
-                          <td className="px-6 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
                           <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
                           <td className="px-6 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
                         </tr>

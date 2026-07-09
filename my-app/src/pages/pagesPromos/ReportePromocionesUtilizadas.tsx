@@ -90,6 +90,13 @@ const coincide = (valor: unknown, filtro: string): boolean => {
   return new RegExp(`(^|[^A-Z0-9])${esc}([^A-Z0-9]|$)`).test(v);
 };
 
+// Coincidencia por SUBSTRING (contiene): filtra progresivamente por cada letra.
+// Se usa en el combobox de PROMOCIÓN para el efecto "type-ahead" fluido. Vacío = no filtra.
+const incluye = (valor: unknown, filtro: string): boolean => {
+  const f = norm(filtro);
+  return !f || norm(valor).includes(f);
+};
+
 const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem("app_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -130,6 +137,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   const [fDescripcion, setFDescripcion] = useState("");
   const [fTipo, setFTipo]               = useState("");
   const [fCodigoDoc, setFCodigoDoc]     = useState("");
+  const [fPromocion, setFPromocion]     = useState(""); // combobox por nombre/código, filtra al instante
 
   // Ordenamiento por columna (clic en encabezado: asc → desc → …).
   const [sortCol, setSortCol] = useState<ColKey | null>(null);
@@ -184,6 +192,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
     const d = { ...defaultFiltros(), tab: draft.tab };
     setDraft(d);
     setFiltros(d);
+    setFPromocion("");
     setFVendedor("");
     setFDescripcion("");
     setFTipo("");
@@ -206,15 +215,45 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   const opcionesCodigoDoc = useMemo(
     () => [...new Set(rows.map((r) => r.codigoDoc).filter(Boolean))].sort(), [rows]);
 
-  // Filtrado en cliente (instantáneo): vendedor/descripción/tipo/código documento.
+  // Mapa código de promo → nombre legible (del catálogo /api/promos/lista).
+  const promoNombrePorCodigo = useMemo(() => {
+    const m = new Map<string, string>();
+    promos.forEach((p) => m.set(norm(p.codigo), p.nombre));
+    return m;
+  }, [promos]);
+
+  // Texto buscable de la promo de una fila: nombre + código (r.promocion = "CODIGO/CODIGO").
+  const promoTexto = (r: ReporteRow) => {
+    const codigo = String(r.promocion || "").split("/")[0];
+    const nombre = promoNombrePorCodigo.get(norm(codigo)) || "";
+    return `${nombre} ${r.promocion}`;
+  };
+
+  // Opciones del combobox PROMOCIÓN. Incluye el CÓDIGO tal como se ve en la tabla
+  // (ej. "PROMOBOT/PROMOBOT") y también el NOMBRE legible del catálogo, para que
+  // se pueda buscar/elegir por cualquiera de los dos.
+  const opcionesPromocion = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => {
+      if (r.promocion) set.add(r.promocion);
+      const codigo = String(r.promocion || "").split("/")[0];
+      const nombre = promoNombrePorCodigo.get(norm(codigo));
+      if (nombre) set.add(nombre);
+    });
+    return [...set].sort();
+  }, [rows, promoNombrePorCodigo]);
+
+  // Filtrado en cliente (instantáneo): promoción/vendedor/descripción/tipo/código documento.
   const filteredRows = useMemo(
     () => rows.filter((r) =>
+      incluye(promoTexto(r), fPromocion) &&
       coincide(r.vendedor, fVendedor) &&
       coincide(r.descripcion, fDescripcion) &&
       coincide(r.tipo, fTipo) &&
       coincide(r.codigoDoc, fCodigoDoc)
     ),
-    [rows, fVendedor, fDescripcion, fTipo, fCodigoDoc]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, fPromocion, fVendedor, fDescripcion, fTipo, fCodigoDoc, promoNombrePorCodigo]
   );
 
   // El total del pie y el conteo del gráfico reflejan lo FILTRADO.
@@ -247,7 +286,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
   }, [filteredRows, sortCol, sortDir]);
 
   // Al cambiar un filtro u orden cambian los índices → limpiar la fila seleccionada.
-  useEffect(() => { setSeleccion(null); }, [fVendedor, fDescripcion, fTipo, fCodigoDoc, sortCol, sortDir]);
+  useEffect(() => { setSeleccion(null); }, [fPromocion, fVendedor, fDescripcion, fTipo, fCodigoDoc, sortCol, sortDir]);
 
   const pieOption = useMemo(
     () => ({
@@ -331,27 +370,25 @@ const ReportePromocionesUtilizadas: React.FC = () => {
         >
           <Check size={15} /> Aceptar
         </button>
-
-        <label className="flex flex-col text-xs text-emerald-200 ml-auto min-w-[200px]">
-          PROMOCIÓN
-          <select
-            value={draft.promo}
-            onChange={(e) => setDraft((d) => ({ ...d, promo: e.target.value }))}
-            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg appearance-none"
-          >
-            <option value="">(Todos)</option>
-            {promos.map((p) => (
-              <option key={p.codigo} value={p.codigo}>
-                {p.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
       {/* ── Filtros de tabla (combobox: se puede ESCRIBIR o elegir) ── */}
       <div className="flex flex-wrap items-end gap-3 px-5 py-3 border-b border-[#046C5E] bg-[#0b3b34]/30">
         <span className="text-xs text-emerald-200/70 self-center font-medium">Filtrar tabla:</span>
+
+        <label className="flex flex-col text-xs text-emerald-200 min-w-[220px]">
+          PROMOCIÓN
+          <input
+            list="dl-promocion"
+            value={fPromocion}
+            onChange={(e) => setFPromocion(e.target.value)}
+            placeholder="Todas — escribe o elige…"
+            className="mt-1 bg-[#046C5E] text-white px-3 py-2 rounded-lg placeholder-emerald-200/40"
+          />
+          <datalist id="dl-promocion">
+            {opcionesPromocion.map((o) => <option key={o} value={o} />)}
+          </datalist>
+        </label>
 
         <label className="flex flex-col text-xs text-emerald-200 min-w-[180px]">
           VENDEDOR
@@ -409,9 +446,9 @@ const ReportePromocionesUtilizadas: React.FC = () => {
           </datalist>
         </label>
 
-        {(fVendedor || fDescripcion || fTipo || fCodigoDoc) && (
+        {(fPromocion || fVendedor || fDescripcion || fTipo || fCodigoDoc) && (
           <button
-            onClick={() => { setFVendedor(""); setFDescripcion(""); setFTipo(""); setFCodigoDoc(""); }}
+            onClick={() => { setFPromocion(""); setFVendedor(""); setFDescripcion(""); setFTipo(""); setFCodigoDoc(""); }}
             className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-xs"
           >
             <RotateCcw size={13} /> Limpiar filtros
