@@ -112,8 +112,6 @@ const COLUMNAS: ColDef[] = [
   { label: "FECHA",        key: "fecha",       tipo: "fecha", align: "left" },
   { label: "ARTICULO",     key: "articulo",    tipo: "texto", align: "left" },
   { label: "DESCRIPCION",  key: "descripcion", tipo: "texto", align: "left", ancha: true },
-  { label: "UNIDAD",       key: "unidad",      tipo: "texto", align: "left" },
-  { label: "FACTOR",       key: "factor",      tipo: "num",   align: "right" },
   { label: "CANTIDAD (U)", key: "cantidad",    tipo: "num",   align: "right" },
   { label: "DESC. %",      key: "descPct",     tipo: "num",   align: "right" },
   { label: "PROMOCION",    key: "promocion",   tipo: "texto", align: "left" },
@@ -547,8 +545,6 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                         <td className="px-3 py-1.5">{fmtFechaMDA(r.fecha)}</td>
                         <td className="px-3 py-1.5">{r.articulo}</td>
                         <td className="px-3 py-1.5 whitespace-normal">{r.descripcion}</td>
-                        <td className="px-3 py-1.5">{r.unidad}</td>
-                        <td className="px-3 py-1.5 text-right">{fmtNum(r.factor)}</td>
                         <td className="px-3 py-1.5 text-right font-semibold">{fmtNum(r.cantidad)}</td>
                         <td className="px-3 py-1.5 text-right">{fmtNum(r.descPct)}</td>
                         <td className="px-3 py-1.5">{r.promocion}</td>
@@ -558,7 +554,7 @@ const ReportePromocionesUtilizadas: React.FC = () => {
                 </tbody>
                 <tfoot className="sticky bottom-0 bg-[#02463c] text-white font-semibold">
                   <tr className="border-t-2 border-emerald-400/50">
-                    <td className="px-3 py-2" colSpan={9}>
+                    <td className="px-3 py-2" colSpan={7}>
                       Total
                     </td>
                     <td className="px-3 py-2 text-right">{fmtNum(totalCantidadFiltrado)}</td>
