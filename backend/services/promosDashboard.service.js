@@ -31,29 +31,30 @@ function construirRango(anio, mes) {
   return { inicio, fin };
 }
 
-// CTE base: una fila por línea de venta CON promo, ya resuelto el vendedor y la
-// fecha desde la cabecera (factura u orden). El filtro de fecha se inyecta aparte.
+// CTE base: una fila por línea de venta CON promo, con vendedor, fecha y tipo ya
+// desnormalizados. Fuente = promo_lineas_venta (la escribe SOLO MobilVendor; Odoo
+// NUNCA la toca), para que las promos de las facturas no las pise el sync de Odoo
+// —que comparte el número fiscal y antes sobrescribía detalle_documento sin promo.
+// El filtro de fecha se inyecta aparte.
 function baseLineasCTE(filtroFecha) {
   return `
     WITH lineas AS (
       SELECT
-        d.promo_code,
-        d.promo_action_code,
-        d.descripcion                                   AS articulo,
-        d.codigo_producto,
-        COALESCE(d.cantidad, 0)                         AS cantidad,
-        COALESCE(d.total, 0)                            AS total,
-        COALESCE(d.precio, 0)                           AS precio,
-        COALESCE(d.subtotal, 0)                         AS subtotal,
-        COALESCE(d.descuento_linea, 0)                  AS descuento,
-        COALESCE(f.seller_code, o.seller_code)          AS seller_code,
-        COALESCE(f.fecha_creacion, o.fecha_creacion)    AS fecha,
-        d.documento_code
-      FROM detalle_documento d
-      LEFT JOIN facturas f ON f.code = d.documento_code
-      LEFT JOIN ordenes  o ON o.code = d.documento_code
-      WHERE d.promo_code IS NOT NULL
-        AND TRIM(d.promo_code) <> ''
+        v.promo_code,
+        v.promo_action_code,
+        v.descripcion                   AS articulo,
+        v.codigo_producto,
+        COALESCE(v.cantidad, 0)         AS cantidad,
+        COALESCE(v.total, 0)            AS total,
+        COALESCE(v.precio, 0)           AS precio,
+        COALESCE(v.subtotal, 0)         AS subtotal,
+        COALESCE(v.descuento_linea, 0)  AS descuento,
+        v.seller_code                   AS seller_code,
+        v.fecha                         AS fecha,
+        v.documento_code
+      FROM promo_lineas_venta v
+      WHERE v.promo_code IS NOT NULL
+        AND TRIM(v.promo_code) <> ''
         ${filtroFecha}
     )
   `;
@@ -61,9 +62,7 @@ function baseLineasCTE(filtroFecha) {
 
 // Cláusula de fecha reutilizable. Devuelve "" si no hay rango.
 function clausulaFecha(rango) {
-  return rango
-    ? "AND COALESCE(f.fecha_creacion, o.fecha_creacion) >= :inicio AND COALESCE(f.fecha_creacion, o.fecha_creacion) < :fin"
-    : "";
+  return rango ? "AND v.fecha >= :inicio AND v.fecha < :fin" : "";
 }
 
 // Cláusula de filtro por vendedor sobre la CTE.
@@ -271,36 +270,34 @@ async function reporteUtilizadas({ inicio, fin, promoCode, tab = "factura_orden"
     return { rows: [], totalCantidad: 0, conteo: { factura: 0, orden: 0, total: 0 }, soportado: false };
   }
 
-  const where = ["d.promo_code IS NOT NULL", "TRIM(d.promo_code) <> ''"];
+  // Fuente = promo_lineas_venta (aislada de Odoo). Antes leía detalle_documento
+  // + JOIN a facturas/ordenes, que Odoo reescribía → las facturas perdían la promo.
+  const where = ["v.promo_code IS NOT NULL", "TRIM(v.promo_code) <> ''"];
   const repl = {};
-  if (inicio) { where.push("COALESCE(f.fecha_creacion, o.fecha_creacion) >= :inicio"); repl.inicio = inicio; }
-  if (fin)    { where.push("COALESCE(f.fecha_creacion, o.fecha_creacion) <= :fin");    repl.fin = fin; }
+  if (inicio) { where.push("v.fecha >= :inicio"); repl.inicio = inicio; }
+  if (fin)    { where.push("v.fecha <= :fin");    repl.fin = fin; }
   if (promoCode && String(promoCode).trim()) {
-    where.push("d.promo_code = :promoCode");
+    where.push("v.promo_code = :promoCode");
     repl.promoCode = String(promoCode).trim();
   }
 
   const sql = `
     SELECT
-      CASE WHEN f.code IS NOT NULL THEN 'FACTURA'
-           WHEN o.code IS NOT NULL THEN 'ORDEN'
-           ELSE '—' END                                  AS tipo,
-      COALESCE(f.seller_code, o.seller_code)              AS vendedor,
-      d.documento_code                                    AS codigo_doc,
-      COALESCE(f.fecha_creacion, o.fecha_creacion)        AS fecha,
-      d.codigo_producto                                   AS articulo,
-      d.descripcion                                       AS descripcion,
-      COALESCE(NULLIF(TRIM(d.unit_alias), ''), NULLIF(TRIM(d.unidad_medida), ''), 'UNI') AS unidad,
-      COALESCE(d.cantidad, 0)                             AS cantidad,
-      COALESCE(d.precio, 0)                               AS precio,
-      COALESCE(d.descuento_linea, 0)                      AS descuento,
-      d.promo_code                                        AS promo_code,
-      d.promo_action_code                                 AS promo_action_code
-    FROM detalle_documento d
-    LEFT JOIN facturas f ON f.code = d.documento_code
-    LEFT JOIN ordenes  o ON o.code = d.documento_code
+      v.tipo                                              AS tipo,
+      v.seller_code                                       AS vendedor,
+      v.documento_code                                    AS codigo_doc,
+      v.fecha                                             AS fecha,
+      v.codigo_producto                                   AS articulo,
+      v.descripcion                                       AS descripcion,
+      COALESCE(NULLIF(TRIM(v.unidad), ''), 'UNI')         AS unidad,
+      COALESCE(v.cantidad, 0)                             AS cantidad,
+      COALESCE(v.precio, 0)                               AS precio,
+      COALESCE(v.descuento_linea, 0)                      AS descuento,
+      v.promo_code                                        AS promo_code,
+      v.promo_action_code                                 AS promo_action_code
+    FROM promo_lineas_venta v
     WHERE ${where.join(" AND ")}
-    ORDER BY COALESCE(f.fecha_creacion, o.fecha_creacion) DESC, d.documento_code, d.id_detalle
+    ORDER BY v.fecha DESC, v.documento_code, v.id
   `;
   const raw = await run(sql, repl);
 
@@ -347,11 +344,11 @@ async function reporteUtilizadas({ inicio, fin, promoCode, tab = "factura_orden"
 async function listaPromos() {
   const sql = `
     SELECT DISTINCT
-      d.promo_code                                            AS codigo,
-      COALESCE(NULLIF(TRIM(p.description), ''), d.promo_code) AS nombre
-    FROM detalle_documento d
-    LEFT JOIN promos p ON p.code = d.promo_code
-    WHERE d.promo_code IS NOT NULL AND TRIM(d.promo_code) <> ''
+      v.promo_code                                            AS codigo,
+      COALESCE(NULLIF(TRIM(p.description), ''), v.promo_code) AS nombre
+    FROM promo_lineas_venta v
+    LEFT JOIN promos p ON p.code = v.promo_code
+    WHERE v.promo_code IS NOT NULL AND TRIM(v.promo_code) <> ''
     ORDER BY nombre
   `;
   const rows = await run(sql, {});

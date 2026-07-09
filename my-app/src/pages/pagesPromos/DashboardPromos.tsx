@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Calendar, Tag, Award, Users, User, ArrowLeft, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Calendar, Tag, Award, Users, User, ArrowLeft, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown } from "lucide-react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import BotonActualizarSincronizacion from "../../components/elements/BotonActualizarSincronizacion";
 import { Header } from "../../components/common/Header";
@@ -25,6 +25,7 @@ interface PrendedorRow {
   subtotal: number; // sin IVA
   monto: number;    // con IVA
   descuento: number;
+  precioPromedio?: number; // monto (c/IVA) / unidades — derivado en el cliente
 }
 // Drill-down de una promo: vendedores que la vendieron
 interface PromoVendRow {
@@ -237,22 +238,33 @@ const DashboardPromos: React.FC = () => {
   }, [promoSel, mes, anio]);
 
   const top = promos[0];
-  const maxUnidades = promos.reduce((m, p) => Math.max(m, p.unidades), 0) || 1;
 
   // Totales del vendedor (de la fila ya calculada en el ranking de prendedores)
   const vendInfo = useMemo(
     () => prendedores.find((p) => p.prendedor === vendedorSel) || null,
     [prendedores, vendedorSel]
   );
-  const vendMaxUnidades = vendPromos.reduce((m, p) => Math.max(m, p.unidades), 0) || 1;
 
   // Orden de la tabla de vendedores
   const { state: predSort, onSort: onPredSort } = useSort();
-  const prendedoresSorted = useMemo(() => sortRows(prendedores, predSort), [prendedores, predSort]);
+  // Precio promedio = Total (c/IVA) / unidades. Derivado aquí (no al traer los
+  // datos) para que siempre se recalcule del monto/unidades actuales y sea ordenable.
+  const prendedoresConPrecio = useMemo(
+    () => prendedores.map((p) => ({
+      ...p,
+      precioPromedio: p.unidades > 0 ? p.monto / p.unidades : 0,
+    })),
+    [prendedores]
+  );
+  const prendedoresSorted = useMemo(() => sortRows(prendedoresConPrecio, predSort), [prendedoresConPrecio, predSort]);
 
   // Buscadores del Resumen: por nombre/código de promo y por vendedor.
   const [qPromo, setQPromo] = useState("");
   const [qVend, setQVend] = useState("");
+
+  // Acordeón: por defecto solo "Ranking general" abierto; "Vendedores" recogido.
+  const [openPromos, setOpenPromos] = useState(true);
+  const [openVend, setOpenVend] = useState(false);
   const promosVista = useMemo(
     () => promos.filter((p) => !qPromo || coincide(p.promoNombre, qPromo) || coincide(p.promoCodigo, qPromo)),
     [promos, qPromo]
@@ -387,12 +399,10 @@ const DashboardPromos: React.FC = () => {
             </div>
 
             {/* KPIs del vendedor */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
               <Kpi label="Promos distintas" valor={fmt(vendInfo?.promosDistintas ?? vendPromos.length)} />
               <Kpi label="Unidades" valor={fmt(vendInfo?.unidades ?? vendPromos.reduce((s, p) => s + p.unidades, 0))} />
-              <Kpi label="Subtotal $ (s/IVA)" valor={`$${fmtMoney(vendInfo?.subtotal ?? vendPromos.reduce((s, p) => s + p.subtotal, 0))}`} />
               <Kpi label="Total $ (c/IVA)" valor={`$${fmtMoney(vendInfo?.monto ?? vendPromos.reduce((s, p) => s + p.monto, 0))}`} acento="emerald" />
-              <Kpi label="Descuento $" valor={`$${fmtMoney(vendInfo?.descuento ?? vendPromos.reduce((s, p) => s + p.descuento, 0))}`} acento="amber" />
             </div>
 
             <div className="rounded-2xl bg-[#0b3b34]/60 border border-[#046C5E] overflow-hidden">
@@ -407,7 +417,7 @@ const DashboardPromos: React.FC = () => {
                 <p className="text-center text-gray-400 py-12">Sin promos en el período.</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <TablaPromos rows={vendPromos} maxUnidades={vendMaxUnidades} />
+                  <TablaPromos rows={vendPromos} />
                 </div>
               )}
             </div>
@@ -480,55 +490,73 @@ const DashboardPromos: React.FC = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6">
               {/* Ranking general de promos */}
               <section className="rounded-2xl bg-[#0b3b34]/60 border border-[#046C5E] overflow-hidden">
-                <h2 className="px-5 py-3 font-semibold flex flex-wrap items-center gap-2 border-b border-[#046C5E]">
+                <h2
+                  onClick={() => setOpenPromos((o) => !o)}
+                  className={`px-5 py-3 font-semibold flex flex-wrap items-center gap-2 cursor-pointer select-none hover:bg-white/5 ${openPromos ? "border-b border-[#046C5E]" : ""}`}
+                >
                   <Tag size={18} /> Ranking general de promociones
                   <span className="text-xs font-normal text-emerald-300/70">(clic para ver vendedores)</span>
                   <input
                     list="dl-buscar-promo"
                     value={qPromo}
                     onChange={(e) => setQPromo(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
                     placeholder="Buscar promoción…"
                     className="ml-auto bg-[#046C5E] text-white text-sm font-normal px-3 py-1.5 rounded-lg placeholder-emerald-200/50 w-44"
                   />
                   <datalist id="dl-buscar-promo">
                     {promos.map((p) => <option key={p.promoCodigo} value={p.promoNombre} />)}
                   </datalist>
+                  <ChevronDown
+                    size={20}
+                    className={`shrink-0 text-emerald-300 transition-transform ${openPromos ? "" : "-rotate-90"}`}
+                  />
                 </h2>
-                <div className="overflow-auto max-h-[28rem]">
-                  <TablaPromos rows={promosVista} maxUnidades={maxUnidades} onSelect={setPromoSel} />
-                </div>
+                {openPromos && (
+                  <div className="overflow-auto max-h-[28rem]">
+                    <TablaPromos rows={promosVista} onSelect={setPromoSel} />
+                  </div>
+                )}
               </section>
 
               {/* Ranking de prendedores */}
               <section className="rounded-2xl bg-[#0b3b34]/60 border border-[#046C5E] overflow-hidden">
-                <h2 className="px-5 py-3 font-semibold flex flex-wrap items-center gap-2 border-b border-[#046C5E]">
+                <h2
+                  onClick={() => setOpenVend((o) => !o)}
+                  className={`px-5 py-3 font-semibold flex flex-wrap items-center gap-2 cursor-pointer select-none hover:bg-white/5 ${openVend ? "border-b border-[#046C5E]" : ""}`}
+                >
                   <Users size={18} /> Vendedores
                   <span className="text-xs font-normal text-emerald-300/70">(clic para ver su detalle)</span>
                   <input
                     list="dl-buscar-vend"
                     value={qVend}
                     onChange={(e) => setQVend(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
                     placeholder="Buscar vendedor…"
                     className="ml-auto bg-[#046C5E] text-white text-sm font-normal px-3 py-1.5 rounded-lg placeholder-emerald-200/50 w-40"
                   />
                   <datalist id="dl-buscar-vend">
                     {prendedores.map((p) => <option key={p.prendedor} value={p.prendedor} />)}
                   </datalist>
+                  <ChevronDown
+                    size={20}
+                    className={`shrink-0 text-emerald-300 transition-transform ${openVend ? "" : "-rotate-90"}`}
+                  />
                 </h2>
+                {openVend && (
                 <div className="overflow-auto max-h-[28rem]">
                   <table className="w-full min-w-[840px] text-sm">
                     <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
                       <tr>
                         <th className="py-2 px-4 text-right font-normal w-12">#</th>
                         <SortTh label="Vendedor" col="prendedor" state={predSort} onSort={onPredSort} align="left" className="px-4 min-w-[120px]" />
-                        <SortTh label="Promos" col="promosDistintas" state={predSort} onSort={onPredSort} className="px-6" />
+                        <SortTh label="Promos vendidas" col="ventasConPromo" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
                         <SortTh label="Unidades" col="unidades" state={predSort} onSort={onPredSort} className="px-6" />
-                        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
                         <SortTh label="Total (c/IVA)" col="monto" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
-                        <SortTh label="Descuento $" col="descuento" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
+                        <SortTh label="Precio Prom." col="precioPromedio" state={predSort} onSort={onPredSort} className="px-6 whitespace-nowrap" />
                       </tr>
                     </thead>
                     <tbody>
@@ -540,16 +568,16 @@ const DashboardPromos: React.FC = () => {
                         >
                           <td className="px-4 py-2 text-right text-emerald-300/60">{i + 1}</td>
                           <td className="px-4 py-2 font-medium">{p.prendedor}</td>
-                          <td className="px-6 py-2 text-right">{fmt(p.promosDistintas)}</td>
+                          <td className="px-6 py-2 text-right">{fmt(p.ventasConPromo)}</td>
                           <td className="px-6 py-2 text-right font-semibold">{fmt(p.unidades)}</td>
-                          <td className="px-6 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
                           <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
-                          <td className="px-6 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
+                          <td className="px-6 py-2 text-right text-sky-300 whitespace-nowrap">${fmtMoney(p.precioPromedio ?? 0)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+                )}
               </section>
             </div>
           </>
@@ -571,18 +599,17 @@ const Kpi: React.FC<{ label: string; valor: string; acento?: "emerald" | "amber"
   </div>
 );
 
-const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: (p: PromoRow) => void }> = ({ rows, maxUnidades, onSelect }) => {
+const TablaPromos: React.FC<{ rows: PromoRow[]; onSelect?: (p: PromoRow) => void }> = ({ rows, onSelect }) => {
   const { state, onSort } = useSort();
   const sorted = useMemo(() => sortRows(rows, state), [rows, state]);
   return (
-  <table className="w-full min-w-[880px] text-sm">
+  <table className="w-full min-w-[680px] text-sm">
     <thead className="text-emerald-200 text-xs uppercase sticky top-0 bg-[#0b3b34]">
       <tr>
-        <th className="py-2 px-4 text-right font-normal">#</th>
-        <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 min-w-[200px]" />
+        <th className="py-2 px-4 text-right font-normal w-12">#</th>
+        <SortTh label="Promo" col="promoNombre" state={state} onSort={onSort} align="left" className="px-4 min-w-[220px]" />
         <SortTh label="Unidades" col="unidades" state={state} onSort={onSort} className="px-6" />
         <SortTh label="Ventas" col="veces" state={state} onSort={onSort} className="px-6" />
-        <SortTh label="Subtotal (s/IVA)" col="subtotal" state={state} onSort={onSort} className="px-6 whitespace-nowrap" />
         <SortTh label="Total (c/IVA)" col="monto" state={state} onSort={onSort} className="px-6 whitespace-nowrap" />
         <SortTh label="Descuento $" col="descuento" state={state} onSort={onSort} className="px-6 whitespace-nowrap" />
       </tr>
@@ -594,18 +621,10 @@ const TablaPromos: React.FC<{ rows: PromoRow[]; maxUnidades: number; onSelect?: 
           onClick={onSelect ? () => onSelect(p) : undefined}
           className={`border-t border-white/5 ${onSelect ? "cursor-pointer hover:bg-emerald-400/10" : "hover:bg-white/5"}`}
         >
-          <td className="px-4 py-2 text-right text-emerald-300/60 align-top">{i + 1}</td>
-          <td className="px-4 py-2 max-w-[320px]">
-            <div className="min-w-0">
-              <p className="truncate font-medium">{p.promoNombre}</p>
-              <div className="h-1.5 mt-1 rounded bg-white/10 overflow-hidden w-full max-w-xs">
-                <div className="h-full bg-emerald-400" style={{ width: `${(p.unidades / maxUnidades) * 100}%` }} />
-              </div>
-            </div>
-          </td>
+          <td className="px-4 py-2 text-right text-emerald-300/60">{i + 1}</td>
+          <td className="px-4 py-2 font-medium max-w-[320px] truncate" title={p.promoNombre}>{p.promoNombre}</td>
           <td className="px-6 py-2 text-right font-semibold whitespace-nowrap">{fmt(p.unidades)}</td>
           <td className="px-6 py-2 text-right text-gray-300 whitespace-nowrap">{fmt(p.veces)}</td>
-          <td className="px-6 py-2 text-right text-gray-200 whitespace-nowrap">${fmtMoney(p.subtotal)}</td>
           <td className="px-6 py-2 text-right text-emerald-300 whitespace-nowrap">${fmtMoney(p.monto)}</td>
           <td className="px-6 py-2 text-right text-amber-300 whitespace-nowrap">${fmtMoney(p.descuento)}</td>
         </tr>

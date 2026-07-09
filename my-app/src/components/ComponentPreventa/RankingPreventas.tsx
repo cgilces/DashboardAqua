@@ -44,7 +44,8 @@ type SortKey =
   | "meta"
   | "objetivo_gerencia"
   | "proyeccion"
-  | "vsMesAnterior";
+  | "variacion"
+  | "variacionPorc";
 
 /* ───────────────── HELPERS ───────────────── */
 
@@ -53,6 +54,22 @@ const fmt = (v: number) =>
 
 const fmtInt = (v: number) =>
   v.toLocaleString("es-EC");
+
+/* Variación y % calculados con la MISMA lógica que se muestra en la tabla,
+   para que el ordenamiento coincida con lo que ve el usuario. */
+const calcVariacionAbs = (p: Preventa) => {
+  const proy = Number(p.proyeccion) || 0;
+  const objetivo = Number(p.objetivo_gerencia) || 0;
+  const montoAnterior = Number(p.vsMesAnterior?.monto_anterior) || 0;
+  return objetivo > 0 ? proy - objetivo : proy - montoAnterior;
+};
+
+const calcVariacionPorc = (p: Preventa) => {
+  const objetivo = Number(p.objetivo_gerencia) || 0;
+  const montoAnterior = Number(p.vsMesAnterior?.monto_anterior) || 0;
+  const baseVar = objetivo > 0 ? objetivo : montoAnterior;
+  return baseVar > 0 ? (calcVariacionAbs(p) / baseVar) * 100 : 0;
+};
 
 const SortIcon = ({
   col,
@@ -144,9 +161,14 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
           bv = b.preventa;
           break;
 
-        case "vsMesAnterior":
-          av = a.vsMesAnterior?.variacion_abs ?? 0;
-          bv = b.vsMesAnterior?.variacion_abs ?? 0;
+        case "variacion":
+          av = calcVariacionAbs(a);
+          bv = calcVariacionAbs(b);
+          break;
+
+        case "variacionPorc":
+          av = calcVariacionPorc(a);
+          bv = calcVariacionPorc(b);
           break;
 
         case "objetivo_gerencia":
@@ -285,8 +307,8 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
             <Th k="monto" label="Dólares" />
             <Th k="objetivo_gerencia" label="Cupo" />
             <Th k="proyeccion" label="Proyección" />
-            <Th k="vsMesAnterior" label="Variación" />
-            <Th k="vsMesAnterior" label="%" />
+            <Th k="variacion" label="Variación" />
+            <Th k="variacionPorc" label="%" />
 
           </tr>
 

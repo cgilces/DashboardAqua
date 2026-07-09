@@ -1447,6 +1447,43 @@ CREATE TABLE IF NOT EXISTS users_in_promos (
 CREATE INDEX IF NOT EXISTS idx_uip_promo_code ON users_in_promos(promo_code);
 CREATE INDEX IF NOT EXISTS idx_uip_user_code  ON users_in_promos(user_code);
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SECCIÓN 24b — LÍNEAS DE VENTA CON PROMOCIÓN (promo_lineas_venta)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Copia AISLADA de las líneas de venta que llevan promo, escrita SOLO por la
+-- sincronización de MobilVendor (facturas Y órdenes). Odoo NUNCA la toca.
+--
+-- Por qué existe: la factura comparte su número fiscal (FA001-...) con Odoo, así
+-- que ambos syncs escribían la MISMA fila de detalle_documento y se pisaban
+-- (Odoo, que no trae la línea de promo, dejaba la factura sin promo_code). Las
+-- órdenes no chocan porque Odoo nombra sus pedidos distinto (S00...).
+--
+-- Snapshot desnormalizado (vendedor/fecha/tipo) para que el reporte y la
+-- analítica de promos no dependan de JOINs a facturas/ordenes (que Odoo reescribe).
+CREATE TABLE IF NOT EXISTS promo_lineas_venta (
+    id                 SERIAL PRIMARY KEY,
+    documento_code     VARCHAR(100) NOT NULL,
+    tipo               VARCHAR(10)  NOT NULL,          -- 'FACTURA' | 'ORDEN'
+    seller_code        VARCHAR(50),
+    fecha              TIMESTAMP,
+    codigo_producto    VARCHAR(50),
+    descripcion        TEXT,
+    unidad             VARCHAR(50),
+    cantidad           DECIMAL(18,2) DEFAULT 0,
+    precio             DECIMAL(18,2) DEFAULT 0,
+    descuento_linea    DECIMAL(18,2) DEFAULT 0,
+    subtotal           DECIMAL(18,2) DEFAULT 0,
+    total              DECIMAL(18,2) DEFAULT 0,
+    iva                DECIMAL(18,2) DEFAULT 0,
+    promo_code         VARCHAR(50)  NOT NULL,
+    promo_action_code  VARCHAR(50)
+);
+
+CREATE INDEX IF NOT EXISTS idx_plv_doc        ON promo_lineas_venta(documento_code);
+CREATE INDEX IF NOT EXISTS idx_plv_promo_code ON promo_lineas_venta(promo_code);
+CREATE INDEX IF NOT EXISTS idx_plv_seller     ON promo_lineas_venta(seller_code);
+CREATE INDEX IF NOT EXISTS idx_plv_fecha      ON promo_lineas_venta(fecha);
+
 
 -- ── Auditoría del chatbot IA (consultas y SQL generado) ────────────────
 CREATE TABLE IF NOT EXISTS auditoria_chat (
