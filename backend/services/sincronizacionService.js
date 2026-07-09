@@ -749,40 +749,52 @@ async function syncDetalle(detalle, documentCode, transaction) {
 // (cuyo número fiscal comparten con Odoo) no se pierden. Desnormaliza vendedor,
 // fecha y tipo para que el reporte no dependa de facturas/ordenes (que Odoo
 // reescribe). Reemplazo completo por documento (destroy + insert) idempotente.
-async function syncPromoLineasVenta(doc, code, tipoDoc, dedupDetails, transaction) {
-  await PromoLineaVenta.destroy({ where: { documento_code: code }, transaction });
-
+async function syncPromoLineasVenta(doc, code, tipoDoc, dedupDetails) {
   const conPromo = dedupDetails.filter(
     (d) => d.promo_code && String(d.promo_code).trim() !== ""
   );
-  if (!conPromo.length) return;
 
   const tipo =
     tipoDoc === "factura" ? "FACTURA" : tipoDoc === "orden" ? "ORDEN" : "—";
   const sellerCode = String(doc.seller_code || doc.user_code || "").trim() || null;
   const fecha = parseUnixToEcuador(doc.create_date || doc.store_date);
 
-  await PromoLineaVenta.bulkCreate(
-    conPromo.map((d) => ({
-      documento_code   : code,
-      tipo,
-      seller_code      : sellerCode,
-      fecha,
-      codigo_producto  : d.article_code || "SIN-CODIGO",
-      descripcion      : d.article_description || "",
-      unidad           : (d.unit_alias && String(d.unit_alias).trim()) || "UNI",
-      cantidad         : toNumber(d.quantity),
-      precio           : toNumber(d.price),
-      descuento_linea  : toNumber(d.discount),
-      subtotal         : toNumber(d.subtotal),
-      total            : toNumber(d.total),
-      iva              : toNumber(d.iva),
-      promo_code       : String(d.promo_code).trim(),
-      promo_action_code:
-        (d.promo_action_code && String(d.promo_action_code).trim()) || null,
-    })),
-    { transaction }
-  );
+  // Transacción PROPIA (independiente de la del documento). El destroy siempre
+  // corre para limpiar promos viejas del doc aunque ahora ya no tenga; el insert
+  // solo si hay líneas con promo.
+  const t = await sequelize.transaction();
+  try {
+    await PromoLineaVenta.destroy({ where: { documento_code: code }, transaction: t });
+
+    if (conPromo.length) {
+      await PromoLineaVenta.bulkCreate(
+        conPromo.map((d) => ({
+          documento_code   : code,
+          tipo,
+          seller_code      : sellerCode,
+          fecha,
+          codigo_producto  : d.article_code || "SIN-CODIGO",
+          descripcion      : d.article_description || "",
+          unidad           : (d.unit_alias && String(d.unit_alias).trim()) || "UNI",
+          cantidad         : toNumber(d.quantity),
+          precio           : toNumber(d.price),
+          descuento_linea  : toNumber(d.discount),
+          subtotal         : toNumber(d.subtotal),
+          total            : toNumber(d.total),
+          iva              : toNumber(d.iva),
+          promo_code       : String(d.promo_code).trim(),
+          promo_action_code:
+            (d.promo_action_code && String(d.promo_action_code).trim()) || null,
+        })),
+        { transaction: t }
+      );
+    }
+
+    await t.commit();
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
 }
 
 // ================================================================
@@ -803,6 +815,11 @@ async function procesarDocumento(doc, detallesPorDocumento, stats) {
 
   const t = await sequelize.transaction();
 
+  // Declarados fuera del try para reutilizarlos en la escritura (aislada) de
+  // promo_lineas_venta, que corre DESPUÉS del commit del documento.
+  let tipoDoc = null;
+  let dedupDetails = [];
+
   try {
     await syncTipoNegocio(doc, t);
     await syncSubcanal(doc, t); //  AQUÍ
@@ -810,7 +827,7 @@ async function procesarDocumento(doc, detallesPorDocumento, stats) {
     await syncCliente(doc, customerCode, t);
     await syncDireccionCliente(doc, customerCode, t);
 
-    const tipoDoc = await syncDocumento(doc, code, t);
+    tipoDoc = await syncDocumento(doc, code, t);
     if (tipoDoc === "factura") stats.facturas++;
     else if (tipoDoc === "orden") stats.ordenes++;
 
@@ -819,15 +836,12 @@ async function procesarDocumento(doc, detallesPorDocumento, stats) {
     // Destroy + create dentro de la misma transacción — rollback seguro
     await DetalleDocumento.destroy({ where: { documento_code: code }, transaction: t });
 
-    const rawDetails   = detallesPorDocumento.get(code) || [];
-    const dedupDetails = deduplicateDetails(rawDetails);
+    const rawDetails = detallesPorDocumento.get(code) || [];
+    dedupDetails = deduplicateDetails(rawDetails);
 
     for (const detalle of dedupDetails) {
       await syncDetalle(detalle, code, t);
     }
-
-    // Tabla aislada de promos (Odoo no la toca) — misma transacción.
-    await syncPromoLineasVenta(doc, code, tipoDoc, dedupDetails, t);
 
     await t.commit();
     console.log(`   ✅ ${code} confirmado (${dedupDetails.length} detalles)`);
@@ -835,6 +849,15 @@ async function procesarDocumento(doc, detallesPorDocumento, stats) {
   } catch (err) {
     await t.rollback();
     throw err;
+  }
+
+  // Tabla aislada de promos (Odoo no la toca). FUERA de la transacción del
+  // documento y con su propio try/catch: si algo falla aquí, NUNCA afecta el
+  // guardado de la factura/orden ni su detalle → otros dashboards intactos.
+  try {
+    await syncPromoLineasVenta(doc, code, tipoDoc, dedupDetails);
+  } catch (errPromo) {
+    console.error(`⚠️  promo_lineas_venta ${code}: ${errPromo.message}`);
   }
 }
 
