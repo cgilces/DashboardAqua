@@ -621,7 +621,6 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               <th className="px-4 py-3 text-right">Precio Promedio	</th>
               {esMesActual && <th className="px-4 py-3 text-right">Proyección</th>}
               <th className="px-4 py-3 text-right text-amber-300">Cupo</th>
-              <th className="px-4 py-3 text-right">Variación</th>
               <th className="px-4 py-3 text-right">%</th>
               <th className="px-4 py-3 text-right">Facturas</th>
               <th className="px-4 py-3 text-right">Clientes</th>
@@ -687,25 +686,6 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                 {objetivo > 0 ? `$${fmt(objetivo)}` : <span className="text-gray-500">—</span>}
               </td>
 
-              {/* Variación — usa cupo si está configurado, si no usa mes anterior */}
-              <td className={`px-4 py-3 text-right font-bold ${objetivo > 0
-                ? variacionVsCupo! >= 0 ? "text-green-400" : "text-red-400"
-                : sinDatos ? "" : esPositivo ? "text-green-400" : "text-red-400"
-                }`}>
-                {objetivo > 0 ? (
-                  <>
-                    {variacionVsCupo! >= 0 ? "+" : "-"}${fmt(Math.abs(variacionVsCupo!))}
-                  </>
-                ) : sinDatos ? (
-                  <span className="text-gray-500 font-normal">Sin datos</span>
-                ) : (
-                  <>
-                    <span className="block text-gray-300 font-normal text-xs">${fmt(totalAnterior)}</span>
-                    {esPositivo ? "+" : "-"}${fmt(Math.abs(totalVariacion))}
-                  </>
-                )}
-              </td>
-
               {/* % */}
               <td className={`px-4 py-3 text-right font-bold ${objetivo > 0
                 ? porcVariacionVsCupo! >= 0 ? "text-green-400" : "text-red-400"
@@ -748,7 +728,6 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                       {esMesActual && <td className="px-4 py-2 text-right text-gray-500">—</td>}
                       <td className="px-4 py-2 text-right text-gray-500">—</td>
                       <td className="px-4 py-2 text-right text-gray-500">—</td>
-                      <td className="px-4 py-2 text-right text-gray-500">—</td>
                       <td className="px-4 py-2 text-right text-purple-300/80">{extra.facturas || "—"}</td>
                       <td className="px-4 py-2 text-right text-gray-500">—</td>
                     </tr>
@@ -782,12 +761,6 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                         <td className="px-4 py-2 text-right text-emerald-400/80">${fmt(r.proyeccion)}</td>
                       )}
                       <td className="px-4 py-2 text-right text-gray-500">—</td>
-                      <td className={`px-4 py-2 text-right ${rutaSinDatos ? "text-gray-500" : rutaPositivo ? "text-green-400" : "text-red-400"}`}>
-                        {rutaSinDatos
-                          ? <span className="italic">Sin datos</span>
-                          : <>{rutaPositivo ? "+" : "-"}${fmt(Math.abs(rutaVarAbs))}</>
-                        }
-                      </td>
                       <td className={`px-4 py-2 text-right ${rutaSinDatos ? "text-gray-500" : rutaPositivo ? "text-green-400" : "text-red-400"}`}>
                         {rutaVarPorc !== null && rutaVarPorc !== undefined
                           ? `${rutaVarPorc >= 0 ? "+" : ""}${rutaVarPorc.toFixed(2)}%`
@@ -833,12 +806,6 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
                         {esMesActual && <td className="px-4 py-2 text-right text-gray-500">—</td>}
                         <td className="px-4 py-2 text-right text-gray-500">—</td>
                         <td className={`px-4 py-2 text-right ${posSinDatos ? "text-gray-500" : posPositivo ? "text-green-400" : "text-red-400"}`}>
-                          {posSinDatos
-                            ? <span className="italic">Sin datos</span>
-                            : <>{posPositivo ? "+" : "-"}${fmt(Math.abs(posVarAbs))}</>
-                          }
-                        </td>
-                        <td className={`px-4 py-2 text-right ${posSinDatos ? "text-gray-500" : posPositivo ? "text-green-400" : "text-red-400"}`}>
                           {posVarPorc !== null && posVarPorc !== undefined
                             ? `${posVarPorc >= 0 ? "+" : ""}${posVarPorc.toFixed(2)}%`
                             : "—"}
@@ -864,7 +831,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-purple-300">Añadir datos externos · COTTSA</h3>
-              <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setMostrarModal(false)} className="text-gray-400">
                 <BsX size={24} />
               </button>
             </div>
@@ -975,7 +942,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               </div>
               <button
                 onClick={cerrarPOSDetalle}
-                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
+                className="text-gray-400 p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
                 title="Cerrar"
               >
                 <BsX size={26} />
@@ -1319,7 +1286,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               </div>
               <button
                 onClick={cerrarRutaDetalle}
-                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
+                className="text-gray-400 p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
                 title="Cerrar"
               >
                 <BsX size={26} />

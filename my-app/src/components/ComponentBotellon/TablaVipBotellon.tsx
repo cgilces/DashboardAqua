@@ -84,7 +84,6 @@ const TablaVipBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = fal
               <th className="px-4 py-3 text-right">Precio Promedio</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN UNID.</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN USD $</th>
-              <th className="px-4 py-3 text-right">VARIACIÓN</th>
               <th className="px-4 py-3 text-right">%</th>
             </tr>
           </thead>
@@ -118,10 +117,6 @@ const TablaVipBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = fal
               </td>
 
               <td className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
-                {hayMesAnterior ? (<>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</>) : "—"}
-              </td>
-
-              <td className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
                 {hayMesAnterior ? (<>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</>) : "—"}
               </td>
             </tr>
@@ -142,9 +137,6 @@ const TablaVipBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = fal
               <td className="px-4 py-3 text-right text-blue-300">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-300">
                 {esMesActual ? money(proyDolares) : money(dolares)}
-              </td>
-              <td className={`px-4 py-3 text-right ${positivo ? "text-green-400" : "text-red-400"}`}>
-                {varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}
               </td>
               <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
@@ -176,11 +168,6 @@ const TablaVipBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = fal
             <dt className="text-gray-400">Proy. USD</dt>
             <dd className="text-right text-emerald-400 font-bold">
               {esMesActual ? money(proyDolares) : money(dolares)}
-            </dd>
-
-            <dt className="text-gray-400">Variación</dt>
-            <dd className={`text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
-              {hayMesAnterior ? (<>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</>) : "—"}
             </dd>
 
             <dt className="text-gray-400">%</dt>

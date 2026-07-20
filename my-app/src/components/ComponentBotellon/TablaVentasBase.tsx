@@ -374,42 +374,38 @@ const TablaVentasBase: React.FC<Props> = ({
                 <table className="min-w-full text-sm">
                     <thead className="bg-[#014434] text-green-300 uppercase text-xs">
                         <tr>
-                            <th onClick={() => requestSort("codigo")} className="px-4 py-3 text-left cursor-pointer hover:text-white select-none">
+                            <th onClick={() => requestSort("codigo")} className="px-4 py-3 text-left cursor-pointer select-none">
                                 RUTA {iconSort("codigo")}
                             </th>
 
-                            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer hover:text-white select-none">
+                            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer select-none">
                                 UNIDADES {iconSort("unidades")}
                             </th>
 
-                            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white select-none">
+                            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer select-none">
                                 DÓLARES {iconSort("dolares")}
                             </th>
 
-                            <th onClick={() => requestSort("precio_promedio")} className="px-4 py-3 text-right cursor-pointer hover:text-white select-none">
+                            <th onClick={() => requestSort("precio_promedio")} className="px-4 py-3 text-right cursor-pointer select-none">
                                 PRECIO PROMEDIO {iconSort("precio_promedio")}
                             </th>
 
                             {seccionMetas && (
-                                <th onClick={() => requestSort("cupo_dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white text-amber-300 select-none">
+                                <th onClick={() => requestSort("cupo_dolares")} className="px-4 py-3 text-right cursor-pointer text-amber-300 select-none">
                                     CUPO {iconSort("cupo_dolares")}
                                 </th>
                             )}
 
-                            <th onClick={() => requestSort("proyeccion_unidades")} className="px-4 py-3 text-right cursor-pointer hover:text-white select-none">
+                            <th onClick={() => requestSort("proyeccion_unidades")} className="px-4 py-3 text-right cursor-pointer select-none">
                                 PROYECCIÓN UND {iconSort("proyeccion_unidades")}
                             </th>
 
-                            <th onClick={() => requestSort("proyeccion_dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white select-none">
+                            <th onClick={() => requestSort("proyeccion_dolares")} className="px-4 py-3 text-right cursor-pointer select-none">
                                 PROYECCIÓN $ {iconSort("proyeccion_dolares")}
                             </th>
 
                             {/* 🔥 separados */}
-                            <th onClick={() => requestSort("vsMesAnterior_abs")} className="px-4 py-3 text-right cursor-pointer hover:text-white select-none">
-                                VARIACIÓN {iconSort("vsMesAnterior_abs")}
-                            </th>
-
-                            <th onClick={() => requestSort("vsMesAnterior_porc")} className="px-4 py-3 text-right cursor-pointer hover:text-white select-none">
+                            <th onClick={() => requestSort("vsMesAnterior_porc")} className="px-4 py-3 text-right cursor-pointer select-none">
                                 % {iconSort("vsMesAnterior_porc")}
                             </th>
                         </tr>
@@ -433,7 +429,7 @@ const TablaVentasBase: React.FC<Props> = ({
                                 }
                                 className={`cursor-pointer transition
                         ${idx % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
-                        hover:bg-[#025940] hover:text-white border-l-4 border-transparent hover:border-green-400
+                        hover:bg-[#025940] border-l-4 border-transparent hover:border-green-400
                     `}
                             >
                                 <td className="px-4 py-2 font-semibold">{row.codigo}</td>
@@ -486,15 +482,6 @@ const TablaVentasBase: React.FC<Props> = ({
 
                                     return (
                                         <>
-                                            <td className={`px-4 py-2 text-right font-bold ${variacionAbs > 0 ? "text-green-400" :
-                                                variacionAbs < 0 ? "text-red-400" :
-                                                    "text-gray-400"
-                                                }`}>
-                                                {mostrarValor
-                                                    ? `${variacionAbs >= 0 ? "+" : "-"}${money(Math.abs(variacionAbs))}`
-                                                    : "—"}
-                                            </td>
-
                                             <td className={`px-4 py-2 text-right font-bold ${variacionPorc > 0 ? "text-green-400" :
                                                 variacionPorc < 0 ? "text-red-400" :
                                                     "text-gray-400"
@@ -538,17 +525,6 @@ const TablaVentasBase: React.FC<Props> = ({
 
                             <td className="px-4 py-3 text-right text-blue-400">
                                 {money(totalProyeccionDolares)}
-                            </td>
-
-                            <td className={`px-4 py-3 text-right ${(seccionMetas ? totalProyeccionDolares - totalCupoDolares : totalvsmesanterior) >= 0
-                                ? "text-green-400"
-                                : "text-red-400"
-                                }`}>
-                                {money(Math.abs(
-                                    seccionMetas
-                                        ? totalProyeccionDolares - totalCupoDolares
-                                        : totalvsmesanterior
-                                ))}
                             </td>
 
                             <td className="px-4 py-3 text-right text-gray-400">—</td>

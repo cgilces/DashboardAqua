@@ -94,7 +94,6 @@ const TablaDomicilioBotellon: React.FC<Props> = ({
               <th className="px-4 py-3 text-right">Precio Promedio</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN UNID.</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN USD $</th>
-              <th className="px-4 py-3 text-right">VARIACIÓN</th>
               <th className="px-4 py-3 text-right">%</th>
             </tr>
           </thead>
@@ -133,15 +132,6 @@ const TablaDomicilioBotellon: React.FC<Props> = ({
                   }`}
               >
                 {hayMesAnterior
-                  ? (<>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</>)
-                  : "—"}
-              </td>
-
-              <td
-                className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"
-                  }`}
-              >
-                {hayMesAnterior
                   ? (<>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</>)
                   : "—"}
               </td>
@@ -159,8 +149,7 @@ const TablaDomicilioBotellon: React.FC<Props> = ({
               </td>
               <td className="px-4 py-3 text-right">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right">{money(proyDolares)}</td>
-              <td className="px-4 py-3 text-right">{money(varAbs)}</td>
-              <td className="px-4 py-3 text-right">—</td>
+              <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>
         </table>

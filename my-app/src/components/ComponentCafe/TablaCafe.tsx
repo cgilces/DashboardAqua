@@ -195,7 +195,6 @@ export default function TablaCafe({ anio, mes }: Props) {
                 <th className="px-4 py-3 text-right">Dólares $</th>
                 <th className="px-4 py-3 text-right">Precio Prom.</th> {/* ✅ */}
                 {esMesActual && <th className="px-4 py-3 text-right">Proyección</th>}
-                <th className="px-4 py-3 text-right">Variación</th>
                 <th className="px-4 py-3 text-right">%</th>
                 <th className="px-4 py-3 text-right">Facturas</th>
                 <th className="px-4 py-3 text-right">Clientes</th>
@@ -230,10 +229,6 @@ export default function TablaCafe({ anio, mes }: Props) {
                     ${fmt(totales.proyeccion_dolares)}
                   </td>
                 )}
-
-                <td className={`px-4 py-3 text-right font-bold ${varDolPos ? "text-green-400" : "text-red-400"}`}>
-                  {sinDatos ? "—" : `${varDolPos ? "+" : "-"}${fmt(Math.abs(totales.variacion_dolares.abs))}`}
-                </td>
 
                 <td className={`px-4 py-3 text-right font-bold ${varDolPos ? "text-green-400" : "text-red-400"}`}>
                   {sinDatos ? "—" :

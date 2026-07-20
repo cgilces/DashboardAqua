@@ -223,13 +223,13 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
 
 
 
-            {/* HEADER FIJO */}
-            <div className="overflow-x-auto">
-                <table className="min-w-full text-sm table-fixed">
+            {/* TABLA ÚNICA CON SCROLL SINCRONIZADO */}
+            <div className="overflow-x-auto border border-[#046C5E] rounded-lg">
+                <table className="min-w-full text-sm">
                     <thead className="bg-[#014434] text-green-300 uppercase text-xs sticky top-0 z-20">
                         <tr>
                             <th
-                                className="px-4 py-3 text-left w-44 cursor-pointer hover:text-white transition-colors select-none"
+                                className="px-4 py-3 text-left w-44 cursor-pointer transition-colors select-none"
                                 onClick={() => requestSort("preventa")}
                             >
                                 Preventa
@@ -238,13 +238,13 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
                             {CATEGORIAS.map((cat) => (
                                 <React.Fragment key={`head-${cat}`}>
                                     <th
-                                        className="px-4 py-3 text-right w-24 cursor-pointer hover:text-white transition-colors select-none"
+                                        className="px-4 py-3 text-right w-24 cursor-pointer transition-colors select-none"
                                         onClick={() => requestSort(`c_${cat}`)}
                                     >
                                         {cat}
                                     </th>
                                     <th
-                                        className="px-4 py-3 text-right w-28 cursor-pointer hover:text-white transition-colors select-none"
+                                        className="px-4 py-3 text-right w-28 cursor-pointer transition-colors select-none"
                                         onClick={() => requestSort(`v_${cat}`)}
                                     >
                                         VS ANT
@@ -253,12 +253,7 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
                             ))}
                         </tr>
                     </thead>
-                </table>
-            </div>
 
-            {/* BODY SCROLL */}
-            <div className="overflow-x-auto ">
-                <table className="min-w-full text-sm table-fixed">
                     <tbody>
                         {sortedData.map((row, idx) => (
                             <tr

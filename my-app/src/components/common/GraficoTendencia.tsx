@@ -130,8 +130,8 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
   const [expanded, setExpanded] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem(storageKey);
-      return v === null ? true : v === "1";
-    } catch { return true; }
+      return v === null ? false : v === "1";
+    } catch { return false; }
   });
   useEffect(() => {
     try { localStorage.setItem(storageKey, expanded ? "1" : "0"); } catch {}
@@ -243,8 +243,8 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
       <div
         className={`grid transition-[grid-template-rows] duration-500 ease-in-out ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
-        <div className="overflow-hidden">
-          <div className={`px-5 pb-5 border-t border-[#046C5E]/20 pt-4 transition-opacity duration-300 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="overflow-x-auto">
+          <div className={`px-1 sm:px-5 pb-5 border-t border-[#046C5E]/20 pt-4 transition-opacity duration-300 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
 
             {/* Leyenda + KPI proyección */}
             <div className="flex items-center justify-end gap-3 flex-wrap text-[10px] mb-4">
@@ -286,8 +286,8 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
             </div>
 
             {/* Chart — solo los 3 meses */}
-      <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart data={datos3Meses} margin={{ top: 16, right: 52, left: 0, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={260} minWidth={320}>
+        <ComposedChart data={datos3Meses} margin={{ top: 16, right: 8, left: -25, bottom: 0 }}>
           <defs>
             <linearGradient id="gradDolaresShared" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%"   stopColor="#34d399" stopOpacity={0.28} />

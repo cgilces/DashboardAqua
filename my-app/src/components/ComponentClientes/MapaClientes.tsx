@@ -268,7 +268,7 @@ export default function MapaClientes() {
         </div>
         <button
           onClick={() => setExpandido(o => !o)}
-          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors"
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 transition-colors"
         >
           {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
         </button>
@@ -286,7 +286,7 @@ export default function MapaClientes() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5 ${
                     estado === e.id
                       ? "border-white/40 text-white"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50"
                   }`}
                   style={estado === e.id ? { backgroundColor: `${e.color}33`, borderColor: e.color } : {}}>
                   <span className="w-2 h-2 rounded-full" style={{ background: e.color }} />
@@ -306,7 +306,7 @@ export default function MapaClientes() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                     prefijos === p.value
                       ? "bg-blue-500/30 border-blue-500 text-blue-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white hover:border-blue-500/40"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:border-blue-500/40"
                   }`}>
                   {p.label}
                 </button>
@@ -317,7 +317,7 @@ export default function MapaClientes() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                     dias === d
                       ? "bg-yellow-500/25 border-yellow-500/50 text-yellow-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50"
                   }`}>
                   {d}d
                 </button>

@@ -234,7 +234,7 @@ export default function AlertasRecuperacion() {
         </div>
         <button
           onClick={() => setExpandido(o => !o)}
-          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors"
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 transition-colors"
         >
           {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
         </button>
@@ -263,7 +263,7 @@ export default function AlertasRecuperacion() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                     umbral === u
                       ? "bg-red-500/30 border-red-500 text-red-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white hover:border-red-500/40"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:border-red-500/40"
                   }`}
                 >
                   {u}d
@@ -501,7 +501,7 @@ function ModalCliente({
               {cliente.ruc || "Sin RUC"} · Vendedor: {cliente.vendedor}
             </p>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10">
+          <button onClick={onClose} className="text-white/40 p-1 rounded-lg hover:bg-white/10">
             <X size={20} />
           </button>
         </div>
@@ -550,7 +550,7 @@ function ModalCliente({
             {RESULTADOS.map(r => (
               <button key={r.value} onClick={() => onChangeResultado(r.value)}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${
-                  resultado === r.value ? r.color : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                  resultado === r.value ? r.color : "bg-[#013d32] border-[#046C5E] text-white/50"
                 }`}>
                 {r.label}
               </button>

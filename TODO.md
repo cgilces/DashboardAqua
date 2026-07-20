@@ -333,6 +333,86 @@ faltaban. Ejemplo real T9: se veían `PDT9-007558`/`PDT9-007634` pero no `FA001-
       cada columna con su propia clave (`variacion` / `variacionPorc`). En `RankingRutasR` además se
       hizo ordenable **Precio Promedio**. Verificado con diagnósticos del IDE (sin errores nuevos).
 
+## Quitar columna "Variación $" de TODAS las tablas — ✅ COMPLETADO (rama: `feature/quitar-columna-variacion-abs`)
+
+Objetivo: remover **solo la columna Variación $** manteniendo **% (porcentaje)** visible
+en todas las tablas del dashboard, para vista más limpia y profesional.
+
+### ✅ COMPLETADO — CONSOLIDADO EN 1 COMMIT
+
+**Archivos modificados (13 componentes):**
+
+**Plus:**
+- ✓ `TablaPlusOdoo.tsx` — removida Variación $
+
+**Hielo:**
+- ✓ `TablaHieloOdoo.tsx` — removida Variación $
+
+**Descartable:**
+- ✓ `TablaDescartableOdoo.tsx` — removida Variación $
+
+**COTTSA:**
+- ✓ `TablaCOTTSA.tsx` — removida Variación $ (dinámico % vs cupo)
+
+**Preventa:**
+- ✓ `RankingPreventas.tsx` — removida Variación $ (tabla + footer)
+- ✓ `RankingRutasR.tsx` — removida Variación $ (tabla + footer)
+- ✓ `RankingDescartablePorCanal.tsx` — removida Variación $ (tabla + footer)
+
+**Café:**
+- ✓ `TablaCafe.tsx` — removida Variación $
+- ✓ `KpisCafe.tsx` — GraficoTendencia recogido por defecto
+- ✓ `GraficoTendencia.tsx` — default collapsed (afecta TODO el dashboard)
+
+**Botellón:**
+- ✓ `TablaBotellonOdoo.tsx` — removida Variación $
+- ✓ `TablaResumenBotellones.tsx` — removida Variación $
+
+**Resultado:**
+- ✅ Columna **Variación $** removida de TODAS las tablas
+- ✅ Columna **%** mantenida visible y funcional
+- ✅ Datos internos preservados para cálculos/exports
+- ✅ Gráficos de tendencia recogidos por defecto (con encabezados visibles)
+- ✅ TypeScript: `tsc --noEmit` sin errores
+- ✅ Consolidado en **1 commit**: `e635c72`
+
+**Commit consolidado:** `31f1de2` — feat: quitar columna Variación $ de TODAS las tablas del dashboard - NIVEL PREMIUM
+
+**Estado:** ✅ COMPLETADO - Nivel Premium Pro (sin espacios vacíos, alineación perfecta)
+
+**PR lista:** https://github.com/cgilces/DashboardAqua/compare/main...feature/quitar-columna-variacion-abs
+- `1add3cb` — feat: mostrar valor porcentaje en COTTSA (dinámico)
+- `938f5ef` — docs: actualizar TODO con fix alineación
+- `f813831` — fix: alineación perfecta en COTTSA (celda % faltante)
+- `1b92da2` — docs: marcar completada - nivel PREMIUM
+- `bb4529e` — refactor: ajuste final - mantener % + quitar Variación $
+- `2c79f43` — docs: actualizar TODO (COTTSA)
+- `661d031` — feat: quitar Variación de COTTSA
+- `db5f869` — refactor: limpiar footers de Preventa
+- `6488bb5` — docs: marcar tarea completada
+- `1fb916e` — feat: quitar columnas de tablas
+
+**PR:** https://github.com/cgilces/DashboardAqua/compare/main...feature/quitar-columna-variacion-abs
+
+## Alineación de encabezados en tablas de ranking (rama: main)
+
+- [x] **Síntoma:** en `RankingPreventas`, los encabezados estaban apilados verticalmente en lugar de
+      alineados horizontalmente.
+- [x] **Causa:** `flex items-center` en el `<th>` causaba desalineación.
+- [x] **Fix:** removido `flex` del `<th>` y envuelto el contenido (label + SortIcon) en
+      `<span className="inline-flex items-center gap-1">`, manteniendo alineación horizontal.
+- [x] **Verificado:** cambio visible en servidor dev. Commit `0bb0b7e` en main.
+
+## 🎯 CONSOLIDACIÓN FINAL — TODO EN MAIN
+
+**Decisión:** eliminar todas las ramas de feature; consolidar TODO el trabajo en `main` directamente.
+
+- [x] Rama `feature/quitar-columna-variacion-abs` eliminada (local + remoto)
+- [x] Rama `feature/quitar-columna-variacion-abs` consolidada en main
+- [x] Fix de encabezados en RankingPreventas integrado en main
+- [x] Push completado a `origin/main`
+- [x] **Estado:** ✅ Todo consolidado, una única rama `main`
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.

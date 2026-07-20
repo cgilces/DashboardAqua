@@ -171,25 +171,22 @@ const TablaBotellonGrupo: React.FC<Props> = ({
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
-            <th onClick={() => requestSort("codigo")} className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("codigo")} className="px-4 py-3 text-left cursor-pointer transition-colors select-none">
               RUTA {iconSort("codigo")}
             </th>
-            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               UNIDADES {iconSort("unidades")}
             </th>
-            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               DÓLARES {iconSort("dolares")}
             </th>
-            <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               META {iconSort("meta")}
             </th>
-            <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               PROYECCIÓN {iconSort("proyeccion")}
             </th>
-            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
-              VARIACIÓN {iconSort("vsmesanterior")}
-            </th>
-            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               % {iconSort("vsmesanterior")}
             </th>
           </tr>
@@ -219,13 +216,6 @@ const TablaBotellonGrupo: React.FC<Props> = ({
                 {money(row.proyeccion)}
               </td>
 
-              {/* VARIACIÓN */}
-              <td className={`px-4 py-2 text-right font-bold ${!row.vsmesanterior || row.vsmesanterior.dolares === 0 ? "text-gray-400" : row.vsmesanterior.dolares > 0 ? "text-green-400" : "text-red-400"}`}>
-                {!row.vsmesanterior || (row.vsmesanterior.porcentaje === 0 && row.vsmesanterior.dolares === 0)
-                  ? "—"
-                  : `${row.vsmesanterior.dolares >= 0 ? "+" : "-"}$${Math.abs(row.vsmesanterior.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}`
-                }
-              </td>
               {/* % */}
               <td className={`px-4 py-2 text-right font-bold ${!row.vsmesanterior || row.vsmesanterior.dolares === 0 ? "text-gray-400" : row.vsmesanterior.porcentaje > 0 ? "text-green-400" : "text-red-400"}`}>
                 {!row.vsmesanterior || (row.vsmesanterior.porcentaje === 0 && row.vsmesanterior.dolares === 0)

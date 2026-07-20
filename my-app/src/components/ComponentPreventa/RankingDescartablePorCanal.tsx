@@ -114,8 +114,8 @@ const RankingDescartablePorCanal = ({
   };
 
   const sortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return " ↕";
-    return sortDir === "asc" ? " ↑" : " ↓";
+    if (sortKey !== key) return "↕";
+    return sortDir === "asc" ? "↑" : "↓";
   };
 
   if (!data && !odooData) {
@@ -387,12 +387,6 @@ const RankingDescartablePorCanal = ({
         )}
 
         <td className={`px-4 py-2 text-right font-bold ${varColor}`}>
-          {c.variacion_abs == null
-            ? "—"
-            : `${c.variacion_abs >= 0 ? "+" : ""}$${fmtNum(Math.abs(c.variacion_abs))}`}
-        </td>
-
-        <td className={`px-4 py-2 text-right font-bold ${varColor}`}>
           {c.variacion_porc == null
             ? "—"
             : `${c.variacion_porc >= 0 ? "+" : ""}${Math.abs(c.variacion_porc).toFixed(1)}%`}
@@ -496,69 +490,70 @@ const RankingDescartablePorCanal = ({
               <th className="px-4 py-3 text-left w-10">N°</th>
 
               <th
-                className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-left cursor-pointer transition-colors"
                 onClick={() => toggleSort("canal")}
               >
-                Canal
-                <span className="ml-1 text-[#046C5E]">{sortIndicator("canal")}</span>
+                <span className="inline-flex items-center gap-1">
+                  Canal
+                  <span className="text-xs text-green-300 font-semibold">{sortIndicator("canal")}</span>
+                </span>
               </th>
 
               <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("unidades")}
               >
-                Unidades
-                <span className="ml-1 text-[#046C5E]">{sortIndicator("unidades")}</span>
+                <span className="inline-flex items-center gap-1 float-right">
+                  Unidades
+                  <span className="text-xs text-green-300 font-semibold">{sortIndicator("unidades")}</span>
+                </span>
               </th>
 
               <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("dolares")}
               >
-                USD
-                <span className="ml-1 text-[#046C5E]">{sortIndicator("dolares")}</span>
+                <span className="inline-flex items-center gap-1 float-right">
+                  USD
+                  <span className="text-xs text-green-300 font-semibold">{sortIndicator("dolares")}</span>
+                </span>
               </th>
 
-              {/*  NUEVA COLUMNA */}
               <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("precioPromedio")}
               >
-                Precio Promedio	
-                <span className="ml-1 text-[#046C5E]">
-                  {sortIndicator("precioPromedio")}
+                <span className="inline-flex items-center gap-1 float-right">
+                  Precio Promedio
+                  <span className="text-xs text-green-300 font-semibold">
+                    {sortIndicator("precioPromedio")}
+                  </span>
                 </span>
               </th>
 
               {isAdmin && (
                 <th
-                  className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                  className="px-4 py-3 text-right cursor-pointer transition-colors"
                   onClick={() => toggleSort("proyeccion")}
                 >
-                  Proyección
-                  <span className="ml-1 text-[#046C5E]">
-                    {sortIndicator("proyeccion")}
+                  <span className="inline-flex items-center gap-1 float-right">
+                    Proyección
+                    <span className="text-xs text-green-300 font-semibold">
+                      {sortIndicator("proyeccion")}
+                    </span>
                   </span>
                 </th>
               )}
 
               <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
-                onClick={() => toggleSort("variacion_abs")}
-              >
-                Variación $
-                <span className="ml-1 text-[#046C5E]">
-                  {sortIndicator("variacion_abs")}
-                </span>
-              </th>
-
-              <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("variacion_porc")}
               >
-                %
-                <span className="ml-1 text-[#046C5E]">
-                  {sortIndicator("variacion_porc")}
+                <span className="inline-flex items-center gap-1 float-right">
+                  %
+                  <span className="text-xs text-green-300 font-semibold">
+                    {sortIndicator("variacion_porc")}
+                  </span>
                 </span>
               </th>
             </tr>
@@ -610,14 +605,6 @@ const RankingDescartablePorCanal = ({
                   ${fmtNum(totalGenProyeccion)}
                 </td>
               )}
-
-              <td
-                className={`px-4 py-3 text-right ${totalGenVariacion >= 0 ? "text-green-400" : "text-red-400"
-                  }`}
-              >
-                {totalGenVariacion >= 0 ? "+" : ""}
-                ${fmtNum(Math.abs(totalGenVariacion))}
-              </td>
 
               <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>

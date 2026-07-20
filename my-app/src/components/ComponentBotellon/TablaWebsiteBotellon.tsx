@@ -79,7 +79,6 @@ const TablaWebsiteBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual =
               <th className="px-4 py-3 text-right">DÓLARES</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN UNID.</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN USD $</th>
-              <th className="px-4 py-3 text-right">VARIACIÓN</th>
               <th className="px-4 py-3 text-right">%</th>
             </tr>
           </thead>
@@ -113,9 +112,6 @@ const TablaWebsiteBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual =
                       <td className="px-4 py-3 text-right text-blue-400 font-bold">{money(dolaresIt)}</td>
                       <td className="px-4 py-3 text-right text-gray-300">{proyUnidadesIt.toLocaleString("es-EC")}</td>
                       <td className="px-4 py-3 text-right text-emerald-400 font-bold">{esMesActual ? money(proyDolaresIt) : money(dolaresIt)}</td>
-                      <td className={`px-4 py-3 text-right font-bold ${hayMesAnteriorIt ? (positivoIt ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
-                        {hayMesAnteriorIt ? (<>{varAbsIt >= 0 ? "+" : "-"}{money(Math.abs(varAbsIt))}</>) : "—"}
-                      </td>
                       <td className={`px-4 py-3 text-right font-bold ${hayMesAnteriorIt ? (positivoIt ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
                         {hayMesAnteriorIt ? (<>{varPorcIt >= 0 ? "+" : ""}{varPorcIt.toFixed(2)}%</>) : "—"}
                       </td>
@@ -151,7 +147,6 @@ const TablaWebsiteBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual =
               <td className="px-4 py-3 text-right text-blue-300">{money(dolares)}</td>
               <td className="px-4 py-3 text-right text-blue-300">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-300">{esMesActual ? money(proyDolares) : money(dolares)}</td>
-              <td className={`px-4 py-3 text-right ${positivo ? "text-green-400" : "text-red-400"}`}>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</td>
               <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>

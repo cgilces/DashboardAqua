@@ -86,7 +86,6 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
               <th className="px-4 py-3 text-right">PRECIO PROMEDIO</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN UNID.</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN USD $</th>
-              <th className="px-4 py-3 text-right">VARIACIÓN</th>
               <th className="px-4 py-3 text-right">%</th>
             </tr>
           </thead>
@@ -108,9 +107,6 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
                 {esMesActual ? money(proyDolares) : money(dolares)}
               </td>
               <td className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
-                {hayMesAnterior ? (<>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</>) : "—"}
-              </td>
-              <td className={`px-4 py-3 text-right font-bold ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"}`}>
                 {hayMesAnterior ? (<>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</>) : "—"}
               </td>
             </tr>
@@ -123,9 +119,6 @@ const TablaQuitoBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = f
               <td className="px-4 py-3 text-right text-purple-300">{price(precioPromedio)}</td>
               <td className="px-4 py-3 text-right text-blue-300">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-300">{esMesActual ? money(proyDolares) : money(dolares)}</td>
-              <td className={`px-4 py-3 text-right ${positivo ? "text-green-400" : "text-red-400"}`}>
-                {varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}
-              </td>
               <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>

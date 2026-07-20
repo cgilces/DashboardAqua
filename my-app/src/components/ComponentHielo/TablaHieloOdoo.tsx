@@ -213,7 +213,6 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded, onLoadingCh
               <th className="px-4 py-3 text-right">Dólares $</th>
               <th className="px-4 py-3 text-right">Precio Prom.</th>
               {esMesActual && <th className="px-4 py-3 text-right">Proyección</th>}
-              <th className="px-4 py-3 text-right">Variación</th>
               <th className="px-4 py-3 text-right">%</th>
               <th className="px-4 py-3 text-right">Órdenes</th>
               <th className="px-4 py-3 text-right">Facturas</th>
@@ -248,10 +247,6 @@ export default function TablaHieloOdoo({ anio, mes, onTotalesLoaded, onLoadingCh
                   ${fmt(totales.proyeccion_dolares)}
                 </td>
               )}
-
-              <td className={`px-4 py-3 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
-                {sinDatos ? "Sin datos" : `${esPositivo ? "+" : "-"}$${fmt(Math.abs(totalVariacion))}`}
-              </td>
 
               <td className={`px-4 py-3 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
                 {sinDatos ? "—" : `${porcVariacion?.toFixed(2)}%`}

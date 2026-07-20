@@ -249,32 +249,29 @@ const RankingRutasInner = ({
         <table className="min-w-full text-sm">
           <thead className="bg-[#014434] text-green-300 uppercase text-xs">
             <tr>
-              <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('N*')}>
+              <th className="px-4 py-3 text-left cursor-pointer transition-colors select-none" onClick={() => requestSort('N*')}>
                 N* <span className="text-green-300">{sortConfig.key === 'N*' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('usuario')}>
+              <th className="px-4 py-3 text-left cursor-pointer transition-colors select-none" onClick={() => requestSort('usuario')}>
                 Usuario <span className="text-green-300">{sortConfig.key === 'usuario' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('unidades')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('unidades')}>
                 Unidades <span className="text-green-300">{sortConfig.key === 'unidades' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('dolares')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('dolares')}>
                 Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
 
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('precioPromedio')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('precioPromedio')}>
                 Precio Promedio <span className="text-green-300">{sortConfig.key === 'precioPromedio' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
                 CUPO <span className="text-amber-300">{sortConfig.key === 'objetivo_gerencia' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('proyeccion')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('proyeccion')}>
                 Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('variacion')}>
-                Variación <span className="text-green-300">{sortConfig.key === 'variacion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-              </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('variacionPorc')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('variacionPorc')}>
                 % <span className="text-green-300">{sortConfig.key === 'variacionPorc' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
             </tr>
@@ -305,7 +302,7 @@ const RankingRutasInner = ({
                   })}
                   className={`transition-all duration-200 cursor-pointer
                 ${index % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
-                hover:bg-[#025940] hover:shadow-lg hover:text-white
+                hover:bg-[#025940] hover:shadow-lg
                 border-l-4 border-transparent hover:border-green-400
               `}
                 >
@@ -330,15 +327,7 @@ const RankingRutasInner = ({
                   <td className="px-4 py-2 text-right font-bold text-blue-300">
                     ${proy.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                   </td>
-                  {/* VARIACIÓN */}
-                  <td className={`px-4 py-2 text-right font-bold ${variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
-                    {variacionAbs !== 0
-                      ? <>{variacionAbs > 0 ? "+" : "-"}${Math.abs(variacionAbs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                      : <span className="text-gray-500 text-xs italic">—</span>
-                    }
-                  </td>
-                  {/* % */}
-                  <td className={`px-4 py-2 text-right font-bold ${baseVar <= 0 ? "text-gray-400" : variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
+                  <td className={`px-4 py-2 text-right ${baseVar <= 0 ? "text-gray-400" : variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
                     {baseVar > 0
                       ? <>{variacionPorc > 0 ? "+" : ""}{variacionPorc.toFixed(2)}%</>
                       : (variacionAbs > 0
@@ -368,17 +357,6 @@ const RankingRutasInner = ({
               <td className="px-4 py-3 text-right text-blue-400">
                 ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
-              {(() => {
-                const totalVar = totalProyeccion - totalCupo;
-                return (
-                  <td className={`px-4 py-3 text-right ${totalVar >= 0 ? "text-green-400" : "text-red-400"}`}>
-                    {totalCupo > 0
-                      ? <>{totalVar >= 0 ? "+" : "-"}${Math.abs(totalVar).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                      : <span className="text-gray-400">—</span>
-                    }
-                  </td>
-                );
-              })()}
               <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>
