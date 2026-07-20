@@ -394,6 +394,25 @@ en todas las tablas del dashboard, para vista más limpia y profesional.
 
 **PR:** https://github.com/cgilces/DashboardAqua/compare/main...feature/quitar-columna-variacion-abs
 
+## Alineación de encabezados en tablas de ranking (rama: main)
+
+- [x] **Síntoma:** en `RankingPreventas`, los encabezados estaban apilados verticalmente en lugar de
+      alineados horizontalmente.
+- [x] **Causa:** `flex items-center` en el `<th>` causaba desalineación.
+- [x] **Fix:** removido `flex` del `<th>` y envuelto el contenido (label + SortIcon) en
+      `<span className="inline-flex items-center gap-1">`, manteniendo alineación horizontal.
+- [x] **Verificado:** cambio visible en servidor dev. Commit `0bb0b7e` en main.
+
+## 🎯 CONSOLIDACIÓN FINAL — TODO EN MAIN
+
+**Decisión:** eliminar todas las ramas de feature; consolidar TODO el trabajo en `main` directamente.
+
+- [x] Rama `feature/quitar-columna-variacion-abs` eliminada (local + remoto)
+- [x] Rama `feature/quitar-columna-variacion-abs` consolidada en main
+- [x] Fix de encabezados en RankingPreventas integrado en main
+- [x] Push completado a `origin/main`
+- [x] **Estado:** ✅ Todo consolidado, una única rama `main`
+
 ### Pendiente / fase 2
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.
