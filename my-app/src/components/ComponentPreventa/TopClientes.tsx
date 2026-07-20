@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { BsChevronLeft, BsChevronRight } from "react-icons/bs";
 
 interface ClienteTop {
   codigo: string;
@@ -79,18 +80,18 @@ export default function TopClientes({
       key={`top-clientes-${topClientes.length}`}
       className="bg-[#012E24] text-white rounded-lg shadow-md border border-[#046C5E] mt-6"
     >
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
-        <h2 className="text-lg md:text-xl font-bold text-blue-300">
+      <div className="flex flex-col gap-3 md:gap-4 px-3 sm:px-4 py-4">
+        <h2 className="text-base sm:text-lg md:text-xl font-bold text-blue-300">
           Top Clientes con Mayor Consumo
         </h2>
-        <div className="flex gap-3 flex-wrap items-center">
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-            <p className="text-xs text-gray-400">Mes Actual</p>
-            <p className="text-base font-bold text-white">${totalActual.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</p>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full">
+          <div className="bg-gradient-to-br from-[#014434] to-[#012E24] border border-[#046C5E]/60 rounded-lg px-2 sm:px-3 py-2 sm:py-3 text-center hover:border-[#046C5E] transition-colors">
+            <p className="text-xs text-gray-400 mb-1">Mes Actual</p>
+            <p className="text-sm sm:text-base font-bold text-emerald-300">${totalActual.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</p>
           </div>
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
-            <p className="text-xs text-gray-400">Mes Anterior</p>
-            <p className="text-base font-bold text-blue-300">${totalAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</p>
+          <div className="bg-gradient-to-br from-[#014434] to-[#012E24] border border-[#046C5E]/60 rounded-lg px-2 sm:px-3 py-2 sm:py-3 text-center hover:border-[#046C5E] transition-colors">
+            <p className="text-xs text-gray-400 mb-1">Mes Anterior</p>
+            <p className="text-sm sm:text-base font-bold text-blue-300">${totalAnterior.toLocaleString("es-EC", { minimumFractionDigits: 2 })}</p>
           </div>
         </div>
       </div>
@@ -192,25 +193,29 @@ export default function TopClientes({
 
       {/* PAGINACIÓN */}
       {totalPaginas > 1 && (
-        <div className="flex justify-center mt-6 gap-2 pb-4">
+        <div className="flex justify-center items-center gap-2 sm:gap-3 mt-6 pb-4 px-3 sm:px-4">
           <button
             disabled={pagina === 1}
             onClick={paginaAnterior}
-            className="px-3 py-1 rounded bg-[#046C5E] disabled:opacity-40"
+            title="Página anterior"
+            className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-lg border border-[#046C5E] bg-[#046C5E]/20 hover:bg-[#046C5E]/40 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all active:scale-95"
           >
-            ← Anterior
+            <BsChevronLeft size={16} />
+            <span className="hidden sm:inline text-sm font-semibold">Anterior</span>
           </button>
 
-          <span className="px-3 py-1 text-sm text-gray-300">
-            Página {pagina} / {totalPaginas}
+          <span className="px-2 sm:px-3 py-2 text-xs sm:text-sm text-gray-300 bg-[#011f1a] border border-[#046C5E]/40 rounded-lg whitespace-nowrap">
+            {pagina}/{totalPaginas}
           </span>
 
           <button
             disabled={pagina === totalPaginas}
             onClick={paginaSiguiente}
-            className="px-3 py-1 rounded bg-[#046C5E] disabled:opacity-40"
+            title="Página siguiente"
+            className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-lg border border-[#046C5E] bg-[#046C5E]/20 hover:bg-[#046C5E]/40 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all active:scale-95"
           >
-            Siguiente →
+            <span className="hidden sm:inline text-sm font-semibold">Siguiente</span>
+            <BsChevronRight size={16} />
           </button>
         </div>
       )}
