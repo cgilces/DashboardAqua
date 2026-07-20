@@ -114,8 +114,8 @@ const RankingDescartablePorCanal = ({
   };
 
   const sortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return " ↕";
-    return sortDir === "asc" ? " ↑" : " ↓";
+    if (sortKey !== key) return "↕";
+    return sortDir === "asc" ? "↑" : "↓";
   };
 
   if (!data && !odooData) {
@@ -493,34 +493,41 @@ const RankingDescartablePorCanal = ({
                 className="px-4 py-3 text-left cursor-pointer transition-colors"
                 onClick={() => toggleSort("canal")}
               >
-                Canal
-                <span className="ml-1 text-[#046C5E]">{sortIndicator("canal")}</span>
+                <span className="inline-flex items-center gap-1">
+                  Canal
+                  <span className="opacity-60 text-[#046C5E]">{sortIndicator("canal")}</span>
+                </span>
               </th>
 
               <th
                 className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("unidades")}
               >
-                Unidades
-                <span className="ml-1 text-[#046C5E]">{sortIndicator("unidades")}</span>
+                <span className="inline-flex items-center gap-1 float-right">
+                  Unidades
+                  <span className="opacity-60 text-[#046C5E]">{sortIndicator("unidades")}</span>
+                </span>
               </th>
 
               <th
                 className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("dolares")}
               >
-                USD
-                <span className="ml-1 text-[#046C5E]">{sortIndicator("dolares")}</span>
+                <span className="inline-flex items-center gap-1 float-right">
+                  USD
+                  <span className="opacity-60 text-[#046C5E]">{sortIndicator("dolares")}</span>
+                </span>
               </th>
 
-              {/*  NUEVA COLUMNA */}
               <th
                 className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("precioPromedio")}
               >
-                Precio Promedio	
-                <span className="ml-1 text-[#046C5E]">
-                  {sortIndicator("precioPromedio")}
+                <span className="inline-flex items-center gap-1 float-right">
+                  Precio Promedio
+                  <span className="opacity-60 text-[#046C5E]">
+                    {sortIndicator("precioPromedio")}
+                  </span>
                 </span>
               </th>
 
@@ -529,9 +536,11 @@ const RankingDescartablePorCanal = ({
                   className="px-4 py-3 text-right cursor-pointer transition-colors"
                   onClick={() => toggleSort("proyeccion")}
                 >
-                  Proyección
-                  <span className="ml-1 text-[#046C5E]">
-                    {sortIndicator("proyeccion")}
+                  <span className="inline-flex items-center gap-1 float-right">
+                    Proyección
+                    <span className="opacity-60 text-[#046C5E]">
+                      {sortIndicator("proyeccion")}
+                    </span>
                   </span>
                 </th>
               )}
@@ -540,9 +549,11 @@ const RankingDescartablePorCanal = ({
                 className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("variacion_porc")}
               >
-                %
-                <span className="ml-1 text-[#046C5E]">
-                  {sortIndicator("variacion_porc")}
+                <span className="inline-flex items-center gap-1 float-right">
+                  %
+                  <span className="opacity-60 text-[#046C5E]">
+                    {sortIndicator("variacion_porc")}
+                  </span>
                 </span>
               </th>
             </tr>
