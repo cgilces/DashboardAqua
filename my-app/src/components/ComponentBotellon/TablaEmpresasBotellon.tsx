@@ -93,7 +93,6 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
               <th className="px-4 py-3 text-right">PRECIO PROMEDIO</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN UNID.</th>
               <th className="px-4 py-3 text-right">PROYECCIÓN USD $</th>
-              <th className="px-4 py-3 text-right">VARIACIÓN</th>
               <th className="px-4 py-3 text-right">%</th>
             </tr>
           </thead>
@@ -135,15 +134,6 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
                   }`}
               >
                 {hayMesAnterior
-                  ? (<>{varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}</>)
-                  : "—"}
-              </td>
-
-              <td
-                className={`px-4 py-3 text-right ${hayMesAnterior ? (positivo ? "text-green-400" : "text-red-400") : "text-gray-400"
-                  }`}
-              >
-                {hayMesAnterior
                   ? (<>{varPorc >= 0 ? "+" : ""}{varPorc.toFixed(2)}%</>)
                   : "—"}
               </td>
@@ -159,10 +149,6 @@ const TablaEmpresasBotellon: React.FC<Props> = ({ anio, mes, esMesActual = false
               </td>
               <td className="px-4 py-3 text-right text-blue-300">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right text-blue-300">{esMesActual ? money(proyDolares) : money(dolares)}</td>
-              <td className={`px-4 py-3 text-right ${positivo ? "text-green-400" : "text-red-400"}`}>
-                {varAbs >= 0 ? "+" : "-"}{money(Math.abs(varAbs))}
-              </td>
-              <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>
         </table>
