@@ -149,6 +149,7 @@ const TablaDomicilioBotellon: React.FC<Props> = ({
               </td>
               <td className="px-4 py-3 text-right">{proyUnidades.toLocaleString("es-EC")}</td>
               <td className="px-4 py-3 text-right">{money(proyDolares)}</td>
+              <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>
         </table>

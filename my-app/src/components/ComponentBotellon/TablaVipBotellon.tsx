@@ -138,6 +138,7 @@ const TablaVipBotellon: React.FC<Props> = ({ anio, mes, datos, esMesActual = fal
               <td className="px-4 py-3 text-right text-blue-300">
                 {esMesActual ? money(proyDolares) : money(dolares)}
               </td>
+              <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>
         </table>
