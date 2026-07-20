@@ -243,7 +243,7 @@ export default function DeclieveConsumo() {
           </div>
         </div>
         <button onClick={() => setExpandido(o => !o)}
-          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors">
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 transition-colors">
           {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
         </button>
       </div>
@@ -271,7 +271,7 @@ export default function DeclieveConsumo() {
                       ? u >= 70 ? "bg-red-500/30 border-red-500 text-red-200"
                         : u >= 50 ? "bg-orange-500/30 border-orange-500 text-orange-200"
                         : "bg-yellow-500/30 border-yellow-500 text-yellow-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50"
                   }`}>
                   ≥{u}%
                 </button>
@@ -285,7 +285,7 @@ export default function DeclieveConsumo() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                     ventana === v
                       ? "bg-emerald-500/25 border-emerald-500/50 text-emerald-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50"
                   }`}>
                   {v}d
                 </button>
@@ -301,7 +301,7 @@ export default function DeclieveConsumo() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                     prefijos === p.value
                       ? "bg-blue-500/25 border-blue-500/50 text-blue-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50"
                   }`}>
                   {p.label}
                 </button>
@@ -497,7 +497,7 @@ function ModalGestion({
               {cliente.ruc || "Sin RUC"} · Vendedor: {cliente.vendedor || "-"}
             </p>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10">
+          <button onClick={onClose} className="text-white/40 p-1 rounded-lg hover:bg-white/10">
             <X size={20} />
           </button>
         </div>
@@ -548,7 +548,7 @@ function ModalGestion({
             {RESULTADOS.map(r => (
               <button key={r.value} onClick={() => onChangeResultado(r.value)}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${
-                  resultado === r.value ? r.color : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                  resultado === r.value ? r.color : "bg-[#013d32] border-[#046C5E] text-white/50"
                 }`}>
                 {r.label}
               </button>

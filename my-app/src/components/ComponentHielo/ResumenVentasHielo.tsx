@@ -209,25 +209,25 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
       <table className="min-w-full text-sm">
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
-            <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("usuario")}>
+            <th className="px-4 py-3 text-left cursor-pointer transition-colors select-none" onClick={() => requestSort("usuario")}>
               Usuario {iconoOrden("usuario")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("cantidadVendida")}>
+            <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort("cantidadVendida")}>
               Unidades {iconoOrden("cantidadVendida")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("totalConIVA")}>
+            <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort("totalConIVA")}>
               Dólares {iconoOrden("totalConIVA")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("meta")}>
+            <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort("meta")}>
               Meta {iconoOrden("meta")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("proyeccion")}>
+            <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort("proyeccion")}>
               Proyección {iconoOrden("proyeccion")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("vsMesAnterior")}>
+            <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort("vsMesAnterior")}>
               Variación {iconoOrden("vsMesAnterior")}
             </th>
-            <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort("vsMesAnterior")}>
+            <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort("vsMesAnterior")}>
               % {iconoOrden("vsMesAnterior")}
             </th>
           </tr>
@@ -329,7 +329,7 @@ const ResumenVentasHielo = ({ data, anio, mes, }: { data: any[]; anio: string; m
               ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
             </td>
 
-            <td className={`px-4 py-3 text-right ${totalVsMesAnterior >= 0 ? "text-green-400" : "text-red-400"}`}>
+            <td className={`flex items-center gap-1 px-4 py-3 text-right ${totalVsMesAnterior >= 0 ? "text-green-400" : "text-red-400"}`}>
               {totalVsMesAnterior >= 0 ? "+" : "-"}${Math.abs(totalVsMesAnterior).toLocaleString("es-EC", { minimumFractionDigits: 2 })}
             </td>
             <td className="px-4 py-3 text-right text-gray-400">—</td>

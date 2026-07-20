@@ -490,7 +490,7 @@ const RankingDescartablePorCanal = ({
               <th className="px-4 py-3 text-left w-10">N°</th>
 
               <th
-                className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-left cursor-pointer transition-colors"
                 onClick={() => toggleSort("canal")}
               >
                 Canal
@@ -498,7 +498,7 @@ const RankingDescartablePorCanal = ({
               </th>
 
               <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("unidades")}
               >
                 Unidades
@@ -506,7 +506,7 @@ const RankingDescartablePorCanal = ({
               </th>
 
               <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("dolares")}
               >
                 USD
@@ -515,7 +515,7 @@ const RankingDescartablePorCanal = ({
 
               {/*  NUEVA COLUMNA */}
               <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("precioPromedio")}
               >
                 Precio Promedio	
@@ -526,7 +526,7 @@ const RankingDescartablePorCanal = ({
 
               {isAdmin && (
                 <th
-                  className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                  className="px-4 py-3 text-right cursor-pointer transition-colors"
                   onClick={() => toggleSort("proyeccion")}
                 >
                   Proyección
@@ -537,7 +537,7 @@ const RankingDescartablePorCanal = ({
               )}
 
               <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
+                className="px-4 py-3 text-right cursor-pointer transition-colors"
                 onClick={() => toggleSort("variacion_porc")}
               >
                 %

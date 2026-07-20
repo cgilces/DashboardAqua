@@ -69,7 +69,7 @@ export default function AnaliticaInactivos() {
           </div>
         </div>
         <button onClick={() => setExpandido(o => !o)}
-          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors">
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 transition-colors">
           {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
         </button>
       </div>
@@ -79,13 +79,13 @@ export default function AnaliticaInactivos() {
           <div className="flex gap-2">
             <button onClick={() => setTab("tendencia")}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border-b-2 transition-all ${
-                tab === "tendencia" ? "border-violet-400 text-violet-200 bg-white/5" : "border-transparent text-white/50 hover:text-white"
+                tab === "tendencia" ? "border-violet-400 text-violet-200 bg-white/5" : "border-transparent text-white/50"
               }`}>
               Tendencia mensual
             </button>
             <button onClick={() => setTab("cohorte")}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border-b-2 transition-all ${
-                tab === "cohorte" ? "border-violet-400 text-violet-200 bg-white/5" : "border-transparent text-white/50 hover:text-white"
+                tab === "cohorte" ? "border-violet-400 text-violet-200 bg-white/5" : "border-transparent text-white/50"
               }`}>
               Cohorte de retención
             </button>

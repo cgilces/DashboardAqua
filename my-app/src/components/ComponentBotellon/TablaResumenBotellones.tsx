@@ -179,22 +179,22 @@ export default function TablaResumenBotellones({
         <thead className="bg-[#014434] text-green-300 uppercase text-xs">
           <tr>
             <th className="px-4 py-3 text-left">N°</th>
-            <th onClick={() => requestSort("grupo")} className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("grupo")} className="px-4 py-3 text-left cursor-pointer transition-colors select-none">
               Grupo
             </th>
-            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("unidades")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               Unidades
             </th>
-            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("dolares")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               Dólares
             </th>
-            <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("meta")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               Meta
             </th>
-            <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("proyeccion")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               Proyección
             </th>
-            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
+            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer transition-colors select-none">
               %
             </th>
           </tr>

@@ -120,7 +120,7 @@ export default function RecoveryRate() {
             </button>
           )}
           <button onClick={() => setExpandido(o => !o)}
-            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors">
+            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 transition-colors">
             {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
           </button>
         </div>
@@ -138,7 +138,7 @@ export default function RecoveryRate() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                     isActive
                       ? "bg-emerald-500/30 border-emerald-500 text-emerald-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50"
                   }`}>
                   Últimos {p.label}
                 </button>

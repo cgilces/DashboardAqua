@@ -155,7 +155,7 @@ export default function SaludRutas() {
         </div>
         <button
           onClick={() => setExpandido(o => !o)}
-          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors"
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 transition-colors"
         >
           {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
         </button>
@@ -172,7 +172,7 @@ export default function SaludRutas() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                     prefijos === p.value
                       ? "bg-blue-500/30 border-blue-500 text-blue-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white hover:border-blue-500/40"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:border-blue-500/40"
                   }`}>
                   {p.label}
                 </button>
@@ -186,7 +186,7 @@ export default function SaludRutas() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                     dias === v
                       ? "bg-emerald-500/30 border-emerald-500 text-emerald-200"
-                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white hover:border-emerald-500/40"
+                      : "bg-[#013d32] border-[#046C5E] text-white/50 hover:border-emerald-500/40"
                   }`}>
                   {v}d
                 </button>
@@ -349,7 +349,7 @@ function ModalDetalleRuta({
             <p className="text-[10px] uppercase tracking-widest text-blue-300 font-semibold">Detalle de ruta</p>
             <h3 className="text-lg font-bold text-white">{ruta}</h3>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10">
+          <button onClick={onClose} className="text-white/40 p-1 rounded-lg hover:bg-white/10">
             <X size={20}/>
           </button>
         </div>
@@ -357,7 +357,7 @@ function ModalDetalleRuta({
           {tabsCfg.map(t => (
             <button key={t.id} onClick={() => onChangeTab(t.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border-b-2 transition-all ${
-                tab === t.id ? `${t.color} bg-white/5` : "border-transparent text-white/50 hover:text-white"
+                tab === t.id ? `${t.color} bg-white/5` : "border-transparent text-white/50"
               }`}>
               {t.label} ({t.count})
             </button>

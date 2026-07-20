@@ -831,7 +831,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-purple-300">Añadir datos externos · COTTSA</h3>
-              <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setMostrarModal(false)} className="text-gray-400">
                 <BsX size={24} />
               </button>
             </div>
@@ -942,7 +942,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               </div>
               <button
                 onClick={cerrarPOSDetalle}
-                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
+                className="text-gray-400 p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
                 title="Cerrar"
               >
                 <BsX size={26} />
@@ -1286,7 +1286,7 @@ export default function TablaCOTTSA({ anio, mes, onTotalesLoaded }: Props) {
               </div>
               <button
                 onClick={cerrarRutaDetalle}
-                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
+                className="text-gray-400 p-1.5 rounded-lg hover:bg-white/5 transition shrink-0"
                 title="Cerrar"
               >
                 <BsX size={26} />

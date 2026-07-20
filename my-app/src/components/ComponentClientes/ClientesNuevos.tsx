@@ -190,7 +190,7 @@ export default function ClientesNuevos() {
             </button>
           )}
           <button onClick={() => setExpandido(o => !o)}
-            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 hover:text-white transition-colors">
+            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs flex items-center gap-1.5 text-white/70 transition-colors">
             {expandido ? <>Ocultar <ChevronUp size={14} /></> : <>Ver <ChevronDown size={14} /></>}
           </button>
         </div>
@@ -218,7 +218,7 @@ export default function ClientesNuevos() {
                     className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                       isActive
                         ? "bg-cyan-500/30 border-cyan-500 text-cyan-200"
-                        : "bg-[#013d32] border-[#046C5E] text-white/50 hover:text-white"
+                        : "bg-[#013d32] border-[#046C5E] text-white/50"
                     }`}>
                     {p.label}
                   </button>
@@ -371,7 +371,7 @@ function DetalleCanal({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <button onClick={onVolver}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs text-white/70 hover:text-white transition-colors">
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs text-white/70 transition-colors">
             <ArrowLeft size={14}/> Volver a canales
           </button>
           <h3 className="text-base font-bold text-cyan-300">{canal}</h3>

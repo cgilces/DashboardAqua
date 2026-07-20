@@ -249,29 +249,29 @@ const RankingRutasInner = ({
         <table className="min-w-full text-sm">
           <thead className="bg-[#014434] text-green-300 uppercase text-xs">
             <tr>
-              <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('N*')}>
+              <th className="px-4 py-3 text-left cursor-pointer transition-colors select-none" onClick={() => requestSort('N*')}>
                 N* <span className="text-green-300">{sortConfig.key === 'N*' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-left cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('usuario')}>
+              <th className="px-4 py-3 text-left cursor-pointer transition-colors select-none" onClick={() => requestSort('usuario')}>
                 Usuario <span className="text-green-300">{sortConfig.key === 'usuario' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('unidades')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('unidades')}>
                 Unidades <span className="text-green-300">{sortConfig.key === 'unidades' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('dolares')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('dolares')}>
                 Dólares <span className="text-green-300">{sortConfig.key === 'dolares' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
 
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('precioPromedio')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('precioPromedio')}>
                 Precio Promedio <span className="text-green-300">{sortConfig.key === 'precioPromedio' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none text-amber-300" onClick={() => requestSort('objetivo_gerencia')}>
                 CUPO <span className="text-amber-300">{sortConfig.key === 'objetivo_gerencia' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('proyeccion')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('proyeccion')}>
                 Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('variacionPorc')}>
+              <th className="px-4 py-3 text-right cursor-pointer transition-colors select-none" onClick={() => requestSort('variacionPorc')}>
                 % <span className="text-green-300">{sortConfig.key === 'variacionPorc' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
             </tr>
@@ -302,7 +302,7 @@ const RankingRutasInner = ({
                   })}
                   className={`transition-all duration-200 cursor-pointer
                 ${index % 2 === 0 ? "bg-[#013d32]" : "bg-[#014f3e]"}
-                hover:bg-[#025940] hover:shadow-lg hover:text-white
+                hover:bg-[#025940] hover:shadow-lg
                 border-l-4 border-transparent hover:border-green-400
               `}
                 >

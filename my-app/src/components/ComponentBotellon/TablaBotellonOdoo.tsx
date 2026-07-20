@@ -284,7 +284,7 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
             {columnas.map(([key, label, align], colIdx) => (
               <th
                 key={`${key}-${colIdx}`}
-                className={`px-4 py-3 ${align} cursor-pointer hover:text-white transition-colors select-none`}
+                className={`px-4 py-3 ${align} cursor-pointer transition-colors select-none`}
                 onClick={() => requestSort(key)}
               >
                 {label} <span className="text-green-300">{sortIcon(key)}</span>
