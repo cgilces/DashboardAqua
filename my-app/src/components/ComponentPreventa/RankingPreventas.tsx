@@ -250,48 +250,48 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
 
       {/* HEADER */}
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-4 py-4">
-        <h2 className="text-lg md:text-xl font-bold text-blue-300">
+      <div className="flex flex-col gap-3 md:gap-4 px-3 sm:px-4 py-4">
+        <h2 className="text-base sm:text-lg md:text-xl font-bold text-blue-300">
           RANKING PREVENTA
         </h2>
-        <div className="flex gap-3 flex-wrap items-center">
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 w-full">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-2 sm:px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Unidades</p>
-            <p className="text-base font-bold text-green-400">{fmtInt(totalUnidades)}</p>
+            <p className="text-sm sm:text-base font-bold text-green-400">{fmtInt(totalUnidades)}</p>
           </div>
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-2 sm:px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Dólares</p>
-            <p className="text-base font-bold text-white">${fmt(totalUSD)}</p>
+            <p className="text-sm sm:text-base font-bold text-white">${fmt(totalUSD)}</p>
           </div>
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-2 sm:px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Meta</p>
-            <p className="text-base font-bold text-white">${fmt(totalMeta)}</p>
+            <p className="text-sm sm:text-base font-bold text-white">${fmt(totalMeta)}</p>
           </div>
-          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-3 py-2 text-center">
+          <div className="bg-[#011f1a] border border-[#046C5E] rounded-lg px-2 sm:px-3 py-2 text-center">
             <p className="text-xs text-gray-400">Proyección</p>
-            <p className="text-base font-bold text-emerald-400">${fmt(totalProyeccion)}</p>
+            <p className="text-sm sm:text-base font-bold text-emerald-400">${fmt(totalProyeccion)}</p>
           </div>
-          {isAdmin && (
-            <div className="flex gap-2 items-center">
-              <button
-                onClick={() => navigate("/configurar-metas")}
-                title="Configurar Metas"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
-              >
-                <BsGear size={16} />
-                <span>Metas</span>
-              </button>
-              <ImportarMetasBoton />
-              <button
-                onClick={exportarTablaExcel}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all"
-              >
-                <BsDownload size={16} />
-                <span>Exportar</span>
-              </button>
-            </div>
-          )}
         </div>
+        {isAdmin && (
+          <div className="flex gap-2 flex-wrap items-center justify-start sm:justify-end">
+            <button
+              onClick={() => navigate("/configurar-metas")}
+              title="Configurar Metas"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all whitespace-nowrap"
+            >
+              <BsGear size={16} />
+              <span>Metas</span>
+            </button>
+            <ImportarMetasBoton />
+            <button
+              onClick={exportarTablaExcel}
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg border border-[#0db48b]/60 bg-[#0db48b]/20 text-white font-semibold hover:bg-[#0db48b]/30 active:scale-[0.98] transition-all whitespace-nowrap"
+            >
+              <BsDownload size={16} />
+              <span>Exportar</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* TABLA */}
