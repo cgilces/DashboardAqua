@@ -72,6 +72,11 @@ export default function TopClientes({
     }));
   };
 
+  const sortIndicator = (key: keyof ClienteTop) => {
+    if (sortConfig.key !== key) return "↕";
+    return sortConfig.direction === "asc" ? "↑" : "↓";
+  };
+
   const totalActual   = topClientes.reduce((a, c) => a + c.montoActual,   0);
   const totalAnterior = topClientes.reduce((a, c) => a + c.montoAnterior, 0);
 
@@ -104,35 +109,50 @@ export default function TopClientes({
               className="px-4 py-3 text-left cursor-pointer transition-colors select-none"
               onClick={() => handleSort("cliente")}
             >
-              Cliente
+              <span className="inline-flex items-center gap-1">
+                Cliente
+                <span className="text-xs text-green-300 font-semibold">{sortIndicator("cliente")}</span>
+              </span>
             </th>
 
             <th
               className="px-4 py-3 text-right cursor-pointer transition-colors select-none"
               onClick={() => handleSort("montoActual")}
             >
-              Mes Actual (USD)
+              <span className="inline-flex items-center gap-1 float-right">
+                Mes Actual (USD)
+                <span className="text-xs text-green-300 font-semibold">{sortIndicator("montoActual")}</span>
+              </span>
             </th>
 
             <th
               className="px-4 py-3 text-right cursor-pointer transition-colors select-none"
               onClick={() => handleSort("montoAnterior")}
             >
-              Mes Anterior (USD)
+              <span className="inline-flex items-center gap-1 float-right">
+                Mes Anterior (USD)
+                <span className="text-xs text-green-300 font-semibold">{sortIndicator("montoAnterior")}</span>
+              </span>
             </th>
 
             <th
               className="px-4 py-3 text-right cursor-pointer transition-colors select-none"
               onClick={() => handleSort("variacionMontoAbs")}
             >
-              Variación
+              <span className="inline-flex items-center gap-1 float-right">
+                Variación
+                <span className="text-xs text-green-300 font-semibold">{sortIndicator("variacionMontoAbs")}</span>
+              </span>
             </th>
 
             <th
               className="px-4 py-3 text-right cursor-pointer transition-colors select-none"
               onClick={() => handleSort("variacionMontoPorc")}
             >
-              %
+              <span className="inline-flex items-center gap-1 float-right">
+                %
+                <span className="text-xs text-green-300 font-semibold">{sortIndicator("variacionMontoPorc")}</span>
+              </span>
             </th>
           </tr>
         </thead>
