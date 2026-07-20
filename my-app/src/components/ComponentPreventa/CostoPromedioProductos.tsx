@@ -223,9 +223,9 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
 
 
 
-            {/* HEADER FIJO */}
-            <div className="overflow-x-auto">
-                <table className="min-w-full text-sm table-fixed">
+            {/* TABLA ÚNICA CON SCROLL SINCRONIZADO */}
+            <div className="overflow-x-auto border border-[#046C5E] rounded-lg">
+                <table className="min-w-full text-sm">
                     <thead className="bg-[#014434] text-green-300 uppercase text-xs sticky top-0 z-20">
                         <tr>
                             <th
@@ -253,12 +253,7 @@ const CostoPromedioProductos: React.FC<Props> = ({ data }) => {
                             ))}
                         </tr>
                     </thead>
-                </table>
-            </div>
 
-            {/* BODY SCROLL */}
-            <div className="overflow-x-auto ">
-                <table className="min-w-full text-sm table-fixed">
                     <tbody>
                         {sortedData.map((row, idx) => (
                             <tr
