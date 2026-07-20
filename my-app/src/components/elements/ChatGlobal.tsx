@@ -1,6 +1,5 @@
 import { useLocation } from "react-router-dom";
 import ChatFlotante from "./ChatFlotante";
-import JarvisBienvenida from "./JarvisBienvenida";
 
 const ChatGlobal = () => {
   const location = useLocation();
@@ -12,7 +11,6 @@ const ChatGlobal = () => {
 
   return (
     <>
-      <JarvisBienvenida />
       <ChatFlotante />
     </>
   );
