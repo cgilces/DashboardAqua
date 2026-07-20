@@ -495,7 +495,7 @@ const RankingDescartablePorCanal = ({
               >
                 <span className="inline-flex items-center gap-1">
                   Canal
-                  <span className="opacity-60 text-[#046C5E]">{sortIndicator("canal")}</span>
+                  <span className="text-xs text-green-300 font-semibold">{sortIndicator("canal")}</span>
                 </span>
               </th>
 
@@ -505,7 +505,7 @@ const RankingDescartablePorCanal = ({
               >
                 <span className="inline-flex items-center gap-1 float-right">
                   Unidades
-                  <span className="opacity-60 text-[#046C5E]">{sortIndicator("unidades")}</span>
+                  <span className="text-xs text-green-300 font-semibold">{sortIndicator("unidades")}</span>
                 </span>
               </th>
 
@@ -515,7 +515,7 @@ const RankingDescartablePorCanal = ({
               >
                 <span className="inline-flex items-center gap-1 float-right">
                   USD
-                  <span className="opacity-60 text-[#046C5E]">{sortIndicator("dolares")}</span>
+                  <span className="text-xs text-green-300 font-semibold">{sortIndicator("dolares")}</span>
                 </span>
               </th>
 
@@ -525,7 +525,7 @@ const RankingDescartablePorCanal = ({
               >
                 <span className="inline-flex items-center gap-1 float-right">
                   Precio Promedio
-                  <span className="opacity-60 text-[#046C5E]">
+                  <span className="text-xs text-green-300 font-semibold">
                     {sortIndicator("precioPromedio")}
                   </span>
                 </span>
@@ -538,7 +538,7 @@ const RankingDescartablePorCanal = ({
                 >
                   <span className="inline-flex items-center gap-1 float-right">
                     Proyección
-                    <span className="opacity-60 text-[#046C5E]">
+                    <span className="text-xs text-green-300 font-semibold">
                       {sortIndicator("proyeccion")}
                     </span>
                   </span>
@@ -551,7 +551,7 @@ const RankingDescartablePorCanal = ({
               >
                 <span className="inline-flex items-center gap-1 float-right">
                   %
-                  <span className="opacity-60 text-[#046C5E]">
+                  <span className="text-xs text-green-300 font-semibold">
                     {sortIndicator("variacion_porc")}
                   </span>
                 </span>
