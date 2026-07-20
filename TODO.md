@@ -376,7 +376,9 @@ en todas las tablas del dashboard, para vista más limpia y profesional.
 - ✅ TypeScript: `tsc --noEmit` sin errores
 - ✅ Consolidado en **1 commit**: `e635c72`
 
-**Commit consolidado:** `83458d2` — feat: quitar columna Variación $ de TODAS las tablas del dashboard
+**Commit consolidado:** `31f1de2` — feat: quitar columna Variación $ de TODAS las tablas del dashboard - NIVEL PREMIUM
+
+**Estado:** ✅ COMPLETADO - Nivel Premium Pro (sin espacios vacíos, alineación perfecta)
 
 **PR lista:** https://github.com/cgilces/DashboardAqua/compare/main...feature/quitar-columna-variacion-abs
 - `1add3cb` — feat: mostrar valor porcentaje en COTTSA (dinámico)
