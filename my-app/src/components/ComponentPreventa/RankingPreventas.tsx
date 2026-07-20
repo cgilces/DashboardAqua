@@ -307,7 +307,6 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
             <Th k="monto" label="Dólares" />
             <Th k="objetivo_gerencia" label="Cupo" />
             <Th k="proyeccion" label="Proyección" />
-            <Th k="variacion" label="Variación" />
             <Th k="variacionPorc" label="%" />
 
           </tr>
@@ -379,17 +378,7 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
                   ${fmt(proy)}
                 </td>
 
-                {/* VARIACIÓN */}
-                <td className={`px-4 py-2 text-right font-bold ${variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
-                  {variacionAbs !== 0 ? (
-                    <>{variacionAbs > 0 ? "+" : "-"}${fmt(Math.abs(variacionAbs))}</>
-                  ) : (
-                    <span className="text-gray-500 text-xs italic">Sin datos</span>
-                  )}
-                </td>
-
-                {/* % */}
-                <td className={`px-4 py-2 text-right font-bold ${baseVar <= 0 ? "text-gray-400" : Number(variacionPorc) < 0 ? "text-red-400" : Number(variacionPorc) > 0 ? "text-green-400" : "text-gray-400"}`}>
+                <td className={`px-4 py-2 text-right ${baseVar <= 0 ? "text-gray-400" : Number(variacionPorc) < 0 ? "text-red-400" : Number(variacionPorc) > 0 ? "text-green-400" : "text-gray-400"}`}>
                   {baseVar > 0 ? (
                     <>{Number(variacionPorc) > 0 ? "+" : ""}{variacionPorc}%</>
                   ) : (variacionAbs > 0
@@ -426,10 +415,6 @@ const RankingPreventa: React.FC<Props & { user: any; preventasFiltradas: Prevent
 
             <td className="px-4 py-3 text-right">
               ${fmt(totalProyeccion)}
-            </td>
-
-            <td className={`px-4 py-3 text-right ${totalVsMesAnterior >= 0 ? "text-green-400" : "text-red-400"}`}>
-              {totalVsMesAnterior >= 0 ? "+" : "-"}${fmt(Math.abs(totalVsMesAnterior))}
             </td>
 
             <td className="px-4 py-3 text-right text-gray-400">—</td>

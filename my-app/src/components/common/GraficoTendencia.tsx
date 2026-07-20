@@ -130,8 +130,8 @@ const GraficoTendencia: React.FC<Props> = ({ datos, subtitulo, anioFiltro, mesFi
   const [expanded, setExpanded] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem(storageKey);
-      return v === null ? true : v === "1";
-    } catch { return true; }
+      return v === null ? false : v === "1";
+    } catch { return false; }
   });
   useEffect(() => {
     try { localStorage.setItem(storageKey, expanded ? "1" : "0"); } catch {}

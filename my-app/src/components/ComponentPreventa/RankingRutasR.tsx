@@ -271,9 +271,6 @@ const RankingRutasInner = ({
               <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('proyeccion')}>
                 Proyección <span className="text-green-300">{sortConfig.key === 'proyeccion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
-              <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('variacion')}>
-                Variación <span className="text-green-300">{sortConfig.key === 'variacion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-              </th>
               <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none" onClick={() => requestSort('variacionPorc')}>
                 % <span className="text-green-300">{sortConfig.key === 'variacionPorc' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
               </th>
@@ -330,15 +327,7 @@ const RankingRutasInner = ({
                   <td className="px-4 py-2 text-right font-bold text-blue-300">
                     ${proy.toLocaleString("es-EC", { minimumFractionDigits: 2 })}
                   </td>
-                  {/* VARIACIÓN */}
-                  <td className={`px-4 py-2 text-right font-bold ${variacionAbs < 0 ? "text-red-400" : variacionAbs > 0 ? "text-green-400" : "text-gray-400"}`}>
-                    {variacionAbs !== 0
-                      ? <>{variacionAbs > 0 ? "+" : "-"}${Math.abs(variacionAbs).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                      : <span className="text-gray-500 text-xs italic">—</span>
-                    }
-                  </td>
-                  {/* % */}
-                  <td className={`px-4 py-2 text-right font-bold ${baseVar <= 0 ? "text-gray-400" : variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
+                  <td className={`px-4 py-2 text-right ${baseVar <= 0 ? "text-gray-400" : variacionPorc < 0 ? "text-red-400" : variacionPorc > 0 ? "text-green-400" : "text-gray-400"}`}>
                     {baseVar > 0
                       ? <>{variacionPorc > 0 ? "+" : ""}{variacionPorc.toFixed(2)}%</>
                       : (variacionAbs > 0
@@ -368,17 +357,6 @@ const RankingRutasInner = ({
               <td className="px-4 py-3 text-right text-blue-400">
                 ${totalProyeccion.toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
-              {(() => {
-                const totalVar = totalProyeccion - totalCupo;
-                return (
-                  <td className={`px-4 py-3 text-right ${totalVar >= 0 ? "text-green-400" : "text-red-400"}`}>
-                    {totalCupo > 0
-                      ? <>{totalVar >= 0 ? "+" : "-"}${Math.abs(totalVar).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                      : <span className="text-gray-400">—</span>
-                    }
-                  </td>
-                );
-              })()}
               <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>
           </tfoot>

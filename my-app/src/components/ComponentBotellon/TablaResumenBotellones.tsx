@@ -195,9 +195,6 @@ export default function TablaResumenBotellones({
               Proyección
             </th>
             <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
-              Variación
-            </th>
-            <th onClick={() => requestSort("vsmesanterior")} className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none">
               %
             </th>
           </tr>
@@ -238,13 +235,6 @@ export default function TablaResumenBotellones({
                 {row.proyeccion ? money(row.proyeccion) : "—"}
               </td>
 
-              {/* VARIACIÓN */}
-              <td className={`px-4 py-2 text-right font-semibold ${colorVs(row.vsmesanterior)}`}>
-                {!row.vsmesanterior || (row.vsmesanterior.porcentaje === 0 && row.vsmesanterior.dolares === 0)
-                  ? "—"
-                  : `${row.vsmesanterior.dolares >= 0 ? "+" : "-"}$${Math.abs(row.vsmesanterior.dolares).toLocaleString("es-EC", { minimumFractionDigits: 2 })}`
-                }
-              </td>
               {/* % */}
               <td className={`px-4 py-2 text-right font-semibold ${colorVs(row.vsmesanterior)}`}>
                 {!row.vsmesanterior || (row.vsmesanterior.porcentaje === 0 && row.vsmesanterior.dolares === 0)

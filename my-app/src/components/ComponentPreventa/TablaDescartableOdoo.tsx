@@ -167,7 +167,6 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
             <th className="px-4 py-3 text-right">Unidades</th>
             <th className="px-4 py-3 text-right">Dólares $</th>
             {esMes && <th className="px-4 py-3 text-right">Proyección</th>}
-            <th className="px-4 py-3 text-right">Variación</th>
             <th className="px-4 py-3 text-right">%</th>
             <th className="px-4 py-3 text-right">Órdenes</th>
           </tr>
@@ -197,29 +196,8 @@ export default function TablaDescartableOdoo({ anio, mes, onTotalesLoaded }: Pro
               </td>
             )}
 
-            {/* Variación */}
             <td className={`px-4 py-3 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
-              {sinDatos ? (
-                <span className="text-gray-500 font-normal">Sin datos</span>
-              ) : (
-                <>
-                  <span className="block text-gray-300 font-normal text-xs">
-                    ${fmt(totalAnterior)}
-                  </span>
-                  {esPositivo ? "+" : "-"}${fmt(Math.abs(totalVariacion))}
-                </>
-              )}
-            </td>
-
-            {/* % */}
-            <td className={`px-4 py-3 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
-              {sinDatos ? (
-                <span className="text-gray-500 font-normal">—</span>
-              ) : (
-                porcVariacion !== null
-                  ? `${porcVariacion >= 0 ? "+" : ""}${porcVariacion.toFixed(2)}%`
-                  : "–"
-              )}
+              {sinDatos ? "—" : `${porcVariacion?.toFixed(2)}%`}
             </td>
 
             <td className="px-4 py-3 text-right text-gray-300">{totales.cant_ordenes}</td>

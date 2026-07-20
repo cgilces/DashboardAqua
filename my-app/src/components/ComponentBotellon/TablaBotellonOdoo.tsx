@@ -220,7 +220,6 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
       ["proyeccion_botellones", "PROYECCIÓN_UNIDADES",     "text-right"] as [SortKey, string, string],
       ["proyeccion_dolares",    "PROYECCIÓN_USD $",        "text-right"] as [SortKey, string, string],
     ] : []),
-    ["variacion",            "Variación",         "text-right"],
     ["variacion",            "%",                 "text-right"],
     // ["cant_ordenes",         "Órdenes",           "text-right"],
     // ["cant_clientes",        "Clientes",          "text-right"],
@@ -315,19 +314,6 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
                     <td className="px-4 py-2 text-right font-bold text-emerald-400">${fmt(r.proyeccion_dolares)}</td>
                   </>
                 )}
-                {/* VARIACIÓN */}
-                <td className={`px-4 py-2 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
-                  {r.mes_anterior.botellones === 0 ? (
-                    <span className="text-gray-500 font-normal">Sin datos</span>
-                  ) : (
-                    <>
-                      <span className="block text-gray-300 font-normal text-xs">
-                        {fmtInt(r.mes_anterior.botellones)} bot. · ${fmt(r.mes_anterior.dolares)}
-                      </span>
-                      {esPositivo ? "+" : "-"}{fmtInt(Math.abs(r.variacion_botellones.abs))} bot.
-                    </>
-                  )}
-                </td>
                 {/* % */}
                 <td className={`px-4 py-2 text-right font-bold ${esPositivo ? "text-green-400" : "text-red-400"}`}>
                   {r.mes_anterior.botellones === 0 ? (
@@ -355,12 +341,6 @@ export default function TablaBotellonOdoo({ anio, mes }: Props) {
                 <td className="px-4 py-3 text-right text-emerald-400">${fmt(totales.proyeccion_dolares)}</td>
               </>
             )}
-            <td className={`px-4 py-3 text-right ${totales.variacion.abs >= 0 ? "text-green-400" : "text-red-400"}`}>
-              <span className="block text-gray-300 font-normal text-xs">
-                {fmtInt(totales.mes_anterior.botellones)} bot. · ${fmt(totales.mes_anterior.dolares)}
-              </span>
-              {totales.variacion.abs >= 0 ? "+" : "-"}{fmtInt(Math.abs(totales.variacion.abs))} bot.
-            </td>
             <td className="px-4 py-3 text-right text-gray-400">
               {totales.variacion.porcentaje !== null
                 ? `${totales.variacion.porcentaje >= 0 ? "+" : ""}${totales.variacion.porcentaje.toFixed(2)}%`

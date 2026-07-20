@@ -387,12 +387,6 @@ const RankingDescartablePorCanal = ({
         )}
 
         <td className={`px-4 py-2 text-right font-bold ${varColor}`}>
-          {c.variacion_abs == null
-            ? "—"
-            : `${c.variacion_abs >= 0 ? "+" : ""}$${fmtNum(Math.abs(c.variacion_abs))}`}
-        </td>
-
-        <td className={`px-4 py-2 text-right font-bold ${varColor}`}>
           {c.variacion_porc == null
             ? "—"
             : `${c.variacion_porc >= 0 ? "+" : ""}${Math.abs(c.variacion_porc).toFixed(1)}%`}
@@ -544,16 +538,6 @@ const RankingDescartablePorCanal = ({
 
               <th
                 className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
-                onClick={() => toggleSort("variacion_abs")}
-              >
-                Variación $
-                <span className="ml-1 text-[#046C5E]">
-                  {sortIndicator("variacion_abs")}
-                </span>
-              </th>
-
-              <th
-                className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors"
                 onClick={() => toggleSort("variacion_porc")}
               >
                 %
@@ -610,14 +594,6 @@ const RankingDescartablePorCanal = ({
                   ${fmtNum(totalGenProyeccion)}
                 </td>
               )}
-
-              <td
-                className={`px-4 py-3 text-right ${totalGenVariacion >= 0 ? "text-green-400" : "text-red-400"
-                  }`}
-              >
-                {totalGenVariacion >= 0 ? "+" : ""}
-                ${fmtNum(Math.abs(totalGenVariacion))}
-              </td>
 
               <td className="px-4 py-3 text-right text-gray-400">—</td>
             </tr>

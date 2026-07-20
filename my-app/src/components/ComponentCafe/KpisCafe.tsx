@@ -73,8 +73,9 @@ const KpisCafe: React.FC<Props> = ({ totales, esMesActual, tendencia6Meses, anio
   };
 
   return (
-    <div>
-      {/* ── Gráfico tendencia 6 meses ─────────────────────────── */}
+    <div className="mb-10">
+
+      {/* ── GRÁFICO TENDENCIA 6 MESES ────────────────────────── */}
       <GraficoTendencia datos={tendencia6Meses ?? []} subtitulo="IIBC S.A." anioFiltro={anioFiltro} mesFiltro={mesFiltro} />
 
       {/* ── Gráfico comparativa ───────────────────────────────── */}
