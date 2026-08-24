@@ -417,3 +417,24 @@ en todas las tablas del dashboard, para vista más limpia y profesional.
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.
 - [ ] Arreglo overflow `varchar(100)` en tablas de promo → ampliado a `TEXT` (hecho en rama de fix previa).
+
+## Fix sync Odoo — facturas caídas por coordenadas corruptas (rama: `fix/odoo-sync-facturas-fixes`)
+
+Síntoma: la tabla `facturas` estaba en 0 filas. Causas encontradas: `ODOO_API_KEY` en `.env`
+corrupta (bloque duplicado, corregida manualmente); faltaban columnas
+`equipo_ventas`/`equipo_ventas_id`/`equipo_ventas_nombre` en la tabla (existían en el modelo
+Sequelize pero no en la BD, agregadas con `ALTER TABLE` manual); cliente Odoo id 262274 con
+`partner_latitude` corrupto (`-212881` sin punto decimal) tumbaba lotes completos de facturas.
+
+- [x] Validación de rango en `partner_latitude`/`partner_longitude` antes de guardar
+      (`sincronizacionOdooService.js`), para que un dato corrupto no tumbe el chunk completo.
+- [x] Log de `err.parent.detail`/`err.original.detail` en chunks fallidos, para diagnosticar
+      sin adivinar.
+- [x] Dedup en `bulkUpsertHistorial` (`syncHistorialVisitasService.js`) por
+      (customer_code, route_code, date) antes del `INSERT ON CONFLICT`.
+- [x] `docker-compose.yml`: postgres bindeado a `127.0.0.1` en vez de expuesto a todas las interfaces.
+- [x] Verificado: `node --check` (vía node del contenedor `dashboard_backend`, node 18 — el
+      node del host es v12 y no soporta optional chaining). Resultado ya probado en el server:
+      `facturas` pasó de 0 a 26,091 filas (15 jul–24 ago), 0 errores.
+- [x] Push a `origin/fix/odoo-sync-facturas-fixes`.
+      **PR:** https://github.com/cgilces/DashboardAqua/compare/main...fix/odoo-sync-facturas-fixes
