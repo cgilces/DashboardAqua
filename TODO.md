@@ -417,3 +417,35 @@ en todas las tablas del dashboard, para vista más limpia y profesional.
 - [ ] Inventario *asignado* por prendedor (`users_in_promos`): requiere que MobilVendor habilite ese
       schema en el web-service para el contexto `grupoAqua`. Solo entonces el sync ya existente lo levanta.
 - [ ] Arreglo overflow `varchar(100)` en tablas de promo → ampliado a `TEXT` (hecho en rama de fix previa).
+
+## ❌ DESCARTADO — Reporte semanal de venta de BOTELLÓN por correo
+
+**Decisión (2026-08-24): no se va a hacer.** Se reemplaza por el objetivo de abajo
+("Conector MCP remoto de ventas"). No seguir trabajando en la rama
+`feature/reporte-semanal-botellon` — queda ahí solo como referencia histórica
+(tiene un commit de este backlog, sin código de servicio todavía).
+
+- [x] ~~Reporte semanal por correo (mailer.js + cron lunes 7am + narrativa Claude)~~ — descartado.
+
+## Conector MCP remoto de ventas (MobilVendor + Odoo) — en definición
+
+Objetivo: exponer un servidor MCP remoto (custom connector para Claude) con los datos de
+ventas ya sincronizados (MobilVendor + Odoo, mismas tablas `ordenes`/`facturas`/
+`detalle_documento`/`clientes` que usa el dashboard), para que los gerentes le pregunten
+directo a su propio Claude cosas como "cuánto vendió la ruta 5 ayer" con datos reales — sin
+reportes estáticos ni cron de correo.
+
+Reemplaza el enfoque de "reporte semanal por correo" (arriba, descartado): en vez de un
+reporte empujado (push) en horario fijo, es un servidor que los gerentes consultan (pull)
+cuando quieren, desde su propio cliente Claude.
+
+- [ ] Definir alcance: qué preguntas debe responder (ventas por ruta/día, por grupo,
+      comparativas, clientes que dejaron de comprar, etc.) y qué tan "libre" vs. acotado
+      debe ser el set de herramientas (tools) que expone el MCP.
+- [ ] Decidir transporte remoto (HTTP/SSE) y autenticación del connector (quién de los
+      gerentes puede conectarse, cómo se identifica).
+- [ ] Diseñar las tools del MCP reusando funciones deterministas ya existentes del
+      dashboard (mismo principio que el chatbot: el LLM no calcula cifras, solo las pide
+      y las presenta) en vez de dejar que el modelo genere SQL libre.
+- [ ] Definir dónde vive el servidor MCP (¿dentro de `backend/` como otro proceso/ruta, o
+      servicio aparte?) y cómo se despliega en el droplet.
