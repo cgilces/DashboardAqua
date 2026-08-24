@@ -20,6 +20,17 @@ const toInt   = (v) => parseInt(v)   || 0;
 const bulkUpsertHistorial = async (registros, transaction) => {
   if (!registros.length) return;
 
+  // Deduplicar por la clave única de conflicto (codigo_cliente, codigo_ruta, fecha_visita).
+  // Si el mismo trio aparece mas de una vez en el mismo lote, Postgres rechaza el INSERT
+  // con "ON CONFLICT DO UPDATE command cannot affect row a second time". Nos quedamos
+  // con la ultima ocurrencia (la mas reciente dentro del lote).
+  const dedupMap = new Map();
+  registros.forEach((item) => {
+    const key = `${item.customer_code}|${item.route_code}|${item.date}`;
+    dedupMap.set(key, item);
+  });
+  registros = Array.from(dedupMap.values());
+
   // Construir placeholders: ($1,$2,...), ($N+1,...)
   const COLS = [
     "fecha_visita", "codigo_usuario", "codigo_ruta", "codigo_cliente",

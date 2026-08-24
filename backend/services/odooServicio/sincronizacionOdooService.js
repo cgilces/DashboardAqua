@@ -262,8 +262,13 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
       telefono_cliente: cliente.phone || cliente.mobile || null,
       contacto_cliente: cliente.name || null,
       direccion_cliente: cliente.street || null,
-      latitud_cliente: cliente.partner_latitude != null ? toNumber(cliente.partner_latitude) : null,
-      longitud_cliente: toNumber(cliente.partner_longitude) || null,
+      // Validamos rango real de coordenadas (Ecuador continental: lat ~ -5..2, lng ~ -81..-75).
+      // Usamos un margen amplio (+-1000) solo para filtrar datos corruptos de Odoo
+      // (p.ej. falta un punto decimal), sin arriesgarnos a recortar coordenadas validas.
+      latitud_cliente: (cliente.partner_latitude != null && Math.abs(cliente.partner_latitude) < 1000)
+        ? toNumber(cliente.partner_latitude) : null,
+      longitud_cliente: (cliente.partner_longitude != null && Math.abs(cliente.partner_longitude) < 1000)
+        ? toNumber(cliente.partner_longitude) : null,
       ciudad_cliente: cliente.city || null,
       pais_cliente: cliente.country_id?.[1] || null,
       industria_cliente: cliente.industry_id?.[1] || null,
@@ -965,7 +970,9 @@ const sincronizarOdooCompletoRango = async (startDate, endDate, syncState = null
       } catch (err) {
         // Un chunk fallido NO debe matar la sincronización entera.
         // Logueamos el detalle (con ids para diagnóstico) y seguimos.
-        const detalle = err?.message || err?.toString() || String(err);
+        const detalle = (err?.parent?.detail || err?.original?.detail)
+          ? `${err.message} | DETAIL: ${err.parent?.detail || err.original?.detail}`
+          : (err?.message || err?.toString() || String(err));
         const ids = chunksFacturas[i].map(f => `${f.id}:${f.name}`).join(',');
         console.error(`❌ Chunk facturas ${i + 1}/${chunksFacturas.length} FALLÓ → "${detalle}"`);
         console.error(`   IDs en el chunk: ${ids}`);
