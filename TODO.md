@@ -568,10 +568,11 @@ cuando quieren, desde su propio cliente Claude.
         ya refleja `issuer: https://mcp.aqua.com.ec/`; `/authorize` con `redirect_uri=http://...`
         ya no da 403, redirige correctamente a `accounts.google.com` con el `client_id` real y
         `redirect_uri=https://mcp.aqua.com.ec/oauth/google/callback`.
-      - **Pendiente**: probar el login real desde un navegador — una cuenta @aqua.com.ec
-        (debe aceptar) y una @gmail.com cualquiera (debe rechazar explícitamente) — el paso 2
-        solo lo probó con payloads sintéticos, no con Google real; esto requiere un humano con
-        cuentas reales en un navegador, no se puede automatizar desde acá.
+      - [x] **Login real confirmado por el usuario (2026-08-25)**: cuenta @gmail.com
+            RECHAZADA explícitamente (no dejó conectar); cuenta @aqua.com.ec ACEPTADA,
+            conector quedó conectado en Claude con las 5 tools visibles. Cierra el conector
+            MCP de ventas de punta a punta — paso 1 (tools), paso 2 (OAuth+dominio), paso 3
+            (Docker/NPM/DNS/credenciales) todos hechos y verificados con datos/logins reales.
 - [ ] Pendiente de decidir: si se quiere loggear `email + tool + parámetros + timestamp`
       de cada consulta además del login (ya hay auditoría de login en
       `mcp_oauth.login_events`, falta por-tool-call si se quiere más detalle).
