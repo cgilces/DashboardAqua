@@ -77,6 +77,16 @@ async function main() {
     await proyeccionMensual({ grupo: "PREVENTA", categoria: "DESCARTABLE" })
   );
 
+  imprimir(
+    "topProductos (grupo=PREVENTA, sin categoría explícita -> default DESCARTABLE)",
+    await topProductos({ fecha_inicio: "2026-08-01", fecha_fin: "2026-08-31", limite: 5, grupo: "PREVENTA" })
+  );
+
+  imprimir(
+    "topProductos (grupo=MAYORISTA + categoria=DESCARTABLE)",
+    await topProductos({ fecha_inicio: hace60, fecha_fin: hoy, limite: 5, grupo: "MAYORISTA", categoria: "DESCARTABLE" })
+  );
+
   await pool.end();
 }
 

@@ -59,7 +59,7 @@ const signedCol = (aliasFactura, aliasDetalle, campo) =>
 // Grupos válidos que se exponen hacia las tools (excluye 'OTROS' y NULL).
 // 'PREVENTA' es distinto a los demás: no encaja en el CASE de arriba (ese es
 // el patrón de botellonesController.js) — tiene su propia clasificación y
-// hasta su propio status válido, ver filtroPreventa() más abajo.
+// hasta su propio status válido, ver FILTRO_PREVENTA_SELLER más abajo.
 const GRUPOS_VALIDOS = [
   "MAYORISTA",
   "TIENDAS_VIP",
@@ -91,37 +91,32 @@ const CATEGORIAS_VALIDAS = [
 ];
 
 // ============================================================
-// PREVENTA — portado de ventasController.js (obtenerRankingRutasDescartable):
-// clasificación por seller_code con una regla de transición POR FECHA:
-//   < 2026-03-01           → solo 'R%' (excluye 'PVR%')
-//   2026-03-01 .. 2026-04-01 (exclusive) → 'R%' O 'PVR%' (mes de transición)
-//   >= 2026-04-01           → solo 'PVR%'
+// PREVENTA — portado de ventasController.calcularKPIsMes, la función que
+// genera el ranking real que ve un gerente en el dashboard (confirmado
+// palabra por palabra contra un cuadro real de agosto 2026, ruta por ruta).
 //
-// El código original de ventasController.js decide UNA regla por (año, mes)
-// completo (llama la función una vez por mes consultado). Las tools de este
-// MCP aceptan un rango de fechas arbitrario que puede CRUZAR esas fronteras
-// (ej. 15-feb a 15-abr 2026) — por eso este filtro evalúa la regla POR FILA,
-// usando la fecha de cada fila, en vez de una sola regla para todo el rango.
-// Para cualquier rango que caiga completo dentro de una sola era, esto da
-// exactamente el mismo resultado que el código original.
+// OJO: una versión anterior de este archivo usaba la lógica de
+// "RANKING RUTAS R (R%/PVR%)" (obtenerRankingRutasDescartable) para
+// PREVENTA — eso fue un ERROR: esa función es sobre una migración de
+// nomenclatura de rutas rurales (R% pasando a llamarse PVR%), NO sobre
+// PREVENTA. La definición real de PREVENTA EXCLUYE 'PVR%' explícitamente.
+//
+// Filtro de ruta: PV%/PREVENTA%/TELEVENTA%, excluyendo PVR%.
+// Además: o.type = 2, o.status = 5, dd.codigo_categoria = '7' (DESCARTABLE)
+// — el propio código fuente comenta que sin el filtro de categoría se
+// inflaba cada ruta con líneas no-descartable/anticipos/envíos, y que
+// codigo_categoria='7' es lo que cuadra con la guía de entrega de
+// MobilVendor. Por eso, a diferencia de los demás grupos, PREVENTA no
+// acepta una `categoria` distinta a DESCARTABLE — no es un filtro opcional
+// independiente, es parte de la definición validada de "PREVENTA".
+// Fecha: o.fecha_entrega (no fecha_creacion). Solo `ordenes`, sin `facturas`
+// ni rama de pedido web (igual que la función original).
 // ============================================================
-const PREVENTA_TRANSICION_INICIO = "2026-03-01 00:00:00";
-const PREVENTA_TRANSICION_FIN = "2026-04-01 00:00:00";
+const CATEGORIA_PREVENTA = "DESCARTABLE";
 
-// aliasFecha: expresión SQL de la fecha de la fila (ej. "o.fecha_creacion" o
-//             "COALESCE(f.fecha_entrega, f.fecha_creacion)")
-// aliasSeller: expresión SQL del seller_code de la fila (ej. "o.seller_code")
-const filtroPreventa = (aliasFecha, aliasSeller) => `
-  (
-    (${aliasFecha} <  '${PREVENTA_TRANSICION_INICIO}'
-      AND ${aliasSeller} ILIKE 'R%' AND ${aliasSeller} NOT ILIKE 'PVR%')
-    OR
-    (${aliasFecha} >= '${PREVENTA_TRANSICION_INICIO}' AND ${aliasFecha} < '${PREVENTA_TRANSICION_FIN}'
-      AND (${aliasSeller} ILIKE 'R%' OR ${aliasSeller} ILIKE 'PVR%'))
-    OR
-    (${aliasFecha} >= '${PREVENTA_TRANSICION_FIN}'
-      AND ${aliasSeller} ILIKE 'PVR%')
-  )
+const FILTRO_PREVENTA_SELLER = `
+  (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
+  AND o.seller_code NOT ILIKE 'PVR%'
 `;
 
 module.exports = {
@@ -131,7 +126,6 @@ module.exports = {
   signedCol,
   GRUPOS_VALIDOS,
   CATEGORIAS_VALIDAS,
-  filtroPreventa,
-  PREVENTA_TRANSICION_INICIO,
-  PREVENTA_TRANSICION_FIN,
+  FILTRO_PREVENTA_SELLER,
+  CATEGORIA_PREVENTA,
 };

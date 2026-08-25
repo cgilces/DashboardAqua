@@ -10,7 +10,7 @@
     "test:seguridad": "node test/seguridad-smoke-test.js",
     "test:oauth": "node test/oauth-smoke-test.js",
     "test:dias-festivos-sync": "node test/diasFestivos-sync.test.js",
-    "test:preventa-transicion": "node test/preventa-transicion.test.js"
+    "test:preventa-real": "node test/preventa-real.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

@@ -8,7 +8,8 @@ const {
   CASE_GRUPO_FACTURAS,
   GRUPOS_VALIDOS,
   CATEGORIAS_VALIDAS,
-  filtroPreventa,
+  FILTRO_PREVENTA_SELLER,
+  CATEGORIA_PREVENTA,
 } = require("../sql/clasificacion");
 
 const MAX_RANGO_DIAS = 400;
@@ -76,46 +77,31 @@ const SQL = `
 `;
 
 // ============================================================
-// PREVENTA — clasificación y status distintos (ver clasificacion.js), no
-// encaja en el CASE genérico de arriba. Portado de
-// ventasController.obtenerRankingRutasDescartable: status = 5 (no 2 — se
-// confirmó contra datos reales que status=2 solo captura ~1% del monto real
-// de PREVENTA), sin filtro de origen_sistema (PVR%/R% son códigos exclusivos
-// de MobilVendor, no hay ambigüedad con Odoo), sin rama de pedido web.
+// PREVENTA — ver clasificacion.js (FILTRO_PREVENTA_SELLER) para el porqué
+// de cada pieza: status=5 (no 2), type=2, fecha_entrega (no fecha_creacion),
+// sin rama de facturas ni de pedido web (calcularKPIsMes solo usa `ordenes`).
+//
+// A diferencia de los demás grupos, PREVENTA SIEMPRE necesita una categoría
+// concreta (nunca "todas") — si no se especifica, se usa DESCARTABLE (la
+// definición validada contra la guía de entrega), pero se puede pedir otra
+// (ej. BOTELLÓN) para ver qué más venden esas rutas fuera del ranking
+// oficial — eso ya no es el KPI validado, es una consulta exploratoria más.
 // $1 = inicio (timestamp), $2 = fin exclusivo (timestamp), $3 = categoria.
 // ============================================================
 const SQL_PREVENTA = `
-  WITH base AS (
-    SELECT
-      o.seller_code AS ruta,
-      dd.cantidad AS unidades,
-      dd.total    AS dolares,
-      dd.descripcion_categoria AS categoria
-    FROM ordenes o
-    JOIN detalle_documento dd ON dd.documento_code = o.code
-    WHERE o.status = 5
-      AND ${filtroPreventa("COALESCE(o.fecha_entrega, o.fecha_creacion)", "o.seller_code")}
-      AND COALESCE(o.fecha_entrega, o.fecha_creacion) >= $1
-      AND COALESCE(o.fecha_entrega, o.fecha_creacion) <  $2
-
-    UNION ALL
-
-    SELECT
-      f.seller_code AS ruta,
-      CASE WHEN f.tipo_movimiento = 'out_refund' THEN -dd.cantidad ELSE dd.cantidad END AS unidades,
-      CASE WHEN f.tipo_movimiento = 'out_refund' THEN -dd.total    ELSE dd.total    END AS dolares,
-      dd.descripcion_categoria AS categoria
-    FROM facturas f
-    JOIN detalle_documento dd ON dd.documento_code = f.code
-    WHERE f.status = 5
-      AND ${filtroPreventa("COALESCE(f.fecha_entrega, f.fecha_creacion)", "f.seller_code")}
-      AND COALESCE(f.fecha_entrega, f.fecha_creacion) >= $1
-      AND COALESCE(f.fecha_entrega, f.fecha_creacion) <  $2
-  )
-  SELECT ruta, SUM(unidades) AS unidades, SUM(dolares) AS dolares
-  FROM base
-  WHERE ($3::text IS NULL OR categoria = $3)
-  GROUP BY ruta
+  SELECT
+    o.seller_code AS ruta,
+    SUM(dd.cantidad) AS unidades,
+    SUM(dd.total)    AS dolares
+  FROM ordenes o
+  JOIN detalle_documento dd ON dd.documento_code = o.code
+  WHERE o.type = 2
+    AND o.status = 5
+    AND ${FILTRO_PREVENTA_SELLER}
+    AND dd.descripcion_categoria = $3
+    AND o.fecha_entrega >= $1
+    AND o.fecha_entrega <  $2
+  GROUP BY o.seller_code
   ORDER BY dolares DESC;
 `;
 
@@ -125,7 +111,8 @@ async function totalesGrupo(grupo, inicioTs, finTs, categoria) {
 }
 
 async function totalesPreventa(inicioTs, finTs, categoria) {
-  const { rows } = await pool.query(SQL_PREVENTA, [inicioTs, finTs, categoria ?? null]);
+  const categoriaEfectiva = categoria || CATEGORIA_PREVENTA;
+  const { rows } = await pool.query(SQL_PREVENTA, [inicioTs, finTs, categoriaEfectiva]);
   return sumarFilas(rows);
 }
 
@@ -167,7 +154,7 @@ async function ventasPorGrupo({ grupo, categoria, fecha_inicio, fecha_fin }) {
 
   return {
     grupo,
-    categoria: categoria || null,
+    categoria: esPreventa ? categoria || CATEGORIA_PREVENTA : categoria || null,
     unidades_totales: actual.totales.unidades,
     dolares_totales: Number(actual.totales.dolares.toFixed(2)),
     por_ruta: actual.rows.map((r) => ({

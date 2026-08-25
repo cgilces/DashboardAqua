@@ -46,7 +46,7 @@ function crearServer() {
     "ventasPorGrupo",
     {
       description:
-        "Ventas totales de un grupo de canal (MAYORISTA, TIENDAS, TIENDAS_VIP, RURAL, DOMICILIO, EMPRESAS, VIP, QUITO, PREVENTA) en un rango de fechas, con categoría de producto opcional (BOTELLÓN, DESCARTABLE, HIELO, CAFÉ, PLUS, SUSCRIPCION, PT-DISTRINTER, PT-COTTSA, PT-IIBC, SERVICIOS, GASTOS GENERALES), desglosado por ruta, con comparación vs. el periodo anterior de igual duración.",
+        "Ventas totales de un grupo de canal (MAYORISTA, TIENDAS, TIENDAS_VIP, RURAL, DOMICILIO, EMPRESAS, VIP, QUITO, PREVENTA) en un rango de fechas, con categoría de producto opcional (BOTELLÓN, DESCARTABLE, HIELO, CAFÉ, PLUS, SUSCRIPCION, PT-DISTRINTER, PT-COTTSA, PT-IIBC, SERVICIOS, GASTOS GENERALES), desglosado por ruta, con comparación vs. el periodo anterior de igual duración. Para PREVENTA, si no se especifica categoría se usa DESCARTABLE por default (coincide con el ranking oficial del dashboard); se puede pedir otra categoría (ej. BOTELLÓN) para ver qué más venden esas rutas fuera del ranking oficial.",
       inputSchema: schemaVentasPorGrupo,
     },
     async (args) => resultadoTexto(await ventasPorGrupo(args))
@@ -65,7 +65,8 @@ function crearServer() {
   server.registerTool(
     "topProductos",
     {
-      description: "Ranking de productos más vendidos (por dólares) en un rango de fechas.",
+      description:
+        "Ranking de productos más vendidos (por dólares) en un rango de fechas. Grupo y categoría opcionales para acotar (mismos valores que ventasPorGrupo) — ej. productos de PREVENTA en categoría DESCARTABLE. Para PREVENTA, si no se especifica categoría se usa DESCARTABLE por default.",
       inputSchema: schemaTopProductos,
     },
     async (args) => resultadoTexto(await topProductos(args))

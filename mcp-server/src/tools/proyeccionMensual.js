@@ -13,7 +13,7 @@
 // mcp-server/src/util/diasFestivos.js — test/diasFestivos-sync.test.js
 // falla si esa copia se desincroniza del backend.
 const { z } = require("zod");
-const { GRUPOS_VALIDOS, CATEGORIAS_VALIDAS } = require("../sql/clasificacion");
+const { GRUPOS_VALIDOS, CATEGORIAS_VALIDAS, CATEGORIA_PREVENTA } = require("../sql/clasificacion");
 const { totalesGrupo, totalesPreventa } = require("./ventasPorGrupo");
 const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require("../util/diasFestivos");
 
@@ -101,7 +101,7 @@ async function proyeccionMensual({ anio, mes, grupo, categoria } = {}) {
     anio: anioReal,
     mes: mesReal,
     grupo: grupo || null,
-    categoria: categoria || null,
+    categoria: grupo === "PREVENTA" ? categoria || CATEGORIA_PREVENTA : categoria || null,
     es_mes_actual: esMesActual,
     dolares_actual: Number(totales.dolares.toFixed(2)),
     unidades_actual: totales.unidades,

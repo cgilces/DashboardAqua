@@ -588,49 +588,63 @@ en categoría descartable" y "cuánto se proyecta vender este mes con los días 
   real confirmado con datos: BOTELLÓN(5), DESCARTABLE(7), HIELO(40), CAFÉ(6), PLUS(41),
   SUSCRIPCION(45), PT-DISTRINTER(28), PT-COTTSA(30), PT-IIBC(26), SERVICIOS(37),
   GASTOS GENERALES(11) — más 3 "All / ..." genéricos de Odoo sin valor de negocio, excluidos.
-- **PREVENTA no es parte del CASE de `GRUPOS` de botellón** — es una clasificación
-  totalmente distinta (`ventasController.js`): allowlist de rutas + una regla de
-  **transición por fecha** (< mar-2026 → `R%` sin `PVR%`; mar-2026 → `R%` o `PVR%`;
-  desde abr-2026 → solo `PVR%`), y usa **`status=5`**, no `status=2` como botellón
-  (confirmado con datos reales: `status=2` solo capturaba ~1% del monto real de PREVENTA).
-- PREVENTA y DESCARTABLE son ejes independientes (hay BOTELLÓN vendido por rutas PREVENTA
-  y DESCARTABLE vendido por MAYORISTA/RURAL/TIENDAS) — dos parámetros separados, no uno.
 - La fórmula de proyección (`(actual/díasTranscurridos)*díasLaborablesMes`, días **hábiles**
   de `backend/utils/diasFestivos.js`) es una sola fuente de verdad reusada en todo el
   dashboard (botellón, café, hielo, plus, preventa, cotsa) — sin nada más sofisticado.
 
+### ⚠️ Bug real de la primera implementación de PREVENTA — encontrado y corregido
+
+La primera versión de `grupo=PREVENTA` usaba la lógica de "RANKING RUTAS R (R%/PVR%)"
+(`obtenerRankingRutasDescartable` en `ventasController.js`) — **eso era un error**: esa
+función es sobre una migración de nomenclatura de rutas rurales (R% pasando a llamarse
+PVR%), no sobre PREVENTA. El usuario lo detectó comparando contra un cuadro real del
+dashboard (rutas PV1-PV14/PVM/PVM2/PVQ1/TELEVENTA 1, $167.834,15 en agosto) — nada que
+ver con las PVR1-PVR5 que devolvía la tool. Causa: confundí dos funciones distintas del
+mismo archivo.
+
+**Definición real y validada** (`calcularKPIsMes` en `ventasController.js`, confirmada
+palabra por palabra contra el cuadro real, ruta por ruta y total):
+```sql
+o.type = 2 AND o.status = 5
+AND dd.codigo_categoria = '7'   -- DESCARTABLE, incrustado en la definición
+AND (seller_code ILIKE 'PV%' OR ILIKE 'PREVENTA%' OR ILIKE 'TELEVENTA%')
+AND seller_code NOT ILIKE 'PVR%'   -- justo lo que la versión anterior SÍ incluía, por error
+AND o.fecha_entrega >= inicio AND < fin   -- no fecha_creacion
+```
+Julio 2026 con este filtro correcto: $112.958,76 (2.413 documentos) — la versión anterior
+daba 0, y no era un hueco de sync, era la clasificación equivocada.
+
+**Decisión de diseño** (confirmada con el usuario tras el hallazgo): PREVENTA no es
+"grupo + categoría independientes" como los demás grupos — `codigo_categoria='7'` viene
+incrustado en la propia definición de "PREVENTA" (así se validó contra la guía de entrega).
+Si no se pasa `categoria`, se usa DESCARTABLE por default (coincide exacto con el ranking
+oficial). Si se pide otra categoría (ej. BOTELLÓN), **ya no es un error** — es una consulta
+exploratoria legítima sobre las mismas rutas ("¿cuánto ha vendido PREVENTA en botellón?"),
+solo que deja de ser el KPI oficial.
+
 - [x] **`ventasPorGrupo` extendido**: parámetro opcional `categoria` (enum cerrado del
-      catálogo real, `AND descripcion_categoria = $N` sobre la query existente) + `'PREVENTA'`
-      agregado a `GRUPOS_VALIDOS` con su **propio camino de código** (no metido en el CASE
-      genérico): `SQL_PREVENTA` en `ventasPorGrupo.js`, con `filtroPreventa()`
-      (`src/sql/clasificacion.js`) evaluando la regla de transición **por fila** (no por mes
-      completo como el original) para poder aceptar cualquier rango de fechas, incluso uno
-      que cruce las fronteras de la transición.
-- [x] **Tool nueva `proyeccionMensual`**: `{ anio?, mes?, grupo?, categoria? }` → totales
-      reales + insumos de la proyección (días transcurridos/totales) + proyección
-      dólares/unidades. Reusa `totalesGrupo`/`totalesPreventa` (exportados desde
-      `ventasPorGrupo.js`, una sola fuente de verdad) para los totales, y una copia exacta
-      de `diasFestivos.js` para los días hábiles. Sin `grupo`, suma los 9 grupos + PREVENTA
-      (total empresa). Mes cerrado → real sin proyectar (igual que el dashboard).
+      catálogo real) + `'PREVENTA'` agregado a `GRUPOS_VALIDOS` con su **propio camino de
+      código** (`SQL_PREVENTA` en `ventasPorGrupo.js`, usando `FILTRO_PREVENTA_SELLER` de
+      `clasificacion.js` — la definición real de arriba, no la de la primera versión).
+- [x] **`topProductos` extendido**: mismos parámetros opcionales `grupo`/`categoria` (antes
+      solo tenía fecha/límite) — permite "productos de PREVENTA en categoría DESCARTABLE"
+      o "productos de MAYORISTA en categoría DESCARTABLE", no solo el ranking general.
+- [x] **Tool `proyeccionMensual`**: `{ anio?, mes?, grupo?, categoria? }` → totales reales +
+      insumos de la proyección (días transcurridos/totales) + proyección dólares/unidades.
+      Reusa `totalesGrupo`/`totalesPreventa` (exportados desde `ventasPorGrupo.js`, una sola
+      fuente de verdad) + la copia de `diasFestivos.js`. Sin `grupo`, suma los 9 grupos +
+      PREVENTA (total empresa). Mes cerrado → real sin proyectar (igual que el dashboard).
 - [x] **Copia de `diasFestivos.js`** en `mcp-server/src/util/` (proyecto Node separado, sin
-      acceso a `backend/`) — nota cruzada agregada en AMBOS archivos avisando de la
-      sincronización. **`test/diasFestivos-sync.test.js`** compara el contenido byte a byte
-      y falla explícito si se desincronizan (ej. si alguien actualiza feriados 2027 en el
-      backend y se olvida de la copia).
-- [x] **`test/preventa-transicion.test.js`**: la transición real (feb-abr 2026) no tiene
-      datos sincronizados todavía, así que el test prueba la expresión SQL real de
-      `filtroPreventa()` contra filas **sintéticas** (`VALUES` literal, evaluado por el
-      motor real de Postgres) — 13 casos cubriendo las 3 eras y las 4 fronteras exactas
-      (`2026-02-28 23:59:59` / `2026-03-01 00:00:00` / `2026-03-31 23:59:59` /
-      `2026-04-01 00:00:00`), todos verificados.
-- [x] **Seguridad**: `categoria` es un enum cerrado de zod (un payload de inyección no
-      matchea ningún valor válido, se rechaza antes de la query); aun bypaseando zod y
-      llamando la función interna directo, `pg` lo trata como parámetro posicional literal
-      — verificado que ni `ordenes` ni `detalle_documento` se ven afectados. Sin tablas ni
-      roles nuevos — todo dentro del `GRANT SELECT` que ya tiene `mcp_readonly`.
-- [x] Probado contra datos reales (jul-ago 2026): `MAYORISTA+DESCARTABLE` da 12 unidades/
-      $39.60 (existe, es real, aunque MAYORISTA es sobre todo BOTELLÓN); `PREVENTA` solo da
-      $48,893.15 (coincide exacto con el chequeo de status=5 hecho antes de implementar);
-      `PREVENTA+DESCARTABLE` da $47,793.19 (menos que PREVENTA solo — confirma que PREVENTA
-      también vende algo de BOTELLÓN); `listTools()` ya devuelve 6 tools vía el protocolo
-      MCP real (antes 5).
+      acceso a `backend/`) — nota cruzada en AMBOS archivos avisando de la sincronización.
+      `test/diasFestivos-sync.test.js` compara el contenido byte a byte y falla explícito si
+      se desincronizan.
+- [x] **`test/preventa-real.test.js`** (reemplaza a `test/preventa-transicion.test.js`,
+      borrado — esa lógica de transición nunca fue de PREVENTA): valida `grupo=PREVENTA`
+      contra el cuadro real de agosto 2026 que pegó el usuario — las 16 rutas exactas +
+      el total ($167.834,15), julio con ventas reales (ya no 0), y que
+      `PREVENTA + categoria=BOTELLÓN` ya no lanza error.
+- [x] **Seguridad**: `categoria`/`grupo` son enums cerrados de zod; aun bypaseando zod y
+      llamando la función interna directo, `pg` lo trata como parámetro posicional literal.
+      Sin tablas ni roles nuevos — todo dentro del `GRANT SELECT` que ya tiene `mcp_readonly`.
+- [x] Redesplegado en producción (rebuild + `docker compose up -d mcp_server`, sin tocar
+      Postgres) y verificado con las 6 tools vía el protocolo MCP real.
