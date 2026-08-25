@@ -57,6 +57,9 @@ const signedCol = (aliasFactura, aliasDetalle, campo) =>
   `CASE WHEN ${aliasFactura}.tipo_movimiento = 'out_refund' THEN -${aliasDetalle}.${campo} ELSE ${aliasDetalle}.${campo} END`;
 
 // Grupos válidos que se exponen hacia las tools (excluye 'OTROS' y NULL).
+// 'PREVENTA' es distinto a los demás: no encaja en el CASE de arriba (ese es
+// el patrón de botellonesController.js) — tiene su propia clasificación y
+// hasta su propio status válido, ver filtroPreventa() más abajo.
 const GRUPOS_VALIDOS = [
   "MAYORISTA",
   "TIENDAS_VIP",
@@ -67,7 +70,59 @@ const GRUPOS_VALIDOS = [
   "EMPRESAS",
   "VIP",
   "QUITO",
+  "PREVENTA",
 ];
+
+// Categorías de producto reales (detalle_documento.descripcion_categoria),
+// confirmadas contra datos reales — se excluyen los "All / ..." genéricos de
+// Odoo (sin valor de negocio, son un catch-all de sincronización).
+const CATEGORIAS_VALIDAS = [
+  "BOTELLÓN",
+  "DESCARTABLE",
+  "HIELO",
+  "CAFÉ",
+  "PLUS",
+  "SUSCRIPCION",
+  "PT-DISTRINTER",
+  "PT-COTTSA",
+  "PT-IIBC",
+  "SERVICIOS",
+  "GASTOS GENERALES",
+];
+
+// ============================================================
+// PREVENTA — portado de ventasController.js (obtenerRankingRutasDescartable):
+// clasificación por seller_code con una regla de transición POR FECHA:
+//   < 2026-03-01           → solo 'R%' (excluye 'PVR%')
+//   2026-03-01 .. 2026-04-01 (exclusive) → 'R%' O 'PVR%' (mes de transición)
+//   >= 2026-04-01           → solo 'PVR%'
+//
+// El código original de ventasController.js decide UNA regla por (año, mes)
+// completo (llama la función una vez por mes consultado). Las tools de este
+// MCP aceptan un rango de fechas arbitrario que puede CRUZAR esas fronteras
+// (ej. 15-feb a 15-abr 2026) — por eso este filtro evalúa la regla POR FILA,
+// usando la fecha de cada fila, en vez de una sola regla para todo el rango.
+// Para cualquier rango que caiga completo dentro de una sola era, esto da
+// exactamente el mismo resultado que el código original.
+// ============================================================
+const PREVENTA_TRANSICION_INICIO = "2026-03-01 00:00:00";
+const PREVENTA_TRANSICION_FIN = "2026-04-01 00:00:00";
+
+// aliasFecha: expresión SQL de la fecha de la fila (ej. "o.fecha_creacion" o
+//             "COALESCE(f.fecha_entrega, f.fecha_creacion)")
+// aliasSeller: expresión SQL del seller_code de la fila (ej. "o.seller_code")
+const filtroPreventa = (aliasFecha, aliasSeller) => `
+  (
+    (${aliasFecha} <  '${PREVENTA_TRANSICION_INICIO}'
+      AND ${aliasSeller} ILIKE 'R%' AND ${aliasSeller} NOT ILIKE 'PVR%')
+    OR
+    (${aliasFecha} >= '${PREVENTA_TRANSICION_INICIO}' AND ${aliasFecha} < '${PREVENTA_TRANSICION_FIN}'
+      AND (${aliasSeller} ILIKE 'R%' OR ${aliasSeller} ILIKE 'PVR%'))
+    OR
+    (${aliasFecha} >= '${PREVENTA_TRANSICION_FIN}'
+      AND ${aliasSeller} ILIKE 'PVR%')
+  )
+`;
 
 module.exports = {
   CASE_GRUPO_ORDENES,
@@ -75,4 +130,8 @@ module.exports = {
   CASE_GRUPO_FACTURAS,
   signedCol,
   GRUPOS_VALIDOS,
+  CATEGORIAS_VALIDAS,
+  filtroPreventa,
+  PREVENTA_TRANSICION_INICIO,
+  PREVENTA_TRANSICION_FIN,
 };

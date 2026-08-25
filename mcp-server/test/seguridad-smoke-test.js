@@ -6,6 +6,7 @@
 require("dotenv").config();
 const { z } = require("zod");
 const { ventasPorRuta, inputSchema } = require("../src/tools/ventasPorRuta");
+const { ventasPorGrupo, totalesGrupo, totalesPreventa, inputSchema: inputSchemaGrupo } = require("../src/tools/ventasPorGrupo");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -26,6 +27,34 @@ async function main() {
   const { rows } = await pool.query("SELECT to_regclass('ordenes') AS existe");
   if (!rows[0].existe) throw new Error("FALLO: la tabla ordenes ya no existe (inyección exitosa)");
   console.log("OK: la tabla `ordenes` sigue existiendo intacta.");
+
+  // 3) Nuevos parámetros de ventasPorGrupo (categoria, grupo=PREVENTA):
+  //    ambos son enums cerrados de zod — un payload de inyección ni siquiera
+  //    matchea un valor válido del enum, se rechaza antes de la query.
+  const payloadCategoria = "DESCARTABLE'; DROP TABLE detalle_documento; --";
+  const schemaGrupo = z.object(inputSchemaGrupo);
+  const parseoCategoria = schemaGrupo.safeParse({
+    grupo: "MAYORISTA",
+    categoria: payloadCategoria,
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (parseoCategoria.success) throw new Error("FALLO: zod aceptó un payload de inyección en `categoria`");
+  console.log("OK: zod rechazó el payload de inyección en `categoria` ->", parseoCategoria.error.issues[0].message);
+
+  // 4) Aunque alguien se salte zod y llame la función interna directo con el
+  //    payload como `categoria` (bypaseando el enum), pg debe seguir
+  //    tratándolo como texto literal — se usa como parámetro posicional
+  //    ($4/$3) en ambas queries (la genérica y la de PREVENTA).
+  const resultadoCategoria = await totalesGrupo("MAYORISTA", "2026-01-01 00:00:00", "2026-01-31 00:00:00", payloadCategoria);
+  console.log("OK: totalesGrupo con categoria maliciosa no lanzó error de sintaxis ->", JSON.stringify(resultadoCategoria.totales));
+
+  const resultadoPreventa = await totalesPreventa("2026-01-01 00:00:00", "2026-01-31 00:00:00", payloadCategoria);
+  console.log("OK: totalesPreventa con categoria maliciosa no lanzó error de sintaxis ->", JSON.stringify(resultadoPreventa.totales));
+
+  const { rows: rowsDD } = await pool.query("SELECT to_regclass('detalle_documento') AS existe");
+  if (!rowsDD[0].existe) throw new Error("FALLO: la tabla detalle_documento ya no existe (inyección exitosa)");
+  console.log("OK: la tabla `detalle_documento` sigue existiendo intacta.");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");

@@ -23,6 +23,7 @@ const { ventasPorGrupo, inputSchema: schemaVentasPorGrupo } = require("./tools/v
 const { resumenDiario, inputSchema: schemaResumenDiario } = require("./tools/resumenDiario");
 const { topProductos, inputSchema: schemaTopProductos } = require("./tools/topProductos");
 const { clientesInactivos, inputSchema: schemaClientesInactivos } = require("./tools/clientesInactivos");
+const { proyeccionMensual, inputSchema: schemaProyeccionMensual } = require("./tools/proyeccionMensual");
 
 function resultadoTexto(objeto) {
   return { content: [{ type: "text", text: JSON.stringify(objeto, null, 2) }] };
@@ -45,7 +46,7 @@ function crearServer() {
     "ventasPorGrupo",
     {
       description:
-        "Ventas totales de un grupo de canal (MAYORISTA, TIENDAS, TIENDAS_VIP, RURAL, DOMICILIO, EMPRESAS, VIP, QUITO) en un rango de fechas, desglosado por ruta, con comparación vs. el periodo anterior de igual duración.",
+        "Ventas totales de un grupo de canal (MAYORISTA, TIENDAS, TIENDAS_VIP, RURAL, DOMICILIO, EMPRESAS, VIP, QUITO, PREVENTA) en un rango de fechas, con categoría de producto opcional (BOTELLÓN, DESCARTABLE, HIELO, CAFÉ, PLUS, SUSCRIPCION, PT-DISTRINTER, PT-COTTSA, PT-IIBC, SERVICIOS, GASTOS GENERALES), desglosado por ruta, con comparación vs. el periodo anterior de igual duración.",
       inputSchema: schemaVentasPorGrupo,
     },
     async (args) => resultadoTexto(await ventasPorGrupo(args))
@@ -78,6 +79,16 @@ function crearServer() {
       inputSchema: schemaClientesInactivos,
     },
     async (args) => resultadoTexto(await clientesInactivos(args))
+  );
+
+  server.registerTool(
+    "proyeccionMensual",
+    {
+      description:
+        "Proyección de venta mensual (run-rate) con la misma fórmula y días hábiles que ya usa el dashboard (excluye domingos y feriados nacionales). Por defecto proyecta el mes en curso, la empresa completa; acepta año/mes, grupo y categoría opcionales para acotar. Un mes ya cerrado devuelve el real sin proyectar.",
+      inputSchema: schemaProyeccionMensual,
+    },
+    async (args) => resultadoTexto(await proyeccionMensual(args))
   );
 
   return server;

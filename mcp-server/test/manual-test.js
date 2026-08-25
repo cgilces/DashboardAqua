@@ -8,6 +8,7 @@ const { ventasPorGrupo } = require("../src/tools/ventasPorGrupo");
 const { resumenDiario } = require("../src/tools/resumenDiario");
 const { topProductos } = require("../src/tools/topProductos");
 const { clientesInactivos } = require("../src/tools/clientesInactivos");
+const { proyeccionMensual } = require("../src/tools/proyeccionMensual");
 const { pool } = require("../src/db");
 
 function imprimir(titulo, obj) {
@@ -52,6 +53,28 @@ async function main() {
   imprimir(
     "topProductos",
     await topProductos({ fecha_inicio: hace60, fecha_fin: hoy, limite: 5 })
+  );
+
+  imprimir(
+    "ventasPorGrupo (MAYORISTA + categoria=DESCARTABLE)",
+    await ventasPorGrupo({ grupo: "MAYORISTA", categoria: "DESCARTABLE", fecha_inicio: hace60, fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasPorGrupo (PREVENTA, sin categoría)",
+    await ventasPorGrupo({ grupo: "PREVENTA", fecha_inicio: hace60, fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasPorGrupo (PREVENTA + categoria=DESCARTABLE)",
+    await ventasPorGrupo({ grupo: "PREVENTA", categoria: "DESCARTABLE", fecha_inicio: hace60, fecha_fin: hoy })
+  );
+
+  imprimir("proyeccionMensual (mes actual, empresa completa)", await proyeccionMensual({}));
+
+  imprimir(
+    "proyeccionMensual (mes actual, grupo=PREVENTA, categoria=DESCARTABLE)",
+    await proyeccionMensual({ grupo: "PREVENTA", categoria: "DESCARTABLE" })
   );
 
   await pool.end();
