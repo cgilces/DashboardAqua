@@ -539,14 +539,39 @@ cuando quieren, desde su propio cliente Claude.
         correcto, datos intactos, `dashboard_backend`/`mcp_server` sanos.
         **Pendiente real**: mergear `fix/odoo-sync-facturas-fixes` a `main` pronto para
         que esto no se repita cada vez que una rama vieja haga `docker compose up`.
-- [ ] **Paso 3b — pendiente, depende de DNS/credenciales reales:** Proxy Host en NPM para
-      `mcp.aqua.com.ec` (requiere confirmar que el DNS ya apunta al droplet) + cambiar
-      `MCP_ISSUER_URL` a `https://mcp.aqua.com.ec` + pegar `GOOGLE_CLIENT_ID`/
-      `GOOGLE_CLIENT_SECRET` reales en `mcp-server/.env` (Authorized redirect URI en
-      Google Cloud Console: registrar tanto `http://localhost:8787/oauth/google/callback`
-      como `https://mcp.aqua.com.ec/oauth/google/callback`) + probar el login real con
-      una cuenta @aqua.com.ec y confirmar que una cuenta fuera de dominio se rechaza en
-      la práctica (el paso 2 solo lo probó con payloads sintéticos, no con Google real).
+- [x] **Paso 3b — DNS + credenciales reales + Proxy Host, hecho:**
+      - Confirmado: DNS de `mcp.aqua.com.ec` ya apuntaba a `138.197.96.145`, y
+        `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` reales ya estaban puestos en
+        `mcp-server/.env` (verificado por formato, sin exponer el secreto completo en el chat).
+      - `MCP_ISSUER_URL` cambiado a `https://mcp.aqua.com.ec`.
+      - Proxy Host en NPM: `mcp.aqua.com.ec` → `mcp_server:8787`, `scheme=http` (no `https` —
+        a diferencia de Portainer, `mcp_server` no expone TLS interno, así que **no** lleva
+        `proxy_ssl_verify off;`).
+      - `docker compose up -d mcp_server` (no `restart` — un `restart` NO relee `env_file`,
+        hace falta recrear el contenedor para que tome el `.env` actualizado). Confirmado que
+        `dashboard_postgres` NO se recreó esta vez (el fix del binding ya estaba en esta rama).
+      - **Hallazgo real**: el toggle "Block Common Exploits" de NPM daba **403 falso positivo**
+        en `/authorize` por esta regla de `block-exploits.conf`:
+        ```
+        if ($query_string ~ "[a-zA-Z0-9_]=http://") { set $block_file_injections 1; }
+        ```
+        (pensada contra remote-file-inclusion tipo PHP viejo) — cualquier `redirect_uri=http://...`
+        en la query string de OAuth la dispara. Con `redirect_uri=https://...` no la dispara
+        (el connector real de Claude.ai usa `https`, así que en la práctica no debería haber
+        afectado el login real — pero un cliente nativo/CLI con `redirect_uri=http://127.0.0.1:...`
+        sí la dispararía, y eso es un patrón válido y común en OAuth para apps nativas). **Se apagó
+        "Block Common Exploits" SOLO en el proxy host de `mcp.aqua.com.ec`** (los demás
+        subdominios lo mantienen). Razón para no reactivarlo sin saber esto: nuestra propia
+        app ya valida todo con `zod` + el SDK de OAuth — el WAF genérico de NPM no agrega
+        protección real acá, solo genera falsos positivos contra parámetros OAuth legítimos.
+      - Verificado con curl real (no solo local): `/.well-known/oauth-authorization-server`
+        ya refleja `issuer: https://mcp.aqua.com.ec/`; `/authorize` con `redirect_uri=http://...`
+        ya no da 403, redirige correctamente a `accounts.google.com` con el `client_id` real y
+        `redirect_uri=https://mcp.aqua.com.ec/oauth/google/callback`.
+      - **Pendiente**: probar el login real desde un navegador — una cuenta @aqua.com.ec
+        (debe aceptar) y una @gmail.com cualquiera (debe rechazar explícitamente) — el paso 2
+        solo lo probó con payloads sintéticos, no con Google real; esto requiere un humano con
+        cuentas reales en un navegador, no se puede automatizar desde acá.
 - [ ] Pendiente de decidir: si se quiere loggear `email + tool + parámetros + timestamp`
       de cada consulta además del login (ya hay auditoría de login en
       `mcp_oauth.login_events`, falta por-tool-call si se quiere más detalle).
