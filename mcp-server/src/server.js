@@ -1,15 +1,22 @@
 // src/server.js
 // Servidor MCP remoto de solo lectura sobre ventas (MobilVendor + Odoo, ya
-// sincronizadas en Postgres). Paso 1: sin OAuth todavía (se agrega en el
-// paso 2) — este archivo expone las 5 tools sobre el transporte Streamable
-// HTTP oficial, siguiendo el patrón de sesión del ejemplo del propio SDK
+// sincronizadas en Postgres). El transporte de las tools sigue el patrón de
+// sesión del ejemplo oficial del SDK
 // (@modelcontextprotocol/sdk/dist/cjs/examples/server/simpleStreamableHttp.js).
+// La autorización (paso 2) usa el router OAuth oficial del SDK
+// (server/auth/router.js) + un OAuthServerProvider propio (./auth/provider.js)
+// que delega el login real a Google y valida el dominio (hd).
 require("dotenv").config();
 const crypto = require("crypto");
 const express = require("express");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 const { isInitializeRequest } = require("@modelcontextprotocol/sdk/types.js");
+const { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } = require("@modelcontextprotocol/sdk/server/auth/router.js");
+const { requireBearerAuth } = require("@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js");
+
+const { provider } = require("./auth/provider");
+const googleCallbackRoute = require("./auth/googleCallbackRoute");
 
 const { ventasPorRuta, inputSchema: schemaVentasPorRuta } = require("./tools/ventasPorRuta");
 const { ventasPorGrupo, inputSchema: schemaVentasPorGrupo } = require("./tools/ventasPorGrupo");
@@ -79,11 +86,34 @@ function crearServer() {
 const app = express();
 app.use(express.json());
 
+const issuerUrl = new URL(process.env.MCP_ISSUER_URL);
+const resourceServerUrl = new URL("/mcp", issuerUrl);
+
+// Instala /authorize, /token, /register, /revoke y los .well-known de
+// metadata OAuth — todo generado por el SDK a partir de nuestro provider.
+app.use(
+  mcpAuthRouter({
+    provider,
+    issuerUrl,
+    resourceServerUrl,
+    scopesSupported: ["ventas:read"],
+  })
+);
+
+// El paso intermedio del navegador (vuelta de Google) no es parte del
+// protocolo OAuth que ve Claude — es interno entre nuestro /authorize y
+// nuestro propio código de autorización.
+app.use(googleCallbackRoute);
+
+const exigirBearerToken = requireBearerAuth({
+  verifier: provider,
+  requiredScopes: ["ventas:read"],
+  resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resourceServerUrl),
+});
+
 // sessionId -> transport ya conectado a un McpServer.
 const transports = {};
 
-// NOTA paso 1: sin autenticación todavía. El paso 2 agrega el flujo OAuth con
-// Google (validación de hd=aqua.com.ec) antes de aceptar requests en /mcp.
 async function mcpPostHandler(req, res) {
   const sessionId = req.headers["mcp-session-id"];
 
@@ -148,13 +178,13 @@ async function mcpDeleteHandler(req, res) {
   await transports[sessionId].handleRequest(req, res);
 }
 
-app.post("/mcp", mcpPostHandler);
-app.get("/mcp", mcpGetHandler);
-app.delete("/mcp", mcpDeleteHandler);
+app.post("/mcp", exigirBearerToken, mcpPostHandler);
+app.get("/mcp", exigirBearerToken, mcpGetHandler);
+app.delete("/mcp", exigirBearerToken, mcpDeleteHandler);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 const PORT = Number(process.env.PORT) || 8787;
 app.listen(PORT, () => {
-  console.log(`aqua-mcp-server escuchando en :${PORT} (sin OAuth — paso 1)`);
+  console.log(`aqua-mcp-server escuchando en :${PORT} (OAuth con Google, dominio=${process.env.ALLOWED_HD})`);
 });

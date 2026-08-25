@@ -474,12 +474,49 @@ cuando quieren, desde su propio cliente Claude.
         posicional de `pg` lo trata como texto literal (tabla `ordenes` queda intacta).
       - `node --check` OK en todos los archivos (vía Node 20 en contenedor — el host tiene
         Node 12, muy viejo para `@modelcontextprotocol/sdk`/`google-auth-library`).
-- [ ] **Paso 2**: flujo OAuth con Google (`/authorize`, `/oauth/google/callback`,
-      `/token`, `/.well-known/oauth-authorization-server`, `/register`) + validación
-      `hd === 'aqua.com.ec'`.
+- [x] **Paso 2 — hecho y probado (OAuth con Google + validación de dominio):**
+      - Se usa el router OAuth oficial del SDK de MCP (`server/auth/router.js` →
+        `mcpAuthRouter`, implementando la interfaz `OAuthServerProvider`) en vez de
+        escribir `/authorize`/`/token`/`/register` a mano — el SDK valida PKCE (S256),
+        `redirect_uri` registrado, forma de los endpoints; `mcp-server/src/auth/provider.js`
+        solo decide qué pasa en cada paso.
+      - **Rechazo explícito de dominio**: `src/auth/google.js` → `validarPayloadGoogle`
+        exige `email_verified === true` Y `hd === ALLOWED_HD` exacto — cualquier otra
+        cuenta de Google (sin `hd`, o con `hd` de otro dominio) se rechaza aunque el login
+        con Google haya sido válido. El rechazo pasa por `/oauth/google/callback`
+        (`src/auth/googleCallbackRoute.js`), que NUNCA emite código de autorización si
+        `validarPayloadGoogle` lanza — solo redirige de vuelta a Claude con
+        `error=access_denied`. Cada intento (aceptado o rechazado) se audita en
+        `mcp_oauth.login_events` (email, hd, allowed, motivo).
+      - **Access token corto + refresh con rotación**: JWT propio (`src/auth/accessToken.js`,
+        `jsonwebtoken`) con `expires_in=3600` (1h) y `jti` random. El refresh token
+        (`src/auth/store.js`, tabla `mcp_oauth.refresh_tokens`, solo se guarda su hash)
+        dura 30 días pero ROTA en cada uso dentro de una transacción — el viejo queda
+        revocado apenas se usa el nuevo, así que un token filtrado deja de servir en
+        cuanto se use el legítimo una vez.
+      - **Aislamiento de datos**: el estado de OAuth vive en un esquema Postgres nuevo
+        (`mcp_oauth`, tablas `clients`/`refresh_tokens`/`login_events`) con un rol
+        dedicado (`mcp_oauth`) sin ningún acceso a las tablas de ventas — confirmado que
+        falla sobre `facturas` y que `mcp_readonly` falla sobre `mcp_oauth.*` (dos roles,
+        dos superficies de riesgo separadas).
+      - Probado de punta a punta (`test/oauth-smoke-test.js`): (A) rechazo determinístico
+        de 4 payloads sintéticos fuera de dominio + aceptación del correcto (no se puede
+        forjar la firma real de un id_token de Google sin credenciales reales, así que se
+        prueba la función de decisión real con payloads controlados); (B) ciclo OAuth
+        completo por HTTP real (`/register` → `/authorize` redirige a Google con PKCE →
+        se retoma en el punto exacto donde el callback ya validó Google+dominio → `/token`);
+        (C) un access token ya expirado y una request sin `Authorization` se rechazan con
+        401; (D) refresh token rota (el nuevo funciona, el viejo ya no) y (E) protocolo MCP
+        completo (`listTools`/`callTool`) con el `Client` oficial del SDK usando el Bearer
+        token real.
+      - `node --check` OK en todos los archivos nuevos (Node 20 en contenedor).
+      - Pendiente de mi lado (no bloqueante para el código): crear el OAuth Client ID real
+        en Google Cloud Console (tipo "Web application", redirect URI
+        `<MCP_ISSUER_URL>/oauth/google/callback`) — hoy `.env` tiene placeholders.
 - [ ] **Paso 3**: Dockerfile de `mcp-server/`, servicio nuevo en `docker-compose.yml`
       (red `aqua-network`, sin puerto publicado al host) + Proxy Host en NPM para
-      `mcp.aqua.com.ec` (requiere confirmar que el DNS ya apunta al droplet).
+      `mcp.aqua.com.ec` (requiere confirmar que el DNS ya apunta al droplet, y las
+      credenciales reales de Google Cloud Console).
 - [ ] Pendiente de decidir: si se quiere loggear `email + tool + parámetros + timestamp`
-      de cada consulta (trazabilidad sobre cifras financieras, acceso es uniforme pero
-      sin auditoría todavía).
+      de cada consulta además del login (ya hay auditoría de login en
+      `mcp_oauth.login_events`, falta por-tool-call si se quiere más detalle).
