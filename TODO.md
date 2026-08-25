@@ -427,7 +427,7 @@ en todas las tablas del dashboard, para vista más limpia y profesional.
 
 - [x] ~~Reporte semanal por correo (mailer.js + cron lunes 7am + narrativa Claude)~~ — descartado.
 
-## Conector MCP remoto de ventas (MobilVendor + Odoo) — en definición
+## Conector MCP remoto de ventas (MobilVendor + Odoo) — rama: `feature/mcp-server-ventas`
 
 Objetivo: exponer un servidor MCP remoto (custom connector para Claude) con los datos de
 ventas ya sincronizados (MobilVendor + Odoo, mismas tablas `ordenes`/`facturas`/
@@ -439,13 +439,47 @@ Reemplaza el enfoque de "reporte semanal por correo" (arriba, descartado): en ve
 reporte empujado (push) en horario fijo, es un servidor que los gerentes consultan (pull)
 cuando quieren, desde su propio cliente Claude.
 
-- [ ] Definir alcance: qué preguntas debe responder (ventas por ruta/día, por grupo,
-      comparativas, clientes que dejaron de comprar, etc.) y qué tan "libre" vs. acotado
-      debe ser el set de herramientas (tools) que expone el MCP.
-- [ ] Decidir transporte remoto (HTTP/SSE) y autenticación del connector (quién de los
-      gerentes puede conectarse, cómo se identifica).
-- [ ] Diseñar las tools del MCP reusando funciones deterministas ya existentes del
-      dashboard (mismo principio que el chatbot: el LLM no calcula cifras, solo las pide
-      y las presenta) en vez de dejar que el modelo genere SQL libre.
-- [ ] Definir dónde vive el servidor MCP (¿dentro de `backend/` como otro proceso/ruta, o
-      servicio aparte?) y cómo se despliega en el droplet.
+**Decisiones ya tomadas** (plan completo aprobado por el usuario):
+- Alcance acotado a 5 tools de solo lectura, parámetros fijos (sin SQL libre):
+  `ventasPorRuta`, `ventasPorGrupo`, `resumenDiario`, `topProductos`, `clientesInactivos`.
+- Auth: OAuth "Sign in with Google", validando el claim `hd = aqua.com.ec` (rechaza
+  cualquier otra cuenta de Google aunque el login sea válido). Sin roles — mismo acceso
+  para todos los que entren.
+- Despliegue: servicio Docker separado (`mcp-server/`, no comparte proceso con
+  `dashboard_backend`), mismo mecanismo de reverse proxy que ya usa
+  `dashboard.aqua.com.ec`/`api.aqua.com.ec` (nginx-proxy-manager + Let's Encrypt propio +
+  red docker `aqua-network`), subdominio nuevo `mcp.aqua.com.ec`.
+- Seguridad de datos: todas las queries van con parámetros posicionales de `pg`
+  (`$1,$2,...`), nunca concatenación; rol de Postgres `mcp_readonly` con `GRANT SELECT`
+  acotado solo a `ordenes, facturas, detalle_documento, clientes, productos` (no todo el
+  schema).
+
+- [x] **Paso 1 — hecho y probado localmente (sin OAuth todavía):**
+      - Rol Postgres `mcp_readonly` creado, `GRANT SELECT` verificado solo en las 5 tablas
+        (confirmado que falla sobre otras tablas y sobre cualquier INSERT/UPDATE).
+      - `mcp-server/` con las 5 tools (`src/tools/*.js`), reusando/generalizando el patrón
+        de clasificación por grupo de ruta ya validado en `botellonesController.js`
+        (`GRUPOS`, CASE por `seller_code`/`route_code`) pero para todas las categorías de
+        producto, no solo BOTELLÓN.
+      - **Hallazgo real durante la prueba**: los pedidos "Website" quedan en `ordenes` con
+        `origen_sistema='ODOO'` (no `'MOBILVENDOR'`) y `seller_code` vacío — `topProductos`
+        los estaba excluyendo en la primera versión; corregido para usar la misma
+        estructura de 3 ramas (ordenes MobilVendor + facturas + pedido web) que
+        `ventasPorRuta`/`ventasPorGrupo`.
+      - Servidor MCP (`src/server.js`, `@modelcontextprotocol/sdk`, transporte Streamable
+        HTTP con manejo de sesión) probado de punta a punta con el `Client` oficial del
+        SDK: handshake de inicialización, `listTools` (5), `callTool` con datos reales.
+      - Smoke test de seguridad: payload de inyección SQL en `ruta` rechazado por la regex
+        de zod antes de tocar la base; y aunque se salte esa validación, el parámetro
+        posicional de `pg` lo trata como texto literal (tabla `ordenes` queda intacta).
+      - `node --check` OK en todos los archivos (vía Node 20 en contenedor — el host tiene
+        Node 12, muy viejo para `@modelcontextprotocol/sdk`/`google-auth-library`).
+- [ ] **Paso 2**: flujo OAuth con Google (`/authorize`, `/oauth/google/callback`,
+      `/token`, `/.well-known/oauth-authorization-server`, `/register`) + validación
+      `hd === 'aqua.com.ec'`.
+- [ ] **Paso 3**: Dockerfile de `mcp-server/`, servicio nuevo en `docker-compose.yml`
+      (red `aqua-network`, sin puerto publicado al host) + Proxy Host en NPM para
+      `mcp.aqua.com.ec` (requiere confirmar que el DNS ya apunta al droplet).
+- [ ] Pendiente de decidir: si se quiere loggear `email + tool + parámetros + timestamp`
+      de cada consulta (trazabilidad sobre cifras financieras, acceso es uniforme pero
+      sin auditoría todavía).
