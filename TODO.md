@@ -438,3 +438,57 @@ Sequelize pero no en la BD, agregadas con `ALTER TABLE` manual); cliente Odoo id
       `facturas` pasó de 0 a 26,091 filas (15 jul–24 ago), 0 errores.
 - [x] Push a `origin/fix/odoo-sync-facturas-fixes`.
       **PR:** https://github.com/cgilces/DashboardAqua/compare/main...fix/odoo-sync-facturas-fixes
+- [x] **Mergeado a `main`** (2026-08-25, fast-forward, sin conflictos) — de paso se sincronizó
+      `origin/main` con 45 commits locales viejos que nunca se habían pusheado (44 merges vacíos +
+      1 limpieza de marcadores de conflicto de abril en `my-app/nginx.conf`, nada de riesgo).
+
+## Endurecimiento de infraestructura del droplet (rama: `fix/hardening-postgres-redis-sshd`)
+
+Contexto: al levantar `mcp_server` (`docker compose up -d mcp_server`, ver rama
+`feature/mcp-server-ventas`), Docker Compose recreó también `dashboard_postgres` porque esa
+rama todavía declaraba el puerto 5432 sin acotar (creada desde `main` antes del fix de hoy) —
+revirtiendo sin querer el binding a `127.0.0.1`. Motivó una revisión más amplia de superficie
+expuesta en el droplet.
+
+- [x] **Postgres**: binding a `127.0.0.1:5432` corregido de nuevo (ver arriba, ya mergeado a
+      `main`). **`logging_collector` activado** (`ALTER SYSTEM SET logging_collector='on'` +
+      rotación diaria/100MB, persistido en el volumen `dashboard_pgdata` vía `postgresql.auto.conf`
+      — sobrevive a un recreate del contenedor, a diferencia de antes) + `docker restart`
+      (no recreate) para aplicarlo. Verificado: `logging_collector=on`, ya escribe en
+      `/var/lib/postgresql/data/log/postgresql-2026-08-25.log`, resto de contenedores sanos.
+      **Por qué**: durante la ventana en que 5432 quedó expuesto (~9 min), no se pudo confirmar
+      ni descartar actividad sospechosa porque el log de Postgre solo iba a stdout del
+      contenedor (ya eliminado al recrearlo) — con esto, la próxima vez sí quedaría un registro
+      persistente.
+- [x] **Redis** (`frecuencia_redis`, repo separado `Sistemas_frecuencias_AquaPremiun`, puerto
+      53007): ya tenía `requirepass` configurado (no estaba abierto sin auth). Bindeado a
+      `127.0.0.1:53007:6379` en su `docker-compose.yml` (mismo patrón que Postgres) — verificado
+      con `iptables` que el `DNAT` ahora exige destino `127.0.0.1`, y que `frecuencia_backend`
+      sigue conectando bien. **Nota aparte**: ese repo tiene un token de GitHub embebido en
+      texto plano en `git remote -v` — pendiente rotarlo (no es de este repo, no se tocó).
+- [x] **sshd**: confirmada la config EFECTIVA con `sshd -T` (no alcanza con leer los archivos
+      sueltos — hay 3 fragmentos en `/etc/ssh/sshd_config.d/` que se contradicen entre sí:
+      `50-cloud-init.conf` dice `PasswordAuthentication yes`, pero `00-hardening.conf` y
+      `60-cloudimg-settings.conf` dicen `no`, y estos últimos ganan por orden de carga).
+      Efectivo: `passwordauthentication no`, `permitrootlogin without-password` — los intentos
+      de fuerza bruta contra `root` vistos en los logs **no son un vector real** hoy (password
+      auth está apagado globalmente, solo entra con llave). Pendiente de limpieza (no urgente):
+      los archivos contradictorios en `sshd_config.d/` son frágiles — un futuro `cloud-init` u
+      otro cambio podría revertir esto sin que se note; convendría eliminar/alinear
+      `50-cloud-init.conf`.
+- [ ] **Portainer + `ufw`/`DOCKER-USER`** (en curso, bloqueado en el usuario): Docker bypasea
+      `ufw` por defecto (publica puertos vía `DNAT`/`FORWARD`, no `INPUT`; la cadena
+      `DOCKER-USER` — el gancho correcto para que el firewall sí controle puertos de contenedores —
+      existe pero está vacía). Antes de activar `ufw` con default-deny hace falta resolver el
+      acceso a Portainer (hoy 100% por `IP:8000`/`IP:9443` directo, sin proxy host en NPM).
+      Decisión: el usuario va a crear `portainer.aqua.com.ec` → `portainer:9443` (https,
+      `proxy_ssl_verify off;` en Advanced por el certificado autofirmado interno) él mismo en NPM.
+      Una vez confirmado que funciona, falta: `ufw allow 22,80,443` + reglas explícitas en
+      `DOCKER-USER` (o `ufw-docker`) para bloquear desde fuera `3001, 5000, 5001, 53005-53009`
+      (ninguno de esos hace falta para el flujo normal, todos llegan por NPM via nombre de
+      contenedor en `aqua-network`) + default deny, sin tocar 8000/9443 hasta confirmar Portainer.
+- [ ] Hallazgo aparte, fuera de alcance de esta tarea: Redis (`53007`, ya corregido arriba) fue
+      encontrado expuesto a `0.0.0.0` sin que nadie lo hubiera pedido — vale la pena, en algún
+      momento, auditar los demás puertos publicados (`5001` pedidos_backend, etc.) por el mismo
+      patrón de "¿esto realmente necesita estar expuesto al host, o solo lo usa NPM por la red
+      docker interna?".
