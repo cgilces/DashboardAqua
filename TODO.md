@@ -476,17 +476,53 @@ expuesta en el droplet.
       los archivos contradictorios en `sshd_config.d/` son frágiles — un futuro `cloud-init` u
       otro cambio podría revertir esto sin que se note; convendría eliminar/alinear
       `50-cloud-init.conf`.
-- [ ] **Portainer + `ufw`/`DOCKER-USER`** (en curso, bloqueado en el usuario): Docker bypasea
-      `ufw` por defecto (publica puertos vía `DNAT`/`FORWARD`, no `INPUT`; la cadena
-      `DOCKER-USER` — el gancho correcto para que el firewall sí controle puertos de contenedores —
-      existe pero está vacía). Antes de activar `ufw` con default-deny hace falta resolver el
-      acceso a Portainer (hoy 100% por `IP:8000`/`IP:9443` directo, sin proxy host en NPM).
-      Decisión: el usuario va a crear `portainer.aqua.com.ec` → `portainer:9443` (https,
-      `proxy_ssl_verify off;` en Advanced por el certificado autofirmado interno) él mismo en NPM.
-      Una vez confirmado que funciona, falta: `ufw allow 22,80,443` + reglas explícitas en
-      `DOCKER-USER` (o `ufw-docker`) para bloquear desde fuera `3001, 5000, 5001, 53005-53009`
-      (ninguno de esos hace falta para el flujo normal, todos llegan por NPM via nombre de
-      contenedor en `aqua-network`) + default deny, sin tocar 8000/9443 hasta confirmar Portainer.
+- [x] **Portainer + `ufw`/`DOCKER-USER` — hecho y verificado (2026-08-25):**
+      - **Login de NPM perdido en el camino**: nadie tenía el usuario/password del panel de NPM
+        (admin, puerto 81). Se buscó primero en notas/README/`.env`/`bash_history` (nada en texto
+        plano). Reseteo hecho a mano sobre `auth` (no `user` — el hash de NPM vive en una tabla
+        separada, `auth.secret`, `type='password'`, bcrypt costo 13, confirmado leyendo
+        `/app/models/auth.js` dentro del propio contenedor en vez de asumirlo): backup de
+        `/data/database.sqlite` (dentro del contenedor y copiado fuera, en `/root`) antes de
+        tocar nada, hash nuevo generado con el mismo módulo `bcrypt` que usa NPM, `UPDATE`
+        verificado con `bcrypt.compare` antes de confirmar. El usuario entró y cambió
+        email/password por unos propios inmediatamente después.
+      - **Proxy host `portainer.aqua.com.ec` → `portainer:9443`**: creado por el usuario en NPM
+        (https, `proxy_ssl_verify off;` en Advanced por el certificado autofirmado interno,
+        Let's Encrypt real emitido).
+      - **Falsa alarma diagnosticada a fondo**: tras crear el proxy host, `curl -I` mostraba un
+        `Content-Security-Policy` con `cdn.matomo.cloud`/`js.hsforms.net`/`recaptcha` y se
+        interpretó como "está sirviendo el sitio corporativo en vez de Portainer". Se descartó
+        interceptación de red (fingerprint TLS idéntico entre el Mac del usuario y el droplet),
+        se revisó `/data/nginx/proxy_host/*.conf` completo (server_name y proxy_pass exactos,
+        sin default/catch-all — el único default es el `return 444` estándar de NPM), se
+        revisaron los logs de acceso (100% de las requests con `Host: portainer.aqua.com.ec`
+        servidas correctamente) y finalmente se aisló pegándole **directo al contenedor
+        `portainer:9443` sin nginx en el medio**: el CSP raro lo devuelve **Portainer mismo**
+        (widgets de feedback/analítica que trae de fábrica en versiones recientes de CE) — el
+        body siempre fue el login real. Nunca hubo un problema de proxy; fue un `curl -I`
+        (solo headers, sin leer el body) mal interpretado.
+      - **`ufw`**: `allow 22/80/443` + `default deny incoming`, activo. (Se encontró y limpió una
+        regla vieja `allow 5000/tcp` sin comentario, de antes de esta sesión — no afectaba nada
+        realmente porque Docker no pasa por el chain de `ufw`, pero confundía.)
+      - **`DOCKER-USER`**: 8 reglas `DROP` — cada una por **IP interna + puerto interno exactos**
+        del contenedor (no solo por puerto: `dashboard_frontend`, `frecuencia_frontend` y
+        `flotas_frontend` comparten el puerto interno 80, y `npm-app` también escucha 80
+        internamente para su propio publicado — filtrar solo por puerto habría bloqueado NPM
+        entero). Bloquea `3001, 5000, 5001, 53005, 53006, 53007, 53008, 53009` solo desde `eth0`
+        (la interfaz pública); no toca Portainer (`8000/9443`) ni `npm-app` (`80/81/443`).
+        Persistido vía `/usr/local/sbin/docker-user-firewall.sh` (idempotente, tag `aqua-fw`) +
+        hook `ExecStartPost` en `/etc/systemd/system/docker.service.d/aqua-fw.conf` — sobrevive
+        un reboot o un `systemctl restart docker` (el mismo tipo de fragilidad que causó el
+        incidente original del puerto 5432 expuesto, ya cubierto acá).
+      - **Verificado**: los 7 subdominios de NPM (`dashboard`, `api`, `frecuencias`,
+        `api.frecuencias`, `flotas`, `api.flotas`, `portainer`) siguen respondiendo bien
+        (`/health` real, no solo status code). Los puertos bloqueados probados desde una
+        máquina externa (no desde el propio droplet — el self-test da falso positivo por
+        hairpin NAT, igual que pasó con el diagnóstico de Portainer) confirmaron timeout real
+        en `3001` y `5000`.
+      - **Nota de mantenimiento**: si algún contenedor de los bloqueados se recrea, su IP interna
+        puede cambiar — hay que actualizar las IPs en `docker-user-firewall.sh` y volver a
+        correrlo (no requiere reiniciar `docker.service`).
 - [ ] Hallazgo aparte, fuera de alcance de esta tarea: Redis (`53007`, ya corregido arriba) fue
       encontrado expuesto a `0.0.0.0` sin que nadie lo hubiera pedido — vale la pena, en algún
       momento, auditar los demás puertos publicados (`5001` pedidos_backend, etc.) por el mismo
