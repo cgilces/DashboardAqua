@@ -513,10 +513,40 @@ cuando quieren, desde su propio cliente Claude.
       - Pendiente de mi lado (no bloqueante para el código): crear el OAuth Client ID real
         en Google Cloud Console (tipo "Web application", redirect URI
         `<MCP_ISSUER_URL>/oauth/google/callback`) — hoy `.env` tiene placeholders.
-- [ ] **Paso 3**: Dockerfile de `mcp-server/`, servicio nuevo en `docker-compose.yml`
-      (red `aqua-network`, sin puerto publicado al host) + Proxy Host en NPM para
-      `mcp.aqua.com.ec` (requiere confirmar que el DNS ya apunta al droplet, y las
-      credenciales reales de Google Cloud Console).
+- [x] **Paso 3a — hecho (Dockerfile + docker-compose, sin depender de DNS/credenciales):**
+      - `mcp-server/Dockerfile` (`node:20-alpine`, misma versión con la que se probó todo
+        en los pasos 1 y 2; `npm ci --omit=dev`; `.dockerignore` excluye `node_modules`,
+        `.env`, `test/` — nada sensible queda horneado en la imagen).
+      - Servicio `mcp_server` en `docker-compose.yml`: red `aqua-network`, **sin**
+        `ports:` publicado al host (NPM llega por nombre de contenedor, igual que
+        `dashboard_backend`/`dashboard_frontend`), secretos vía `env_file:
+        ./mcp-server/.env` (no inline, para no commitearlos — a diferencia del patrón
+        viejo de `dashboard_postgres`/`dashboard_backend` que sí tienen el password
+        commiteado en texto plano, deuda preexistente no tocada acá).
+      - Build + `docker compose up -d mcp_server` probado en la red real: contenedor
+        `healthy`, responde `/health` y `/.well-known/oauth-authorization-server` dentro
+        de `aqua-network`.
+      - **Incidente encontrado y corregido en el camino**: `docker compose up -d
+        mcp_server` recreó también `dashboard_postgres` sin que se pidiera, porque el
+        `docker-compose.yml` de esta rama (creada desde `main` antes del fix de hoy)
+        todavía tenía `"5432:5432"` (puerto expuesto a `0.0.0.0`) mientras el contenedor
+        que corría en producción ya tenía aplicado `"127.0.0.1:5432:5432"` (el fix de la
+        rama `fix/odoo-sync-facturas-fixes`, todavía sin mergear a `main`) — Compose
+        detectó el desfase entre lo declarado y lo corriendo y recreó con el binding
+        expuesto, revirtiendo sin querer el fix de seguridad. Confirmado con `iptables`
+        que quedó expuesto de verdad (sin firewall activo, `ufw` inactive). Corregido de
+        inmediato en esta rama también (`"127.0.0.1:5432:5432"`) y verificado: binding
+        correcto, datos intactos, `dashboard_backend`/`mcp_server` sanos.
+        **Pendiente real**: mergear `fix/odoo-sync-facturas-fixes` a `main` pronto para
+        que esto no se repita cada vez que una rama vieja haga `docker compose up`.
+- [ ] **Paso 3b — pendiente, depende de DNS/credenciales reales:** Proxy Host en NPM para
+      `mcp.aqua.com.ec` (requiere confirmar que el DNS ya apunta al droplet) + cambiar
+      `MCP_ISSUER_URL` a `https://mcp.aqua.com.ec` + pegar `GOOGLE_CLIENT_ID`/
+      `GOOGLE_CLIENT_SECRET` reales en `mcp-server/.env` (Authorized redirect URI en
+      Google Cloud Console: registrar tanto `http://localhost:8787/oauth/google/callback`
+      como `https://mcp.aqua.com.ec/oauth/google/callback`) + probar el login real con
+      una cuenta @aqua.com.ec y confirmar que una cuenta fuera de dominio se rechaza en
+      la práctica (el paso 2 solo lo probó con payloads sintéticos, no con Google real).
 - [ ] Pendiente de decidir: si se quiere loggear `email + tool + parámetros + timestamp`
       de cada consulta además del login (ya hay auditoría de login en
       `mcp_oauth.login_events`, falta por-tool-call si se quiere más detalle).
