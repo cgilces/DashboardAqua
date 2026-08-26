@@ -98,6 +98,16 @@ async function main() {
     await ventasCliente({ nombre_cliente: "JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy })
   );
 
+  imprimir(
+    "ventasCliente (+ categoria=BOTELLÓN, incluye por_producto)",
+    await ventasCliente({ nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy, categoria: "BOTELLÓN" })
+  );
+
+  imprimir(
+    "ventasCliente (producto ambiguo 'PACK', debe listar candidatos sin elegir)",
+    await ventasCliente({ nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy, producto: "PACK" })
+  );
+
   await pool.end();
 }
 

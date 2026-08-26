@@ -679,3 +679,29 @@ ninguna busca por cliente.
       (se ejecuta como texto literal, cero coincidencias, la tabla sigue intacta).
 - [x] `listTools()` ya devuelve 7 tools vía el protocolo MCP real (antes 6). Redesplegado en
       producción (rebuild + `up -d mcp_server`, sin tocar Postgres).
+
+### Extensión de `ventasCliente`: filtro por categoría y/o producto específico
+
+Pedido: poder responder "cuánto le vendió DESCARTABLE al Colegio Javier" o "cuánto compró
+tal producto tal cliente" — la tool solo daba el historial completo sin acotar.
+
+- [x] Parámetros opcionales `categoria` (mismo enum de `ventasPorGrupo`/`topProductos`) y
+      `producto` (nombre parcial, mismo patrón de búsqueda que `nombre_cliente`), combinables
+      con `AND`. `producto` se resuelve primero contra `productos.nombre_producto` (ya
+      cubierto por el `GRANT` existente, no hizo falta tocarlo) — con el mismo criterio de
+      "no elegir": 0 coincidencias corta con el cliente ya resuelto, 2+ devuelve la lista de
+      candidatos (tope 20) sin adivinar.
+- [x] `por_producto` en el output SOLO cuando se aplicó `categoria` o `producto` (sin filtro,
+      el historial completo podría tener decenas de productos y no aporta a la pregunta
+      original).
+- [x] `motivo` del caso "no encontrado" ahora distingue 4 causas (`sin_coincidencias_cliente`,
+      `coincidencias_multiples_cliente`, `sin_coincidencias_producto`,
+      `coincidencias_multiples_producto`) — el test de seguridad viejo se actualizó porque
+      el string de `motivo` cambió de `sin_coincidencias` a `sin_coincidencias_cliente`.
+- [x] Probado contra datos reales: sin filtro (sin cambios), `categoria=DESCARTABLE` da 0
+      (ese cliente solo compró BOTELLÓN — correcto, no un bug), `categoria=BOTELLÓN` coincide
+      con el total sin filtro + `por_producto` con 1 fila, `producto="PACK"` da 20+
+      candidatos ambiguos (varios productos "PACK..." en el catálogo) sin elegir ninguno.
+- [x] Seguridad: `producto` es texto libre (como `nombre_cliente`), probado con un payload
+      de inyección real contra `productos` — parámetro posicional lo neutraliza, tabla
+      intacta. Sin `GRANT` nuevo.

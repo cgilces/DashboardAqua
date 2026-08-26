@@ -68,13 +68,31 @@ async function main() {
     fecha_fin: "2026-01-31",
   });
   console.log("OK: ventasCliente con nombre_cliente malicioso no lanzó error de sintaxis ->", JSON.stringify(resultadoCliente));
-  if (resultadoCliente.encontrado !== false || resultadoCliente.motivo !== "sin_coincidencias") {
-    throw new Error("FALLO: se esperaba sin_coincidencias (nadie se llama así), llegó algo distinto");
+  if (resultadoCliente.encontrado !== false || resultadoCliente.motivo !== "sin_coincidencias_cliente") {
+    throw new Error("FALLO: se esperaba sin_coincidencias_cliente (nadie se llama así), llegó algo distinto");
   }
 
   const { rows: rowsClientes } = await pool.query("SELECT to_regclass('clientes') AS existe");
   if (!rowsClientes[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa)");
   console.log("OK: la tabla `clientes` sigue existiendo intacta.");
+
+  // 6) `producto` (nuevo, mismo patrón que nombre_cliente): string libre,
+  //    llega a la query ILIKE contra `productos`.
+  const payloadProducto = "PACK'; DROP TABLE productos; --";
+  const resultadoProducto = await ventasCliente({
+    nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER",
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+    producto: payloadProducto,
+  });
+  console.log("OK: ventasCliente con producto malicioso no lanzó error de sintaxis ->", JSON.stringify(resultadoProducto));
+  if (resultadoProducto.encontrado !== false || resultadoProducto.motivo !== "sin_coincidencias_producto") {
+    throw new Error("FALLO: se esperaba sin_coincidencias_producto, llegó algo distinto");
+  }
+
+  const { rows: rowsProductos } = await pool.query("SELECT to_regclass('productos') AS existe");
+  if (!rowsProductos[0].existe) throw new Error("FALLO: la tabla productos ya no existe (inyección exitosa)");
+  console.log("OK: la tabla `productos` sigue existiendo intacta.");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");

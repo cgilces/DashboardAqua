@@ -97,7 +97,7 @@ function crearServer() {
     "ventasCliente",
     {
       description:
-        "Historial de ventas de un cliente específico buscado por nombre parcial (no hace falta el nombre exacto). Si hay más de una coincidencia, devuelve la lista de candidatos (código + nombre) para elegir, no asume ninguno. Con exactamente un match, devuelve el total, el desglose por mes y por dirección de entrega en el rango de fechas.",
+        "Historial de ventas de un cliente específico buscado por nombre parcial (no hace falta el nombre exacto). Si hay más de una coincidencia de cliente o de producto, devuelve la lista de candidatos para elegir, no asume ninguno. Con exactamente un cliente resuelto, devuelve el total y el desglose por mes/dirección de entrega en el rango de fechas; acepta categoría de producto y/o nombre parcial de producto (también con desambiguación) como filtros combinables — ej. 'cuánto le vendió DESCARTABLE al Colegio Javier' o 'cuánto compró tal producto tal cliente'.",
       inputSchema: schemaVentasCliente,
     },
     async (args) => resultadoTexto(await ventasCliente(args))
