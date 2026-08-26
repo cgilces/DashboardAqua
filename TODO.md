@@ -648,3 +648,34 @@ solo que deja de ser el KPI oficial.
       Sin tablas ni roles nuevos — todo dentro del `GRANT SELECT` que ya tiene `mcp_readonly`.
 - [x] Redesplegado en producción (rebuild + `docker compose up -d mcp_server`, sin tocar
       Postgres) y verificado con las 6 tools vía el protocolo MCP real.
+
+## Tool nueva: `ventasCliente` — historial de ventas por cliente específico
+
+Hallazgo de uso real: le pidieron al MCP "cuánto ha vendido Colegio Javier en los últimos
+meses" y ninguna tool existente podía responder — todas son agregados por ruta/grupo/día,
+ninguna busca por cliente.
+
+- [x] **Schema confirmado con datos reales**: `ordenes`/`facturas.customer_address_code`
+      une directo contra `direcciones_clientes.codigo_direccion_cliente` (tabla
+      `direcciones_clientes`, ligada a `clientes` por `codigo_cliente`, 10.422 filas) — sí
+      es fácil desglosar por dirección de entrega.
+- [x] **`ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin })`**: busca por nombre
+      parcial (`ILIKE '%...%'` sobre `nombre_cliente` y `nombre_comercial_cliente`, con
+      `%`/`_` literales escapados antes de armar el patrón). 0 coincidencias → mensaje
+      claro; 2+ coincidencias → lista de candidatos (código + nombre, tope 20) **sin elegir
+      ninguno**; exactamente 1 → total + desglose por mes + desglose por dirección de
+      entrega (con descripción, vía `direcciones_clientes`).
+- [x] **`GRANT SELECT ON direcciones_clientes TO mcp_readonly`** — acotado solo a esa tabla
+      nueva (el resto del rol sigue igual: `ordenes, facturas, detalle_documento, clientes,
+      productos`).
+- [x] **Probado con datos reales antes de que el usuario lo pruebe**: "UNIDAD EDUCATIVA
+      PARTICULAR JAVIER" → 1 match exacto, $1.098,65 / 535 unidades / 1 documento, entregado
+      en dirección "CAMPAMENTO". "JAVIER" (parcial) → 20+ coincidencias (nombre común en
+      Ecuador, mucha gente tiene "Javier" de segundo nombre) → devuelve la lista completa,
+      `candidatos_truncados: true`, no intenta adivinar.
+- [x] **Seguridad**: a diferencia de `categoria`/`grupo` (enums cerrados), `nombre_cliente`
+      es un string libre — sí llega hasta la query `ILIKE` con un payload de inyección real
+      (`JAVIER'; DROP TABLE clientes; --`), y el parámetro posicional de `pg` lo neutraliza
+      (se ejecuta como texto literal, cero coincidencias, la tabla sigue intacta).
+- [x] `listTools()` ya devuelve 7 tools vía el protocolo MCP real (antes 6). Redesplegado en
+      producción (rebuild + `up -d mcp_server`, sin tocar Postgres).

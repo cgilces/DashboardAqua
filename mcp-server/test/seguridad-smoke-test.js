@@ -7,6 +7,7 @@ require("dotenv").config();
 const { z } = require("zod");
 const { ventasPorRuta, inputSchema } = require("../src/tools/ventasPorRuta");
 const { ventasPorGrupo, totalesGrupo, totalesPreventa, inputSchema: inputSchemaGrupo } = require("../src/tools/ventasPorGrupo");
+const { ventasCliente } = require("../src/tools/ventasCliente");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -55,6 +56,25 @@ async function main() {
   const { rows: rowsDD } = await pool.query("SELECT to_regclass('detalle_documento') AS existe");
   if (!rowsDD[0].existe) throw new Error("FALLO: la tabla detalle_documento ya no existe (inyección exitosa)");
   console.log("OK: la tabla `detalle_documento` sigue existiendo intacta.");
+
+  // 5) ventasCliente: `nombre_cliente` es un string libre (no un enum
+  //    cerrado como los de arriba) validado solo por largo mínimo — así que
+  //    un payload de inyección SÍ pasa zod y llega hasta la query ILIKE.
+  //    Ahí es donde el parámetro posicional de pg debe protegerlo de verdad.
+  const payloadNombre = "JAVIER'; DROP TABLE clientes; --";
+  const resultadoCliente = await ventasCliente({
+    nombre_cliente: payloadNombre,
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  console.log("OK: ventasCliente con nombre_cliente malicioso no lanzó error de sintaxis ->", JSON.stringify(resultadoCliente));
+  if (resultadoCliente.encontrado !== false || resultadoCliente.motivo !== "sin_coincidencias") {
+    throw new Error("FALLO: se esperaba sin_coincidencias (nadie se llama así), llegó algo distinto");
+  }
+
+  const { rows: rowsClientes } = await pool.query("SELECT to_regclass('clientes') AS existe");
+  if (!rowsClientes[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa)");
+  console.log("OK: la tabla `clientes` sigue existiendo intacta.");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");

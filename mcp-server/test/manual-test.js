@@ -9,6 +9,7 @@ const { resumenDiario } = require("../src/tools/resumenDiario");
 const { topProductos } = require("../src/tools/topProductos");
 const { clientesInactivos } = require("../src/tools/clientesInactivos");
 const { proyeccionMensual } = require("../src/tools/proyeccionMensual");
+const { ventasCliente } = require("../src/tools/ventasCliente");
 const { pool } = require("../src/db");
 
 function imprimir(titulo, obj) {
@@ -85,6 +86,16 @@ async function main() {
   imprimir(
     "topProductos (grupo=MAYORISTA + categoria=DESCARTABLE)",
     await topProductos({ fecha_inicio: hace60, fecha_fin: hoy, limite: 5, grupo: "MAYORISTA", categoria: "DESCARTABLE" })
+  );
+
+  imprimir(
+    "ventasCliente (nombre completo, match único)",
+    await ventasCliente({ nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasCliente (nombre parcial 'JAVIER', múltiples coincidencias)",
+    await ventasCliente({ nombre_cliente: "JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy })
   );
 
   await pool.end();

@@ -24,6 +24,7 @@ const { resumenDiario, inputSchema: schemaResumenDiario } = require("./tools/res
 const { topProductos, inputSchema: schemaTopProductos } = require("./tools/topProductos");
 const { clientesInactivos, inputSchema: schemaClientesInactivos } = require("./tools/clientesInactivos");
 const { proyeccionMensual, inputSchema: schemaProyeccionMensual } = require("./tools/proyeccionMensual");
+const { ventasCliente, inputSchema: schemaVentasCliente } = require("./tools/ventasCliente");
 
 function resultadoTexto(objeto) {
   return { content: [{ type: "text", text: JSON.stringify(objeto, null, 2) }] };
@@ -90,6 +91,16 @@ function crearServer() {
       inputSchema: schemaProyeccionMensual,
     },
     async (args) => resultadoTexto(await proyeccionMensual(args))
+  );
+
+  server.registerTool(
+    "ventasCliente",
+    {
+      description:
+        "Historial de ventas de un cliente específico buscado por nombre parcial (no hace falta el nombre exacto). Si hay más de una coincidencia, devuelve la lista de candidatos (código + nombre) para elegir, no asume ninguno. Con exactamente un match, devuelve el total, el desglose por mes y por dirección de entrega en el rango de fechas.",
+      inputSchema: schemaVentasCliente,
+    },
+    async (args) => resultadoTexto(await ventasCliente(args))
   );
 
   return server;
