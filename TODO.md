@@ -751,3 +751,47 @@ los tres.
       posicional `ANY($1::text[])` lo neutraliza (no matchea ningún código real, tabla
       `clientes` intacta). Sin `GRANT` nuevo — `company_id`/`descripcion_company`/
       `identificacion_cliente` ya están en `clientes`, ya cubierta por el `GRANT` existente.
+
+### Bug real: `ventasCliente` no encontraba clientes con nombre incompleto, con typo, o con tilde distinta a la de la base
+
+Hallazgo de uso (misma investigación del caso El Rosado): la búsqueda por nombre era un
+`ILIKE '%texto%'` estrictamente literal — insensible a mayúsculas pero NO a tildes, y sin
+ninguna tolerancia a errores de tipeo o palabras faltantes. Probado contra datos reales
+antes del fix:
+
+| Entrada | Resultado (antes) |
+|---|---|
+| `"Corporacion Rosado"` (falta la palabra "El" en medio) | `sin_coincidencias_cliente` (0 resultados, aunque el cliente existe) |
+| `"El Rosaod"` (typo, letras trocadas) | `sin_coincidencias_cliente` |
+| `"Corporación El Rosado"` (con tilde en "ó"; la base tiene "CORPORACION" sin tilde) | `sin_coincidencias_cliente` |
+
+- **Prerrequisito de infraestructura**: se instalaron las extensiones `unaccent` y `pg_trgm`
+  en la base `ventas_mv` (no estaban instaladas, solo disponibles en el paquete de Postgres
+  del contenedor). Requirió el rol `postgres` (superusuario) — `mcp_readonly` no tiene
+  permiso para `CREATE EXTENSION`, corrido por el usuario. No amplía ningún `GRANT`: las
+  funciones quedan ejecutables por `PUBLIC` por default, verificado con `mcp_readonly`
+  antes de tocar código.
+- [x] **Capa 1 — normalización con `unaccent` (siempre activa, sin umbral)**: `nombre_cliente
+      ILIKE $1` pasó a `unaccent(nombre_cliente) ILIKE unaccent($1)` (mismo para
+      `nombre_comercial_cliente`). Corrección exacta, no es búsqueda difusa — sin falsos
+      positivos posibles.
+- [x] **Capa 2 — sugerencias por similitud (`pg_trgm`), SOLO cuando la capa 1 da cero
+      resultados**: nueva query con `similarity(unaccent(...), unaccent($1)) > 0.3`,
+      devuelve hasta 5 candidatos ordenados por similitud como campo nuevo `sugerencias`
+      en la respuesta `sin_coincidencias_cliente` — nunca se autoselecciona ninguna, es un
+      "¿quisiste decir...?" para que el asistente confirme con el usuario. Cambio 100%
+      aditivo (no rompe consumidores existentes que ignoren el campo nuevo).
+- [x] Probado contra los 3 casos reales de la tabla de arriba: `"Corporación El Rosado"`
+      ahora matchea exacto (vía unaccent) y cae directo en el caso multi-compañía;
+      `"Corporacion Rosado"` y `"El Rosaod"` ahora devuelven `sugerencias` con la entidad
+      correcta como primer resultado (similitud 0.73 y 0.54 respectivamente) en vez de
+      "no encontrado" sin más. Regresión: `"El Rosado"` (que matchea 6 clientes genuinamente
+      distintos) sigue devolviendo la ambigüedad genérica de siempre, sin marcarse como
+      multi-compañía.
+- [x] Alcance: solo se aplicó a la búsqueda de **cliente** (`nombre_cliente`). La búsqueda
+      de `producto` no se tocó en este cambio — mismo patrón disponible como fast-follow
+      si se pide.
+- [x] Seguridad: el mismo payload de inyección de `nombre_cliente` ahora también llega
+      (en texto crudo, sin el wrapping `%...%` de ILIKE) al fallback de sugerencias —
+      probado, sigue sin lanzar error de sintaxis y no genera sugerencias falsas (sin
+      parecido real a ningún nombre). Sin `GRANT` nuevo.

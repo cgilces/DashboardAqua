@@ -71,6 +71,14 @@ async function main() {
   if (resultadoCliente.encontrado !== false || resultadoCliente.motivo !== "sin_coincidencias_cliente") {
     throw new Error("FALLO: se esperaba sin_coincidencias_cliente (nadie se llama así), llegó algo distinto");
   }
+  // El mismo payload también llega, en texto crudo (sin el wrapping %...%
+  // de ILIKE), al fallback de sugerencias por similitud (pg_trgm) — debe
+  // seguir sin lanzar error de sintaxis y sin generar sugerencias (no se
+  // parece a ningún nombre real).
+  if (!Array.isArray(resultadoCliente.sugerencias) || resultadoCliente.sugerencias.length !== 0) {
+    throw new Error("FALLO: se esperaba sugerencias vacío para un payload de inyección sin parecido real");
+  }
+  console.log("OK: el fallback de sugerencias (pg_trgm) con el mismo payload no lanzó error de sintaxis y no sugirió nada.");
 
   const { rows: rowsClientes } = await pool.query("SELECT to_regclass('clientes') AS existe");
   if (!rowsClientes[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa)");

@@ -123,6 +123,21 @@ async function main() {
     })
   );
 
+  imprimir(
+    "ventasCliente (nombre con tilde 'Corporación El Rosado', debe matchear exacto via unaccent)",
+    await ventasCliente({ nombre_cliente: "Corporación El Rosado", fecha_inicio: "2026-06-01", fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasCliente (nombre con palabra faltante 'Corporacion Rosado', debe dar sugerencias)",
+    await ventasCliente({ nombre_cliente: "Corporacion Rosado", fecha_inicio: "2026-06-01", fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasCliente (typo 'El Rosaod', debe dar sugerencias)",
+    await ventasCliente({ nombre_cliente: "El Rosaod", fecha_inicio: "2026-06-01", fecha_fin: hoy })
+  );
+
   await pool.end();
 }
 

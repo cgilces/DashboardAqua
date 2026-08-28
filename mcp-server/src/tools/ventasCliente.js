@@ -15,6 +15,12 @@
 // puede entonces repetirse pasando `codigo_cliente` (uno o varios) para
 // pedir el consolidado o una compañía puntual sin volver a resolver el
 // nombre.
+//
+// Nombres incompletos/con errores: la búsqueda por nombre normaliza tildes
+// y mayúsculas con unaccent() (sin umbral, no es difusa). Si aun así da
+// cero resultados (typo, palabra faltante), corre un fallback de similitud
+// (pg_trgm) y devuelve una lista de `sugerencias` — nunca se autoselecciona
+// ninguna, es solo un "¿quisiste decir...?" para que el asistente confirme.
 const { z } = require("zod");
 const { pool } = require("../db");
 const { finExclusivo, diffDias } = require("../util/fechas");
@@ -24,6 +30,8 @@ const MAX_RANGO_DIAS = 800; // "los últimos meses" puede ser un rango largo
 const MAX_CANDIDATOS = 20;
 const MIN_LARGO_NOMBRE = 3;
 const MAX_CODIGOS_CLIENTE = 10;
+const UMBRAL_SIMILITUD_SUGERENCIA = 0.3;
+const MAX_SUGERENCIAS = 5;
 
 const inputSchema = {
   nombre_cliente: z.string().min(MIN_LARGO_NOMBRE, `mínimo ${MIN_LARGO_NOMBRE} caracteres`).optional(),
@@ -46,13 +54,31 @@ function escaparComodinesLike(texto) {
   return texto.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
+// unaccent(...) ILIKE unaccent($1): normaliza tildes/mayúsculas en ambos
+// lados de la comparación — es corrección exacta, no búsqueda difusa (sin
+// umbral, sin falsos positivos posibles).
 const SQL_BUSCAR_CLIENTE = `
   SELECT codigo_cliente, nombre_cliente, nombre_comercial_cliente,
          identificacion_cliente, company_id, descripcion_company
   FROM clientes
-  WHERE nombre_cliente ILIKE $1 OR nombre_comercial_cliente ILIKE $1
+  WHERE unaccent(nombre_cliente) ILIKE unaccent($1) OR unaccent(nombre_comercial_cliente) ILIKE unaccent($1)
   ORDER BY nombre_cliente
   LIMIT ${MAX_CANDIDATOS + 1};
+`;
+
+// Fallback de similitud (pg_trgm) — SOLO se corre cuando la búsqueda exacta
+// de arriba da cero resultados. $1 = texto crudo (NO el patrón %...% de
+// ILIKE, similarity() no es un wildcard match), $2 = umbral, $3 = tope.
+// Es una sugerencia "¿quisiste decir...?", nunca se autoselecciona.
+const SQL_SUGERENCIAS_CLIENTE = `
+  SELECT codigo_cliente, nombre_cliente, nombre_comercial_cliente,
+         GREATEST(similarity(unaccent(nombre_cliente), unaccent($1)),
+                  similarity(unaccent(nombre_comercial_cliente), unaccent($1))) AS similitud
+  FROM clientes
+  WHERE similarity(unaccent(nombre_cliente), unaccent($1)) > $2
+     OR similarity(unaccent(nombre_comercial_cliente), unaccent($1)) > $2
+  ORDER BY similitud DESC
+  LIMIT $3;
 `;
 
 // $1 = lista de codigo_cliente (uno o varios, ya resueltos o pedidos directo)
@@ -142,6 +168,20 @@ const SQL_NOMBRES_PRODUCTOS = `
   WHERE codigo_producto = ANY($1::text[]);
 `;
 
+async function buscarSugerenciasCliente(textoCrudo) {
+  const { rows } = await pool.query(SQL_SUGERENCIAS_CLIENTE, [
+    textoCrudo,
+    UMBRAL_SIMILITUD_SUGERENCIA,
+    MAX_SUGERENCIAS,
+  ]);
+  return rows.map((r) => ({
+    codigo_cliente: r.codigo_cliente,
+    nombre_cliente: r.nombre_cliente,
+    nombre_comercial_cliente: r.nombre_comercial_cliente,
+    similitud: Number(r.similitud.toFixed(2)),
+  }));
+}
+
 async function buscarUno(sql, patron, camposCandidato) {
   const { rows } = await pool.query(sql, [patron]);
   if (rows.length === 0) return { estado: "sin_coincidencias", candidatos: [] };
@@ -191,7 +231,8 @@ async function ventasCliente({ nombre_cliente, codigo_cliente, fecha_inicio, fec
       "descripcion_company",
     ]);
     if (resultCliente.estado === "sin_coincidencias") {
-      return { encontrado: false, motivo: "sin_coincidencias_cliente", candidatos: [] };
+      const sugerencias = await buscarSugerenciasCliente(nombre_cliente);
+      return { encontrado: false, motivo: "sin_coincidencias_cliente", candidatos: [], sugerencias };
     }
     if (resultCliente.estado === "coincidencias_multiples") {
       const candidatos = resultCliente.candidatos;
