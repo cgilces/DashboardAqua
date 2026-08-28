@@ -3,6 +3,18 @@
 // (el usuario no escribe el nombre exacto tal cual está en la base).
 // Filtros opcionales combinables (AND) por categoría de producto y/o por
 // un producto específico (también buscado por nombre parcial).
+//
+// Caso multi-compañía: una misma entidad (mismo identificacion_cliente/RUC,
+// mismo nombre) puede existir varias veces en `clientes` con distinto
+// codigo_cliente porque está facturada desde distintas compañías del grupo
+// (company_id/descripcion_company — GRUPOAQUA S.A., DISTRINTER, IIBC, etc.).
+// Cuando la búsqueda por nombre cae en ese caso, no se trata como una
+// ambigüedad genérica: se informa explícitamente (`es_multicompania`) para
+// que el asistente pueda preguntar en términos de negocio ("¿las tres
+// compañías o solo una?") en vez de un código sin contexto. La respuesta
+// puede entonces repetirse pasando `codigo_cliente` (uno o varios) para
+// pedir el consolidado o una compañía puntual sin volver a resolver el
+// nombre.
 const { z } = require("zod");
 const { pool } = require("../db");
 const { finExclusivo, diffDias } = require("../util/fechas");
@@ -11,9 +23,15 @@ const { CATEGORIAS_VALIDAS } = require("../sql/clasificacion");
 const MAX_RANGO_DIAS = 800; // "los últimos meses" puede ser un rango largo
 const MAX_CANDIDATOS = 20;
 const MIN_LARGO_NOMBRE = 3;
+const MAX_CODIGOS_CLIENTE = 10;
 
 const inputSchema = {
-  nombre_cliente: z.string().min(MIN_LARGO_NOMBRE, `mínimo ${MIN_LARGO_NOMBRE} caracteres`),
+  nombre_cliente: z.string().min(MIN_LARGO_NOMBRE, `mínimo ${MIN_LARGO_NOMBRE} caracteres`).optional(),
+  codigo_cliente: z
+    .array(z.string().min(1))
+    .min(1)
+    .max(MAX_CODIGOS_CLIENTE, `máximo ${MAX_CODIGOS_CLIENTE} códigos por consulta`)
+    .optional(),
   fecha_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   fecha_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   categoria: z.enum(CATEGORIAS_VALIDAS).optional(),
@@ -29,11 +47,20 @@ function escaparComodinesLike(texto) {
 }
 
 const SQL_BUSCAR_CLIENTE = `
-  SELECT codigo_cliente, nombre_cliente, nombre_comercial_cliente
+  SELECT codigo_cliente, nombre_cliente, nombre_comercial_cliente,
+         identificacion_cliente, company_id, descripcion_company
   FROM clientes
   WHERE nombre_cliente ILIKE $1 OR nombre_comercial_cliente ILIKE $1
   ORDER BY nombre_cliente
   LIMIT ${MAX_CANDIDATOS + 1};
+`;
+
+// $1 = lista de codigo_cliente (uno o varios, ya resueltos o pedidos directo)
+const SQL_CLIENTES_POR_CODIGO = `
+  SELECT codigo_cliente, nombre_cliente, nombre_comercial_cliente,
+         identificacion_cliente, company_id, descripcion_company
+  FROM clientes
+  WHERE codigo_cliente = ANY($1::text[]);
 `;
 
 const SQL_BUSCAR_PRODUCTO = `
@@ -44,12 +71,13 @@ const SQL_BUSCAR_PRODUCTO = `
   LIMIT ${MAX_CANDIDATOS + 1};
 `;
 
-// $1 = codigo_cliente, $2 = inicio (timestamp), $3 = fin exclusivo (timestamp)
-// $4 = categoria (o NULL), $5 = codigo_producto (o NULL)
+// $1 = lista de codigo_cliente (uno o varios), $2 = inicio (timestamp),
+// $3 = fin exclusivo (timestamp), $4 = categoria (o NULL), $5 = codigo_producto (o NULL)
 const SQL_HISTORIAL = `
   WITH base AS (
     SELECT
       o.fecha_creacion AS fecha,
+      o.customer_code AS codigo_cliente_fila,
       o.customer_address_code AS direccion_code,
       dd.codigo_producto AS producto_code,
       dd.descripcion AS producto_descripcion,
@@ -60,7 +88,7 @@ const SQL_HISTORIAL = `
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.status = 2
       AND o.origen_sistema = 'MOBILVENDOR'
-      AND o.customer_code = $1
+      AND o.customer_code = ANY($1::text[])
       AND o.fecha_creacion >= $2
       AND o.fecha_creacion <  $3
       AND ($4::text IS NULL OR dd.descripcion_categoria = $4)
@@ -70,6 +98,7 @@ const SQL_HISTORIAL = `
 
     SELECT
       f.fecha_creacion AS fecha,
+      f.customer_code AS codigo_cliente_fila,
       f.customer_address_code AS direccion_code,
       dd.codigo_producto AS producto_code,
       dd.descripcion AS producto_descripcion,
@@ -79,7 +108,7 @@ const SQL_HISTORIAL = `
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.status = 2
-      AND f.customer_code = $1
+      AND f.customer_code = ANY($1::text[])
       AND f.fecha_creacion >= $2
       AND f.fecha_creacion <  $3
       AND ($4::text IS NULL OR dd.descripcion_categoria = $4)
@@ -87,6 +116,7 @@ const SQL_HISTORIAL = `
   )
   SELECT
     to_char(date_trunc('month', fecha), 'YYYY-MM') AS mes,
+    codigo_cliente_fila,
     direccion_code,
     producto_code,
     producto_descripcion,
@@ -94,14 +124,15 @@ const SQL_HISTORIAL = `
     SUM(dolares)  AS dolares,
     COUNT(DISTINCT doc_code) AS num_documentos
   FROM base
-  GROUP BY mes, direccion_code, producto_code, producto_descripcion
+  GROUP BY mes, codigo_cliente_fila, direccion_code, producto_code, producto_descripcion
   ORDER BY mes;
 `;
 
+// $1 = lista de codigo_cliente (puede ser más de uno en el caso multi-compañía)
 const SQL_DIRECCIONES = `
   SELECT codigo_direccion_cliente, descripcion_direccion_cliente, calle1_direccion_cliente
   FROM direcciones_clientes
-  WHERE codigo_cliente = $1
+  WHERE codigo_cliente = ANY($1::text[])
     AND codigo_direccion_cliente = ANY($2::text[]);
 `;
 
@@ -128,30 +159,104 @@ async function buscarUno(sql, patron, camposCandidato) {
   return { estado: "resuelto", fila: rows[0] };
 }
 
-async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categoria, producto }) {
+async function ventasCliente({ nombre_cliente, codigo_cliente, fecha_inicio, fecha_fin, categoria, producto }) {
   const largoDias = diffDias(fecha_inicio, fecha_fin);
   if (largoDias < 0) throw new Error("fecha_inicio no puede ser posterior a fecha_fin");
   if (largoDias > MAX_RANGO_DIAS) throw new Error(`rango máximo permitido: ${MAX_RANGO_DIAS} días`);
+  if (!nombre_cliente && !(codigo_cliente && codigo_cliente.length > 0)) {
+    throw new Error("se requiere nombre_cliente o codigo_cliente");
+  }
 
-  // 1) Resolver cliente.
-  const patronCliente = `%${escaparComodinesLike(nombre_cliente)}%`;
-  const resultCliente = await buscarUno(SQL_BUSCAR_CLIENTE, patronCliente, [
-    "codigo_cliente",
-    "nombre_cliente",
-    "nombre_comercial_cliente",
-  ]);
-  if (resultCliente.estado === "sin_coincidencias") {
-    return { encontrado: false, motivo: "sin_coincidencias_cliente", candidatos: [] };
+  // 1) Resolver cliente(s). Si viene `codigo_cliente` explícito (típicamente
+  //    una llamada de seguimiento tras un resultado es_multicompania), se usa
+  //    directo y no se vuelve a resolver por nombre.
+  let clientesResueltos;
+  let codigosNoEncontrados = [];
+
+  if (codigo_cliente && codigo_cliente.length > 0) {
+    const { rows } = await pool.query(SQL_CLIENTES_POR_CODIGO, [codigo_cliente]);
+    if (rows.length === 0) {
+      return { encontrado: false, motivo: "codigo_cliente_no_encontrado", codigos_solicitados: codigo_cliente };
+    }
+    clientesResueltos = rows;
+    codigosNoEncontrados = codigo_cliente.filter((c) => !rows.some((r) => r.codigo_cliente === c));
+  } else {
+    const patronCliente = `%${escaparComodinesLike(nombre_cliente)}%`;
+    const resultCliente = await buscarUno(SQL_BUSCAR_CLIENTE, patronCliente, [
+      "codigo_cliente",
+      "nombre_cliente",
+      "nombre_comercial_cliente",
+      "identificacion_cliente",
+      "company_id",
+      "descripcion_company",
+    ]);
+    if (resultCliente.estado === "sin_coincidencias") {
+      return { encontrado: false, motivo: "sin_coincidencias_cliente", candidatos: [] };
+    }
+    if (resultCliente.estado === "coincidencias_multiples") {
+      const candidatos = resultCliente.candidatos;
+      const identificacionesUnicas = new Set(candidatos.map((c) => c.identificacion_cliente).filter(Boolean));
+      const nombresUnicos = new Set(candidatos.map((c) => c.nombre_cliente));
+      // Multi-compañía real: es la MISMA entidad (mismo RUC/cédula y mismo
+      // nombre), solo facturada desde distintas compañías del grupo — no
+      // clientes distintos que coinciden de nombre por casualidad.
+      const esMismaEntidad =
+        !resultCliente.truncado &&
+        candidatos.every((c) => c.identificacion_cliente) &&
+        identificacionesUnicas.size === 1 &&
+        nombresUnicos.size === 1;
+
+      if (esMismaEntidad) {
+        return {
+          encontrado: false,
+          motivo: "cliente_multicompania",
+          es_multicompania: true,
+          cliente: {
+            nombre_cliente: candidatos[0].nombre_cliente,
+            nombre_comercial_cliente: candidatos[0].nombre_comercial_cliente,
+            identificacion_cliente: candidatos[0].identificacion_cliente,
+          },
+          companias: candidatos.map((c) => ({
+            codigo_cliente: c.codigo_cliente,
+            company_id: c.company_id,
+            descripcion_company: c.descripcion_company,
+          })),
+        };
+      }
+
+      return {
+        encontrado: false,
+        motivo: "coincidencias_multiples_cliente",
+        candidatos: candidatos.map(({ codigo_cliente: cc, nombre_cliente: nc, nombre_comercial_cliente: ncc }) => ({
+          codigo_cliente: cc,
+          nombre_cliente: nc,
+          nombre_comercial_cliente: ncc,
+        })),
+        candidatos_truncados: resultCliente.truncado,
+      };
+    }
+    clientesResueltos = [resultCliente.fila];
   }
-  if (resultCliente.estado === "coincidencias_multiples") {
-    return {
-      encontrado: false,
-      motivo: "coincidencias_multiples_cliente",
-      candidatos: resultCliente.candidatos,
-      candidatos_truncados: resultCliente.truncado,
-    };
-  }
-  const cliente = resultCliente.fila;
+
+  // Forma resumida del/los cliente(s) resuelto(s), reutilizada en las
+  // respuestas de error de abajo y en el resultado final.
+  const clienteInfoResumen =
+    clientesResueltos.length === 1
+      ? {
+          codigo_cliente: clientesResueltos[0].codigo_cliente,
+          nombre_cliente: clientesResueltos[0].nombre_cliente,
+          nombre_comercial_cliente: clientesResueltos[0].nombre_comercial_cliente,
+        }
+      : {
+          nombre_cliente: clientesResueltos[0].nombre_cliente,
+          nombre_comercial_cliente: clientesResueltos[0].nombre_comercial_cliente,
+          es_multicompania: true,
+          companias: clientesResueltos.map((c) => ({
+            codigo_cliente: c.codigo_cliente,
+            company_id: c.company_id,
+            descripcion_company: c.descripcion_company,
+          })),
+        };
 
   // 2) Resolver producto, solo si se pidió.
   let productoResuelto = null;
@@ -162,11 +267,7 @@ async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categori
       return {
         encontrado: false,
         motivo: "sin_coincidencias_producto",
-        cliente: {
-          codigo_cliente: cliente.codigo_cliente,
-          nombre_cliente: cliente.nombre_cliente,
-          nombre_comercial_cliente: cliente.nombre_comercial_cliente,
-        },
+        cliente: clienteInfoResumen,
         candidatos_producto: [],
       };
     }
@@ -174,11 +275,7 @@ async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categori
       return {
         encontrado: false,
         motivo: "coincidencias_multiples_producto",
-        cliente: {
-          codigo_cliente: cliente.codigo_cliente,
-          nombre_cliente: cliente.nombre_cliente,
-          nombre_comercial_cliente: cliente.nombre_comercial_cliente,
-        },
+        cliente: clienteInfoResumen,
         candidatos_producto: resultProducto.candidatos,
         candidatos_producto_truncados: resultProducto.truncado,
       };
@@ -187,13 +284,17 @@ async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categori
   }
 
   // 3) Historial de ventas, con categoria/producto como filtros opcionales.
+  //    codigosClientes puede tener más de un elemento (consolidado
+  //    multi-compañía); SQL_HISTORIAL filtra con ANY(...) y devuelve también
+  //    el codigo_cliente de cada fila para poder desglosar por compañía.
+  const codigosClientes = clientesResueltos.map((c) => c.codigo_cliente);
   const inicioTs = `${fecha_inicio} 00:00:00`;
   const finTs = `${finExclusivo(fecha_fin)} 00:00:00`;
   const categoriaParam = categoria || null;
   const productoParam = productoResuelto ? productoResuelto.codigo_producto : null;
 
   const { rows: filas } = await pool.query(SQL_HISTORIAL, [
-    cliente.codigo_cliente,
+    codigosClientes,
     inicioTs,
     finTs,
     categoriaParam,
@@ -203,6 +304,7 @@ async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categori
   const porMesMap = new Map();
   const porDireccionMap = new Map();
   const porProductoMap = new Map();
+  const porCompaniaMap = new Map();
   let dolaresTotales = 0;
   let unidadesTotales = 0;
   let numDocumentosTotal = 0;
@@ -210,9 +312,10 @@ async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categori
   for (const f of filas) {
     const dolares = Number(f.dolares) || 0;
     const unidades = Number(f.unidades) || 0;
+    const numDocumentos = Number(f.num_documentos) || 0;
     dolaresTotales += dolares;
     unidadesTotales += unidades;
-    numDocumentosTotal += Number(f.num_documentos) || 0;
+    numDocumentosTotal += numDocumentos;
 
     const mesActual = porMesMap.get(f.mes) || { dolares: 0, unidades: 0 };
     mesActual.dolares += dolares;
@@ -234,12 +337,18 @@ async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categori
     prodActual.dolares += dolares;
     prodActual.unidades += unidades;
     porProductoMap.set(productoKey, prodActual);
+
+    const companiaActual = porCompaniaMap.get(f.codigo_cliente_fila) || { dolares: 0, unidades: 0, num_documentos: 0 };
+    companiaActual.dolares += dolares;
+    companiaActual.unidades += unidades;
+    companiaActual.num_documentos += numDocumentos;
+    porCompaniaMap.set(f.codigo_cliente_fila, companiaActual);
   }
 
   const direccionesCodigos = [...porDireccionMap.keys()].filter((k) => k !== "SIN_DIRECCION");
   let descripcionesPorCodigo = {};
   if (direccionesCodigos.length > 0) {
-    const { rows: direcciones } = await pool.query(SQL_DIRECCIONES, [cliente.codigo_cliente, direccionesCodigos]);
+    const { rows: direcciones } = await pool.query(SQL_DIRECCIONES, [codigosClientes, direccionesCodigos]);
     descripcionesPorCodigo = Object.fromEntries(
       direcciones.map((d) => [
         d.codigo_direccion_cliente,
@@ -269,13 +378,29 @@ async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categori
       .sort((a, b) => b.dolares - a.dolares);
   }
 
+  // por_compania: SIEMPRE que se consulta más de un codigo_cliente a la vez
+  // (consolidado multi-compañía), para que el total nunca se entregue como
+  // un número ciego — siempre auditable contra su desglose.
+  let porCompania;
+  if (clientesResueltos.length > 1) {
+    porCompania = clientesResueltos
+      .map((c) => {
+        const v = porCompaniaMap.get(c.codigo_cliente) || { dolares: 0, unidades: 0, num_documentos: 0 };
+        return {
+          codigo_cliente: c.codigo_cliente,
+          company_id: c.company_id,
+          descripcion_company: c.descripcion_company,
+          dolares: Number(v.dolares.toFixed(2)),
+          unidades: v.unidades,
+          num_documentos: v.num_documentos,
+        };
+      })
+      .sort((a, b) => b.dolares - a.dolares);
+  }
+
   const resultado = {
     encontrado: true,
-    cliente: {
-      codigo_cliente: cliente.codigo_cliente,
-      nombre_cliente: cliente.nombre_cliente,
-      nombre_comercial_cliente: cliente.nombre_comercial_cliente,
-    },
+    cliente: clienteInfoResumen,
     filtros: {
       categoria: categoriaParam,
       producto: productoResuelto
@@ -301,6 +426,8 @@ async function ventasCliente({ nombre_cliente, fecha_inicio, fecha_fin, categori
       .sort((a, b) => b.dolares - a.dolares),
   };
   if (porProducto) resultado.por_producto = porProducto;
+  if (porCompania) resultado.por_compania = porCompania;
+  if (codigosNoEncontrados.length > 0) resultado.codigos_no_encontrados = codigosNoEncontrados;
 
   return resultado;
 }

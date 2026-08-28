@@ -94,6 +94,25 @@ async function main() {
   if (!rowsProductos[0].existe) throw new Error("FALLO: la tabla productos ya no existe (inyección exitosa)");
   console.log("OK: la tabla `productos` sigue existiendo intacta.");
 
+  // 7) `codigo_cliente` (nuevo, array de texto libre): va a la query como
+  //    `= ANY($1::text[])` — un payload de inyección dentro del array debe
+  //    tratarse como texto literal (no matchea ningún código real) sin
+  //    lanzar error de sintaxis ni afectar la tabla.
+  const payloadCodigoCliente = "110470'; DROP TABLE clientes; --";
+  const resultadoCodigoCliente = await ventasCliente({
+    codigo_cliente: [payloadCodigoCliente],
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  console.log("OK: ventasCliente con codigo_cliente malicioso no lanzó error de sintaxis ->", JSON.stringify(resultadoCodigoCliente));
+  if (resultadoCodigoCliente.encontrado !== false || resultadoCodigoCliente.motivo !== "codigo_cliente_no_encontrado") {
+    throw new Error("FALLO: se esperaba codigo_cliente_no_encontrado, llegó algo distinto");
+  }
+
+  const { rows: rowsClientes2 } = await pool.query("SELECT to_regclass('clientes') AS existe");
+  if (!rowsClientes2[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía codigo_cliente)");
+  console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía codigo_cliente).");
+
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");
 }

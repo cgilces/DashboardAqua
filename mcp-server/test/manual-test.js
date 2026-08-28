@@ -108,6 +108,21 @@ async function main() {
     await ventasCliente({ nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy, producto: "PACK" })
   );
 
+  imprimir(
+    "ventasCliente (CORPORACION EL ROSADO, debe detectar multi-compañía real)",
+    await ventasCliente({ nombre_cliente: "CORPORACION EL ROSADO", fecha_inicio: "2026-06-01", fecha_fin: hoy, categoria: "DESCARTABLE" })
+  );
+
+  imprimir(
+    "ventasCliente (codigo_cliente=[109880,110470,112892], consolidado + por_compania)",
+    await ventasCliente({
+      codigo_cliente: ["109880", "110470", "112892"],
+      fecha_inicio: "2026-06-01",
+      fecha_fin: hoy,
+      categoria: "DESCARTABLE",
+    })
+  );
+
   await pool.end();
 }
 

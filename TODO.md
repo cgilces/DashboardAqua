@@ -705,3 +705,49 @@ tal producto tal cliente" — la tool solo daba el historial completo sin acotar
 - [x] Seguridad: `producto` es texto libre (como `nombre_cliente`), probado con un payload
       de inyección real contra `productos` — parámetro posicional lo neutraliza, tabla
       intacta. Sin `GRANT` nuevo.
+
+### Bug real: `ventasCliente` no podía resolver clientes multi-compañía (caso "CORPORACION EL ROSADO S.A.")
+
+Hallazgo de uso: le pidieron "cuánto ha vendido descartables Corporación El Rosado en los
+últimos 3 meses" y el chat no pudo responder. La tool solo filtraba por `nombre_cliente`
+(texto); al buscar por nombre encontró 3 registros distintos con el mismo nombre y cortó
+con `coincidencias_multiples_cliente` sin forma de aislar uno por código ni de consolidar
+los tres.
+
+- **Diagnóstico**: NO era duplicación de datos en el ERP. Se comparó columna por columna
+  los 3 `codigo_cliente` (109880, 110470, 112892) contra `clientes` — mismo
+  `identificacion_cliente` (RUC 0990004196001), mismo `nombre_cliente`/`nombre_comercial_cliente`/
+  `contacto_cliente`/dirección. Lo único que distingue a los 3 es `company_id`/
+  `descripcion_company`: es UNA sola entidad real facturada desde 3 compañías del grupo
+  (GRUPOAQUA S.A., DISTRINTER, IIBC S.A. — coincide con las categorías PT-DISTRINTER/
+  PT-COTTSA/PT-IIBC ya existentes). El bug era que la tool nunca expuso `codigo_cliente`
+  como parámetro y no distinguía este caso de una ambigüedad de nombre genuina.
+- [x] Al resolver por nombre, si TODAS las coincidencias comparten `identificacion_cliente`
+      Y `nombre_cliente` (misma entidad real, no textos parecidos por casualidad), la
+      respuesta ya no es la ambigüedad genérica: es `motivo: "cliente_multicompania"` +
+      `es_multicompania: true` + `companias: [{codigo_cliente, company_id,
+      descripcion_company}]` — para que el asistente pregunte en términos de negocio
+      ("¿las tres compañías o solo una?") en vez de códigos sin contexto. Si las
+      coincidencias son clientes genuinamente distintos (ej. "JAVIER"), sigue igual que
+      antes (`coincidencias_multiples_cliente`, sin tocar el comportamiento existente).
+- [x] Nuevo parámetro opcional `codigo_cliente` (array, hasta 10) — permite pedir el
+      consolidado o una compañía puntual sin volver a resolver por nombre. Cuando se usan
+      2+ códigos, la respuesta SIEMPRE incluye `por_compania` (desglose por
+      codigo_cliente/descripcion_company) junto al `total`, nunca solo el número sumado —
+      para que quede auditable. `nombre_cliente` y `codigo_cliente` son alternativos (al
+      menos uno es obligatorio); si se usa `codigo_cliente` se salta la búsqueda por nombre.
+- [x] `SQL_HISTORIAL`/`SQL_DIRECCIONES` cambiaron de `customer_code = $1` (escalar) a
+      `customer_code = ANY($1::text[])` para soportar 1 o varios códigos en la misma
+      consulta — sigue 100% parametrizado.
+- [x] Probado contra datos reales: nombre "CORPORACION EL ROSADO" → `es_multicompania` con
+      las 3 compañías reales; `codigo_cliente=[109880,110470,112892]` + `categoria=DESCARTABLE`
+      últimos 3 meses → total $22,718.80 / 9,619 unidades, coincide exactamente con pedir
+      solo `codigo_cliente=[110470]` (las otras 2 compañías en $0 ese periodo, visible en
+      `por_compania`, no oculto). Regresión: "JAVIER" sigue devolviendo la ambigüedad
+      genérica de siempre (no es multicompañía), y el caso de un solo cliente sin filtros
+      da exactamente el mismo resultado que antes del cambio.
+- [x] Seguridad: `codigo_cliente` es un array de texto libre — probado con un payload de
+      inyección real dentro del array (`"110470'; DROP TABLE clientes; --"`), el parámetro
+      posicional `ANY($1::text[])` lo neutraliza (no matchea ningún código real, tabla
+      `clientes` intacta). Sin `GRANT` nuevo — `company_id`/`descripcion_company`/
+      `identificacion_cliente` ya están en `clientes`, ya cubierta por el `GRANT` existente.
