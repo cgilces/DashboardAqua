@@ -795,3 +795,287 @@ antes del fix:
       (en texto crudo, sin el wrapping `%...%` de ILIKE) al fallback de sugerencias —
       probado, sigue sin lanzar error de sintaxis y no genera sugerencias falsas (sin
       parecido real a ningún nombre). Sin `GRANT` nuevo.
+
+## Hueco de datos histórico: `ventas_mv` no tenía nada antes del 2026-07-15 — backfill enero-agosto 2026 en curso
+
+Hallazgo de uso: `ventasCliente` para El Rosado (110470) sin filtro de categoría, rango
+ene-ago 2026, solo traía julio y agosto. Diagnóstico (no era bug de `ventasCliente`, era
+un hueco de sincronización):
+
+- **Causa raíz**: nadie —ni el cron (`DIAS_RETRO=10` en `backend/cron/tareasCron.js`, solo
+  mantiene fresco lo reciente) ni un sync manual— le pidió nunca al pipeline traer datos
+  anteriores al 2026-07-15. El log propio del sistema (`sincronizaciones_ventas`) arranca
+  recién el 2026-08-21; el único registro que pide algo más viejo es un sync manual del
+  2026-08-24 con `desde_date=2026-07-15`. No es limitación técnica —
+  `sincronizarVentasRango(startDate, endDate)` acepta cualquier rango— es que ese rango
+  nunca se pidió.
+- **Confirmado contra Odoo directamente** (XML-RPC, solo lectura): 5,638 facturas
+  `out_invoice` en estado `posted` para partner_id=110470 entre 2026-01-01 y 2026-06-30
+  que NO están en `ventas_mv`. Confirma hueco de carga, no ausencia real de venta.
+- **Requisito confirmado**: el MCP debe tener como mínimo todo el año en curso
+  (enero-agosto 2026) en `ventas_mv`. Backfill mes a mes hacia atrás desde junio, cada
+  corrida vía `GET /api/sync/sincronizar?desde=YYYY-MM-01&hasta=YYYY-MM-DD`, revisando
+  reconciliación (Odoo vs. `ventas_mv`, con foco en El Rosado) y el log de errores de
+  cada corrida antes de seguir con el mes anterior.
+- [x] **Junio 2026 (validación)** — corrido y reconciliado 2026-08-28:
+  - `sale.order` global: Odoo 5,951 = `ventas_mv` 5,951 (exacto).
+  - `account.move` global: Odoo 29,764 vs `ventas_mv` 29,857 (+93, explicado por 593
+    documentos POS/COTTSA que el sync trae aparte y también caen en `facturas` — no es
+    hueco).
+  - El Rosado (110470): Odoo 1,167 = `ventas_mv` 1,167 (exacto).
+  - Lado Odoo del sync: 0 errores. Lado MobilVendor: 4 errores — ver bug diferido abajo.
+- [x] **Mayo 2026** — corrido y reconciliado 2026-08-28:
+  - `sale.order` global: Odoo 5,947 = `ventas_mv` 5,947 (exacto).
+  - `account.move` global: Odoo 22,451 vs `ventas_mv` 22,547 (+96, mismo patrón POS que
+    junio).
+  - El Rosado (110470): Odoo 1,238 = `ventas_mv` 1,238 (exacto).
+  - Lado Odoo: 0 errores. Lado MobilVendor: 8 errores, mismo bug diferido de
+    `estado_ubicacion_direccion_cliente` (ver abajo) — mismo patrón que junio, no dispara
+    los criterios de "detente y avisa".
+- [x] **Abril 2026** — corrido y reconciliado 2026-08-28:
+  - `sale.order` global: Odoo/`ventas_mv` 6,032 = 6,032 (exacto).
+  - `account.move` global: Odoo 33,140 vs `ventas_mv` 33,272 (+132, mismo patrón POS).
+  - El Rosado (110470): Odoo 1,298 = `ventas_mv` 1,298 (exacto).
+  - Lado Odoo: 0 errores. Lado MobilVendor: 10 errores, mismas 2 direcciones conocidas
+    (277494, 284316) — sin patrón nuevo.
+- [x] **Marzo 2026** — corrido y reconciliado 2026-08-28:
+  - `sale.order`/`account.move` global: sin novedad.
+  - El Rosado (110470), filtrando `status=2` (el mismo filtro que usa `ventasCliente`):
+    Odoo 1,056 = `ventas_mv` 1,056 (exacto). Nota metodológica: un `COUNT(*)` sin filtrar
+    por `status` dio 1,105 vs 1,104 — la diferencia era una factura cancelada colisionada
+    (ver hallazgo nuevo abajo), no un hueco real; a partir de aquí la reconciliación se
+    hace siempre con `status=2` para comparar manzanas con manzanas.
+  - Lado Odoo: 0 errores. Lado MobilVendor: 1 error, mismo bug diferido de
+    `estado_ubicacion_direccion_cliente` (dirección 277494) — sin patrón nuevo en ese
+    frente.
+- [x] **Febrero 2026** — corrido y reconciliado 2026-08-28:
+  - `sale.order` global: 5,254 (`ventas_mv` ODOO) — sin novedad.
+  - El Rosado (110470), `status=2`: Odoo 957 = `ventas_mv` 957 (exacto).
+  - Lado Odoo: 0 errores. Lado MobilVendor: **0 errores** — el mes más limpio del
+    backfill hasta ahora.
+- [x] **Enero 2026** — corrido y reconciliado 2026-08-28:
+  - `sale.order` global: 5,753 (`ventas_mv` ODOO) — sin novedad.
+  - El Rosado (110470), `status=2`: Odoo 1,081 = `ventas_mv` 1,081 (exacto).
+  - Lado Odoo: 0 errores. Lado MobilVendor: 0 errores.
+
+### ✅ Backfill enero-agosto 2026 COMPLETADO — resumen consolidado
+
+Los 6 meses corridos (jun→ene, en ese orden) + julio/agosto (ya sincronizados antes de
+empezar esta tarea) cubren ahora el año completo en curso, tal como requería el MCP.
+
+| Mes | El Rosado (110470) Odoo vs `ventas_mv` (`status=2`) | Errores Odoo | Errores MobilVendor (bug diferido) |
+|---|---|---|---|
+| Enero | 1,081 = 1,081 ✅ | 0 | 0 |
+| Febrero | 957 = 957 ✅ | 0 | 0 |
+| Marzo | 1,056 = 1,056 ✅ | 0 | 1 |
+| Abril | 1,298 = 1,298 ✅ | 0 | 10 |
+| Mayo | 1,238 = 1,238 ✅ | 0 | 8 |
+| Junio | 1,167 = 1,167 ✅ | 0 | 4 |
+| Julio-agosto | ya sincronizados antes de este backfill | — | — |
+
+**Todos los meses reconcilian exacto para El Rosado** (y por extensión, se validó también
+a nivel global de `sale.order`/`account.move` sin discrepancias no explicadas). Los únicos
+errores en todo el backfill (23 documentos en total, jun-mar) son el mismo bug ya
+documentado y diferido (`estado_ubicacion_direccion_cliente` = "UNKNOWN"), concentrado en
+2 direcciones puntuales (277494, 284316) — tabla completa de documentos afectados arriba,
+lista para re-sincronizar cuando se aplique el fix. Ningún mes disparó los criterios de
+"detente y avisa" (tasa mucho mayor o patrón estructural distinto) salvo el hallazgo
+aparte de la colisión `code="/"` (documentado arriba, confirmado sin impacto en totales).
+
+**Pendiente real, no bloqueante**: aplicar el fix de `estado_ubicacion_direccion_cliente`
++ re-sync puntual de los 23 documentos de la tabla de seguimiento (requiere reiniciar
+`dashboard_backend`, diferido a propósito hasta ahora — decisión del usuario).
+
+### Hallazgo nuevo (no urgente): `facturas.code = "/"` colisiona entre facturas canceladas de distintos clientes
+
+Encontrado durante la reconciliación de marzo — **distinto** del bug de
+`estado_ubicacion_direccion_cliente` de arriba, sin relación entre ambos.
+
+- **Qué pasa**: Odoo no asigna número de secuencia a una factura hasta que se postea;
+  una factura que queda `state=cancel` sin llegar a postearse conserva `name = "/"`
+  literal. `facturas.code` tiene `UNIQUE (code)` — cualquier factura cancelada de
+  CUALQUIER cliente/compañía con ese mismo `"/"` colisiona en el upsert: la última que se
+  sincroniza pisa a la anterior (incluyendo su `customer_code`). Es silencioso, no lanza
+  error.
+- **Por qué no afecta las ventas reales**: las facturas `state=cancel` se guardan con
+  `status=0`, y `ventasCliente` (igual que el resto del sync) siempre filtra `status=2`.
+  Verificado en marzo: filtrando `status=2`, El Rosado reconcilia exacto (1,056=1,056)
+  pese a la colisión. La fila colisionada nunca entra a ningún total.
+- **Por qué queda anotado igual**: es una debilidad real de diseño (usar `code`/`name` de
+  Odoo como clave única asumiendo que siempre es un identificador genuino) — mismo tipo
+  de problema, en otra forma, al ya conocido "Facturas con promo desaparecen del reporte
+  — Odoo pisa a MobilVendor". No urgente porque no toca ningún número reportado hoy, pero
+  si en el futuro se necesita reportar/auditar documentos cancelados por separado, esta
+  colisión sí importaría. Sin fix propuesto todavía — no bloquea el backfill.
+- [ ] Al terminar los 6 meses: resumen consolidado documentos Odoo vs. `ventas_mv` por
+      mes (enero-agosto), y decidir sobre el fix de `estado_ubicacion_direccion_cliente`
+      (ver abajo) + re-sync puntual de los documentos de la tabla de seguimiento.
+
+### Bug diferido: `estado_ubicacion_direccion_cliente` tumba el documento completo cuando MobilVendor manda "UNKNOWN"
+
+Encontrado durante la validación de junio del backfill de arriba. **Diferido a propósito**
+hasta terminar el backfill enero-agosto completo — decisión explícita del usuario, para no
+reiniciar `dashboard_backend` (sirve el dashboard en producción, a diferencia de
+`mcp_server` que no tiene usuarios activos) a mitad de una validación multi-mes, y para no
+mezclar variables (un error nuevo en otro mes no debe confundirse con este cambio).
+
+- **Qué pasa**: `direcciones_clientes.estado_ubicacion_direccion_cliente` es `integer` en
+  Postgres. Para ciertas direcciones, MobilVendor manda el string literal `"UNKNOWN"` en
+  ese campo. `syncDireccionCliente` (`backend/services/sincronizacionService.js:354`) no
+  sanea el valor antes del insert → Postgres rechaza con
+  `error 22P02: invalid input syntax for type integer: "UNKNOWN"`.
+- **Por qué importa para las ventas (no es solo metadata de dirección)**:
+  `syncDireccionCliente` corre DENTRO de la misma transacción que `syncDocumento`/
+  `syncDetalle` (`procesarDocumento`, línea 828) — si falla, hace rollback del documento
+  completo (orden/factura + detalle con montos), no solo de la dirección. Se pierden
+  documentos enteros, no solo un dato de dirección.
+- **Fix propuesto (no implementado todavía)**: en `syncDireccionCliente`, sanear
+  `estado_ubicacion_direccion_cliente` a `null` cuando el valor entrante no sea un entero
+  válido, antes de armar el INSERT/upsert. Cambio de pocas líneas, una sola función, sin
+  tocar schema.
+- **Por qué es seguro diferirlo**: el dato sigue existiendo en MobilVendor/Odoo, el sync
+  es idempotente (upsert) — una vez arreglado, se puede re-sincronizar puntualmente cada
+  documento de la tabla de seguimiento de abajo sin perder nada ni tener que rastrear todo
+  desde cero.
+- **Confirmado en la corrida de mayo**: los 8 errores de mayo caen en las MISMAS 2
+  direcciones que junio (277494 "DHARMA BEACH(NO USAR)" y 284316 "CANTA Y NO LLORES(NO
+  USAR)") — ambas ya marcadas "NO USAR" en su propia descripción. No son direcciones
+  nuevas ni un patrón distinto — son, aparentemente, 2 direcciones obsoletas específicas
+  en MobilVendor que nunca se limpiaron, y que se re-disparan cada vez que un documento
+  nuevo las referencia. Dato útil para cuando se arregle: revisar si esas 2 direcciones
+  deberían desactivarse/limpiarse en el origen (MobilVendor), no solo sanear el tipo en
+  el sync.
+
+**Tabla de seguimiento — documentos caídos por este error, por mes de backfill** (para
+re-sincronizar puntualmente una vez aplicado el fix; código de cliente = `customer_code`
+de la dirección, no necesariamente el mismo cliente que el documento facturado):
+
+| Mes backfill | Documento | Código cliente (dirección) | Dirección (código/desc) | Fecha documento |
+|---|---|---|---|---|
+| Junio 2026 | FA001-061-000003095 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-06-02 |
+| Junio 2026 | FA001-062-000003590 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-06-05 |
+| Junio 2026 | FA001-062-000003593 | 284316 | PRINCIPAL / CANTA Y NO LLORES(NO USAR) | 2026-06-05 |
+| Junio 2026 | FA001-062-000003594 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-06-05 |
+| Mayo 2026 | FA001-061-000002896 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-05-01 |
+| Mayo 2026 | FA001-075-000002263 | 284316 | PRINCIPAL / CANTA Y NO LLORES(NO USAR) | 2026-05-05 |
+| Mayo 2026 | FA001-073-000008740 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-05-12 |
+| Mayo 2026 | FA001-067-000003666 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-05-15 |
+| Mayo 2026 | FA001-061-000003021 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-05-19 |
+| Mayo 2026 | FA001-061-000003052 | 284316 | PRINCIPAL / CANTA Y NO LLORES(NO USAR) | 2026-05-22 |
+| Mayo 2026 | FA001-079-000002027 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-05-29 |
+| Mayo 2026 | FA001-062-000003532 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-05-29 |
+| Abril 2026 | FA001-075-000002074 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-04 |
+| Abril 2026 | FA001-062-000003245 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-07 |
+| Abril 2026 | FA001-062-000003255 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-10 |
+| Abril 2026 | FA001-062-000003257 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-10 |
+| Abril 2026 | FA001-062-000003258 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-10 |
+| Abril 2026 | FA001-075-000002121 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-14 |
+| Abril 2026 | FA001-075-000002128 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-14 |
+| Abril 2026 | FA001-075-000002189 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-21 |
+| Abril 2026 | FA001-075-000002195 | 284316 | PRINCIPAL / CANTA Y NO LLORES(NO USAR) | 2026-04-21 |
+| Abril 2026 | FA001-061-000002850 | 277494 | PRINCIPAL / DHARMA BEACH(NO USAR) | 2026-04-24 |
+
+## 🔴 Bug de producción activo: sesión de MobilVendor cacheada podía quedar inválida y el sync reportaba "SUCCESS" con 0 documentos, en silencio
+
+**El hallazgo más serio de esta sesión — no es un hueco histórico como los de arriba, es un bug
+de código que llevaba activo desde al menos el 21 de agosto de 2026, en el sync de producción,
+sin que nadie se enterara.**
+
+### Cómo se encontró
+
+Investigando por qué `ventasPorGrupo({grupo:"PREVENTA", categoria:"DESCARTABLE"})` de julio 2026
+daba $121,476.46 (cifra que el usuario marcó como sospechosa): se encontró un hueco real en
+`ordenes`/`facturas` para 2026-07-02 al 2026-07-14 (1-25 documentos/día vs. 500-1200/día normal).
+Al disparar un sync puntual para tapar ese rango, el lado Odoo trajo datos reales pero el lado
+MobilVendor devolvió `Facturas:0 Órdenes:0 Errores:0` — **dos veces seguidas**, con el mismo
+resultado exacto. Una prueba manual directa contra la API de MobilVendor (sesión nueva, sin
+pasar por el caché de la app) sí trajo datos reales (192 páginas) para el mismo rango exacto —
+descartando que el rango o la API en sí tuvieran el problema.
+
+### Causa raíz (confirmada con logs, no solo teoría)
+
+`backend/utils/apiCliente.js` cachea el `session_id` de MobilVendor en una variable de módulo
+(`sesionActual`), renovada automáticamente cada 30 minutos. `obtenerSesionActual()` solo chequea
+si hay *algo* cacheado — nunca valida que siga siendo válido contra el servidor. La API de
+MobilVendor, ante una sesión inválida/vencida, **responde `200 OK` con `headers: []`** en vez de
+un error de autenticación — así que el código nunca se entera de que la sesión murió.
+
+`docker logs dashboard_backend` confirmó que ambos intentos fallidos reutilizaron **el mismo**
+`session_id` (`WS_92094db2763e2653071a3f41915af71f1efcf7bd`), logueando `"Sesión MobilVendor OK"`
+las dos veces — el código creía que todo estaba bien.
+
+### Alcance real del daño (auditoría completa de `sincronizaciones_ventas` desde el 21-ago)
+
+De 33 corridas de MobilVendor registradas, **14 (42%) tuvieron `Facturas:0 Órdenes:0`**,
+alternando con corridas exitosas de forma intermitente (no es un evento único, es recurrente —
+patrón consistente con una sesión que se invalida del lado del servidor de MobilVendor con más
+frecuencia de lo que la app la renueva).
+
+Como las ventanas del cron son rolling de 10 días y se solapan, la mayoría de esas 14 fallas
+quedaron tapadas por una corrida exitosa adyacente. Verificando día por día (no solo por corrida)
+contra el volumen real de `ordenes` origen MobilVendor, el daño **irrecuperable sin acción**
+se redujo a:
+- **2026-07-01 a 2026-07-14** — hueco real de casi 2 semanas completas (esto fue lo que arrancó
+  toda esta investigación). **Ya resincronizado y verificado** (volumen normal 236-938
+  docs/día en todo el rango).
+- **2026-08-30 y 2026-08-31** — recuperaron datos reales al resincronizar (8 y 380 documentos
+  respectivamente) que antes no estaban. **Ya resincronizado.**
+- 2026-08-16 y 2026-08-23 parecían huecos por el chequeo ingenuo (0 documentos ese día), pero
+  **verificado que NO lo son**: siguen en 0 incluso después de un resync exitoso con datos reales
+  (7,913/10,663 documentos totales en ese resync) — son domingos con actividad MobilVendor
+  genuinamente casi nula, mismo patrón que otros domingos del año (14/21/28-jun, 5-jul también
+  dan 0). Falsa alarma, descartada con evidencia, no solo supuesta.
+
+### Fix permanente desplegado
+
+`backend/services/sincronizacionService.js` (`sincronizarVentasRango`) + `backend/utils/apiCliente.js`:
+- Nueva función `forzarSesionNueva()` — descarta la sesión cacheada y relogea de inmediato.
+- En el loop de paginación: si la **página 1** de un rango viene vacía (`headers.length === 0`),
+  se trata como sospechosa (casi nunca es "no hay ventas", casi siempre es sesión muerta) —
+  se fuerza `forzarSesionNueva()` y se reintenta la misma página **una vez** antes de aceptar el
+  resultado. Solo se chequea la página 1 (no páginas intermedias) para no confundir el fin
+  normal de la paginación con una sesión inválida.
+- Si tras el reintento sigue vacía, se acepta como resultado real (rango genuinamente sin
+  ventas) — pero **nunca en silencio**: cualquiera de los dos casos (sesión sospechosa detectada,
+  o confirmada vacía tras reintento) queda registrado en `erroresPorDocumento` → aparece en
+  `errores_sync.txt` y en el `Err:N` persistido en `sincronizaciones_ventas.mensaje`. Ya no es
+  posible reportar `SUCCESS` con `Facturas:0 Órdenes:0 Errores:0` cuando la causa real fue una
+  sesión inválida.
+- **Alcance deliberadamente acotado**: `sincronizarDirecciones`/`sincronizarPromociones`
+  (otros 2 usos de `obtenerSesionActual()`) tienen la misma vulnerabilidad en teoría, pero no se
+  tocaron en este fix — no hay evidencia de que hayan fallado así, y ampliar el cambio ahí
+  aumentaba el riesgo sin un síntoma confirmado que lo justifique. Evaluar aparte si se observa
+  el mismo patrón.
+- Desplegado: `docker compose build dashboard_backend && docker compose up -d dashboard_backend`
+  (`dashboard_postgres` no se recreó). `node --check` OK en ambos archivos antes de desplegar.
+- **Verificación real del fix**: pendiente de confirmarse contra el próximo par de ciclos de
+  cron (12am/12pm) — si vuelve a aparecer una sesión inválida, ahora debe autocorregirse y
+  quedar con `Err:N > 0` en vez de `Facturas:0 Órdenes:0 Errores:0`. No se pudo forzar el
+  bug bajo demanda para probarlo end-to-end (depende de que el servidor de MobilVendor invalide
+  la sesión, fuera de nuestro control).
+
+### Dato corregido que motivó la investigación
+
+`ventasPorGrupo({grupo:"PREVENTA", categoria:"DESCARTABLE"})`, julio 2026:
+- **Antes (con el hueco): $121,476.46**, variación vs. junio de -46.41% (falsa, alarmante).
+- **Después (hueco tapado): $218,127.00**, 72,667 unidades, variación vs. junio de -3.77% (real,
+  razonable).
+
+### Hallazgo NUEVO, separado y de menor confianza — pendiente de decisión, NO resincronizado
+
+Un barrido adicional (mismo umbral que `resumenDiario.posible_hueco_sync`, pero corrido por
+separado para `origen_sistema='MOBILVENDOR'` vs `'ODOO'`, en vez de combinado — el combinado
+tiene un punto ciego: un hueco de una sola fuente puede quedar tapado por el volumen de la otra
+en el mismo día) encontró **54 días entre enero y junio 2026** con volumen de MobilVendor
+reducido — pero **parcial, no total** (ej. 250-390 documentos vs. baseline de 600-1000), en
+clusters de varios días/semanas seguidos (27-31 enero, 23-25 febrero, 27 marzo-4 abril, 14-23
+abril, 26-27 abril, 29-30 mayo, 1-16 junio).
+
+Esto es distinto y de menor confianza que los huecos totales de arriba:
+- No se verificó todavía contra Odoo/MobilVendor directamente si es un hueco real de sync o una
+  reducción real de actividad de negocio (ej. una semana con menos rutas activas).
+- El alcance (54 días) es mucho mayor que lo investigado hoy — ameritaría su propio análisis
+  antes de tocar nada, no una resincronización a ciegas.
+- **No se disparó ningún resync sobre esto** — queda pendiente de decisión del usuario sobre
+  cómo investigarlo (ej. verificación puntual contra MobilVendor de 2-3 de estos días antes de
+  decidir si vale la pena resincronizar los 54).
