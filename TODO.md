@@ -1030,17 +1030,20 @@ se redujo a:
 
 `backend/services/sincronizacionService.js` (`sincronizarVentasRango`) + `backend/utils/apiCliente.js`:
 - Nueva función `forzarSesionNueva()` — descarta la sesión cacheada y relogea de inmediato.
-- En el loop de paginación: si la **página 1** de un rango viene vacía (`headers.length === 0`),
-  se trata como sospechosa (casi nunca es "no hay ventas", casi siempre es sesión muerta) —
-  se fuerza `forzarSesionNueva()` y se reintenta la misma página **una vez** antes de aceptar el
-  resultado. Solo se chequea la página 1 (no páginas intermedias) para no confundir el fin
-  normal de la paginación con una sesión inválida.
-- Si tras el reintento sigue vacía, se acepta como resultado real (rango genuinamente sin
-  ventas) — pero **nunca en silencio**: cualquiera de los dos casos (sesión sospechosa detectada,
-  o confirmada vacía tras reintento) queda registrado en `erroresPorDocumento` → aparece en
-  `errores_sync.txt` y en el `Err:N` persistido en `sincronizaciones_ventas.mensaje`. Ya no es
-  posible reportar `SUCCESS` con `Facturas:0 Órdenes:0 Errores:0` cuando la causa real fue una
-  sesión inválida.
+- En el loop de paginación: si **cualquier página** viene vacía (`headers.length === 0`) dentro
+  del rango que la propia API ya dijo que tenía datos (`currentPage <= totalPages`), se trata
+  como sospechosa (casi nunca es "no hay más datos", casi siempre es sesión muerta) — se fuerza
+  `forzarSesionNueva()` y se reintenta la MISMA página **una vez** antes de aceptar el resultado.
+  El reintento es por-página, no una sola vez por corrida completa — si la sesión muere de nuevo
+  más adelante en el mismo rango (ej. en la página 8 de 15), se reintenta ahí también. Revisado
+  y ampliado de "solo página 1" a "cualquier página" durante la verificación de este mismo fix,
+  aunque la investigación que lo motivó (ver más abajo) resultó ser una falsa alarma — la mejora
+  se mantuvo igual por ser más robusta sin costo.
+- Si tras el reintento sigue vacía, se acepta como resultado real (fin de la paginación) — pero
+  **nunca en silencio**: cada vez que esto se dispara queda registrado en `erroresPorDocumento`
+  → aparece en `errores_sync.txt` y en el `Err:N` persistido en `sincronizaciones_ventas.mensaje`.
+  Ya no es posible reportar `SUCCESS` con `Facturas:0 Órdenes:0 Errores:0` cuando la causa real
+  fue una sesión inválida.
 - **Alcance deliberadamente acotado**: `sincronizarDirecciones`/`sincronizarPromociones`
   (otros 2 usos de `obtenerSesionActual()`) tienen la misma vulnerabilidad en teoría, pero no se
   tocaron en este fix — no hay evidencia de que hayan fallado así, y ampliar el cambio ahí
@@ -1061,21 +1064,31 @@ se redujo a:
 - **Después (hueco tapado): $218,127.00**, 72,667 unidades, variación vs. junio de -3.77% (real,
   razonable).
 
-### Hallazgo NUEVO, separado y de menor confianza — pendiente de decisión, NO resincronizado
+### ❌ Hallazgo descartado — el barrido de "54 días con volumen reducido" era un defecto de MI metodología, no un hueco real
 
-Un barrido adicional (mismo umbral que `resumenDiario.posible_hueco_sync`, pero corrido por
-separado para `origen_sistema='MOBILVENDOR'` vs `'ODOO'`, en vez de combinado — el combinado
-tiene un punto ciego: un hueco de una sola fuente puede quedar tapado por el volumen de la otra
-en el mismo día) encontró **54 días entre enero y junio 2026** con volumen de MobilVendor
-reducido — pero **parcial, no total** (ej. 250-390 documentos vs. baseline de 600-1000), en
-clusters de varios días/semanas seguidos (27-31 enero, 23-25 febrero, 27 marzo-4 abril, 14-23
-abril, 26-27 abril, 29-30 mayo, 1-16 junio).
+**Corrección honesta**: se reportó inicialmente como un posible hueco real de sync de 54 días
+(enero-junio 2026, clusters como 27-31 enero, 27 marzo-4 abril, 1-16 junio) con volumen de
+MobilVendor "reducido" (ej. 216 documentos vs. baseline de ~900). Al verificar 3 días de muestra
+(29-ene, 1-abr, 10-jun) directo contra la API real de MobilVendor, esos números SÍ eran mucho
+más altos que lo guardado (ej. 29-ene: 1,430 documentos reales) — pero investigar por qué reveló
+que la causa no era pérdida de datos, sino un defecto del barrido:
 
-Esto es distinto y de menor confianza que los huecos totales de arriba:
-- No se verificó todavía contra Odoo/MobilVendor directamente si es un hueco real de sync o una
-  reducción real de actividad de negocio (ej. una semana con menos rutas activas).
-- El alcance (54 días) es mucho mayor que lo investigado hoy — ameritaría su propio análisis
-  antes de tocar nada, no una resincronización a ciegas.
-- **No se disparó ningún resync sobre esto** — queda pendiente de decisión del usuario sobre
-  cómo investigarlo (ej. verificación puntual contra MobilVendor de 2-3 de estos días antes de
-  decidir si vale la pena resincronizar los 54).
+- `facturas.code` es único, y **MobilVendor y Odoo sincronizan las mismas facturas reales**
+  (mismo número de documento). Cuando ambos sistemas sincronizan el mismo código, el que corre
+  después sobrescribe legítimamente `origen_sistema` — normalmente queda en `'ODOO'`.
+- El barrido que encontró los "54 días" contaba SOLO filas con `origen_sistema='MOBILVENDOR'`
+  — exactamente las que Odoo suele sobrescribir. Veía "pocos documentos MobilVendor" cuando en
+  realidad esos documentos SÍ estaban en la base, solo que etiquetados `'ODOO'`.
+- **Verificado con el 29-ene**: Odoo real = 1,359 facturas / 215 órdenes. `ventas_mv` (cualquier
+  origen) = 1,363 facturas (✅ coincide) / 431 órdenes = 215 Odoo + 216 MobilVendor (✅ coincide
+  exacto). **Los datos están completos — no falta nada.**
+
+**Conclusión: NO hay un hueco de 54 días. No se resincronizó nada de esta lista — no hacía
+falta.** El único hueco real de esta sesión fue julio 1-14 (ya corregido y verificado arriba),
+que sí era `Facturas:0 Órdenes:0` en AMBOS orígenes simultáneamente — un caso genuinamente
+distinto e inconfundible, no un artefacto de conteo por origen.
+
+**Mejora aplicada al fix igual, por las dudas**: aunque esta investigación no encontró un
+segundo bug real, sí reveló que el fix original solo protegía la página 1 de la paginación.
+Se generalizó para reintentar CUALQUIER página vacía (no solo la primera) — más robusto ante
+una sesión que muera a mitad de una sincronización larga, sin costo adicional real.

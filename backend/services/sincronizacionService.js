@@ -902,12 +902,19 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
     let currentPage = 1;
     // MobilVendor responde 200 OK con headers:[] ante una sesión cacheada
     // que quedó inválida server-side — NO es un error que el axios/try-catch
-    // detecte. Una página 1 vacía es sospechosa (headers.length === 0 ahí
-    // casi siempre significa sesión muerta, no "no hay ventas"), así que se
-    // fuerza un re-login y se reintenta la MISMA página una vez antes de
-    // aceptarla como un resultado real. Evita reportar SUCCESS con 0
-    // documentos en silencio cuando en realidad la sesión estaba vencida.
-    let reintentoSesionHecho = false;
+    // detecte, y puede pasar en CUALQUIER página, no solo la primera (la
+    // sesión puede morir a mitad de la paginación, no solo antes de
+    // empezar — confirmado con datos reales: días con totalPages=15-17
+    // donde solo llegaban 1-2 páginas reales antes de cortar en silencio).
+    // Toda página vacía dentro de [currentPage <= totalPages] es sospechosa
+    // — el propio bucle garantiza que, al entrar, currentPage siempre está
+    // dentro del rango que la API ya dijo que tenía datos (o es la
+    // página 1, con el valor por defecto) — así que se fuerza un re-login y
+    // se reintenta la MISMA página una vez antes de aceptarla como el fin
+    // real de la paginación. El reintento es por-página (no una sola vez
+    // por corrida completa): si la sesión vuelve a morir más adelante en el
+    // mismo rango, se reintenta de nuevo ahí también.
+    let reintentoPaginaActual = false;
 
     while (currentPage <= totalPages) {
       console.log(`\n📦 PÁGINA ${currentPage} / ${totalPages}`);
@@ -938,31 +945,27 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
       const details = data.details  || [];
       const totalPagesRespuesta = data.pages || totalPages;
 
-      if (currentPage === 1 && headers.length === 0 && !reintentoSesionHecho) {
-        reintentoSesionHecho = true;
-        const avisoSesion = "Página 1 sin cabeceras — posible sesión de MobilVendor inválida (falso 200 OK vacío). Forzando re-login y reintentando.";
+      if (headers.length === 0 && !reintentoPaginaActual) {
+        reintentoPaginaActual = true;
+        const avisoSesion = `Página ${currentPage}/${totalPages} sin cabeceras — posible sesión de MobilVendor inválida (falso 200 OK vacío). Forzando re-login y reintentando la misma página.`;
         console.warn(`⚠️  ${avisoSesion}`);
         // Registro DURABLE (no solo log de consola, que rota) — para que un
         // hueco de sesión, resuelto o no, siempre quede auditable en
         // errores_sync.txt y en el Err:N persistido, nunca en silencio.
-        erroresPorDocumento.push({ code: `SESION_SOSPECHOSA_${startDate}_${endDate}`, error: { message: avisoSesion } });
+        erroresPorDocumento.push({ code: `SESION_SOSPECHOSA_${startDate}_${endDate}_pag${currentPage}`, error: { message: avisoSesion } });
         stats.errores++;
         session_id = await forzarSesionNueva();
         if (!session_id) throw new Error("No se pudo obtener sesión nueva de MobilVendor tras el reintento.");
-        continue; // reintenta currentPage=1 con la sesión nueva, sin avanzar
+        continue; // reintenta la MISMA página con sesión nueva, sin avanzar
       }
 
+      reintentoPaginaActual = false; // esta página ya se resolvió — habilita reintento para la próxima si hiciera falta
       totalPages = totalPagesRespuesta;
 
       console.log(`   → Cabeceras: ${headers.length} | Detalles: ${details.length} | Páginas: ${totalPages}`);
 
       if (!headers.length) {
-        if (reintentoSesionHecho) {
-          const avisoVacio = "Página 1 sigue vacía incluso con sesión nueva — se acepta como resultado real (no hay documentos en este rango), no como sesión inválida.";
-          console.warn(`⚠️  ${avisoVacio}`);
-          erroresPorDocumento.push({ code: `CONFIRMADO_SIN_DATOS_${startDate}_${endDate}`, error: { message: avisoVacio } });
-        }
-        console.log("🏁 Sin más cabeceras — finalizando paginación.");
+        console.log("🏁 Sin más cabeceras (confirmado tras reintento) — finalizando paginación.");
         break;
       }
 
