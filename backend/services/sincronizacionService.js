@@ -29,6 +29,7 @@ const {
 const DireccionCliente = require("../models/DireccionCliente");
 const { API_URL }             = require("../config/config");
 const { obtenerSesionActual, forzarSesionNueva } = require("../utils/apiCliente");
+const { sanitizeCoordinate } = require("../utils/sanitizeCoordinate");
 
 // ================================================================
 // CONFIGURACIÓN DE AXIOS CON RETRY AUTOMÁTICO
@@ -83,15 +84,6 @@ const normalizeCode = (v) => {
   if (v == null && v !== 0) return null;
   const s = String(v).trim().replace(/^0+/, "");
   return s.length ? s : null;
-};
-
-const sanitizeCoordinate = (value, tipo) => {
-  if (value == null) return null;
-  const num = parseFloat(value);
-  if (!Number.isFinite(num))                       return null;
-  if (tipo === "lat" && (num < -90  || num > 90))  return null;
-  if (tipo === "lon" && (num < -180 || num > 180)) return null;
-  return Number(num.toFixed(8));
 };
 
 // --- Helpers para promociones -------------------------------------------
@@ -622,7 +614,7 @@ async function syncDocumento(doc, code, transaction) {
 
   if (type === 2) {
     await Orden.upsert(
-      { 
+      {
         ...basePayload,
         origen_sistema: "MOBILVENDOR",
         campania_id         : COMPANY_ID,        // → 1
@@ -630,7 +622,13 @@ async function syncDocumento(doc, code, transaction) {
 
         //  NUEVOS CAMPOS
         codigo_subcanal: doc.subchannel_code || null,
-        codigo_tipo_negocio: doc.business_type_code || null
+        codigo_tipo_negocio: doc.business_type_code || null,
+
+        // Guía de entrega — objeto separado del status de la orden, antes
+        // descartado por completo. doc.waybill es null/false cuando la orden
+        // nunca llegó a despacharse (facturada pero sin guía generada).
+        waybill_code  : doc.waybill?.code || null,
+        waybill_status: doc.waybill ? String(doc.waybill.status) : null,
       },
       { transaction }
     );

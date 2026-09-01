@@ -97,7 +97,7 @@ const SQL_PREVENTA = `
   JOIN detalle_documento dd ON dd.documento_code = o.code
   WHERE o.type = 2
     AND o.status = 5
-    AND ${FILTRO_PREVENTA_SELLER}
+    AND ${FILTRO_PREVENTA_SELLER("$3")}
     AND dd.descripcion_categoria = $3
     AND o.fecha_entrega >= $1
     AND o.fecha_entrega <  $2

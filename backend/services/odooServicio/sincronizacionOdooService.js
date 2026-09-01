@@ -17,6 +17,7 @@ const {
 const { Op } = require("sequelize");
 
 const { object, loginOdoo } = require("./odooConexion");
+const { sanitizeCoordinate } = require("../../utils/sanitizeCoordinate");
 
 // ========================================================
 // HELPERS
@@ -262,8 +263,12 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
       telefono_cliente: cliente.phone || cliente.mobile || null,
       contacto_cliente: cliente.name || null,
       direccion_cliente: cliente.street || null,
-      latitud_cliente: cliente.partner_latitude != null ? toNumber(cliente.partner_latitude) : null,
-      longitud_cliente: toNumber(cliente.partner_longitude) || null,
+      // Odoo trae coordenadas mal formadas para muchos clientes (sin punto
+      // decimal, ej. -2196885 en vez de -2.196885) — desbordaban
+      // DECIMAL(12,8) y tumbaban el chunk completo (~50 facturas). Se
+      // descartan a NULL en vez de dejarlas pasar corruptas.
+      latitud_cliente: sanitizeCoordinate(cliente.partner_latitude, "lat"),
+      longitud_cliente: sanitizeCoordinate(cliente.partner_longitude, "lon"),
       ciudad_cliente: cliente.city || null,
       pais_cliente: cliente.country_id?.[1] || null,
       industria_cliente: cliente.industry_id?.[1] || null,

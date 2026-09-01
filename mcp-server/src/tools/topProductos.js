@@ -167,7 +167,7 @@ const SQL_PREVENTA = `
   LEFT JOIN productos p ON p.codigo_producto = dd.codigo_producto
   WHERE o.type = 2
     AND o.status = 5
-    AND ${FILTRO_PREVENTA_SELLER}
+    AND ${FILTRO_PREVENTA_SELLER("$4")}
     AND dd.descripcion_categoria = $4
     AND o.fecha_entrega >= $1
     AND o.fecha_entrega <  $2

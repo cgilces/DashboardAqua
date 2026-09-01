@@ -1092,3 +1092,214 @@ distinto e inconfundible, no un artefacto de conteo por origen.
 segundo bug real, sí reveló que el fix original solo protegía la página 1 de la paginación.
 Se generalizó para reintentar CUALQUIER página vacía (no solo la primera) — más robusto ante
 una sesión que muera a mitad de una sincronización larga, sin costo adicional real.
+
+## Nota (sin acción): usuario "27" (DAISY MORAN) no es una ruta de preventa
+
+Encontrado investigando el bug de PREVENTA+BOTELLÓN (ver más abajo). El `seller_code`
+`"27"` (no un código tipo PV1-PV14/PVR3-5/PVM2/TELEVENTA 1) aparece en documentos de
+MobilVendor pero **no es un prevendedor real** — decisión pendiente con Alberto sobre si
+excluirlo formalmente de las consultas de PREVENTA. **No requiere cambio de código hoy**:
+verificado que `FILTRO_PREVENTA_SELLER` (`seller_code ILIKE 'PV%'...`) ya lo excluye de
+forma natural, porque "27" no matchea ese patrón. Queda anotado por si en el futuro el
+patrón de filtro cambia y empieza a colarse, o si se pide una exclusión explícita.
+
+## ⚠️ Hallazgo de alcance (NO tocado hoy): el dashboard real y el chatbot tienen el mismo patrón `NOT ILIKE 'PVR%'` sin filtro de guía
+
+Investigando el bug de PREVENTA+BOTELLÓN (ver abajo) se confirmó que la exclusión de
+`PVR%` y la ausencia de un filtro de guía de entrega **no son solo del MCP** — existen en
+el código real de producción:
+- `backend/controllers/controllerPreventa/ventasController.js` (`calcularKPIsMes`, la
+  función que genera el ranking oficial): 4 ocurrencias de `NOT ILIKE 'PVR%'`.
+- `backend/services/chatbotservicio/openai.service.js`: 4 ocurrencias.
+- `backend/services/chatbotservicio/agente.service.js`: documentado en el prompt del
+  chatbot como parte de la definición de PREVENTA.
+
+**No se tocó nada de esto hoy** — el fix de esta sesión es solo para el MCP
+(`mcp-server/src/sql/clasificacion.js`), que es una copia independiente. Si la validación
+de DESCARTABLE-agosto (más abajo) confirma que el mismo problema de guía/PVR% afecta
+también al ranking oficial del dashboard, sería una tarea aparte y de mayor alcance —
+tocar `ventasController.js` afecta el dashboard en producción que ven los gerentes
+directamente, no solo el MCP.
+
+### 🌙 Backfill 2025 — arrancó automáticamente (2026-08-31 22:02 -05)
+
+Ejecución programada sin supervisión (lunes 22:00 Ecuador → estimado terminar ~3:00 AM
+martes). Mismo patrón que 2026: mes a mes, diciembre 2025 hacia atrás hasta enero 2025.
+Reconciliación automática contra El Rosado (110470, `status=2` vs Odoo `state=posted`)
++ verificación de que cualquier error nuevo coincide con el patrón ya conocido
+(`estado_ubicacion_direccion_cliente`, direcciones 277494/284316). Se detiene ante
+cualquier cosa que no reconoce — nunca sigue de largo con algo no verificado.
+- [x] **Diciembre 2025** — corrido 2026-08-31 22:24 -05 (automático, sin supervisión):
+  ```
+  [dotenv@17.3.1] injecting env (16) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+Conexión a la base de datos establecida correctamente.
+{"desde":"2025-12-01","hasta":"2025-12-31","ventasMv":626,"odoo":1072,"reconciliaExacto":false,"erroresNuevosCount":0,"totalErroresAcumulados":0,"patronConocido":true,"detenerse":true,"motivoDetencion":"Reconciliación no exacta: ventas_mv=626 vs Odoo=1072"}
+  ```
+
+### 🛑 Backfill 2025 DETENIDO en Diciembre 2025
+
+Reconciliación no exacta: `ventas_mv=626` vs `Odoo=1072` (El Rosado, status=2/posted).
+Diferencia grande (~42%), no es el tipo de desfase menor que vimos en 2026 — pendiente de
+investigar antes de reanudar noviembre/octubre/etc. de 2025. (El mensaje de motivo que
+imprimió el orquestador tuvo un error cosmético de parseo en el log de arriba — el JSON
+completo con el resultado real SÍ quedó registrado.)
+
+---
+
+## 🔬 Validación del fix de PREVENTA (waybill + PVR) — julio BOTELLÓN revalidado, hallazgo estructural importante
+
+Continuación de la validación aprobada (fix implementado y desplegado: `waybill_code`/
+`waybill_status` capturados en el sync, filtro PREVENTA actualizado a
+`waybill_status='3'` sin excluir PVR%, backfill liviano corrido para julio y agosto 2026).
+
+### Julio 2026, BOTELLON VERDE PET (producto 285) — resultado final
+
+| Intento | Unidades | Dólares | Nota |
+|---|---|---|---|
+| Antes del fix (status=5 solo) | 835 | $1,501.16 | el bug original reportado |
+| Con fix, backfill sin solape de mes | 641 | $1,157.70 | faltaban 3 docs creados en junio |
+| Con fix, backfill CON solape (`DIAS_SOLAPE`-style) | **671** | **$1,210.20** | ver hueco residual abajo |
+| **Real (Excel "Terminated", ground truth)** | **716** | **$1,288.76** | — |
+
+**Hueco residual: 45 unidades / $78.56 — 100% explicado, 4 documentos identificados**
+(`PDPV5-009669`, `PDPV5-009668`, `PDPVR4-001036`, `PDPV10-007342`). Los cuatro SÍ tienen
+`waybill_code` capturado, pero su `waybill_status` actual (consultado hoy, semanas después
+de la entrega real) es `"0"`, no `"3"` — aunque el Excel (exportado más cerca de la fecha
+real) los marcaba "Terminated".
+
+### Causa raíz del hueco residual (NO es un bug de código)
+
+Los códigos de guía (`GUT5-000029`, etc.) parecen ser **identificadores de ruta/camión
+reutilizables**, no un ID permanente de una sola entrega. Al consultar la API de MobilVendor
+HOY (mucho después de julio), el `status` "vivo" de esos códigos probablemente refleja el
+**despacho más reciente** que usó ese mismo código — no necesariamente el de julio. Es decir:
+**backfillear `waybill_status` retroactivamente, mucho después de los hechos, tiene un
+desfase estructural irreducible** — no relacionado con la lógica de `FILTRO_PREVENTA_SELLER`
+ni con ningún bug de sync.
+
+**Para datos nuevos (sync en tiempo real, de ahora en adelante) esto no debería ocurrir** —
+`waybill_status` se captura el mismo día, cuando todavía refleja la entrega real en curso.
+El problema es específico y probablemente inevitable al backfillear meses ya pasados.
+
+### Implicación para la validación de agosto-DESCARTABLE (pendiente, sin iniciar)
+
+Dado este hallazgo, comparar agosto-DESCARTABLE contra un número exacto casi seguro **va a
+mostrar un hueco residual similar por la misma razón estructural** — no sería evidencia de
+que el fix está mal. Antes de correr esa comparación (y de decidir qué hacer con ella si
+también muestra un hueco "explicado pero no cerrable"), esto necesita una decisión del
+usuario:
+
+1. ¿Aceptamos un margen de error pequeño y documentado para MESES YA PASADOS (backfill),
+   entendiendo que el dato de aquí en adelante (sync en tiempo real) sí será preciso?
+2. ¿Vale la pena intentar re-correr el backfill de waybill más seguido/más cerca de la fecha
+   real para los meses recién sincronizados (julio/agosto), para minimizar (no eliminar) el
+   desfase, aunque probablemente no lo cierre del todo?
+3. ¿Algo distinto?
+
+**No se tocó nada más de código para esto** — el fix en sí (`waybill_status='3'` + sin
+exclusión de PVR%) se considera funcionalmente correcto y validado; lo que queda abierto es
+solo la fidelidad del backfill retroactivo de datos ya pasados, no la lógica del filtro.
+
+**Housekeeping de esta validación**: se encontró y corrigió un bug real en
+`ops/backfill2025/backfill_waybill.js` — no llamaba a `process.exit(0)` al terminar
+exitosamente, dejando el proceso colgado indefinidamente (el mecanismo de renovación de
+sesión de MobilVendor cada 30 min mantenía vivo el event loop). Ya corregido en el archivo;
+los procesos colgados de las corridas de julio/agosto (con y sin solape) se mataron
+manualmente después de confirmar que su trabajo real ya había terminado (verificado por log
+y por conteo en la base, no se perdió ningún dato).
+
+---
+
+## 🐛→✅ Bug de coordenadas corruptas de Odoo — encontrado, arreglado y verificado (2026-09-01)
+
+Investigando la reconciliación fallida de diciembre-2025 (`ventasMv=626` vs `Odoo=1072`),
+se encontró que los 57 errores de Odoo eran TODOS `"numeric field overflow"` — a nivel de
+**chunk completo** (~50 facturas perdidas de una vez), no documento por documento como el
+bug de `estado_ubicacion` ya conocido. Al investigar, se confirmó que **el mismo bug está
+activo en el cron regular de HOY**, no solo en 2025 (id_sync=82, ventana Aug22-Sep1,
+`Err:19` con el mismo mensaje) — un bug de producción activo, no histórico.
+
+**Causa raíz**: `clientes.latitud_cliente`/`longitud_cliente` son `DECIMAL(12,8)` (máx. 4
+dígitos enteros). Muchos clientes en Odoo tienen `partner_latitude`/`partner_longitude`
+mal formados — **sin punto decimal** (ej. `-2196885` en vez de `-2.196885`). Al desbordar
+la columna, Postgres tira el error y se pierde el chunk (~50 facturas) completo, incluyendo
+clientes con coordenadas perfectamente válidas que solo compartían chunk con el corrupto.
+
+**Fix**: nuevo `backend/utils/sanitizeCoordinate.js` (extraído de una función ya existente
+en `sincronizacionService.js`/MobilVendor, que ya se protegía de esto) — valida rango
+geográfico real (lat: -90 a 90, lon: -180 a 180) y descarta a `NULL` si no cumple, en vez
+de insertar el valor corrupto. Aplicado en `sincronizacionOdooService.js`
+(`latitud_cliente`/`longitud_cliente`) y refactorizado `sincronizacionService.js` para usar
+el mismo util compartido (antes duplicaba la misma lógica localmente).
+
+**Verificado con corridas reales, no solo con el código**:
+- Cron actual (Aug22-Sep1) re-corrido tras el fix: `Err:0` (antes `Err:19`), y recuperó más
+  datos que antes se perdían (`Fac:6391` vs `6319`, `Cli:7627` vs `6537`).
+- Impacto real en agosto 2026: reconciliar El Rosado (110470) mostró `ventas_mv=1063` vs
+  `Odoo=1211` — **faltaban 148 documentos (12%)**, acumulado de varias corridas fallidas
+  del día por este bug. Re-sincronizado agosto completo con el fix activo: **0 errores en
+  ambos lados, El Rosado reconcilia exacto (1,211=1,211)**.
+- Enero-julio 2026 NO fueron afectados — sus backfills originales ya mostraban `Err:0` del
+  lado Odoo (el bug es determinístico: si hubiera aparecido un cliente corrupto en esas
+  ventanas, el chunk habría fallado igual) y no se han vuelto a tocar desde entonces.
+
+**Enero-agosto 2026 queda genuinamente reconciliado y limpio** tras este fix — objetivo
+cumplido antes de retomar 2025.
+
+---
+
+## ✅ Filtro de guía condicional por categoría — PREVENTA (BOTELLÓN vs. DESCARTABLE)
+
+Con enero-agosto 2026 limpio, se retomó la validación de PREVENTA-DESCARTABLE pausada
+antes. Hallazgo: el criterio `waybill_status='3'` (validado contra BOTELLÓN) **no
+generaliza a DESCARTABLE**.
+
+### Evidencia
+
+Cruzando 5 documentos reales confirmados "Terminated" en un Excel de guías de MobilVendor
+(agosto 2026, productos DESCARTABLE, todos bajo la guía `GU000458`): los 5 tenían
+`waybill_status = '0'` — el mismo valor que para guías de botellón (`GUT#.#-######`/
+`GUR#-######`) significa "Shipping" (no entregado). Las guías de productos
+empaquetados/livianos usan un esquema de código distinto (`GU######` puro, sin sufijo de
+ruta, consolidando varios documentos en una sola guía) donde `waybill_status` no tiene el
+mismo significado.
+
+Probando "tiene guía asociada, sin mirar el status" contra ambos casos reales de agosto:
+
+| Categoría | Criterio | Resultado | Real | Diferencia |
+|---|---|---|---|---|
+| DESCARTABLE | `waybill_code IS NOT NULL` | $252,889.93 | $252,960.5169 | **0.03%** |
+| BOTELLÓN (285) | `waybill_code IS NOT NULL` | $1,504.44 | $1,288.76 (jul) | +17% (peor que con status) |
+| BOTELLÓN (285) | `waybill_status = '3'` | $1,264.73 (ago) | $1,351.98 (ago) | 6.5% (aceptado, ver abajo) |
+
+### Fix desplegado
+
+`mcp-server/src/sql/clasificacion.js` — `FILTRO_PREVENTA_SELLER` pasó de string estático a
+función `(categoriaParam) => ...` que arma un filtro condicional reutilizando el MISMO
+parámetro posicional de categoría que cada query ya tenía (sin agregar un parámetro nuevo):
+- `categoria = 'DESCARTABLE'` → `waybill_code IS NOT NULL` (sin mirar status).
+- Cualquier otra categoría (BOTELLÓN incluido) → `waybill_status = '3'` (el criterio ya
+  validado, sin cambios en su comportamiento).
+- **Categorías nunca probadas contra un Excel real** (HIELO, CAFÉ, PLUS, PT-DISTRINTER,
+  PT-COTTSA, PT-IIBC, SUSCRIPCION, SERVICIOS, GASTOS GENERALES) caen en la rama estricta
+  (`waybill_status='3'`) por default — más conservadora, sin evidencia propia todavía. Si
+  se reporta un número raro para PREVENTA en alguna de estas, empezar por acá.
+
+Actualizado `mcp-server/test/preventa-real.test.js` — el número de agosto que usaba
+($167,834.15) había quedado obsoleto por el paso del tiempo (más días de agosto
+sincronizados desde la validación original), no por ningún bug; reemplazado por los
+números re-confirmados el mismo día contra el Excel real, con tolerancia (0.5% DESCARTABLE,
+10% BOTELLÓN — ver comentario en el test) en vez de exigir exactitud a centavos.
+
+**Margen residual de BOTELLÓN (julio Y agosto, ~6-7% en ambos) queda aceptado como
+límite conocido de backfill retroactivo de `waybill_status`** (códigos de guía por ruta
+reutilizados con el tiempo) — no se le dedica más tiempo por ahora, documentado arriba.
+
+Verificado: `node --check` en los 3 archivos de código + `test/seguridad-smoke-test.js` +
+`test/oauth-smoke-test.js` (7 tools) + `test/preventa-real.test.js`, todos OK. Desplegado a
+producción (`mcp_server` reconstruido y reiniciado, `dashboard_postgres` intacto).
+
+**Pendiente**: retomar diciembre-2025 para confirmar si el bug de coordenadas (ya
+corregido) explica su reconciliación fallida, y decidir cómo seguir con
+noviembre/octubre/etc. del backfill de 2025.

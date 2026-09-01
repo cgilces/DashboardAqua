@@ -237,6 +237,19 @@ const Orden = sequelize.define('Orden', {
     allowNull: true
   },
 
+  // Guía de entrega (waybill) — objeto separado del status de la orden en la
+  // API de MobilVendor. waybill_status "3" = guía terminada (entregada);
+  // null/sin guía = la orden nunca llegó a despacharse aunque esté facturada.
+  waybill_code: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+
+  waybill_status: {
+    type: DataTypes.STRING(10),
+    allowNull: true
+  },
+
 }, {
   tableName: 'ordenes',
   timestamps: false,

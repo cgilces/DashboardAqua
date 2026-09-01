@@ -537,6 +537,11 @@ ALTER TABLE ordenes ADD COLUMN IF NOT EXISTS peso_total            DECIMAL(10,3)
 ALTER TABLE ordenes ADD COLUMN IF NOT EXISTS source_document       VARCHAR(255);
 ALTER TABLE ordenes ADD COLUMN IF NOT EXISTS etiquetas             TEXT;
 ALTER TABLE ordenes ADD COLUMN IF NOT EXISTS mobilvendor_id        VARCHAR(100);
+-- Guía de entrega (waybill) de MobilVendor — objeto separado del status de la
+-- orden, nunca capturado antes. Necesario para distinguir "facturado/status=5"
+-- de "efectivamente despachado" (ver PREVENTA en clasificacion.js del MCP).
+ALTER TABLE ordenes ADD COLUMN IF NOT EXISTS waybill_code          VARCHAR(50);
+ALTER TABLE ordenes ADD COLUMN IF NOT EXISTS waybill_status        VARCHAR(10);
 
 -- FK: ordenes → tipos_negocio
 DO $$
