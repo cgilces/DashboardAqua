@@ -2,8 +2,14 @@
 // Corre DENTRO del contenedor dashboard_backend (docker cp + docker exec).
 // Verifica un mes ya sincronizado: reconciliación exacta contra Odoo para
 // El Rosado (110470, status=2 vs state=posted) + si los errores NUEVOS desde
-// el checkpoint anterior siguen siendo el mismo patrón ya diferido
-// (estado_ubicacion_direccion_cliente="UNKNOWN", direcciones 277494/284316).
+// el checkpoint anterior siguen un patrón YA CONOCIDO:
+//   (a) estado_ubicacion_direccion_cliente="UNKNOWN", direcciones 277494/284316
+//       (diferido, sin fix — ver TODO.md).
+//   (b) "SESION_SOSPECHOSA_*"/"CONFIRMADO_SIN_DATOS_*" — el fix de sesión de
+//       MobilVendor (2026-08-31) autodetectándose y reintentando; es una señal
+//       SANA (el mecanismo funcionando), no un problema — por eso NO exige
+//       además que reconciliaExacto sea true para este patrón específico,
+//       aunque en la práctica siempre lo es cuando el retry funciona.
 // Nunca decide "seguir" ante algo que no reconoce — el default es detenerse.
 //
 // Uso: node reconcile.js <desde YYYY-MM-DD> <hasta YYYY-MM-DD> <erroresPreviosCount>
@@ -66,7 +72,10 @@ async function main() {
   const patronConocido = erroresNuevos.every((b) => {
     const msg = b.match(/"message": "([^"]+)"/)?.[1] || "";
     const codigo = b.match(/'(\d{5,6})'/)?.[1] || "";
-    return msg.includes("invalid input syntax for type integer") && ADDRESSES_CONOCIDAS.includes(codigo);
+    const esEstadoUbicacionConocido =
+      msg.includes("invalid input syntax for type integer") && ADDRESSES_CONOCIDAS.includes(codigo);
+    const esSesionSospechosaSana = /Documento: (SESION_SOSPECHOSA|CONFIRMADO_SIN_DATOS)_/.test(b);
+    return esEstadoUbicacionConocido || esSesionSospechosaSana;
   });
 
   const erroresAltos = erroresNuevos.length > UMBRAL_ERRORES_ALTOS;
@@ -75,7 +84,7 @@ async function main() {
   let motivoDetencion = null;
   if (!reconciliaExacto) motivoDetencion = `Reconciliación no exacta: ventas_mv=${ventasMv} vs Odoo=${odoo}`;
   else if (erroresAltos) motivoDetencion = `${erroresNuevos.length} errores nuevos (umbral ${UMBRAL_ERRORES_ALTOS})`;
-  else if (!patronConocido) motivoDetencion = "Error nuevo con patrón distinto al conocido (estado_ubicacion / 277494 / 284316)";
+  else if (!patronConocido) motivoDetencion = "Error nuevo con patrón distinto al conocido (estado_ubicacion/277494/284316, o SESION_SOSPECHOSA/CONFIRMADO_SIN_DATOS)";
 
   console.log(
     JSON.stringify({

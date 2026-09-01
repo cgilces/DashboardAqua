@@ -87,8 +87,12 @@ async function main() {
   // 6) `producto` (nuevo, mismo patrón que nombre_cliente): string libre,
   //    llega a la query ILIKE contra `productos`.
   const payloadProducto = "PACK'; DROP TABLE productos; --";
+  // Nombre completo y específico (no solo "...JAVIER") porque desde el fix
+  // de búsqueda fuzzy ya existe otro cliente real que también matchea el
+  // nombre corto ("...JAVIER-CASA DE RETIROS") y el test necesita resolver
+  // a UN solo cliente antes de llegar al payload de `producto`.
   const resultadoProducto = await ventasCliente({
-    nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER",
+    nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER-CASA DE RETIROS",
     fecha_inicio: "2026-01-01",
     fecha_fin: "2026-01-31",
     producto: payloadProducto,
