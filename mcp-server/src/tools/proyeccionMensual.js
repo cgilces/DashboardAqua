@@ -8,14 +8,46 @@
 //     ? (montoActual / diasTranscurridos) * diasLaborablesMes
 //     : montoActual   // mes cerrado: no se proyecta, se muestra el real
 //
-// "días hábiles" = lunes a sábado, excluyendo feriados nacionales (no días
-// de calendario crudos). La copia de esa lógica vive en
-// mcp-server/src/util/diasFestivos.js — test/diasFestivos-sync.test.js
-// falla si esa copia se desincroniza del backend.
+// "días hábiles" = lunes a sábado, excluyendo feriados nacionales — PERO un
+// feriado del calendario estático no se asume "no laborable" a ciegas: para
+// un día YA PASADO se verifica si hubo venta real ese día (el negocio puede
+// trabajar un feriado — ej. 2026-08-10, Primer Grito de Independencia,
+// tuvo 1,628 documentos, prácticamente un día normal). Para un día FUTURO
+// del mes en curso no hay forma de saber de antemano si se va a trabajar —
+// cae al calendario estático como fallback (limitación conocida, ver
+// TODO.md). Ver `esDiaHabilReal` en diasFestivos.js para el detalle.
+//
+// La copia de esa lógica vive en mcp-server/src/util/diasFestivos.js —
+// test/diasFestivos-sync.test.js falla si esa copia se desincroniza del
+// backend. El archivo se mantiene sin imports de base de datos a propósito
+// (para poder ser un diff byte a byte limpio) — la consulta de "¿hubo venta
+// real este día?" se inyecta desde acá.
 const { z } = require("zod");
+const { pool } = require("../db");
 const { GRUPOS_VALIDOS, CATEGORIAS_VALIDAS, CATEGORIA_PREVENTA } = require("../sql/clasificacion");
 const { totalesGrupo, totalesPreventa } = require("./ventasPorGrupo");
-const { getDiasHabilesTranscurridos, getDiasLaborablesMes } = require("../util/diasFestivos");
+const { getDiasHabilesTranscurridosReal, getDiasLaborablesMesReal } = require("../util/diasFestivos");
+
+// Umbral mínimo de documentos (facturas + órdenes, toda la empresa, sin
+// filtrar por status) para considerar que un feriado SÍ se trabajó.
+// Calibrado con datos reales: un domingo (día genuinamente cerrado) muestra
+// hasta ~160 documentos de ruido residual, un feriado NO trabajado (ej.
+// 2026-01-01) mostró 223, mientras que TODOS los feriados confirmados como
+// trabajados en 2025-2026 mostraron 1,165+ (un día normal ronda 1,500-2,200).
+// 500 queda cómodo en la brecha — más de 2x el feriado no trabajado más alto
+// visto, menos de un tercio del piso de los feriados sí trabajados.
+const UMBRAL_DIA_HABIL_REAL = 500;
+
+async function huboVentaReal(fecha) {
+  const fechaStr = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${String(fecha.getDate()).padStart(2, "0")}`;
+  const { rows } = await pool.query(
+    `SELECT
+       (SELECT COUNT(*) FROM facturas WHERE fecha_creacion::date = $1::date) +
+       (SELECT COUNT(*) FROM ordenes  WHERE fecha_creacion::date = $1::date) AS total`,
+    [fechaStr]
+  );
+  return Number(rows[0].total) >= UMBRAL_DIA_HABIL_REAL;
+}
 
 const inputSchema = {
   anio: z.number().int().min(2020).max(2100).optional(),
@@ -85,8 +117,8 @@ async function proyeccionMensual({ anio, mes, grupo, categoria } = {}) {
 
   const totales = await totalesDelMes({ grupo, categoria, inicioTs: inicio, finTs: fin });
 
-  const diasTranscurridos = getDiasHabilesTranscurridos(anioReal, mesReal);
-  const diasTotalesMes = getDiasLaborablesMes(anioReal, mesReal);
+  const diasTranscurridos = await getDiasHabilesTranscurridosReal(anioReal, mesReal, huboVentaReal);
+  const diasTotalesMes = await getDiasLaborablesMesReal(anioReal, mesReal, huboVentaReal);
 
   const proyeccionDolares =
     esMesActual && diasTranscurridos > 0

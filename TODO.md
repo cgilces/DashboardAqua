@@ -1736,3 +1736,87 @@ recuperado.**
 `ops/backfill2025/run_resume.sh` actualizado: usa `reconcile_amplio.js` (todos los
 clientes, existencia de código) en vez de `reconcile.js` (solo El Rosado) para abril
 2025 en adelante. `MESES` recortado a Abril→Enero 2025 (mayo ya cerrado arriba).
+
+### 🌙 Backfill 2025 (continuación) — arrancó 2026-09-02 05:39 -05, a pedido explícito
+
+Mayo ya reconciliado por separado (recuperación de PDPV8-001710 tras el fix del
+deadlock de Postgres). Continúa abril 2025 hacia atrás hasta enero 2025.
+**Reconciliación amplia desde acá en adelante** (todos los clientes, chequeo de
+existencia de código vs Odoo — no solo El Rosado), se detiene ante cualquier cosa
+que no reconoce.
+
+## ✅ Fix de días hábiles en `proyeccionMensual` — feriados trabajados ya no se excluyen a ciegas (2026-09-02)
+
+Corrección de regla de negocio pedida por el usuario: un feriado del calendario estático
+NO se debe excluir automáticamente de "días hábiles" — el negocio puede trabajarlo (ej.
+2026-08-10, Primer Grito de Independencia, tuvo 1,628 documentos, prácticamente un día
+normal).
+
+### Diseño
+
+- **Días PASADOS** (de cualquier mes, cerrado o en curso): si el calendario estático
+  marca el día como feriado, se verifica si hubo venta real ese día — si la hubo, cuenta
+  como hábil; si no, se mantiene excluido. Los días normales (no feriado) no se
+  re-verifican, ya se sabe que son hábiles.
+- **Días FUTUROS del mes en curso**: no hay forma de saber de antemano si un feriado se
+  va a trabajar — se mantiene el calendario estático como fallback. **Limitación
+  conocida y aceptada, documentada en el código** (`esDiaHabilReal` en
+  `diasFestivos.js`): no se puede predecir el futuro.
+
+### Umbral — "¿hubo venta real ese día?"
+
+Calibrado con datos reales (no arbitrario), comparando feriados NO trabajados contra
+feriados SÍ trabajados:
+
+| Día | Tipo | Documentos (facturas+órdenes) |
+|---|---|---|
+| 2026-01-01 (Año Nuevo) | feriado NO trabajado | 223 |
+| domingo típico | día cerrado (referencia) | hasta ~160 |
+| 2026-01-02 (feriado adicional Decreto 249) | feriado SÍ trabajado | 1,524 |
+| 2026-02-16/17 (Carnaval) | feriado SÍ trabajado | 1,237 / 1,165 |
+| 2026-04-03 (Viernes Santo) | feriado SÍ trabajado | 1,603 |
+| 2026-05-01 (Día del Trabajo) | feriado SÍ trabajado | 1,967 |
+| 2026-05-25 (Batalla de Pichincha) | feriado SÍ trabajado | 1,734 |
+| **2026-08-10 (Primer Grito)** | feriado SÍ trabajado | **1,628** |
+| día normal típico | referencia | ~1,500-2,200 |
+
+**Umbral elegido: 500 documentos** (facturas+órdenes, toda la empresa, sin filtrar por
+status) — más de 2x el feriado no trabajado más alto observado (223), menos de un
+tercio del piso de los feriados sí trabajados (1,165+). Amplio margen a ambos lados,
+verificado también contra 2025 (2025-01-01=0, 2025-05-01=1,791) — el mismo umbral
+absoluto funciona en ambos años.
+
+**Hallazgo real durante la calibración**: casi todos los feriados de 2025-2026
+resultaron efectivamente trabajados (solo Año Nuevo se confirmó realmente cerrado) —
+confirma que el calendario estático venía subestimando sistemáticamente los días
+hábiles reales de este negocio.
+
+### Implementación
+
+`backend/utils/diasFestivos.js` (+ copia sincronizada byte a byte en
+`mcp-server/src/util/diasFestivos.js`, `test/diasFestivos-sync.test.js` confirma):
+funciones NUEVAS `esDiaHabilReal`, `getDiasHabilesTranscurridosReal`,
+`getDiasLaborablesMesReal` — reciben `huboVentaReal` **inyectado** (no importan la base
+de datos directamente, para que el archivo se mantenga como diff limpio entre backend/
+y mcp-server/, cada uno con su propia conexión). Las funciones estáticas existentes
+(`getDiasHabilesTranscurridos`, `getDiasLaborablesMes`, `getDiasHabiles`) quedan
+intactas, sin tocar — siguen usándose sin cambios en los demás controllers del
+dashboard (café, hielo, plus, botellones, cotsa, consolidado, etc.), que NO estaban en
+el alcance de este pedido.
+
+`mcp-server/src/tools/proyeccionMensual.js`: usa las nuevas funciones `...Real` con
+`huboVentaReal(fecha)` implementado con el pool de solo-lectura del MCP.
+
+### Verificación
+
+- Agosto 2026 (mes cerrado, incluye el 10-ago): `dias_habiles_transcurridos=26` (antes
+  25 con el calendario estático — reconoce el feriado trabajado).
+- Enero 2026 (incluye 1-ene y 2-ene): `dias_habiles_transcurridos=26` (antes 25) —
+  distingue correctamente: 1-ene sigue excluido (223 < 500), 2-ene ahora cuenta (1,524
+  ≥ 500).
+- Setiembre 2026 (mes en curso): no rompe nada, proyecta con normalidad.
+- Suite completa: `seguridad-smoke-test.js`, `oauth-smoke-test.js`,
+  `preventa-real.test.js` (dentro del contenedor `mcp_server`) + `diasFestivos-sync.test.js`
+  (desde el host, necesita ver `backend/` y `mcp-server/` juntas) — **todos OK**.
+
+Desplegado (`mcp_server` reconstruido y healthy).

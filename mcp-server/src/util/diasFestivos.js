@@ -125,10 +125,61 @@ function getDiasHabiles(anio, mes, soloTranscurridos = false) {
     : getDiasLaborablesMes(anio, mes);
 }
 
+// ─────────────────────────────────────────
+// Versión "real" — un feriado del calendario estático NO se asume
+// automáticamente "no laborable": para un día YA PASADO, se verifica si
+// hubo venta real ese día (el negocio puede trabajar un feriado). Para un
+// día FUTURO (solo puede pasar dentro del mes en curso, en
+// getDiasLaborablesMesReal) no hay forma de saber de antemano si se va a
+// trabajar — cae al calendario estático como fallback. Esto es una
+// limitación conocida y aceptada, no un bug: no se puede predecir el futuro.
+//
+// huboVentaReal: (Date) => Promise<boolean> — inyectado por quien llama, NO
+// importado acá. Este archivo se duplica byte a byte entre backend/ y
+// mcp-server/ (cada uno con su propia conexión a la base) — ver
+// test/diasFestivos-sync.test.js. Mantenerlo sin imports de base de datos es
+// lo que permite que la copia siga siendo un diff limpio.
+// ─────────────────────────────────────────
+async function esDiaHabilReal(fecha, hoy, huboVentaReal) {
+  if (fecha.getDay() === 0) return false; // domingo, siempre no laborable
+  if (fecha > hoy) return !esFestivo(fecha); // futuro: calendario como fallback (limitación conocida)
+  if (!esFestivo(fecha)) return true; // día normal ya pasado: ya se sabe que es hábil
+  return huboVentaReal(fecha); // feriado ya pasado: solo cuenta como hábil si SÍ hubo venta real
+}
+
+async function getDiasHabilesTranscurridosReal(anio, mes, huboVentaReal) {
+  const hoy = new Date();
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+  let ultimoDia = new Date(anio, mes, 0).getDate();
+  if (ayer.getFullYear() === anio && ayer.getMonth() + 1 === mes)
+    ultimoDia = ayer.getDate();
+
+  let habiles = 0;
+  for (let d = 1; d <= ultimoDia; d++) {
+    const f = new Date(anio, mes - 1, d);
+    if (await esDiaHabilReal(f, hoy, huboVentaReal)) habiles++;
+  }
+  return habiles;
+}
+
+async function getDiasLaborablesMesReal(anio, mes, huboVentaReal) {
+  const hoy = new Date();
+  const diasEnMes = new Date(anio, mes, 0).getDate();
+  let laborables = 0;
+  for (let d = 1; d <= diasEnMes; d++) {
+    const f = new Date(anio, mes - 1, d);
+    if (await esDiaHabilReal(f, hoy, huboVentaReal)) laborables++;
+  }
+  return laborables;
+}
+
 module.exports = {
   festivos,
   esFestivo,
   getDiasHabilesTranscurridos,
   getDiasLaborablesMes,
   getDiasHabiles,
+  esDiaHabilReal,
+  getDiasHabilesTranscurridosReal,
+  getDiasLaborablesMesReal,
 };
