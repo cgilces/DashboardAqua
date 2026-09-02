@@ -1423,3 +1423,316 @@ es solo lectura):
     julio PREVENTA ya no da $0.
 
 **Fix de PREVENTA queda formalmente cerrado y verificado con datos vivos.**
+
+## ✅ Punto 2 de la checklist — volumen PREVENTA 2026 por categoría (2026-09-01)
+
+Consulta real (mismo filtro que `SQL_PREVENTA`: `type=2`, `status=5`, `seller_code`
+PV%/PREVENTA%/TELEVENTA%, `fecha_entrega` — SIN el filtro de guía, para tener el
+universo completo antes de filtrar) contra todo 2026 (enero 1 - agosto 31):
+
+| Categoría | Líneas | Dólares | Unidades |
+|---|---|---|---|
+| DESCARTABLE | 53,156 | $1,906,557.70 | 625,827 |
+| BOTELLÓN | 773 | $13,924.71 | 6,901 |
+
+**Las 9 categorías restantes (HIELO, CAFÉ, PLUS, SUSCRIPCION, PT-DISTRINTER, PT-COTTSA,
+PT-IIBC, SERVICIOS, GASTOS GENERALES) no aparecen — $0 en el canal PREVENTA durante todo
+2026.** Confirmado que no es un problema de categoría NULL escondiendo datos (0 líneas con
+`descripcion_categoria IS NULL` en este filtro).
+
+**No hace falta pedir Excel ni validar ninguna de las 9** — simplemente no se vende nada de
+esas categorías por PREVENTA. Solo DESCARTABLE y BOTELLÓN (ya ambas validadas) tienen
+volumen real en este canal.
+
+## ✅ Punto 3 de la checklist — desambiguación multi-compañía probada de punta a punta (2026-09-01)
+
+Llamada real al tool MCP `ventasCliente` (no query SQL directa):
+
+1. `nombre_cliente: "Corporación El Rosado"` → responde `encontrado:false,
+   motivo:"cliente_multicompania", es_multicompania:true` con las 3 compañías
+   (GRUPOAQUA S.A. `110470`, IIBC S.A. `112892`, DISTRINTER `109880`) — **nunca elige una
+   sola automáticamente**, tal como se diseñó.
+2. Repitiendo la llamada con `codigo_cliente: ["110470","112892","109880"]` → `encontrado:true`
+   con el consolidado de las 3 y `por_compania` presente (desglose obligatorio cuando hay
+   más de un código).
+
+**Comportamiento confirmado en vivo, tal como se diseñó.**
+
+## ✅ Punto 4 de la checklist — búsqueda fuzzy probada de punta a punta (2026-09-01)
+
+Llamadas reales al tool MCP `ventasCliente`:
+
+1. `nombre_cliente: "corporacion rosaddo"` (typo real) → `sin_coincidencias_cliente` +
+   `sugerencias` por similitud (`pg_trgm`), con las 3 entidades multi-compañía de El
+   Rosado en el tope (similitud 0.64) y otras razonablemente cercanas (Jave, Ayala, 0.41)
+   más abajo — nunca elige una automáticamente, siempre pregunta "¿quisiste decir...?".
+2. `nombre_cliente: "el rosad"` (nombre incompleto) → matchea por `ILIKE` parcial directo
+   (no necesita el fallback de similitud), devuelve `coincidencias_multiples_cliente` con
+   los 6 clientes reales que contienen "el rosad" (CD EL ROSADO, CEDI, las 3 entidades de
+   Corporación El Rosado, EL ROSADO) — tampoco asume ninguno.
+
+**Ambos casos (typo puro y nombre incompleto) confirmados en vivo, comportamiento tal
+como se diseñó.**
+- [x] **Mayo 2025** — corrido 2026-09-01 12:28 -05 (continuación manual, sin supervisión):
+  ```
+  [dotenv@17.3.1] injecting env (16) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+Conexión a la base de datos establecida correctamente.
+{"desde":"2025-05-01","hasta":"2025-05-31","ventasMv":595,"odoo":595,"reconciliaExacto":true,"erroresNuevosCount":2,"totalErroresAcumulados":3,"patronConocido":false,"detenerse":true,"motivoDetencion":"Error nuevo con patrón distinto al conocido (estado_ubicacion/277494/284316, o SESION_SOSPECHOSA/CONFIRMADO_SIN_DATOS)"}
+  ```
+
+### 🛑 Backfill 2025 DETENIDO en Mayo 2025
+
+Error nuevo con patrón distinto al conocido (estado_ubicacion/277494/284316, o SESION_SOSPECHOSA/CONFIRMADO_SIN_DATOS)
+
+No se continuó con los meses anteriores. Requiere revisión manual antes de reanudar.
+
+## ✅ Punto 5 de la checklist — auditoría del bug de sesión de MobilVendor desde el deploy (2026-09-01)
+
+Fix generalizado (cualquier página, no solo la 1) desplegado en `4cd22d3`
+(2026-08-31 15:48 UTC). Auditoría de `sincronizaciones_ventas` desde ese momento hasta
+ahora (2026-09-01 ~17:00 UTC):
+
+- **28 filas de log** (14 sincronizaciones × 2 = venta MobilVendor + Odoo), cubriendo
+  **3 ciclos reales de cron automático** (31-ago 12pm local, 1-sep 12am local, 1-sep 12pm
+  local) + 11 meses de backfill 2025/2026 disparados manualmente.
+- **Cero coincidencias** del patrón del bug (`estado='SUCCESS'` con `Facturas:0
+  Órdenes:0`, o `total_registros=0`).
+- **Un solo reintento de sesión sospechosa** registrado (`SESION_SOSPECHOSA_2025-06-01_
+  2025-06-30_pag1`, junio 2025) — el mecanismo de retry funcionando correctamente
+  (reconciliación exacta 654=654 confirmada, ver sección de backfill 2025 arriba), no un
+  caso del bug original.
+
+**El bug no ha vuelto a aparecer desde el fix — confirmado con datos reales de producción,
+no solo con el código.**
+
+## 🔴 Bug nuevo encontrado durante backfill 2025 — deadlock de Postgres pierde documentos (2026-09-01, SIN FIX, pendiente de priorizar)
+
+Backfill 2025 se detuvo correctamente en **Mayo 2025** (reconciliación de El Rosado
+exacta: 595=595, pero 2 errores nuevos con patrón no reconocido — el orquestador se
+detuvo tal como está diseñado, no siguió de largo).
+
+### Qué pasó
+
+Los 2 errores nuevos son **deadlocks de Postgres** (`code: 40P01`) al hacer
+`Producto.upsert()` sobre la tabla `productos`, durante el sync paralelo de MobilVendor +
+Odoo:
+```
+"detail": "Process 571116 waits for ShareLock on transaction 69563307; blocked by
+process 570714.\nProcess 570714 waits for ShareLock on transaction 69563308; blocked by
+process 571116."
+```
+Dos procesos (probablemente el sync de MobilVendor y el de Odoo corriendo en paralelo,
+o dos workers del mismo) intentaron actualizar productos relacionados al mismo tiempo y
+Postgres abortó una de las dos transacciones por deadlock.
+
+### Impacto confirmado (verificado con datos reales, no asumido)
+
+- `FA001-041-000004157` (factura): terminó completa igual — 4 líneas en
+  `detalle_documento`, `status=2`. El deadlock no le costó nada a este documento (se ve
+  que otro intento/reintento sí insertó el producto).
+- **`PDPV8-001710` (pedido/orden): NO existe en `ordenes` ni tiene ninguna línea en
+  `detalle_documento` — se perdió por completo.** Confirmado con consulta directa a la
+  base, no solo inferido del log de error.
+
+### Alcance — por qué esto es más serio de lo que parece a primera vista
+
+La reconciliación del backfill (`reconcile.js`) solo compara el conteo de **un cliente**
+(El Rosado, 110470) contra Odoo — un deadlock que pierde un documento de OTRO cliente
+**no lo detecta**. Es decir: aunque los meses anteriores (junio-noviembre 2025, y
+probablemente el backfill 2026 también) mostraron `reconciliaExacto:true`, eso NO
+garantiza que no haya habido pérdidas puntuales por deadlock en documentos de otros
+clientes — la reconciliación nunca lo habría visto. Esta es la primera vez que aparece
+este patrón en `errores_sync.txt` desde que se empezó a trackear en este backfill (el
+archivo tenía 0 bloques antes de junio 2025), así que no hay evidencia de que haya
+pasado antes — pero tampoco hay forma de descartarlo con la reconciliación actual.
+
+### Sin fix todavía — pendiente de que el usuario priorice
+
+Backfill 2025 **queda detenido en Mayo** (no relanzado) hasta que se decida qué hacer:
+opciones típicas serían reintentar el upsert ante un deadlock (backoff simple) o serializar
+mejor las escrituras a `productos` entre MobilVendor/Odoo. No implementado — solo
+documentado y notificado, como corresponde a un hallazgo nuevo no listado todavía.
+
+## ✅ Fix del deadlock de Postgres — causa raíz encontrada y corregida (2026-09-01)
+
+### Causa raíz
+
+`sincronizacionController.js` corre MobilVendor (`sincronizarVentasRango`) y Odoo
+(`sincronizarOdooCompletoRango`) en **paralelo real** (`Promise.allSettled`). Ambos
+escriben a la misma tabla `productos`:
+- MobilVendor: un producto a la vez, dentro de la transacción de cada documento
+  (`procesarDocumento`), documentos procesados secuencialmente entre sí (NO se
+  deadlockea contra sí mismo — confirmado leyendo el loop, es un `for` con `await`).
+- Odoo: un solo `bulkCreate` (multi-row upsert) por chunk, ya con un comentario propio
+  ("secuencial → sin deadlock") que evita colisiones DENTRO de Odoo, pero sin ninguna
+  coordinación con MobilVendor.
+
+Ninguno de los dos ordena los productos antes de escribir — el orden depende del orden
+en que llegó cada API. Cuando ambos sync tocan los mismos códigos de producto al mismo
+tiempo en orden distinto, se forma un ciclo de locks y Postgres aborta una de las dos
+transacciones (`40P01`). Antes de este fix, ese error se registraba en
+`erroresPorDocumento` y el documento se perdía en silencio (confirmado: `PDPV8-001710`
+nunca llegó a `ordenes` ni a `detalle_documento`).
+
+### Fix (dos capas, `backend/services/sincronizacionService.js` +
+`backend/services/odooServicio/sincronizacionOdooService.js`)
+
+1. **Orden consistente de locks**: ambos lados ahora ordenan sus productos por
+   `codigo_producto` ascendente (comparación de string simple, sin locale) antes de
+   escribir — MobilVendor ordena `dedupDetails` antes del loop de `syncDetalle`, Odoo
+   ordena el array antes de `Producto.bulkCreate`. Con el mismo criterio de orden en
+   ambos lados, dos transacciones concurrentes que necesiten los mismos códigos siempre
+   los piden en el mismo orden — el ciclo de locks deja de poder formarse.
+2. **Red de seguridad — retry con backoff ante 40P01**: el orden consistente reduce la
+   probabilidad pero no la elimina al 100% (ej. si el conflicto viniera de `clientes`/
+   `direcciones_cliente`, que también se escriben en paralelo). Se agregó
+   `conReintentoDeadlock()`: si `procesarDocumento` falla específicamente por `40P01`,
+   se reintenta el documento completo hasta 3 veces con backoff (200ms/400ms + jitter)
+   antes de darlo por perdido. Cualquier otro tipo de error sigue fallando inmediato,
+   sin reintento (no se enmascara nada que no sea el deadlock puntual).
+
+Verificado: `node --check` (Node 18, vía contenedor — el host tiene Node 12) OK en ambos
+archivos. Desplegado (`dashboard_backend` reconstruido y healthy).
+
+**Sin relanzar el backfill 2025 todavía** — antes hay que descartar pérdidas silenciosas
+en meses ya dados por reconciliados (punto pendiente, ver próxima sección).
+
+## 🔴 Chequeo retroactivo (conteo total, todos los clientes) — encontró una pérdida real en Julio 2026 ya dado por "cerrado" (2026-09-01)
+
+Nuevo script `ops/reconciliacion-total/check_total.js`: generaliza la reconciliación
+usada en los backfills (que solo comparaba El Rosado) a **todos los clientes**,
+comparando `facturas` local (`status=2`) vs Odoo `account.move` (`state=posted`,
+`out_invoice`+`out_refund`) **día por día** — para no diluir un desfase real en un
+promedio mensual. Corrido sobre diciembre 2025 y enero-agosto 2026 completos (todos los
+meses que ya se habían dado por reconciliados, antes del fix del deadlock).
+
+### Resultado por mes
+
+| Mes | Local | Odoo | Diferencia | Veredicto |
+|---|---|---|---|---|
+| Diciembre 2025 | 19,230 | 19,230 | 0 | ✅ limpio |
+| Enero 2026 | 21,769 | 21,769 | 0 | ✅ limpio |
+| Febrero 2026 | 18,051 | 18,051 | 0 | ✅ limpio |
+| Marzo 2026 | 23,065 | 23,065 | 0 | ✅ limpio |
+| Abril 2026 | 32,793 | 32,793 | 0 | ✅ limpio |
+| Mayo 2026 | 22,115 | 22,115 | 0 | ✅ limpio |
+| Junio 2026 | 29,470 | 29,470 | 0 | ✅ limpio |
+| **Julio 2026** | **20,200** | **21,121** | **-921** | 🔴 **pérdida real** |
+| Agosto 2026 | 21,111 | 21,065 | +46 | ✅ ruido normal (ver abajo) |
+
+**Todos los meses tienen ruido día a día** (diferencias de ±5 a ±20 documentos,
+alternando de signo) que se explica por atribución de fecha en el borde de
+medianoche (`fecha_creacion` local vs `invoice_date` de Odoo) — se cancela dentro del
+mes y no representa pérdida real. Diciembre 2025 y agosto 2026 tienen exactamente ese
+patrón. **Julio es la única excepción: no se cancela, es sistemático y unidireccional.**
+
+### El patrón de julio, específicamente
+
+- **1-15 julio: perfecto, diff=0 los 15 días** — confirma que el backfill de ese hueco
+  (hecho antes en esta sesión) sí quedó bien.
+- **16-31 julio: déficit sistemático, SIEMPRE local < Odoo, nunca al revés** — 12 de 16
+  días con diferencias de -28 a -136 documentos/día (16 jul: -114, 21 jul: -136, 23 jul:
+  -106, 25 jul: -93, 30 jul: -99, 31 jul: -82, etc.). Esto NO tiene la forma de ruido de
+  frontera de fecha (que alterna signo) — tiene la forma exacta del bug de sesión de
+  MobilVendor (páginas que vuelven vacías con 200 OK, documentos completos perdidos).
+
+### Por qué "julio ya estaba cerrado" y este hueco no se vio antes
+
+El fix del bug de sesión se desplegó el 2026-08-31. La auditoría que se hizo entonces
+(ver sección "🔴→✅ Bug de producción activo") se enfocó en los ciclos de cron **desde
+el 21-ago** — el backfill original de julio 2026 (hecho ANTES de que existiera el fix)
+nunca se volvió a resincronizar con la lógica de reintento activa. La reconciliación
+puntual de esa época solo miraba El Rosado, que aparentemente no tuvo un documento
+afectado ese mes — por eso pasó desapercibido.
+
+### Estado: SIN TOCAR — reportado antes de continuar, como se pidió
+
+No se resincronizó julio, no se recuperó `PDPV8-001710` (mayo 2025, deadlock — sigue
+pendiente según lo acordado), y el backfill 2025 sigue detenido en mayo. A la espera de
+que el usuario revise este hallazgo antes de seguir.
+
+## ✅ Julio 2026 resincronizado, reconciliado y revalidado (2026-09-01)
+
+Con el fix del deadlock ya desplegado y el session-fix vigente desde el 31-ago, se
+resincronizó específicamente la ventana con pérdida confirmada.
+
+### Punto 1 — Resync de julio 16-31
+
+`GET /api/sync/sincronizar?desde=2026-07-16&hasta=2026-07-31` — `COMPLETADO`,
+`Ped:3129 Fac:10740 Cli:12812 Prod:1923 Det:15143 Err:0` (Odoo) /
+`Facturas:8389 Órdenes:12140 Errores:2` (MobilVendor). Los 2 errores de MobilVendor son
+el bug YA CONOCIDO y diferido (`estado_ubicacion_direccion_cliente="UNKNOWN"`,
+direcciones 277494/284316) — no session bug, no deadlock. Cero ocurrencias de
+`SESION_SOSPECHOSA`/`40P01` en este resync.
+
+### Punto 2 — Reconciliación día por día de julio completo (`check_total.js`), post-resync
+
+**Total: 21,121 local = 21,121 Odoo — exacto.** Los 16 días previamente en déficit
+(16-23 julio) ahora dan `diff=0` exacto. Queda el mismo ruido residual de ±1 a ±13 por
+frontera de fecha, alternando de signo, en 14 de los 31 días — idéntico al patrón
+benigno visto en todos los demás meses limpios (diciembre 2025, enero-junio y agosto
+2026). **Julio 2026 queda genuinamente cerrado.**
+
+### Punto 3 — Revalidación de PREVENTA/BOTELLÓN y DESCARTABLE contra Excel real
+
+- **BOTELLÓN, producto 285 (único con Excel real de julio)**: `topProductos` da
+  **671 unidades / $1,210.20** — **exactamente el mismo número que antes del resync**
+  (no cambió). Investigado por qué: los 4 documentos que ya explicaban el hueco
+  residual conocido (`PDPV5-009669`, `PDPV5-009668`, `PDPVR4-001036`,
+  `PDPV10-007342`) tienen `fecha_entrega` 7, 8, 9 y 22 de julio — solo el último cae en
+  la ventana resincronizada hoy (16-31), y sigue con `waybill_status="0"` pese al
+  resync: confirma que el desfase es estructural (el código de guía `GUT10-000022` ya
+  refleja un despacho posterior, no se puede recuperar re-sincronizando) y no algo que
+  el resync de hoy pudiera arreglar. **Sigue dentro del margen ya aceptado**
+  (671/716 = 93.7% del real, ~6.3% — consistente con el ~6-7% ya documentado).
+- **DESCARTABLE**: $252,895.62 / 84,693 unidades. **No hay Excel real de julio para
+  DESCARTABLE específicamente** (solo se validó agosto) — no se puede confirmar contra
+  ground truth, pero se descarta cualquier regresión: el número es positivo, de
+  magnitud consistente con agosto (~$252,960 ya validado), no vuelve a dar $0 como el
+  bug original.
+
+**Julio 2026 queda confirmado limpio y revalidado — no por asunción, contra Excel real
+donde existe (BOTELLÓN 285) y como control de sanidad donde no (DESCARTABLE).**
+
+## ✅ Mayo 2025 recuperado y reconciliado — `PDPV8-001710` de vuelta (2026-09-02)
+
+Con el fix del deadlock desplegado, se resincronizó mayo 2025 completo
+(`2025-05-01`→`2025-05-31`). Resultado: `Ped:4915 Fac:33620 POS:898/898 Cli:37109
+Prod:4233 Det:42974 Err:0` (Odoo) / `Facturas:29069 Órdenes:6976 Errores:1`
+(MobilVendor, el único error es `SESION_SOSPECHOSA_2025-05-01_2025-05-31_pag1` — el
+retry funcionando, señal sana). **Cero deadlocks en este resync.**
+
+**`PDPV8-001710` recuperado**: ahora existe en `ordenes` (`status=5`, entrega
+2025-05-12).
+
+### Reconciliación amplia — versión mejorada (por existencia de código, no por conteo diario)
+
+El primer intento de reconciliación amplia (conteo local vs Odoo día por día, igual
+método que detectó julio) marcó mayo con `reconciliaExacto:false` (+71 documentos de
+más localmente). Investigado a fondo antes de asumir nada:
+- Los "documentos extra" del 26-may **sí existen en Odoo**, con `invoice_date` un día
+  después (27-may) — verificado documento por documento (`FA001-065-000003776` y
+  otros 4, todos `posted`, mismo código, un día de corrimiento).
+- Los "documentos faltantes" del 22-may (día en déficit) **sí existen todos en local**,
+  bajo otro código/fecha — 0 de 1,215 códigos de Odoo de ese día faltan realmente.
+
+**Conclusión: el conteo día por día genera falsos positivos en datos 2025 backfilleados**
+por corrimiento de fecha entre `fecha_creacion` local e `invoice_date` de Odoo (no
+relacionado con ningún bug — es cómo Odoo asigna la fecha en algunos casos). Rediseñado
+`ops/reconciliacion-total/reconcile_amplio.js` a **chequeo por existencia de código**:
+por cada factura que Odoo marca `posted` en el rango, ¿existe ese código en `facturas`
+local en CUALQUIER fecha/status (ventana ±2 días)? Esto es inmune al corrimiento de
+fecha y detecta pérdida real sin falsos positivos — reverificado contra julio 2026
+(21,121=21,121, 0 códigos faltantes, consistente con el chequeo día-por-día anterior) y
+contra mayo (33,439=33,439, **0 códigos faltantes** con el método nuevo). Además es
+~10x más rápido (una sola consulta a Odoo por mes en vez de 31).
+
+**Mayo 2025 queda genuinamente reconciliado, sin pérdida real, `PDPV8-001710`
+recuperado.**
+
+### Reconciliación amplia como estándar del orquestador
+
+`ops/backfill2025/run_resume.sh` actualizado: usa `reconcile_amplio.js` (todos los
+clientes, existencia de código) en vez de `reconcile.js` (solo El Rosado) para abril
+2025 en adelante. `MESES` recortado a Abril→Enero 2025 (mayo ya cerrado arriba).

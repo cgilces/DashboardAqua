@@ -338,7 +338,19 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
 // Un solo bulkCreate por chunk, FUERA del Promise.all
 // ========================================================
 const upsertProductosBatch = async (productosMap, contadores) => {
-  const productos = Object.values(productosMap);
+  // Orden consistente por codigo_producto ascendente (string, sin locale) —
+  // el lado MobilVendor (procesarDocumento en sincronizacionService.js)
+  // ordena su upsert de productos con el MISMO criterio. Ambos sync corren
+  // en paralelo (Promise.allSettled en sincronizacionController) sobre la
+  // misma tabla `productos`; sin este orden consistente, dos escrituras
+  // concurrentes sobre los mismos códigos en orden distinto pueden formar un
+  // ciclo de locks y Postgres aborta una de las dos transacciones (40P01) —
+  // ver TODO.md, hallazgo del backfill 2025.
+  const productos = Object.values(productosMap).sort((a, b) => {
+    const ca = String(a.id);
+    const cb = String(b.id);
+    return ca < cb ? -1 : ca > cb ? 1 : 0;
+  });
   if (!productos.length) return;
 
   await Producto.bulkCreate(

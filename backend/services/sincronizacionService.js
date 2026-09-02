@@ -86,6 +86,47 @@ const normalizeCode = (v) => {
   return s.length ? s : null;
 };
 
+// ================================================================
+// DEADLOCK DE POSTGRES (código 40P01) — MobilVendor y Odoo sincronizan en
+// PARALELO (Promise.allSettled en sincronizacionController) y ambos escriben
+// a la misma tabla `productos`: MobilVendor un producto a la vez dentro de la
+// transacción de cada documento, Odoo con un bulkCreate masivo por chunk.
+// Sin coordinación de orden entre ambos, dos escrituras concurrentes sobre
+// los mismos códigos de producto en orden distinto pueden formar un ciclo de
+// locks y Postgres aborta una de las dos transacciones (40P01). Antes de este
+// fix ese error simplemente se registraba y el documento se perdía en
+// silencio (ver TODO.md, hallazgo del backfill 2025 — PDPV8-001710).
+//
+// Mitigación en dos capas:
+//   1) orden consistente de locks: dedupDetails() ordena por article_code
+//      antes de upsertear productos (ver abajo), y el lado Odoo hace lo mismo
+//      con su bulkCreate — así, si dos transacciones concurrentes necesitan
+//      los mismos 2+ productos, siempre intentan tomarlos en el mismo orden
+//      y el ciclo de locks deja de poder formarse.
+//   2) red de seguridad: un deadlock SIEMPRE es posible en Postgres bajo
+//      concurrencia real (no se puede garantizar al 100% solo con orden de
+//      locks, ej. si además compite con `clientes`/`direcciones_cliente`) —
+//      por eso el documento completo se reintenta con backoff ante 40P01,
+//      en vez de darlo por perdido al primer intento.
+// ================================================================
+const esDeadlockPostgres = (err) =>
+  err?.parent?.code === "40P01" || err?.original?.code === "40P01";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function conReintentoDeadlock(fn, { intentos = 3, baseMs = 200 } = {}) {
+  for (let intento = 1; intento <= intentos; intento++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!esDeadlockPostgres(err) || intento === intentos) throw err;
+      const backoff = baseMs * intento + Math.floor(Math.random() * baseMs);
+      console.warn(`⚠️  Deadlock de Postgres (40P01), reintento ${intento}/${intentos - 1} en ${backoff}ms`);
+      await sleep(backoff);
+    }
+  }
+}
+
 // --- Helpers para promociones -------------------------------------------
 // Número nullable (a diferencia de toNumber, no fuerza 0 cuando es inválido).
 const toNumOrNull = (val) => {
@@ -837,7 +878,18 @@ async function procesarDocumento(doc, detallesPorDocumento, stats) {
     const rawDetails = detallesPorDocumento.get(code) || [];
     dedupDetails = deduplicateDetails(rawDetails);
 
-    for (const detalle of dedupDetails) {
+    // Orden consistente por codigo_producto ascendente (string, sin locale)
+    // antes de upsertear productos — ver comentario de conReintentoDeadlock
+    // arriba. El lado Odoo (upsertProductosBatch en sincronizacionOdooService.js)
+    // ordena su bulkCreate con el MISMO criterio para que ambos tomen los
+    // locks de `productos` siempre en el mismo orden.
+    const detallesParaUpsert = [...dedupDetails].sort((a, b) => {
+      const ca = String(a.article_code || "");
+      const cb = String(b.article_code || "");
+      return ca < cb ? -1 : ca > cb ? 1 : 0;
+    });
+
+    for (const detalle of detallesParaUpsert) {
       await syncDetalle(detalle, code, t);
     }
 
@@ -989,7 +1041,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
         const code = normalizeCode(doc.code);
 
         try {
-          await procesarDocumento(doc, detallesPorDocumento, stats);
+          await conReintentoDeadlock(() => procesarDocumento(doc, detallesPorDocumento, stats));
         } catch (errDoc) {
           stats.errores++;
           const errorEntry = {

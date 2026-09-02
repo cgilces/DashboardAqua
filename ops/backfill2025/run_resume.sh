@@ -1,11 +1,17 @@
 #!/bin/bash
 # ops/backfill2025/run_resume.sh
-# Continuación del backfill 2025 (noviembre -> enero) — diciembre ya se
-# reconcilió por separado (el bug de coordenadas de Odoo, ya corregido,
-# explicaba la falla original). Arranca de inmediato (sin espera hasta una
-# hora objetivo, a pedido explícito del usuario) — mismo patrón validado
-# de run.sh: mes a mes, reconciliación real contra Odoo, se detiene ante
-# cualquier cosa que no reconoce.
+# Continuación del backfill 2025 (abril -> enero) — mayo se cerró manualmente
+# (recuperación de PDPV8-001710 perdido por el deadlock de Postgres, ya
+# arreglado, y reconciliación amplia confirmada exacta). Arranca de inmediato
+# (sin espera hasta una hora objetivo, a pedido explícito del usuario) —
+# mismo patrón validado de run.sh: mes a mes, se detiene ante cualquier cosa
+# que no reconoce.
+#
+# Desde 2026-09-02: usa reconcile_amplio.js (todos los clientes, chequeo de
+# existencia de código) en vez de reconcile.js (solo El Rosado) — la
+# reconciliación angosta no detectó la pérdida de julio 2026 (-921
+# documentos) porque El Rosado no tuvo ningún documento afectado ese mes.
+# Ver TODO.md, "Fix del deadlock de Postgres" + "Chequeo retroactivo".
 set -uo pipefail
 
 REPO=/opt/grupo-aqua/sistemas/DashboardAqua
@@ -49,20 +55,20 @@ if [ "$RUNNING0" = "true" ]; then
   exit 1
 fi
 
-log "Pre-flight OK — continuando backfill 2025 desde noviembre"
+log "Pre-flight OK — continuando backfill 2025 desde abril"
 
 {
   echo ""
   echo "### 🌙 Backfill 2025 (continuación) — arrancó $(hora_local), a pedido explícito"
   echo ""
-  echo "Diciembre ya reconciliado por separado tras el fix de coordenadas. Continúa"
-  echo "noviembre 2025 hacia atrás hasta enero 2025, mismo patrón: reconciliación real contra"
-  echo "El Rosado (110470, \`status=2\` vs Odoo \`state=posted\`), se detiene ante cualquier cosa"
+  echo "Mayo ya reconciliado por separado (recuperación de PDPV8-001710 tras el fix del"
+  echo "deadlock de Postgres). Continúa abril 2025 hacia atrás hasta enero 2025."
+  echo "**Reconciliación amplia desde acá en adelante** (todos los clientes, chequeo de"
+  echo "existencia de código vs Odoo — no solo El Rosado), se detiene ante cualquier cosa"
   echo "que no reconoce."
 } >> "$TODO"
 
 MESES=(
-  "Mayo 2025|2025-05-01|2025-05-31"
   "Abril 2025|2025-04-01|2025-04-30"
   "Marzo 2025|2025-03-01|2025-03-31"
   "Febrero 2025|2025-02-01|2025-02-28"
@@ -116,16 +122,16 @@ for entry in "${MESES[@]}"; do
   log "$NOMBRE: sync terminado -> $ST"
 
   docker exec dashboard_backend mkdir -p /app/ops-tmp 2>/dev/null
-  docker cp "$REPO/ops/backfill2025/reconcile.js" dashboard_backend:/app/ops-tmp/reconcile.js
+  docker cp "$REPO/ops/reconciliacion-total/reconcile_amplio.js" dashboard_backend:/app/ops-tmp/reconcile_amplio.js
 
-  RESULT=$(docker exec dashboard_backend node /app/ops-tmp/reconcile.js "$DESDE" "$HASTA" "$ERRORES_PREVIOS" 2>/dev/null)
-  log "$NOMBRE: reconciliación -> $RESULT"
+  RESULT=$(docker exec dashboard_backend node /app/ops-tmp/reconcile_amplio.js "$DESDE" "$HASTA" "$ERRORES_PREVIOS" 2>/dev/null)
+  log "$NOMBRE: reconciliación amplia -> $RESULT"
 
   if [ -z "$RESULT" ]; then
-    log "DETENIDO: reconcile.js no devolvió nada para $NOMBRE"
+    log "DETENIDO: reconcile_amplio.js no devolvió nada para $NOMBRE"
     {
       echo ""
-      echo "### 🛑 Backfill 2025 DETENIDO — reconcile.js sin salida en $NOMBRE"
+      echo "### 🛑 Backfill 2025 DETENIDO — reconcile_amplio.js sin salida en $NOMBRE"
       echo ""
       echo "El script de reconciliación no devolvió resultado. Revisar"
       echo "\`ops/backfill2025/backfill2025.log\` y correr manualmente."
@@ -133,7 +139,7 @@ for entry in "${MESES[@]}"; do
     exit 1
   fi
 
-  # reconcile.js imprime ruido de dotenv + "Conexión..." ANTES del JSON real
+  # reconcile_amplio.js imprime ruido de dotenv + "Conexión..." ANTES del JSON real
   # en stdout (no stderr) — el JSON siempre es la última línea. Parsear el
   # blob completo rompía el JSON.parse y hacía DETENERSE='true' siempre.
   JSON_LINE=$(echo "$RESULT" | tail -1)
