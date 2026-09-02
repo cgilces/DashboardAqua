@@ -17,6 +17,7 @@ const {
 const { Op } = require("sequelize");
 
 const { object, loginOdoo } = require("./odooConexion");
+const { sanitizeCoordinate } = require("../../utils/sanitizeCoordinate");
 
 // ========================================================
 // HELPERS
@@ -262,13 +263,12 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
       telefono_cliente: cliente.phone || cliente.mobile || null,
       contacto_cliente: cliente.name || null,
       direccion_cliente: cliente.street || null,
-      // Validamos rango real de coordenadas (Ecuador continental: lat ~ -5..2, lng ~ -81..-75).
-      // Usamos un margen amplio (+-1000) solo para filtrar datos corruptos de Odoo
-      // (p.ej. falta un punto decimal), sin arriesgarnos a recortar coordenadas validas.
-      latitud_cliente: (cliente.partner_latitude != null && Math.abs(cliente.partner_latitude) < 1000)
-        ? toNumber(cliente.partner_latitude) : null,
-      longitud_cliente: (cliente.partner_longitude != null && Math.abs(cliente.partner_longitude) < 1000)
-        ? toNumber(cliente.partner_longitude) : null,
+      // Odoo trae coordenadas mal formadas para muchos clientes (sin punto
+      // decimal, ej. -2196885 en vez de -2.196885) — desbordaban
+      // DECIMAL(12,8) y tumbaban el chunk completo (~50 facturas). Se
+      // descartan a NULL en vez de dejarlas pasar corruptas.
+      latitud_cliente: sanitizeCoordinate(cliente.partner_latitude, "lat"),
+      longitud_cliente: sanitizeCoordinate(cliente.partner_longitude, "lon"),
       ciudad_cliente: cliente.city || null,
       pais_cliente: cliente.country_id?.[1] || null,
       industria_cliente: cliente.industry_id?.[1] || null,
@@ -338,7 +338,19 @@ const upsertClientesYDirecciones = async (uid, clienteIds, docs) => {
 // Un solo bulkCreate por chunk, FUERA del Promise.all
 // ========================================================
 const upsertProductosBatch = async (productosMap, contadores) => {
-  const productos = Object.values(productosMap);
+  // Orden consistente por codigo_producto ascendente (string, sin locale) —
+  // el lado MobilVendor (procesarDocumento en sincronizacionService.js)
+  // ordena su upsert de productos con el MISMO criterio. Ambos sync corren
+  // en paralelo (Promise.allSettled en sincronizacionController) sobre la
+  // misma tabla `productos`; sin este orden consistente, dos escrituras
+  // concurrentes sobre los mismos códigos en orden distinto pueden formar un
+  // ciclo de locks y Postgres aborta una de las dos transacciones (40P01) —
+  // ver TODO.md, hallazgo del backfill 2025.
+  const productos = Object.values(productosMap).sort((a, b) => {
+    const ca = String(a.id);
+    const cb = String(b.id);
+    return ca < cb ? -1 : ca > cb ? 1 : 0;
+  });
   if (!productos.length) return;
 
   await Producto.bulkCreate(

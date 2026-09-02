@@ -1,0 +1,147 @@
+// test/manual-test.js
+// Prueba manual contra la base real (rol mcp_readonly). No es un test
+// automatizado de CI — es la verificación de "paso 1" antes de conectar
+// OAuth/Docker/NPM: confirma que cada tool devuelve datos coherentes.
+require("dotenv").config();
+const { ventasPorRuta } = require("../src/tools/ventasPorRuta");
+const { ventasPorGrupo } = require("../src/tools/ventasPorGrupo");
+const { resumenDiario } = require("../src/tools/resumenDiario");
+const { topProductos } = require("../src/tools/topProductos");
+const { clientesInactivos } = require("../src/tools/clientesInactivos");
+const { proyeccionMensual } = require("../src/tools/proyeccionMensual");
+const { ventasCliente } = require("../src/tools/ventasCliente");
+const { pool } = require("../src/db");
+
+function imprimir(titulo, obj) {
+  console.log(`\n=== ${titulo} ===`);
+  console.log(JSON.stringify(obj, null, 2));
+}
+
+async function main() {
+  // Rango amplio y reciente para tener probabilidad alta de datos reales
+  // (hoy - 60 días es un rango donde ya sabemos que hay ventas sincronizadas).
+  const hoy = new Date().toISOString().slice(0, 10);
+  const hace60 = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+  const ayer = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  // 1) Elegimos una ruta real con ventas en ese rango, en vez de adivinar un código.
+  const { rows: rutaRows } = await pool.query(
+    `SELECT seller_code, COUNT(*) AS n FROM ordenes
+     WHERE seller_code IS NOT NULL AND seller_code <> '' AND fecha_creacion >= $1
+     GROUP BY seller_code ORDER BY n DESC LIMIT 1`,
+    [`${hace60} 00:00:00`]
+  );
+  const rutaEjemplo = rutaRows[0]?.seller_code;
+  console.log(`Ruta de ejemplo detectada: ${rutaEjemplo}`);
+
+  if (rutaEjemplo) {
+    imprimir(
+      "ventasPorRuta",
+      await ventasPorRuta({ ruta: rutaEjemplo, fecha_inicio: hace60, fecha_fin: hoy })
+    );
+    imprimir("clientesInactivos", await clientesInactivos({ ruta: rutaEjemplo }));
+  } else {
+    console.log("No se encontró ninguna ruta de ejemplo — se omiten ventasPorRuta/clientesInactivos.");
+  }
+
+  imprimir(
+    "ventasPorGrupo (MAYORISTA)",
+    await ventasPorGrupo({ grupo: "MAYORISTA", fecha_inicio: hace60, fecha_fin: hoy })
+  );
+
+  imprimir("resumenDiario (ayer)", await resumenDiario({ fecha: ayer }));
+
+  imprimir(
+    "topProductos",
+    await topProductos({ fecha_inicio: hace60, fecha_fin: hoy, limite: 5 })
+  );
+
+  imprimir(
+    "ventasPorGrupo (MAYORISTA + categoria=DESCARTABLE)",
+    await ventasPorGrupo({ grupo: "MAYORISTA", categoria: "DESCARTABLE", fecha_inicio: hace60, fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasPorGrupo (PREVENTA, sin categoría)",
+    await ventasPorGrupo({ grupo: "PREVENTA", fecha_inicio: hace60, fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasPorGrupo (PREVENTA + categoria=DESCARTABLE)",
+    await ventasPorGrupo({ grupo: "PREVENTA", categoria: "DESCARTABLE", fecha_inicio: hace60, fecha_fin: hoy })
+  );
+
+  imprimir("proyeccionMensual (mes actual, empresa completa)", await proyeccionMensual({}));
+
+  imprimir(
+    "proyeccionMensual (mes actual, grupo=PREVENTA, categoria=DESCARTABLE)",
+    await proyeccionMensual({ grupo: "PREVENTA", categoria: "DESCARTABLE" })
+  );
+
+  imprimir(
+    "topProductos (grupo=PREVENTA, sin categoría explícita -> default DESCARTABLE)",
+    await topProductos({ fecha_inicio: "2026-08-01", fecha_fin: "2026-08-31", limite: 5, grupo: "PREVENTA" })
+  );
+
+  imprimir(
+    "topProductos (grupo=MAYORISTA + categoria=DESCARTABLE)",
+    await topProductos({ fecha_inicio: hace60, fecha_fin: hoy, limite: 5, grupo: "MAYORISTA", categoria: "DESCARTABLE" })
+  );
+
+  imprimir(
+    "ventasCliente (nombre completo, match único)",
+    await ventasCliente({ nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasCliente (nombre parcial 'JAVIER', múltiples coincidencias)",
+    await ventasCliente({ nombre_cliente: "JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasCliente (+ categoria=BOTELLÓN, incluye por_producto)",
+    await ventasCliente({ nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy, categoria: "BOTELLÓN" })
+  );
+
+  imprimir(
+    "ventasCliente (producto ambiguo 'PACK', debe listar candidatos sin elegir)",
+    await ventasCliente({ nombre_cliente: "UNIDAD EDUCATIVA PARTICULAR JAVIER", fecha_inicio: "2026-01-01", fecha_fin: hoy, producto: "PACK" })
+  );
+
+  imprimir(
+    "ventasCliente (CORPORACION EL ROSADO, debe detectar multi-compañía real)",
+    await ventasCliente({ nombre_cliente: "CORPORACION EL ROSADO", fecha_inicio: "2026-06-01", fecha_fin: hoy, categoria: "DESCARTABLE" })
+  );
+
+  imprimir(
+    "ventasCliente (codigo_cliente=[109880,110470,112892], consolidado + por_compania)",
+    await ventasCliente({
+      codigo_cliente: ["109880", "110470", "112892"],
+      fecha_inicio: "2026-06-01",
+      fecha_fin: hoy,
+      categoria: "DESCARTABLE",
+    })
+  );
+
+  imprimir(
+    "ventasCliente (nombre con tilde 'Corporación El Rosado', debe matchear exacto via unaccent)",
+    await ventasCliente({ nombre_cliente: "Corporación El Rosado", fecha_inicio: "2026-06-01", fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasCliente (nombre con palabra faltante 'Corporacion Rosado', debe dar sugerencias)",
+    await ventasCliente({ nombre_cliente: "Corporacion Rosado", fecha_inicio: "2026-06-01", fecha_fin: hoy })
+  );
+
+  imprimir(
+    "ventasCliente (typo 'El Rosaod', debe dar sugerencias)",
+    await ventasCliente({ nombre_cliente: "El Rosaod", fecha_inicio: "2026-06-01", fecha_fin: hoy })
+  );
+
+  await pool.end();
+}
+
+main().catch((err) => {
+  console.error("ERROR en manual-test:", err);
+  process.exit(1);
+});

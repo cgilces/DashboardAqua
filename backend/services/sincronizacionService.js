@@ -28,7 +28,8 @@ const {
 
 const DireccionCliente = require("../models/DireccionCliente");
 const { API_URL }             = require("../config/config");
-const { obtenerSesionActual } = require("../utils/apiCliente");
+const { obtenerSesionActual, forzarSesionNueva } = require("../utils/apiCliente");
+const { sanitizeCoordinate } = require("../utils/sanitizeCoordinate");
 
 // ================================================================
 // CONFIGURACIÓN DE AXIOS CON RETRY AUTOMÁTICO
@@ -85,14 +86,46 @@ const normalizeCode = (v) => {
   return s.length ? s : null;
 };
 
-const sanitizeCoordinate = (value, tipo) => {
-  if (value == null) return null;
-  const num = parseFloat(value);
-  if (!Number.isFinite(num))                       return null;
-  if (tipo === "lat" && (num < -90  || num > 90))  return null;
-  if (tipo === "lon" && (num < -180 || num > 180)) return null;
-  return Number(num.toFixed(8));
-};
+// ================================================================
+// DEADLOCK DE POSTGRES (código 40P01) — MobilVendor y Odoo sincronizan en
+// PARALELO (Promise.allSettled en sincronizacionController) y ambos escriben
+// a la misma tabla `productos`: MobilVendor un producto a la vez dentro de la
+// transacción de cada documento, Odoo con un bulkCreate masivo por chunk.
+// Sin coordinación de orden entre ambos, dos escrituras concurrentes sobre
+// los mismos códigos de producto en orden distinto pueden formar un ciclo de
+// locks y Postgres aborta una de las dos transacciones (40P01). Antes de este
+// fix ese error simplemente se registraba y el documento se perdía en
+// silencio (ver TODO.md, hallazgo del backfill 2025 — PDPV8-001710).
+//
+// Mitigación en dos capas:
+//   1) orden consistente de locks: dedupDetails() ordena por article_code
+//      antes de upsertear productos (ver abajo), y el lado Odoo hace lo mismo
+//      con su bulkCreate — así, si dos transacciones concurrentes necesitan
+//      los mismos 2+ productos, siempre intentan tomarlos en el mismo orden
+//      y el ciclo de locks deja de poder formarse.
+//   2) red de seguridad: un deadlock SIEMPRE es posible en Postgres bajo
+//      concurrencia real (no se puede garantizar al 100% solo con orden de
+//      locks, ej. si además compite con `clientes`/`direcciones_cliente`) —
+//      por eso el documento completo se reintenta con backoff ante 40P01,
+//      en vez de darlo por perdido al primer intento.
+// ================================================================
+const esDeadlockPostgres = (err) =>
+  err?.parent?.code === "40P01" || err?.original?.code === "40P01";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function conReintentoDeadlock(fn, { intentos = 3, baseMs = 200 } = {}) {
+  for (let intento = 1; intento <= intentos; intento++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!esDeadlockPostgres(err) || intento === intentos) throw err;
+      const backoff = baseMs * intento + Math.floor(Math.random() * baseMs);
+      console.warn(`⚠️  Deadlock de Postgres (40P01), reintento ${intento}/${intentos - 1} en ${backoff}ms`);
+      await sleep(backoff);
+    }
+  }
+}
 
 // --- Helpers para promociones -------------------------------------------
 // Número nullable (a diferencia de toNumber, no fuerza 0 cuando es inválido).
@@ -335,6 +368,21 @@ async function syncCliente(doc, customerCode, transaction) {
   );
 }
 
+// `estado_ubicacion_direccion_cliente` es integer en Postgres, pero para
+// ciertas direcciones (ej. 277494 "DHARMA BEACH(NO USAR)", 284316 "CANTA Y
+// NO LLORES(NO USAR)" — ambas marcadas "NO USAR" en su propia descripción,
+// aparentemente obsoletas en MobilVendor) `geo_area_code` llega como el
+// string literal "UNKNOWN". Sin sanear, Postgres rechaza el INSERT completo
+// (error 22P02) — y como syncDireccionCliente corre dentro de la MISMA
+// transacción que el documento (orden/factura + detalle), el rollback se
+// llevaba el documento entero, no solo la dirección. Ver TODO.md, "Bug
+// diferido: estado_ubicacion_direccion_cliente tumba el documento completo".
+function sanearEstadoUbicacion(geoAreaCode) {
+  const valor = geoAreaCode || 3; // default histórico cuando no viene el campo
+  const n = Number(valor);
+  return Number.isInteger(n) ? n : null; // "UNKNOWN" (u otro no-entero) → null, no tumba el insert
+}
+
 /**
  * CORREGIDO: SQL nativo para garantizar ON CONFLICT sobre
  * el constraint real (codigo_cliente, codigo_direccion_cliente).
@@ -426,7 +474,7 @@ async function syncDireccionCliente(doc, customerCode, transaction) {
         longitud                : sanitizeCoordinate(doc.address_lon, "lon"),
         fecha_ultima_visita     : parseUnixToEcuador(doc.last_visit_date) || null,
         estado                  : doc.location_status  || 1,
-        estado_ubicacion        : doc.geo_area_code    || 3,
+        estado_ubicacion        : sanearEstadoUbicacion(doc.geo_area_code),
         fecha_creacion          : parseUnixToEcuador(doc.create_date) || new Date(),
         fecha_actualizacion     : parseUnixToEcuador(doc.store_date)  || new Date(),
       },
@@ -622,7 +670,7 @@ async function syncDocumento(doc, code, transaction) {
 
   if (type === 2) {
     await Orden.upsert(
-      { 
+      {
         ...basePayload,
         origen_sistema: "MOBILVENDOR",
         campania_id         : COMPANY_ID,        // → 1
@@ -630,7 +678,13 @@ async function syncDocumento(doc, code, transaction) {
 
         //  NUEVOS CAMPOS
         codigo_subcanal: doc.subchannel_code || null,
-        codigo_tipo_negocio: doc.business_type_code || null
+        codigo_tipo_negocio: doc.business_type_code || null,
+
+        // Guía de entrega — objeto separado del status de la orden, antes
+        // descartado por completo. doc.waybill es null/false cuando la orden
+        // nunca llegó a despacharse (facturada pero sin guía generada).
+        waybill_code  : doc.waybill?.code || null,
+        waybill_status: doc.waybill ? String(doc.waybill.status) : null,
       },
       { transaction }
     );
@@ -839,7 +893,18 @@ async function procesarDocumento(doc, detallesPorDocumento, stats) {
     const rawDetails = detallesPorDocumento.get(code) || [];
     dedupDetails = deduplicateDetails(rawDetails);
 
-    for (const detalle of dedupDetails) {
+    // Orden consistente por codigo_producto ascendente (string, sin locale)
+    // antes de upsertear productos — ver comentario de conReintentoDeadlock
+    // arriba. El lado Odoo (upsertProductosBatch en sincronizacionOdooService.js)
+    // ordena su bulkCreate con el MISMO criterio para que ambos tomen los
+    // locks de `productos` siempre en el mismo orden.
+    const detallesParaUpsert = [...dedupDetails].sort((a, b) => {
+      const ca = String(a.article_code || "");
+      const cb = String(b.article_code || "");
+      return ca < cb ? -1 : ca > cb ? 1 : 0;
+    });
+
+    for (const detalle of detallesParaUpsert) {
       await syncDetalle(detalle, code, t);
     }
 
@@ -894,12 +959,27 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
   console.log(`📝 Sync ID: ${idSync}`);
 
   try {
-    const session_id = await obtenerSesionActual();
+    let session_id = await obtenerSesionActual();
     if (!session_id) throw new Error("No hay sesión activa con MobilVendor.");
     console.log(`🔐 Sesión MobilVendor OK: ${session_id}`);
 
     let totalPages  = 1;
     let currentPage = 1;
+    // MobilVendor responde 200 OK con headers:[] ante una sesión cacheada
+    // que quedó inválida server-side — NO es un error que el axios/try-catch
+    // detecte, y puede pasar en CUALQUIER página, no solo la primera (la
+    // sesión puede morir a mitad de la paginación, no solo antes de
+    // empezar — confirmado con datos reales: días con totalPages=15-17
+    // donde solo llegaban 1-2 páginas reales antes de cortar en silencio).
+    // Toda página vacía dentro de [currentPage <= totalPages] es sospechosa
+    // — el propio bucle garantiza que, al entrar, currentPage siempre está
+    // dentro del rango que la API ya dijo que tenía datos (o es la
+    // página 1, con el valor por defecto) — así que se fuerza un re-login y
+    // se reintenta la MISMA página una vez antes de aceptarla como el fin
+    // real de la paginación. El reintento es por-página (no una sola vez
+    // por corrida completa): si la sesión vuelve a morir más adelante en el
+    // mismo rango, se reintenta de nuevo ahí también.
+    let reintentoPaginaActual = false;
 
     while (currentPage <= totalPages) {
       console.log(`\n📦 PÁGINA ${currentPage} / ${totalPages}`);
@@ -928,12 +1008,29 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
 
       const headers = data.invoices || data.headers || [];
       const details = data.details  || [];
-      totalPages    = data.pages    || totalPages;
+      const totalPagesRespuesta = data.pages || totalPages;
+
+      if (headers.length === 0 && !reintentoPaginaActual) {
+        reintentoPaginaActual = true;
+        const avisoSesion = `Página ${currentPage}/${totalPages} sin cabeceras — posible sesión de MobilVendor inválida (falso 200 OK vacío). Forzando re-login y reintentando la misma página.`;
+        console.warn(`⚠️  ${avisoSesion}`);
+        // Registro DURABLE (no solo log de consola, que rota) — para que un
+        // hueco de sesión, resuelto o no, siempre quede auditable en
+        // errores_sync.txt y en el Err:N persistido, nunca en silencio.
+        erroresPorDocumento.push({ code: `SESION_SOSPECHOSA_${startDate}_${endDate}_pag${currentPage}`, error: { message: avisoSesion } });
+        stats.errores++;
+        session_id = await forzarSesionNueva();
+        if (!session_id) throw new Error("No se pudo obtener sesión nueva de MobilVendor tras el reintento.");
+        continue; // reintenta la MISMA página con sesión nueva, sin avanzar
+      }
+
+      reintentoPaginaActual = false; // esta página ya se resolvió — habilita reintento para la próxima si hiciera falta
+      totalPages = totalPagesRespuesta;
 
       console.log(`   → Cabeceras: ${headers.length} | Detalles: ${details.length} | Páginas: ${totalPages}`);
 
       if (!headers.length) {
-        console.log("🏁 Sin más cabeceras — finalizando paginación.");
+        console.log("🏁 Sin más cabeceras (confirmado tras reintento) — finalizando paginación.");
         break;
       }
 
@@ -959,7 +1056,7 @@ const sincronizarVentasRango = async (startDate, endDate, syncState = null) => {
         const code = normalizeCode(doc.code);
 
         try {
-          await procesarDocumento(doc, detallesPorDocumento, stats);
+          await conReintentoDeadlock(() => procesarDocumento(doc, detallesPorDocumento, stats));
         } catch (errDoc) {
           stats.errores++;
           const errorEntry = {

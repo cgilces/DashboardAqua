@@ -65,9 +65,26 @@ const obtenerSesionActual = async () => {
 };
 
 // ======================================================
+// 🔁 FUNCIÓN PARA FORZAR SESIÓN NUEVA
+// La API de MobilVendor, ante una sesión inválida/vencida, responde 200 OK
+// con datos vacíos en vez de un error de auth — el flag "sesionActual" en
+// memoria no se entera de que quedó inválida server-side. Se usa cuando el
+// llamador recibe una respuesta sospechosa (ej. 0 documentos donde se
+// esperaban cientos) y necesita descartar la sesión cacheada y relogearse
+// antes de reintentar, en vez de confiar ciegamente en el cache.
+// ======================================================
+const forzarSesionNueva = async () => {
+  console.warn("[API] Forzando sesión nueva (la cacheada dio una respuesta sospechosa)...");
+  sesionActual = null;
+  await iniciarSesion();
+  return sesionActual;
+};
+
+// ======================================================
 // 🚀 EXPORTS
 // ======================================================
 module.exports = {
   iniciarSesion,
   obtenerSesionActual,
+  forzarSesionNueva,
 };

@@ -65,6 +65,30 @@ services:
     #   timeout: 5s
     #   retries: 3
 
+  # ---------------------- MCP SERVER (ventas) ----------------------
+  # Servicio separado, no comparte proceso con dashboard_backend. Sin
+  # `ports:` publicado al host a propósito: solo se llega por la red docker
+  # `aqua-network` (nginx-proxy-manager hace el forward por nombre de
+  # contenedor, igual que con dashboard_backend/dashboard_frontend). Secretos
+  # (passwords de DB, MCP_JWT_SECRET, credenciales de Google) vienen de
+  # mcp-server/.env vía env_file, no inline acá, para no commitearlos.
+  mcp_server:
+    build: ./mcp-server
+    container_name: mcp_server
+    restart: always
+    env_file:
+      - ./mcp-server/.env
+    depends_on:
+      dashboard_postgres:
+        condition: service_healthy
+    networks:
+      - aqua-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8787/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 # ---------------------- NETWORKS ----------------------
 networks:
   aqua-network:
