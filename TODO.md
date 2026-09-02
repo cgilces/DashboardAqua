@@ -2195,3 +2195,57 @@ de proceso general, documentado acá para que quede trazable.
   `dashboard_frontend` (contenedor separado, no tocado) sigue arriba sin interrupción.
 
 **`main` queda al día con todo el trabajo de esta sesión, mergeado y verificado.**
+
+## ✅ Tool nuevo: `clientesPorGrupo` — listado de clientes (no rutas) por grupo/categoría (2026-09-02)
+
+Pedido del usuario explorando el MCP en producción: "dame los clientes que la ruta/grupo
+MAYORISTA hayan vendido BOTELLÓN últimos 3 meses" — no existía nada que diera ese
+desglose (`ventasPorGrupo` solo da por ruta, `ventasCliente` busca un cliente puntual
+por nombre). Se agregó un tool nuevo, mismo patrón de 3 ramas
+(ordenes MobilVendor + facturas Odoo + pedido web) que `topProductos`/`ventasPorGrupo`,
+agrupando por cliente en vez de por producto/ruta; PREVENTA usa su propia rama validada
+(status=5, fecha_entrega, filtro condicional de guía).
+
+### Parámetros
+
+`grupo` (enum, igual que `ventasPorGrupo`), `categoria` (opcional), `fecha_inicio`,
+`fecha_fin`, `por_mes` (opcional, default `false`), `limite` (default 300, tope 1000).
+
+### `por_mes` — pedido de seguimiento del usuario
+
+Con `por_mes:true`, cada cliente trae su propio desglose mes a mes dentro del rango
+(`GROUPING SETS` — una sola consulta da el total Y el detalle mensual). Sirve para
+responder preguntas de comparación entre meses (ej. "clientes que compraron en julio
+pero no en agosto") filtrando el array `por_mes` de cada cliente — no hace falta un
+modo/parámetro separado para eso, se resuelve con el mismo resultado.
+
+### Validación
+
+Probado contra los números ya calculados a mano en la conversación (MAYORISTA +
+BOTELLÓN, jun-ago 2026): **99 clientes, mismo top 3 exacto** ($45,587.69 / $30,352.98 /
+$17,517.79). Con `por_mes:true` sobre jul-ago: 10 clientes que compraron en julio y no
+en agosto (filtrando el array), verificado a mano contra la respuesta cruda.
+
+**Bugs encontrados y corregidos DURANTE el diseño, antes de desplegar** (no llegaron a
+producción):
+1. Primer intento: `LIMIT $5*13 ... ORDER BY codigo_cliente, dolares DESC` a nivel SQL
+   — el `ORDER BY` estaba dominado por `codigo_cliente` (no por dólares), así que el
+   `LIMIT` habría devuelto un subconjunto arbitrario de clientes, no los de mayor venta.
+   Corregido: sin `LIMIT`/`ORDER BY` en SQL, se trae todo (acotado solo por
+   `MAX_RANGO_DIAS`), se ordena y recorta en JS después de agrupar.
+2. Un `CASE` condicional dentro de `GROUP BY GROUPING SETS` para togglear `por_mes`
+   generaba dos grupos idénticos (fila duplicada) cuando `por_mes=false` — inofensivo
+   en este caso (el JS sobreescribe con el mismo valor, no suma) pero desprolijo.
+   Corregido: dos plantillas SQL separadas (simple vs. con `GROUPING SETS` real) en vez
+   de un toggle dentro de la misma query.
+
+### Seguridad y regresión
+
+Agregado un caso nuevo en `seguridad-smoke-test.js` (punto 8): `grupo` rechazado por
+zod (enum cerrado) ante payload de inyección; `fecha_inicio` maliciosa llamando la
+función directo (bypaseando zod) falla por cast de tipo de Postgres, no ejecuta SQL,
+tabla `clientes` intacta. `oauth-smoke-test.js` actualizado: ahora son 8 tools, no 7.
+Suite completa (`seguridad-smoke-test.js`, `oauth-smoke-test.js`,
+`preventa-real.test.js`, `diasFestivos-sync.test.js`) — **todas OK**.
+
+Desplegado (`mcp_server` reconstruido y healthy).

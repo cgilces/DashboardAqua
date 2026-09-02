@@ -8,6 +8,7 @@ const { z } = require("zod");
 const { ventasPorRuta, inputSchema } = require("../src/tools/ventasPorRuta");
 const { ventasPorGrupo, totalesGrupo, totalesPreventa, inputSchema: inputSchemaGrupo } = require("../src/tools/ventasPorGrupo");
 const { ventasCliente } = require("../src/tools/ventasCliente");
+const { clientesPorGrupo, inputSchema: inputSchemaClientesPorGrupo } = require("../src/tools/clientesPorGrupo");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -124,6 +125,35 @@ async function main() {
   const { rows: rowsClientes2 } = await pool.query("SELECT to_regclass('clientes') AS existe");
   if (!rowsClientes2[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía codigo_cliente)");
   console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía codigo_cliente).");
+
+  // 8) clientesPorGrupo (nuevo): `grupo`/`categoria` son enums cerrados de
+  //    zod (igual que en ventasPorGrupo) — un payload de inyección no
+  //    matchea ningún valor válido, se rechaza antes de la query.
+  const schemaClientesPorGrupo = z.object(inputSchemaClientesPorGrupo);
+  const parseoClientesPorGrupo = schemaClientesPorGrupo.safeParse({
+    grupo: payloadCategoria, // reusa el payload de inyección del punto 3
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (parseoClientesPorGrupo.success) throw new Error("FALLO: zod aceptó un payload de inyección en `grupo` de clientesPorGrupo");
+  console.log("OK: zod rechazó el payload de inyección en `grupo` de clientesPorGrupo ->", parseoClientesPorGrupo.error.issues[0].message);
+
+  // Aunque alguien se salte zod y llame la función interna directo, `fecha_inicio`
+  // va como parámetro posicional a Postgres (cast a timestamp) — un payload de
+  // inyección ahí no ejecuta SQL, solo falla el cast (error controlado, no daño).
+  const payloadFecha = "2026-01-01'; DROP TABLE clientes; --";
+  let fallaEsperada = false;
+  try {
+    await clientesPorGrupo({ grupo: "MAYORISTA", fecha_inicio: payloadFecha, fecha_fin: "2026-01-31" });
+  } catch (e) {
+    fallaEsperada = /invalid input syntax/i.test(e.message);
+  }
+  if (!fallaEsperada) throw new Error("FALLO: se esperaba un error de cast de Postgres (invalid input syntax), no inyección exitosa ni otro error");
+  console.log("OK: clientesPorGrupo con fecha_inicio maliciosa falló por cast de tipo (parámetro posicional), no por inyección.");
+
+  const { rows: rowsClientes3 } = await pool.query("SELECT to_regclass('clientes') AS existe");
+  if (!rowsClientes3[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía clientesPorGrupo)");
+  console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía clientesPorGrupo).");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");
