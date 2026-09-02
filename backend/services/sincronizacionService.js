@@ -368,6 +368,21 @@ async function syncCliente(doc, customerCode, transaction) {
   );
 }
 
+// `estado_ubicacion_direccion_cliente` es integer en Postgres, pero para
+// ciertas direcciones (ej. 277494 "DHARMA BEACH(NO USAR)", 284316 "CANTA Y
+// NO LLORES(NO USAR)" — ambas marcadas "NO USAR" en su propia descripción,
+// aparentemente obsoletas en MobilVendor) `geo_area_code` llega como el
+// string literal "UNKNOWN". Sin sanear, Postgres rechaza el INSERT completo
+// (error 22P02) — y como syncDireccionCliente corre dentro de la MISMA
+// transacción que el documento (orden/factura + detalle), el rollback se
+// llevaba el documento entero, no solo la dirección. Ver TODO.md, "Bug
+// diferido: estado_ubicacion_direccion_cliente tumba el documento completo".
+function sanearEstadoUbicacion(geoAreaCode) {
+  const valor = geoAreaCode || 3; // default histórico cuando no viene el campo
+  const n = Number(valor);
+  return Number.isInteger(n) ? n : null; // "UNKNOWN" (u otro no-entero) → null, no tumba el insert
+}
+
 /**
  * CORREGIDO: SQL nativo para garantizar ON CONFLICT sobre
  * el constraint real (codigo_cliente, codigo_direccion_cliente).
@@ -459,7 +474,7 @@ async function syncDireccionCliente(doc, customerCode, transaction) {
         longitud                : sanitizeCoordinate(doc.address_lon, "lon"),
         fecha_ultima_visita     : parseUnixToEcuador(doc.last_visit_date) || null,
         estado                  : doc.location_status  || 1,
-        estado_ubicacion        : doc.geo_area_code    || 3,
+        estado_ubicacion        : sanearEstadoUbicacion(doc.geo_area_code),
         fecha_creacion          : parseUnixToEcuador(doc.create_date) || new Date(),
         fecha_actualizacion     : parseUnixToEcuador(doc.store_date)  || new Date(),
       },

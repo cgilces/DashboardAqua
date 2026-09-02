@@ -2077,3 +2077,38 @@ adicional para agosto.
   (DESCARTABLE agosto, BOTELLÓN julio/agosto).
 - `ventasPorRuta`: filtro de PREVENTA corregido + soporte de array, validado.
 - `proyeccionMensual`: días hábiles ya no excluye feriados trabajados.
+
+## ✅ Bug de `estado_ubicacion_direccion_cliente` — fix implementado, los 22 documentos afectados ya estaban recuperados (2026-09-02)
+
+Con el backfill 2025 terminado, se retomó el fix diferido (chico, tal como estaba
+estimado — una función nueva de saneo + 1 línea cambiada, sin tocar schema).
+
+### Fix
+
+`backend/services/sincronizacionService.js`: nueva función `sanearEstadoUbicacion(geoAreaCode)`
+— si el valor no es un entero válido (ej. `"UNKNOWN"`), guarda `null` en vez de dejar
+pasar el string crudo a una columna `integer` (lo que antes tumbaba el INSERT completo,
+llevándose el documento entero por estar `syncDireccionCliente` dentro de la misma
+transacción). `syncDireccionCliente` ahora usa `sanearEstadoUbicacion(doc.geo_area_code)`
+en vez de `doc.geo_area_code || 3` crudo. Verificado que el lado Odoo
+(`sincronizacionOdooService.js`) no toca este campo — el problema era exclusivo de
+MobilVendor.
+
+### Los 22 documentos de la tabla de seguimiento — ya estaban recuperados
+
+Antes de disparar cualquier resync puntual, se verificó la base: **los 22 documentos
+(abril-junio 2026) ya existen, todos `status=2` con al menos 1 línea en
+`detalle_documento`** — recuperados como efecto colateral de los múltiples resyncs
+completos de abril-agosto ya hechos esta sesión (bug de coordenadas, validación de
+PREVENTA). No hizo falta ningún resync adicional.
+
+**Hallazgo adicional al verificar**: las 2 direcciones problemáticas (277494, 284316)
+ya NO tienen la descripción "NO USAR" que las identificaba — ahora aparecen como
+"COMUNA CURIA" / "MEREGILDO TOMALA KATHYA A" con `estado_ubicacion_direccion_cliente=3`
+(válido). El código de dirección (`codigo_direccion_cliente`) parece haberse reasignado
+a un cliente/dirección distinto en MobilVendor con el tiempo — mismo tipo de
+reutilización de código ya visto con los códigos de guía (`waybill_code`). El fix queda
+igual de necesario como red de seguridad permanente para la PRÓXIMA vez que MobilVendor
+mande un valor no-entero en `geo_area_code` (cualquier dirección, no solo estas 2).
+
+Verificado: `node --check` OK, desplegado (`dashboard_backend` reconstruido y healthy).
