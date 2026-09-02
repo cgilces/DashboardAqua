@@ -2023,3 +2023,57 @@ parámetro posicional, cada elemento como texto literal). Suite completa:
 
 Desplegado (`mcp_server` reconstruido y healthy). Descripción del tool actualizada para
 mencionar el soporte de array.
+- [x] **Enero 2025** — corrido 2026-09-02 07:09 -05 (continuación manual, sin supervisión):
+  ```
+  [dotenv@17.3.1] injecting env (16) from .env -- tip: ⚙️  override existing env vars with { override: true }
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+Conexión a la base de datos establecida correctamente.
+{"desde":"2025-01-01","hasta":"2025-01-31","ventasMv":29721,"odoo":29721,"reconciliaExacto":true,"erroresNuevosCount":0,"totalErroresAcumulados":3,"patronConocido":true,"detenerse":false,"motivoDetencion":null,"codigosFaltantesCount":0,"codigosFaltantes":[]}
+  ```
+
+### ✅ Backfill 2025 COMPLETADO — 2026-09-02 07:09 -05
+
+Los 12 meses (enero-diciembre 2025) reconciliaron exacto contra Odoo (El Rosado,
+`status=2`) y ningún error nuevo se apartó del patrón ya conocido. Log completo en
+`ops/backfill2025/backfill2025.log`.
+
+## ✅ Backfill 2025 COMPLETADO — los 12 meses reconciliaron (2026-09-02)
+
+Terminó el orquestador (`run_resume.sh`, abril→enero) con la reconciliación amplia
+(existencia de código, todos los clientes) activa desde mayo en adelante:
+
+| Mes | Local | Odoo | Códigos faltantes |
+|---|---|---|---|
+| Abril 2025 | 31,548 | 31,548 | 0 |
+| Marzo 2025 | 30,017 | 30,017 | 0 |
+| Febrero 2025 | 27,787 | 27,787 | 0 |
+| Enero 2025 | 29,721 | 29,721 | 0 |
+
+Sumado a diciembre-noviembre-octubre-septiembre-agosto-julio-junio (reconciliados antes,
+con el chequeo angosto de El Rosado) y mayo (recuperado tras el fix del deadlock, ver
+sección arriba) — **los 12 meses de 2025 quedan reconciliados**. Log completo en
+`ops/backfill2025/backfill2025.log`.
+
+## ✅ Segunda pasada de reconciliación amplia — agosto 2026 confirmado limpio (2026-09-02)
+
+Con el backfill 2025 terminado, se corrió la reconciliación pendiente sobre agosto 2026
+completo (sincronizado antes de que existiera el fix del deadlock, a diferencia de julio):
+
+```
+{"desde":"2026-08-01","hasta":"2026-08-31","ventasMv":21060,"odoo":21060,
+ "reconciliaExacto":true,"codigosFaltantesCount":0,"codigosFaltantes":[]}
+```
+
+**Exacto, 0 códigos faltantes — agosto 2026 no tuvo ninguna pérdida silenciosa pese a
+haberse sincronizado antes del fix.** No hace falta ningún resync ni revalidación
+adicional para agosto.
+
+### Estado general tras esta ronda de trabajo
+
+- Enero-agosto 2026: limpio (coordenadas + deadlock + sesión, todos los fixes activos y
+  verificados).
+- 2025 completo (enero-diciembre): limpio, backfill terminado.
+- PREVENTA (waybill condicional por categoría): validado contra Excel real
+  (DESCARTABLE agosto, BOTELLÓN julio/agosto).
+- `ventasPorRuta`: filtro de PREVENTA corregido + soporte de array, validado.
+- `proyeccionMensual`: días hábiles ya no excluye feriados trabajados.
