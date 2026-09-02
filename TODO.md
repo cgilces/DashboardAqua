@@ -1962,3 +1962,64 @@ Desplegado (`mcp_server` reconstruido y healthy).
 **Pendiente, a la espera de decisión**: soporte de array de rutas en una sola consulta
 (ver estimación de tamaño de cambio arriba) — ahora que el filtro de PREVENTA está
 resuelto, se puede evaluar sin el riesgo de construir el array sobre una base rota.
+- [x] **Marzo 2025** — corrido 2026-09-02 06:26 -05 (continuación manual, sin supervisión):
+  ```
+  [dotenv@17.3.1] injecting env (16) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+Conexión a la base de datos establecida correctamente.
+{"desde":"2025-03-01","hasta":"2025-03-31","ventasMv":30017,"odoo":30017,"reconciliaExacto":true,"erroresNuevosCount":0,"totalErroresAcumulados":3,"patronConocido":true,"detenerse":false,"motivoDetencion":null,"codigosFaltantesCount":0,"codigosFaltantes":[]}
+  ```
+- [x] **Febrero 2025** — corrido 2026-09-02 06:47 -05 (continuación manual, sin supervisión):
+  ```
+  [dotenv@17.3.1] injecting env (16) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+Conexión a la base de datos establecida correctamente.
+{"desde":"2025-02-01","hasta":"2025-02-28","ventasMv":27787,"odoo":27787,"reconciliaExacto":true,"erroresNuevosCount":0,"totalErroresAcumulados":3,"patronConocido":true,"detenerse":false,"motivoDetencion":null,"codigosFaltantesCount":0,"codigosFaltantes":[]}
+  ```
+
+## ✅ Soporte de array de rutas en `ventasPorRuta` (2026-09-02)
+
+Sobre la base ya arreglada de PREVENTA (arriba). `ruta` ahora acepta un string (una
+sola ruta, retrocompatible) o un array (subconjunto, ej. `["PVR1","PVR2"]`).
+
+### Diseño
+
+- Reescrita la query como `GROUP BY GROUPING SETS ((ruta_val, categoria), (categoria),
+  (ruta_val), ())` — una sola consulta da a la vez el desglose por categoría agregado
+  entre todas las rutas pedidas, el desglose por ruta agregado entre todas las
+  categorías, y el total general. Antes eran 2 queries por SUM/COUNT window; ahora es 1.
+- `o.seller_code = $1` → `o.seller_code = ANY($1::text[])` en las 3 ramas de `SQL`
+  (no-preventa) y en `SQL_PREVENTA`.
+- El array puede mezclar rutas de preventa y no-preventa en la misma consulta — se
+  separan en JS, cada grupo corre contra su SQL correspondiente (en paralelo,
+  `Promise.all`), y los resultados se combinan sumando `por_categoria` por categoría y
+  concatenando `por_ruta`.
+- Retrocompatible: si `ruta` es un string (no array), la respuesta mantiene la forma
+  anterior (`ruta` singular, sin `por_ruta`) — nada de lo que ya usaba este tool antes
+  cambia.
+
+### Validación — suma agregada vs suma manual ruta por ruta
+
+`ventasPorRuta({ ruta: ["PVR1","PVR2","PVR3","PVR4","PVR5"], ... agosto 2026 })`:
+```
+unidades_totales: 13739, dolares_totales: 39324.18, num_documentos: 1068
+por_ruta: PVR1=8442.91/2867u/258, PVR2=9976.27/3605u/135, PVR3=6772.21/2412u/288,
+          PVR4=8868.15/3180u/154, PVR5=5264.64/1675u/233
+```
+Sumando esas 5 rutas UNA POR UNA por separado (`ventasPorRuta({ruta:"PVR1",...})`, etc.):
+mismos números exactos en el total (**$39,324.18 = $39,324.18**, 13,739=13,739u,
+1,068=1,068 documentos) y en cada desglose por ruta individual.
+
+También probado un array mixto (`["PVR1","D8"]`, preventa + no-preventa juntas en una
+sola consulta): $31,338.54 = $8,442.91 (PVR1) + $22,895.63 (D8) — exacto.
+
+### Seguridad y regresión
+
+Payload de inyección probado específicamente contra la rama de array
+(`["PVR1'; DROP TABLE ordenes; --", "D8'); DROP TABLE facturas; --"]`) — sin error de
+sintaxis, ambas tablas intactas (`ANY($1::text[])` trata el array completo como
+parámetro posicional, cada elemento como texto literal). Suite completa:
+`seguridad-smoke-test.js`, `oauth-smoke-test.js`, `preventa-real.test.js` — todas OK.
+
+Desplegado (`mcp_server` reconstruido y healthy). Descripción del tool actualizada para
+mencionar el soporte de array.

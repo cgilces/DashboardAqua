@@ -37,7 +37,7 @@ function crearServer() {
     "ventasPorRuta",
     {
       description:
-        "Ventas totales (unidades y dólares) de una ruta/vendedor en un rango de fechas, desglosado por categoría de producto.",
+        "Ventas totales (unidades y dólares) de una ruta/vendedor (o un subconjunto de rutas, pasando un array) en un rango de fechas, desglosado por categoría de producto y, si se pidió más de una ruta, por ruta.",
       inputSchema: schemaVentasPorRuta,
     },
     async (args) => resultadoTexto(await ventasPorRuta(args))
