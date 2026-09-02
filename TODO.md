@@ -2176,3 +2176,22 @@ El repo está bajo una cuenta a la que el usuario no tenía acceso para abrir el
 momento. Decisión explícita del usuario, pidiendo saltar la regla de este mismo archivo
 ("Entregar vía PR, nunca merge ni deploy solo") para este caso puntual — no es un cambio
 de proceso general, documentado acá para que quede trazable.
+
+### Verificación post-merge (2026-09-02)
+
+- `dashboard_backend`, `mcp_server`, `dashboard_postgres` reconstruidos desde el estado
+  final mergeado de `main` (no desde la rama feature) y healthy.
+- Suite completa corrida de nuevo sobre este estado (no se dio por buena la resolución
+  del conflicto sin retestear): `seguridad-smoke-test.js`, `oauth-smoke-test.js`,
+  `preventa-real.test.js`, `diasFestivos-sync.test.js` — **las 4 en verde**.
+- `sanitizeCoordinate` verificado puntualmente post-merge: rechaza los casos corruptos
+  originales (`-212881`, `-2196885`), rechaza el caso límite que el filtro de `main`
+  hubiera dejado pasar (`150` como latitud — geográficamente imposible), acepta
+  coordenadas reales sin alterarlas (`-2.19`/`-79.88`, Ecuador).
+- `git push origin main` exitoso (`a3d7a45..32a0c75`) — confirma que las credenciales
+  configuradas en este servidor SÍ tienen permiso de push directo a `main` (no hay
+  protección de rama bloqueándolo).
+- Backend responde con normalidad (`/api/sync/status`, `/api/sync/last-sync`),
+  `dashboard_frontend` (contenedor separado, no tocado) sigue arriba sin interrupción.
+
+**`main` queda al día con todo el trabajo de esta sesión, mergeado y verificado.**
