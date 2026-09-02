@@ -1820,3 +1820,145 @@ el alcance de este pedido.
   (desde el host, necesita ver `backend/` y `mcp-server/` juntas) — **todos OK**.
 
 Desplegado (`mcp_server` reconstruido y healthy).
+
+## ⚠️ `ventasPorRuta` — ruta individual SÍ funciona, pero con una brecha real para rutas de preventa (2026-09-02)
+
+### Lo que se pidió confirmar
+
+`ventasPorRuta` ya acepta `ruta: string` (una sola ruta específica, no "todas") — probado
+con un ejemplo real documentado acá.
+
+### Confirmado: funciona correctamente para rutas NO-preventa
+
+```
+ventasPorRuta({ ruta: "D8", fecha_inicio: "2026-08-01", fecha_fin: "2026-08-31" })
+→ { ruta: "D8", unidades_totales: 7667, dolares_totales: 22895.63, num_documentos: 376,
+    por_categoria: [{ categoria: "DESCARTABLE", unidades: 7667, dolares: 22895.63 }] }
+```
+Números reales, correctos, filtrados exactamente a esa ruta.
+
+### 🔴 Hallazgo: para rutas de preventa (PV*/PVR*/TELEVENTA*) da $0, no un error — probablemente ES lo que el gerente preguntó
+
+```
+ventasPorRuta({ ruta: "PVR1", fecha_inicio: "2026-08-01", fecha_fin: "2026-08-31" })
+→ { ruta: "PVR1", unidades_totales: 0, dolares_totales: 0, num_documentos: 0, por_categoria: [] }
+```
+
+**No es un bug de sintaxis ni de filtro roto — es que `ventasPorRuta` usa
+`o.status = 2` (el criterio genérico), pero las órdenes de PREVENTA reales están en
+`status = 5`** (confirmado: PVR1 agosto 2026 tiene 252 órdenes en status=5, solo 12 en
+status 3/4, ninguna en status=2). PREVENTA necesita el filtro específico
+(`FILTRO_PREVENTA_SELLER`, `status=5` + `waybill_code`/`waybill_status` según categoría
+— ver `clasificacion.js`) que `ventasPorGrupo`/`topProductos` ya usan, pero
+`ventasPorRuta` no lo comparte — quedó fuera cuando se generalizó a "todas las
+categorías de producto" (comentario del archivo referencia solo el patrón de
+`obtenerGrupoBotellon`, previo al fix de PREVENTA).
+
+**Como "PVR" = Preventa Ruta, es muy probable que esto sea exactamente lo que el
+gerente quiso decir con "dame solo PVR1 y PVR2"** — y hoy el tool le devolvería $0 en
+vez de un error, lo cual es peor (parece dato real, no una limitación). **No lo arreglé
+todavía — es un hallazgo nuevo, no estaba en el pedido de hoy.** Si se confirma que las
+rutas que le interesan al gerente son de preventa, este es el fix real que hace falta
+(compartir `FILTRO_PREVENTA_SELLER` en `ventasPorRuta`, análogo a como ya lo usan
+`ventasPorGrupo`/`topProductos`).
+
+### Múltiples rutas en una sola consulta (array) — no implementado, tamaño del cambio
+
+No implementado — evaluado antes de tocar nada, como se pidió. El cambio es **chico**:
+mismo patrón ya usado en `ventasCliente` para `codigo_cliente` (array de texto):
+- Schema: `ruta: z.union([z.string().regex(RUTA_RE), z.array(z.string().regex(RUTA_RE)).min(1)])`.
+- SQL: las 3 ramas cambian `o.seller_code = $1` → `o.seller_code = ANY($1::text[])`
+  (aceptando siempre un array desde la función, normalizando `ruta` a array de 1 si
+  viene como string).
+- Salida: agregar `por_ruta` al resultado (desglose por cada ruta pedida) además del
+  total combinado — mismo patrón que `ventasPorGrupo`.
+
+Estimado: ~20-30 min de trabajo + pruebas. **No tocado — a la espera de que se confirme
+si hace falta**, y de que se decida primero qué hacer con el hallazgo de PREVENTA de
+arriba (si las rutas que interesan son PVR*, el array sin el fix de PREVENTA seguiría
+dando $0).
+
+## 🕓 Preparado (sin correr) — segunda pasada de reconciliación amplia sobre agosto 2026 completo
+
+Agosto 2026 se sincronizó (incluida la resync del 1-sep tras el fix de coordenadas)
+**antes de que existiera el fix del deadlock de Postgres** — a diferencia de julio (que
+sí se resincronizó ya con el fix activo), agosto nunca se volvió a correr con el
+ordenamiento consistente + retry activos. No hay evidencia de que haya pasado nada malo
+(agosto ya mostró `+46` de ruido benigno en el primer chequeo amplio, sin patrón de
+pérdida), pero antes de darlo por bueno definitivamente conviene una segunda pasada con
+la reconciliación por existencia de código (la versión sin falsos positivos).
+
+**Comando listo para ejecutar apenas termine el backfill 2025** (no se corre ahora para
+no competir por conexiones a Odoo/Postgres con el backfill en curso):
+
+```bash
+docker cp ops/reconciliacion-total/reconcile_amplio.js dashboard_backend:/app/ops-tmp/reconcile_amplio.js
+docker exec dashboard_backend node /app/ops-tmp/reconcile_amplio.js 2026-08-01 2026-08-31 0
+```
+
+Si `reconciliaExacto:false` con `codigosFaltantes` no vacío → resincronizar agosto igual
+que se hizo con julio (mismo procedimiento: resync del rango, reconciliar de nuevo,
+revalidar PREVENTA/BOTELLÓN contra el Excel real ya confirmado). Si `reconciliaExacto:true`
+→ agosto queda cerrado, sin acción.
+- [x] **Abril 2025** — corrido 2026-09-02 06:03 -05 (continuación manual, sin supervisión):
+  ```
+  [dotenv@17.3.1] injecting env (16) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+Conexión a la base de datos establecida correctamente.
+{"desde":"2025-04-01","hasta":"2025-04-30","ventasMv":31548,"odoo":31548,"reconciliaExacto":true,"erroresNuevosCount":0,"totalErroresAcumulados":3,"patronConocido":true,"detenerse":false,"motivoDetencion":null,"codigosFaltantesCount":0,"codigosFaltantes":[]}
+  ```
+
+## ✅ Fix: `ventasPorRuta` ahora usa el filtro real de PREVENTA para rutas PV*/PVR*/TELEVENTA* (2026-09-02)
+
+Cierra el hallazgo documentado arriba ("ventasPorRuta — ruta individual SÍ funciona,
+pero con una brecha real para rutas de preventa"). Síntoma que lo destapó:
+
+```
+ventasPorRuta({ ruta: "PVR1", fecha_inicio: "2026-08-01", fecha_fin: "2026-08-31" })
+→ ANTES: { unidades_totales: 0, dolares_totales: 0, num_documentos: 0, por_categoria: [] }
+```
+$0 en silencio, no un error — porque usaba `status=2`/`fecha_creacion` (el criterio
+genérico), pero las órdenes de PREVENTA reales están en `status=5`.
+
+### Fix
+
+`mcp-server/src/tools/ventasPorRuta.js`: nueva regex `RUTA_PREVENTA_RE = /^(PV|PREVENTA|TELEVENTA)/i`
+(mismo patrón que `FILTRO_PREVENTA_SELLER`, evaluado del lado de JS sobre el valor de
+`ruta`) decide en runtime qué SQL correr:
+- **Rutas de preventa** (`PVR*`, `PV1`-`PV15`, `PVM`, `PVM2`, `PVQ1`, `PVQ2`,
+  `TELEVENTA *`, `PREVENTA VIP *`): nueva query `SQL_PREVENTA` — `type=2`, `status=5`,
+  `fecha_entrega` (no `fecha_creacion`), y `FILTRO_PREVENTA_SELLER("dd.descripcion_categoria")`
+  (la MISMA función que ya usan `ventasPorGrupo`/`topProductos`, aplicada por categoría
+  de cada línea ya que acá no hay un solo `categoria` fijo). Solo `ordenes` — sin rama
+  de facturas ni pedido web, igual que `SQL_PREVENTA` en `ventasPorGrupo.js`.
+- **Rutas no-preventa**: sin cambios, sigue con la query original (`status=2`).
+
+### Validación cruzada — suma por ruta vs `ventasPorGrupo`, julio y agosto 2026
+
+Se sumaron las 28 rutas de preventa reales (`PVR1`-`5`, `PV1`-`15`, `PVM`, `PVM2`,
+`PVQ1`, `PVQ2`, `TELEVENTA 1/3/4`, `PREVENTA VIP 1/2`) individualmente vía
+`ventasPorRuta` y se comparó contra `totalesPreventa` (lo mismo que usa
+`ventasPorGrupo`):
+
+| Mes | Categoría | Suma por ruta | `ventasPorGrupo` | Diferencia |
+|---|---|---|---|---|
+| Julio 2026 | DESCARTABLE | $252,895.62 (84,693u) | $252,895.62 (84,693u) | **$0.00** |
+| Julio 2026 | BOTELLÓN | $2,719.95 (1,342u) | $2,719.95 (1,342u) | **$0.00** |
+| Agosto 2026 | DESCARTABLE | $252,889.93 (84,949u) | $252,889.93 (84,949u) | **$0.00** |
+| Agosto 2026 | BOTELLÓN | $2,871.23 (1,423u) | $2,871.23 (1,423u) | **$0.00** |
+
+**Coincide exacto en los 4 casos** — confirma que sumar rutas individuales da lo mismo
+que el agregado ya validado, sin fuga ni doble conteo.
+
+### Seguridad y regresión
+
+Probado a mano un payload de inyección específico contra la rama nueva
+(`"PV1'; DROP TABLE ordenes; --"`) — no lanza error de sintaxis, tabla `ordenes`
+intacta (parámetro posicional, mismo patrón de siempre). Suite completa:
+`seguridad-smoke-test.js`, `oauth-smoke-test.js`, `preventa-real.test.js` — todas OK.
+
+Desplegado (`mcp_server` reconstruido y healthy).
+
+**Pendiente, a la espera de decisión**: soporte de array de rutas en una sola consulta
+(ver estimación de tamaño de cambio arriba) — ahora que el filtro de PREVENTA está
+resuelto, se puede evaluar sin el riesgo de construir el array sobre una base rota.
