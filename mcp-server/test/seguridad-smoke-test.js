@@ -29,6 +29,16 @@ async function main() {
   if (!rows[0].existe) throw new Error("FALLO: la tabla ordenes ya no existe (inyección exitosa)");
   console.log("OK: la tabla `ordenes` sigue existiendo intacta.");
 
+  // 2b) Regresión: códigos de ruta REALES con espacio ("RUTA 113"/"POS RUTA
+  //     131" de COTTSA, "TELEVENTA 1", "PREVENTA VIP 1") deben pasar la
+  //     validación — la regex original no incluía espacio y los rechazaba
+  //     con "código de ruta inválido" pese a ser rutas legítimas.
+  for (const rutaValida of ["RUTA 113", "POS RUTA 131", "TELEVENTA 1", "PREVENTA VIP 1"]) {
+    const parseoValido = schema.safeParse({ ruta: rutaValida, fecha_inicio: "2026-01-01", fecha_fin: "2026-01-31" });
+    if (!parseoValido.success) throw new Error(`FALLO: zod rechazó una ruta real válida "${rutaValida}" -> ${parseoValido.error.issues[0].message}`);
+  }
+  console.log("OK: zod acepta códigos de ruta reales con espacio (RUTA 113, POS RUTA 131, TELEVENTA 1, PREVENTA VIP 1).");
+
   // 3) Nuevos parámetros de ventasPorGrupo (categoria, grupo=PREVENTA):
   //    ambos son enums cerrados de zod — un payload de inyección ni siquiera
   //    matchea un valor válido del enum, se rechaza antes de la query.

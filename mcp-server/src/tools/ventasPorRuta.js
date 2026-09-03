@@ -4,7 +4,11 @@ const { pool } = require("../db");
 const { finExclusivo, diffDias } = require("../util/fechas");
 const { FILTRO_PREVENTA_SELLER } = require("../sql/clasificacion");
 
-const RUTA_RE = /^[A-Za-z0-9._-]{1,20}$/;
+// Espacio incluido a propósito: hay códigos de ruta reales con espacio
+// ("TELEVENTA 1", "PREVENTA VIP 1", "RUTA 113", "POS RUTA 131" — estas
+// últimas de COTTSA, company_id=3) que esta regex rechazaba antes,
+// devolviendo "código de ruta inválido" para rutas que sí existen.
+const RUTA_RE = /^[A-Za-z0-9._ -]{1,20}$/;
 const MAX_RANGO_DIAS = 400;
 const MAX_RUTAS = 50;
 
