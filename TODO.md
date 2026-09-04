@@ -2195,3 +2195,54 @@ de proceso general, documentado acá para que quede trazable.
   `dashboard_frontend` (contenedor separado, no tocado) sigue arriba sin interrupción.
 
 **`main` queda al día con todo el trabajo de esta sesión, mergeado y verificado.**
+
+## 🔴→✅ `waybill_status` se sobreescribía en CADA resync, degradando datos ya correctos (2026-09-04)
+
+Sospecha del usuario, investigada y **confirmada**: el guardado de la guía de entrega en
+`sincronizacionService.js` usaba un `Orden.upsert()` plano de Sequelize
+(`INSERT ... ON CONFLICT DO UPDATE SET <todas las columnas> = EXCLUDED.<columna>`), con
+`waybill_code`/`waybill_status` recalculados de `doc.waybill` **en cada sync, sin mirar si
+ya existía un valor**. Como el código de guía se reutiliza con el tiempo (ya documentado
+arriba — "Fix del deadlock" / "Validación del fix de PREVENTA"), consultar su status
+semanas/meses después de la entrega real puede traer el estado de un despacho posterior,
+no el original.
+
+### Impacto real
+
+**Cada resync de esta sesión sobre meses ya sincronizados antes** (agosto por el fix de
+coordenadas, julio 16-31 por el bug de sesión, y **los 12 meses del backfill 2025**,
+corridos el 2-sep con `waybill_code`/`status` ya activo desde el 1-sep) pudo haber pisado
+`waybill_status` con el valor "en vivo" del momento del resync, en vez de conservar el
+valor capturado más cerca de la fecha real. No hay forma de saber retroactivamente cuánto
+se degradó sin un Excel de referencia por mes — por eso el punto 2 (importador de Excel)
+es el complemento necesario para lo que ya se resincronizó.
+
+### Fix
+
+`backend/services/sincronizacionService.js`, función `procesarDocumento` (branch
+`type === 2`, órdenes): `waybill_code`/`waybill_status` salieron del payload de
+`Orden.upsert()` — ahora se escriben en una query aparte, DESPUÉS del upsert, con
+`COALESCE`:
+```sql
+UPDATE ordenes
+   SET waybill_code   = COALESCE(waybill_code, :waybill_code),
+       waybill_status = COALESCE(waybill_status, :waybill_status)
+ WHERE code = :code
+```
+Un valor ya capturado (no NULL) nunca se reemplaza por un resync futuro — solo se llena
+la PRIMERA vez que se ve la orden (o mientras siga NULL, ej. una orden facturada sin guía
+todavía). Confirmado que Odoo (`sincronizacionOdooService.js`) nunca toca estas columnas
+— el problema era exclusivo del sync de MobilVendor.
+
+### Verificado
+
+Prueba directa contra la base (no solo lectura de código): simulé una fila con
+`waybill_status='3'` ya capturado, corrí la query nueva con un valor "de resync" distinto
+(`'0'`) — **el valor original se mantuvo intacto**. Simulé el caso de primera captura
+(`NULL` → valor) — **se llenó correctamente**. `node --check` OK, desplegado
+(`dashboard_backend` reconstruido y healthy).
+
+**Nota importante**: este fix protege de acá en adelante — NO revierte ninguna
+degradación que ya haya ocurrido en resyncs pasados. Eso lo corrige el importador de
+Excel (punto 2, siguiente sección), que trata el Excel como fuente de verdad por encima
+de lo que hoy esté guardado.

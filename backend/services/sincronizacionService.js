@@ -679,15 +679,39 @@ async function syncDocumento(doc, code, transaction) {
         //  NUEVOS CAMPOS
         codigo_subcanal: doc.subchannel_code || null,
         codigo_tipo_negocio: doc.business_type_code || null,
-
-        // Guía de entrega — objeto separado del status de la orden, antes
-        // descartado por completo. doc.waybill es null/false cuando la orden
-        // nunca llegó a despacharse (facturada pero sin guía generada).
-        waybill_code  : doc.waybill?.code || null,
-        waybill_status: doc.waybill ? String(doc.waybill.status) : null,
       },
       { transaction }
     );
+
+    // Guía de entrega — objeto separado del status de la orden. NO se
+    // escribe con el upsert de arriba (que pisaría sin condición en cada
+    // resync) — se aplica con COALESCE en una query aparte para que un
+    // resync NUNCA reemplace un waybill_status ya capturado. Motivo: el
+    // código de guía es reutilizable (mismo GUT#/GUR# se reasigna a un
+    // despacho posterior con el tiempo), así que su `status` "en vivo"
+    // consultado semanas/meses después de la entrega real puede reflejar
+    // ese despacho posterior, no el original — cada resync (backfill,
+    // correcciones puntuales) pisaba ese valor con el estado de HOY,
+    // degradando datos que antes eran correctos. Ver TODO.md, "waybill_status
+    // se sobreescribe en cada resync". `doc.waybill` es null/false cuando la
+    // orden nunca llegó a despacharse (facturada pero sin guía generada) —
+    // en ese caso la query es un no-op (COALESCE con NULL no cambia nada).
+    await sequelize.query(
+      `UPDATE ordenes
+         SET waybill_code   = COALESCE(waybill_code, :waybill_code),
+             waybill_status = COALESCE(waybill_status, :waybill_status)
+       WHERE code = :code`,
+      {
+        replacements: {
+          code,
+          waybill_code  : doc.waybill?.code || null,
+          waybill_status: doc.waybill ? String(doc.waybill.status) : null,
+        },
+        transaction,
+        type: sequelize.QueryTypes.UPDATE,
+      }
+    );
+
     return "orden";
   }
 
