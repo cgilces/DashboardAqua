@@ -2195,3 +2195,82 @@ de proceso general, documentado acá para que quede trazable.
   `dashboard_frontend` (contenedor separado, no tocado) sigue arriba sin interrupción.
 
 **`main` queda al día con todo el trabajo de esta sesión, mergeado y verificado.**
+
+## ✅ Importador de Excel de guías — corrige `waybill_status` tratando el Excel como fuente de verdad (2026-09-04)
+
+Complementa el fix del punto anterior (guard que evita degradación FUTURA) — este
+importador corrige la degradación YA OCURRIDA en agosto, usando el Excel real de
+MobilVendor ("Reporte de detalles de Guías", `ReporteDetallesGuia_agosto2026.csv`,
+7,244 filas) como fuente de verdad por encima de la API en vivo.
+
+### Diseño
+
+`ops/reconciliacion-total/importar_excel_guias.js` — corre dentro de `dashboard_backend`:
+1. Parsea el CSV (via `fast-csv`, modo array — el header tiene columnas repetidas
+   ("Comment"/"Name"/"Description" salen más de una vez, contacto/User/Dispatcher
+   comparten "Name"), así que no se puede usar el modo `headers:true` de la librería;
+   se accede por posición, confirmada a mano: `Invoice`=col 0, `Waybill`=col 34,
+   `Estado de Despacho`=col 36.
+2. Mapea `Estado de Despacho` → nuestro `waybill_status` numérico: `Terminated`→`"3"`,
+   `Shipping`→`"0"` (únicos dos valores vistos en este export; si aparece un tercero,
+   el script se detiene en vez de adivinar el mapeo).
+3. Cruza cada `Invoice` único contra `ordenes.code` — confirma que todas las líneas de
+   un mismo invoice comparten el mismo waybill/estado (son campos a nivel de guía, no
+   de producto), y se detiene si encuentra una inconsistencia en vez de asumir cuál es
+   la correcta.
+4. **Corrige sin condición** (a diferencia del guard de sync normal, que solo llena si
+   está `NULL`) — acá el Excel SIEMPRE gana sobre el valor actual, porque es más
+   confiable que la API en vivo consultada semanas después.
+
+### Corrida sobre agosto completo
+
+```
+CSV leído: 6,111 invoices únicos.
+Coinciden con `ordenes`: 6,111 / 6,111 (100% — cero residual sin explicar en el cruce)
+Ya coincidían (sin cambio necesario): 4,056
+Corregidos: 2,055 (2,054 solo waybill_status + 1 solo waybill_code)
+```
+
+### Validación contra código 285 (target: 759u / $1,351.98)
+
+| Momento | Unidades | Dólares | % del real |
+|---|---|---|---|
+| Antes del importador | 709 | $1,264.73 | 93.4% |
+| Después del importador | 749 | $1,334.72 | 98.7% |
+| Real (Excel, ground truth) | 759 | $1,351.98 | 100% |
+
+**Residual de 10 unidades / ~$17.50 — 100% explicado, un solo documento**:
+`PDPVR5-001797` (10 unidades). Creado 28-jul, con `Dispatch start date`=01-ago (por eso
+el Excel de "agosto" lo incluye — agrupa por inicio de despacho), pero la entrega real
+se completó **31-jul 13:03:03** (`Dispatch date` real) — coincide exacto con nuestro
+`fecha_entrega`. Es el mismo tipo de ruido de frontera de mes ya documentado en toda la
+sesión (atribución de fecha), no un bug del importador ni de la corrección — nuestro
+sistema usa la fecha de entrega real (más correcta para "¿en qué mes se vendió esto?"),
+el Excel agrupa por otra fecha. El ~$0.24 restante en dólares es redondeo de centavos
+acumulado entre decenas de filas, no un problema de datos.
+
+**Margen final de BOTELLÓN(285) agosto: 98.7%** (antes 93.4%) — mejora real y medible,
+no total pero ya no vale la pena perseguir el último 1.3% (es un solo documento con una
+explicación de fecha legítima, no una pérdida de datos).
+
+### Auditoría retroactiva de DESCARTABLE — CONFIRMADO limpio, con datos (no asumido)
+
+Antes de dar por bueno que DESCARTABLE no necesitaba este importador, se auditó con el
+MISMO Excel (que también cubre 9 SKUs de DESCARTABLE — `PACK x6 GALON`, `PACK x24 500ML`,
+`PACK x9 1L`, `PACK x9 1L SPORT`, `PACK x15 625ML`, `PACK x12 300ML`, `PACK x6 1.5`,
+`PACK x6 1LT SPORT`, `PACK x12 500ML` — de rutas PREVENTA, 5,754 invoices únicos):
+
+- **0 de 5,754** invoices confirmados por el Excel con guía real tienen
+  `waybill_code = NULL` en la base — el criterio de DESCARTABLE (`waybill_code IS NOT
+  NULL`, sin mirar status) se sigue cumpliendo al 100% para todo lo que el Excel
+  confirma.
+- El número ya validado ($252,889.93 / 84,949 unidades, agosto) **no cambió** — ni
+  antes ni después de correr el importador, porque DESCARTABLE nunca dependió de
+  `waybill_status` (que es lo único que se degradaba), solo de `waybill_code`, que se
+  mantuvo estable en 6,110 de los 6,111 invoices del Excel (el 1 restante era un caso
+  de BOTELLÓN, no DESCARTABLE).
+
+**DESCARTABLE queda confirmado en el mismo ~99.97% de precisión que ya teníamos — con
+datos, línea por línea contra el Excel, no por suposición.**
+
+Verificado: `node --check` OK.
