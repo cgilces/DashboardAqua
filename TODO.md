@@ -2274,3 +2274,21 @@ MISMO Excel (que también cubre 9 SKUs de DESCARTABLE — `PACK x6 GALON`, `PACK
 datos, línea por línea contra el Excel, no por suposición.**
 
 Verificado: `node --check` OK.
+
+### ⚠️ Corrección: el "759u/$1,351.98" no era el ground truth correcto de agosto
+
+El usuario confirmó: si `PDPVR5-001797` se **despachó realmente el 31-jul** (no el
+1-ago), el Excel lo agrupó mal en "agosto" — el Excel agrupa por `Dispatch start date`
+(inicio de la ruta de despacho), no por `Dispatch date` (finalización real). Se revisó
+**todo el archivo** (7,244 filas) buscando más casos así: **es el único** — ninguna otra
+fila tiene `Dispatch date` real fuera de agosto 2026.
+
+**Ground truth corregido de agosto para código 285** (excluyendo esa fila,
+filtrando por fecha real de despacho): **749 unidades / $1,334.4857**.
+
+Nuestro sistema da **749 unidades / $1,334.72** — unidades EXACTAS, dólares con $0.23
+de diferencia (redondeo de centavos acumulado entre ~84 filas). **Esto ya no es un
+margen aceptado del 98.7% — es esencialmente una reconciliación exacta.** La sección
+anterior (que hablaba de "98.7%, ya no vale la pena perseguir el 1.3%") queda
+desactualizada por este hallazgo — se corrige acá en vez de editarla, para que quede
+trazable el razonamiento que llevó a la corrección.
