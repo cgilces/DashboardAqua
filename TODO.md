@@ -2400,3 +2400,14 @@ Suite completa (`seguridad-smoke-test.js`, `oauth-smoke-test.js`,
 `preventa-real.test.js`, `diasFestivos-sync.test.js`) — **todas OK**.
 
 Desplegado (`mcp_server` reconstruido y healthy).
+
+## ✅ Merge a `main`: feature/clientes-por-grupo (2026-09-07)
+
+Última de las 3 ramas pendientes. Verificación post-merge: `mcp_server` reconstruido
+desde el `main` mergeado, suite completa (`seguridad-smoke-test.js`,
+`oauth-smoke-test.js`, `preventa-real.test.js`, `diasFestivos-sync.test.js`) —
+**4/4 OK**, confirmado `listTools()` devuelve las 8 tools.
+
+**Las 3 ramas pendientes (fix/ruta-espacios, fix/waybill-status-no-overwrite,
+feature/clientes-por-grupo) ya están todas en `main`.** `feature/importador-excel-guias`
+queda aparte (no era parte de este pedido de consolidación).
