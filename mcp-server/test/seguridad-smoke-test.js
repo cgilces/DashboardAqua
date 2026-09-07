@@ -9,6 +9,7 @@ const { ventasPorRuta, inputSchema } = require("../src/tools/ventasPorRuta");
 const { ventasPorGrupo, totalesGrupo, totalesPreventa, inputSchema: inputSchemaGrupo } = require("../src/tools/ventasPorGrupo");
 const { ventasCliente } = require("../src/tools/ventasCliente");
 const { clientesPorGrupo, inputSchema: inputSchemaClientesPorGrupo } = require("../src/tools/clientesPorGrupo");
+const { inputSchema: inputSchemaClientesInactivos } = require("../src/tools/clientesInactivos");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -164,6 +165,16 @@ async function main() {
   const { rows: rowsClientes3 } = await pool.query("SELECT to_regclass('clientes') AS existe");
   if (!rowsClientes3[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía clientesPorGrupo)");
   console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía clientesPorGrupo).");
+
+  // 9) Regresión: clientesInactivos tenía el MISMO bug de espacio que ventasPorRuta
+  //    (rechazaba TELEVENTA 1/PREVENTA VIP 1/RUTA 113 — encontrado cuando un reporte
+  //    real a gerencia omitió esas rutas por completo, sin aviso).
+  const schemaClientesInactivos = z.object(inputSchemaClientesInactivos);
+  for (const rutaValida of ["RUTA 113", "POS RUTA 131", "TELEVENTA 1", "PREVENTA VIP 1"]) {
+    const parseoValido = schemaClientesInactivos.safeParse({ ruta: rutaValida });
+    if (!parseoValido.success) throw new Error(`FALLO: zod rechazó una ruta real válida "${rutaValida}" en clientesInactivos -> ${parseoValido.error.issues[0].message}`);
+  }
+  console.log("OK: clientesInactivos acepta códigos de ruta reales con espacio (RUTA 113, POS RUTA 131, TELEVENTA 1, PREVENTA VIP 1).");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");
