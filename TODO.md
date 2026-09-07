@@ -2292,3 +2292,83 @@ margen aceptado del 98.7% — es esencialmente una reconciliación exacta.** La 
 anterior (que hablaba de "98.7%, ya no vale la pena perseguir el 1.3%") queda
 desactualizada por este hallazgo — se corrige acá en vez de editarla, para que quede
 trazable el razonamiento que llevó a la corrección.
+
+## ✅ Excel de enero-mayo 2026 importado y validado empíricamente — hipótesis del usuario confirmada (2026-09-07)
+
+El otro chat de MCP reportó que solo julio/agosto tenían datos "limpios y comparables"
+para PREVENTA anual, y que enero estaba casi vacío y febrero-mayo sin nada. Verificado
+con consulta directa: **el síntoma era real pero la causa NO era falta de ventas** — las
+órdenes PREVENTA existen completas todo el año (5,100-7,678 documentos/mes,
+$149k-$294k/mes en crudo, consistente con la reconciliación de esta sesión contra Odoo).
+La causa real: `waybill_code`/`waybill_status` solo se habían capturado/corregido para
+julio y agosto — para enero-mayo, `waybill_code` estaba en `NULL` en casi el 100% de los
+casos (0 para febrero-mayo, 91 de 6,421 en enero), así que el filtro de PREVENTA
+(que depende de esos campos) daba $0 sin que faltara ni un solo dato real de venta.
+
+### Preocupación del usuario sobre los Excel de enero-mayo — investigada, no asumida
+
+Alberto generó y descargó estos 5 Excel el 4-sep-2026 (no son archivos de la época).
+Esto encendió la misma alarma que motivó todo el trabajo de esta sesión: ¿sufren el
+mismo problema de reutilización de código que la API en vivo? El usuario comparó el %
+de "Terminated" de cada mes contra julio (ya validado) y vio valores parecidos
+(91.7%-94.4% vs 94.5% en julio) — **hipótesis, no certeza todavía**: que este reporte
+específico de MobilVendor ("Reporte de detalles de Guías") registra el estado del
+despacho como un evento histórico ligado al documento, distinto del mecanismo que usa
+la API que consulta `backfill_waybill.js`.
+
+**Confirmado empíricamente con 2 controles, no solo por el patrón agregado:**
+
+1. **Magnitud** — DESCARTABLE (que depende solo de `waybill_code IS NOT NULL`) vs. el
+   total crudo de órdenes PREVENTA del mes, los 5 meses:
+
+   | Mes | Órdenes PREVENTA crudas | DESCARTABLE (post-importador) |
+   |---|---|---|
+   | Enero | 6,421 docs / $183,887.86 | 5,465 docs / 61,301u / $183,887.86 |
+   | Febrero | 5,100 docs / $149,186.89 | 4,373 docs / 49,741u / $149,186.89 |
+   | Marzo | 6,689 docs / $213,592.84 | 5,728 docs / 71,744u / $213,592.84 |
+   | Abril | 7,678 docs / $290,720.35 | 6,729 docs / 94,859u / $290,649.20 |
+   | Mayo | 7,185 docs / $294,050.10 | 6,234 docs / 91,609u / $293,894.40 |
+
+   Consistente en magnitud en los 5 meses — nada disparatado, nada que sugiera
+   corrupción del import.
+
+2. **Spot-check** — 8 documentos al azar por mes (40 en total) marcados "Terminated" en
+   cada Excel, verificados uno por uno contra `ordenes` después de importar:
+   **40/40 con `waybill_status='3'` correcto.** Cero fallos.
+
+**Con esto, la hipótesis del usuario queda confirmada, no solo plausible** — el Excel de
+guías SÍ es una fuente confiable incluso para meses viejos descargados recién, porque
+registra un evento histórico por documento (no un estado "vivo" reconsultable como la
+API). Script nuevo: `ops/reconciliacion-total/validar_importacion.js` (los 2 controles,
+reutilizable para julio/agosto o cualquier mes futuro).
+
+### Importación — 5 meses
+
+```
+Enero:   6,174 invoices | 76 ya coincidían | 6,098 corregidos | 0 sin match
+Febrero: 4,823 invoices | 0 ya coincidían  | 4,823 corregidos | 0 sin match
+Marzo:   6,691 invoices | 0 ya coincidían  | 6,690 corregidos | 1 sin match (FA001-008-000030361,
+                                                                  prefijo FA=factura, no tiene
+                                                                  columnas de guía — explicado)
+Abril:   7,565 invoices | 0 ya coincidían  | 7,565 corregidos | 0 sin match
+Mayo:    6,899 invoices | 0 ya coincidían  | 6,899 corregidos | 0 sin match
+```
+
+### Reporte PREVENTA/DESCARTABLE, enero-agosto 2026
+
+| Mes | Unidades | Dólares | Documentos |
+|---|---|---|---|
+| Enero | 61,301 | $183,887.86 | 5,465 |
+| Febrero | 49,741 | $149,186.89 | 4,373 |
+| Marzo | 71,744 | $213,592.84 | 5,728 |
+| Abril | 94,859 | $290,649.20 | 6,729 |
+| Mayo | 91,609 | $293,894.40 | 6,234 |
+| **Junio** | 25,431 | $75,492.41 | 1,583 | ⚠️ **sin Excel importado — número probablemente degradado, NO confiable todavía** |
+| Julio | 84,693 | $252,895.62 | 5,784 |
+| Agosto | 84,949 | $252,889.93 | 5,516 |
+
+**Total confiable (enero-mayo + julio-agosto, excluyendo junio hasta tener su Excel):
+538,896 unidades / $1,636,996.74.**
+
+Junio queda marcado explícitamente como pendiente — no se mezcla con el resto hasta
+tener su propio Excel de guías e importarlo con el mismo proceso ya validado.
