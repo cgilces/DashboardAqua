@@ -25,6 +25,7 @@ const { topProductos, inputSchema: schemaTopProductos } = require("./tools/topPr
 const { clientesInactivos, inputSchema: schemaClientesInactivos } = require("./tools/clientesInactivos");
 const { proyeccionMensual, inputSchema: schemaProyeccionMensual } = require("./tools/proyeccionMensual");
 const { ventasCliente, inputSchema: schemaVentasCliente } = require("./tools/ventasCliente");
+const { clientesPorGrupo, inputSchema: schemaClientesPorGrupo } = require("./tools/clientesPorGrupo");
 
 function resultadoTexto(objeto) {
   return { content: [{ type: "text", text: JSON.stringify(objeto, null, 2) }] };
@@ -101,6 +102,16 @@ function crearServer() {
       inputSchema: schemaVentasCliente,
     },
     async (args) => resultadoTexto(await ventasCliente(args))
+  );
+
+  server.registerTool(
+    "clientesPorGrupo",
+    {
+      description:
+        "Listado de CLIENTES (no rutas) que compraron dentro de un grupo de canal y, opcionalmente, una categoría de producto, en un rango de fechas — para preguntas tipo 'dame los clientes de MAYORISTA que compraron BOTELLÓN estos 3 meses'. Devuelve cada cliente con su total (unidades, dólares, documentos) en el rango, ordenado de mayor a menor. Con por_mes=true, cada cliente además trae su propio desglose mes a mes — útil para comparar entre meses, ej. 'clientes que compraron en julio pero no en agosto': pedir el rango jul-ago con por_mes=true y filtrar los clientes cuyo mes de julio tenga dólares>0 y no tengan una entrada de agosto (o la tengan en 0). limite acota cuántos clientes se devuelven (default 300, tope 1000), siempre ordenados por dólares descendente — total_clientes indica cuántos hubo en total aunque se haya recortado la lista.",
+      inputSchema: schemaClientesPorGrupo,
+    },
+    async (args) => resultadoTexto(await clientesPorGrupo(args))
   );
 
   return server;
