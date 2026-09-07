@@ -2195,3 +2195,37 @@ de proceso general, documentado acá para que quede trazable.
   `dashboard_frontend` (contenedor separado, no tocado) sigue arriba sin interrupción.
 
 **`main` queda al día con todo el trabajo de esta sesión, mergeado y verificado.**
+
+## ✅ Bug real: `ventasPorRuta` rechazaba rutas legítimas con espacio en el nombre (2026-09-02)
+
+Encontrado en vivo: el usuario pidió por MCP las rutas de COTTSA (`RUTA 113`, `RUTA 131`,
+`RUTA 132`, `RUTA 132.1`, `POS RUTA 131` — `company_id=3`) y el tool devolvió
+`"código de ruta inválido"` para las 5.
+
+### Causa
+
+`RUTA_RE = /^[A-Za-z0-9._-]{1,20}$/` no incluía espacio — pero varios códigos de ruta
+REALES sí tienen espacio: `RUTA 113`/`POS RUTA 131` (COTTSA), `TELEVENTA 1`/`TELEVENTA 3`/
+`TELEVENTA 4`, `PREVENTA VIP 1`/`PREVENTA VIP 2`. La regex nunca se probó contra estos
+nombres reales — las pruebas anteriores de `ventasPorRuta` (validación cruzada, array de
+rutas) usaron `PVR1`-`PVR5`/`D8` (sin espacio), así que el hueco no se detectó hasta que
+un usuario real pidió una ruta con espacio por el MCP.
+
+### Fix
+
+`mcp-server/src/tools/ventasPorRuta.js`: `RUTA_RE` ahora incluye espacio
+(`/^[A-Za-z0-9._ -]{1,20}$/`). No afecta la seguridad — la regex es solo UX de validación
+temprana, la defensa real contra inyección sigue siendo el parámetro posicional de pg
+(`= ANY($1::text[])`), que ya se probó de nuevo con un payload con espacio incluido.
+
+### Verificado
+
+- Las 5 rutas de COTTSA ahora validan y devuelven datos reales: **$196,729.11 / 73,130
+  unidades / 546 documentos**, todo categoría `PT-COTTSA` (agosto 2026). `RUTA 132.1`
+  aparece con signo negativo (nota de crédito neteada, comportamiento esperado, no bug).
+- Agregado caso de regresión en `seguridad-smoke-test.js`: confirma que `RUTA 113`,
+  `POS RUTA 131`, `TELEVENTA 1`, `PREVENTA VIP 1` pasan la validación de zod.
+- Suite completa (`seguridad-smoke-test.js`, `oauth-smoke-test.js`,
+  `preventa-real.test.js`, `diasFestivos-sync.test.js`) — todas OK.
+
+Desplegado (`mcp_server` reconstruido y healthy).
