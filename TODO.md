@@ -2297,3 +2297,50 @@ no solo sobre la rama original.
 
 `feature/clientes-por-grupo` queda pendiente — antes de mergearla, el usuario pidió 2
 pruebas puntuales (ver sección siguiente).
+
+## ✅ Las 2 pruebas pendientes de `feature/clientes-por-grupo` — resultado (2026-09-07)
+
+Pedidas antes de mergear esta rama. Probadas copiando el archivo de la rama directo al
+contenedor `mcp_server` sin tocar `main` (sin registrar el tool en `server.js`, así que
+no quedó expuesto por MCP durante la prueba) — restaurado al estado real de `main` al
+terminar.
+
+### a) `por_mes=true` — el total de ranking es la fila TOTAL, coincide con la suma mensual
+
+`clientesPorGrupo({ grupo: "MAYORISTA", categoria: "BOTELLÓN", fecha_inicio: "2026-06-01",
+fecha_fin: "2026-08-31", por_mes: true })` — **verificado en los 99 clientes, no solo el
+top 1**: `cliente.dolares` (el campo que ordena el array) es exactamente la suma de
+`cliente.por_mes[].dolares`, **0 inconsistencias**.
+
+Ejemplo (cliente con 3 meses de actividad):
+```json
+{
+  "codigo_cliente": "112408", "dolares": 45587.69,
+  "por_mes": [
+    { "mes": "2026-06", "dolares": 14706.76 },
+    { "mes": "2026-07", "dolares": 15294.03 },
+    { "mes": "2026-08", "dolares": 15586.90 }
+  ]
+}
+```
+14706.76+15294.03+15586.90 = 45587.69 exacto. Confirmado también que el array completo
+queda ordenado descendente por ese total (`dolares`), no por ningún mes puntual —
+`r.clientes.every((c,i) => i===0 || anterior.dolares >= c.dolares)` → `true`.
+
+### b) Caso más ancho real — filas SQL sin `LIMIT` y tiempo
+
+Se identificó primero cuál grupo tiene más clientes reales (12 meses, todas las
+categorías): `DOMICILIO` con 4,003 (vs. 3,437 de `TIENDAS`, 1,803 `RURAL`, 126
+`MAYORISTA`). Caso de prueba: `grupo=DOMICILIO`, **sin categoría** (todas), **365 días**
+(el rango práctico más largo que alguien pediría), `por_mes=true` (el modo más pesado,
+hasta 13 filas por cliente vía `GROUPING SETS`):
+
+- **Filas SQL crudas devueltas por Postgres, sin `LIMIT`: 28,139.**
+- Tiempo de la query sola: **981 ms.**
+- Tiempo total (incluida la agregación en JS y el recorte a `limite`): **~1.95 s.**
+- 4,152 clientes distintos en total, recortados a 1,000 (`limite` por defecto real
+  usado en la prueba) sin errores.
+
+**Ambas pruebas OK — sin quitarle el `LIMIT` a nivel SQL (removido a propósito en el
+diseño original, ver sección de bugs encontrados) no hay ningún problema de volumen ni
+de tiempo en el caso más ancho real. Lista para mergear.**
