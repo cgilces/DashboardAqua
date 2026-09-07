@@ -1,9 +1,28 @@
 // src/tools/clientesInactivos.js
+//
+// ⚠️ NO USAR para rutas de PREVENTA (PV*/PVR*/TELEVENTA*/PREVENTA VIP*) — el
+// fix de espacio de acá abajo solo corrige que la regex ya no las rechace,
+// pero la query SIGUE usando `status=2`/`fecha_creacion` (el criterio
+// genérico de status=2 vs. el status=5+guía validado que de verdad usan
+// esas rutas), y una ventana FIJA de 60/15 días corrida desde HOY (no un
+// mes calendario). Para PREVENTA da un resultado que PARECE válido pero no
+// tiene relación real con quién dejó de comprar — confirmado con datos:
+// comparado contra `clientesPorGrupo` (grupo=PREVENTA, por_mes) para las
+// mismas rutas, 0 de 32 clientes coincidieron entre los dos métodos. Ver
+// TODO.md, "reporte de clientes en $0 por vendedor construido con la
+// herramienta equivocada". Para PREVENTA, usar `clientesPorGrupo` con
+// `por_mes:true` y comparar los meses que corresponda — no este tool.
 const { z } = require("zod");
 const { pool } = require("../db");
 const { sumarDias } = require("../util/fechas");
 
-const RUTA_RE = /^[A-Za-z0-9._-]{1,20}$/;
+// Espacio incluido a propósito: hay códigos de ruta reales con espacio
+// ("TELEVENTA 1", "PREVENTA VIP 1", "RUTA 113" de COTTSA) que esta regex
+// rechazaba antes, devolviendo "código de ruta inválido" para rutas que sí
+// existen — mismo bug ya corregido en ventasPorRuta.js. Encontrado acá
+// cuando un reporte real a gerencia ("clientes en $0 por vendedor") omitió
+// por completo TELEVENTA 1-4 y PREVENTA VIP 1-2 sin ningún aviso.
+const RUTA_RE = /^[A-Za-z0-9._ -]{1,20}$/;
 
 // Ventanas fijas server-side (el criterio de "inactivo" no lo decide el LLM):
 // "compró en los 60 días previos a los últimos 15, pero no en los últimos 15".

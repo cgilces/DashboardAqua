@@ -2411,3 +2411,36 @@ desde el `main` mergeado, suite completa (`seguridad-smoke-test.js`,
 **Las 3 ramas pendientes (fix/ruta-espacios, fix/waybill-status-no-overwrite,
 feature/clientes-por-grupo) ya están todas en `main`.** `feature/importador-excel-guias`
 queda aparte (no era parte de este pedido de consolidación).
+
+## ✅ Bug real: `clientesInactivos` tenía el mismo bug de espacio que `ventasPorRuta` (2026-09-07)
+
+Encontrado al investigar por qué el reporte "clientes en \$0 por vendedor" que recibió un
+gerente estaba mal (ver sección de arriba) — `TELEVENTA 1/2/3/4` y `PREVENTA VIP 1/2`
+fueron rechazadas por la misma regex sin espacio que ya se había arreglado en
+`ventasPorRuta.js` pero nunca se aplicó acá. El reporte real las omitió por completo,
+sin ningún aviso de error.
+
+### Fix
+
+`mcp-server/src/tools/clientesInactivos.js`: `RUTA_RE` ahora incluye espacio (idéntico
+fix que en `ventasPorRuta.js`). Agregado caso de regresión en `seguridad-smoke-test.js`
+(mismas 4 rutas de prueba). Confirmado con datos reales: `TELEVENTA 1` ahora devuelve
+1 cliente inactivo (antes, error de validación).
+
+### ⚠️ Esto NO arregla el problema de fondo — solo el síntoma de rechazo
+
+Documentado explícitamente en el código (comentario al inicio del archivo) y en la
+descripción del tool en `server.js`: `clientesInactivos` sigue usando `status=2`
+(el criterio genérico) en vez del filtro validado de PREVENTA (`status=5`+guía), y una
+ventana FIJA de 60/15 días corrida desde HOY, no un mes calendario. Para rutas PREVENTA
+esto da un resultado que **parece válido pero no lo es** — confirmado comparando contra
+`clientesPorGrupo` para las mismas rutas: **0 de 32 clientes coincidieron entre los dos
+métodos** (ver sección "reporte de clientes en \$0 por vendedor" arriba). El fix de
+espacio evita que el tool falle en seco para esas rutas, pero **no lo hace correcto
+para PREVENTA** — la recomendación explícita (en código y en la descripción del tool)
+es usar `clientesPorGrupo` con `por_mes:true` para cualquier pregunta de PREVENTA sobre
+clientes inactivos/en \$0, no este tool.
+
+Verificado: `node --check` OK, suite completa (`seguridad-smoke-test.js`,
+`oauth-smoke-test.js`, `preventa-real.test.js`, `diasFestivos-sync.test.js`) — 4/4 OK.
+Desplegado (`mcp_server` reconstruido y healthy).

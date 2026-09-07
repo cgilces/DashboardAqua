@@ -78,7 +78,7 @@ function crearServer() {
     "clientesInactivos",
     {
       description:
-        "Clientes de una ruta que compraron en el pasado reciente pero no en los últimos 15 días (ventanas de comparación fijas, no decididas por el modelo).",
+        "Clientes de una ruta que compraron en el pasado reciente pero no en los últimos 15 días (ventanas de comparación fijas, no decididas por el modelo). NO usar para rutas de PREVENTA (PV*/PVR*/TELEVENTA*/PREVENTA VIP*) — no aplica el filtro validado de esas rutas y da un resultado que parece válido pero no lo es (confirmado: 0 coincidencias contra clientesPorGrupo para las mismas rutas). Para PREVENTA, usar clientesPorGrupo con por_mes:true y comparar los meses que corresponda.",
       inputSchema: schemaClientesInactivos,
     },
     async (args) => resultadoTexto(await clientesInactivos(args))
