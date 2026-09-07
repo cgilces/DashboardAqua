@@ -2372,3 +2372,41 @@ Mayo:    6,899 invoices | 0 ya coincidían  | 6,899 corregidos | 0 sin match
 
 Junio queda marcado explícitamente como pendiente — no se mezcla con el resto hasta
 tener su propio Excel de guías e importarlo con el mismo proceso ya validado.
+
+## ✅ Junio 2026 importado y validado — PREVENTA/DESCARTABLE enero-agosto 2026 completo y confiable (2026-09-07)
+
+Mismo proceso que enero-mayo, con el Excel de junio (`ReporteDetallesGuia_junio2026.csv`,
+mismo formato, 95.7% Terminated — consistente con el resto de los meses).
+
+### Importación
+
+```
+Junio: 6,586 invoices | 1,214 ya coincidían | 5,372 corregidos | 0 sin match
+```
+
+### Validación (mismos 2 controles)
+
+- **Magnitud**: 7,257 órdenes PREVENTA crudas ($271,600.95) vs. 6,044 docs DESCARTABLE
+  ($266,617.35 / 85,895u) — misma proporción que el resto de los meses, consistente.
+- **Spot-check**: 8 documentos "Terminated" al azar, **8/8 con `waybill_status='3'`
+  correcto** en la base.
+
+Junio queda validado con el mismo nivel de confianza que enero-mayo y julio-agosto.
+
+### PREVENTA/DESCARTABLE — enero-agosto 2026 completo (8/8 meses con Excel importado y validado)
+
+| Mes | Unidades | Dólares | Documentos |
+|---|---|---|---|
+| Enero | 61,301 | $183,887.86 | 5,465 |
+| Febrero | 49,741 | $149,186.89 | 4,373 |
+| Marzo | 71,744 | $213,592.84 | 5,728 |
+| Abril | 94,859 | $290,649.20 | 6,729 |
+| Mayo | 91,609 | $293,894.40 | 6,234 |
+| Junio | 85,895 | $266,617.35 | 6,044 |
+| Julio | 84,693 | $252,895.62 | 5,784 |
+| Agosto | 84,949 | $252,889.93 | 5,516 |
+| **TOTAL 8 meses** | **624,791** | **$1,903,614.09** | **45,873** |
+
+**Ya no queda ningún mes de 2026 pendiente de Excel para el reporte anual de
+PREVENTA/DESCARTABLE** — los 8 meses transcurridos del año están importados,
+validados con los mismos 2 controles (magnitud + spot-check) y listos para reportar.
