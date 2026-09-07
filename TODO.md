@@ -2282,3 +2282,18 @@ Prueba directa contra la base (no solo lectura de código): simulé una fila con
 degradación que ya haya ocurrido en resyncs pasados. Eso lo corrige el importador de
 Excel (punto 2, siguiente sección), que trata el Excel como fuente de verdad por encima
 de lo que hoy esté guardado.
+
+## ✅ Merge a `main`: fix/ruta-espacios + fix/waybill-status-no-overwrite (2026-09-07)
+
+Ambas ramas ya estaban completamente validadas — mergeadas directo (sin PR de GitHub,
+seguimos sin acceso al repo), un conflicto puro de "ambos agregaron al final" en
+TODO.md, sin conflicto de código real entre las dos (tocan archivos distintos).
+
+Verificación post-merge: `dashboard_backend`/`mcp_server` reconstruidos desde el `main`
+mergeado, suite completa (`seguridad-smoke-test.js`, `oauth-smoke-test.js`,
+`preventa-real.test.js`, `diasFestivos-sync.test.js`) — **4/4 OK**. Reconfirmado a mano
+el guard de `waybill_status` (valor existente no se pisa) sobre el código ya mergeado,
+no solo sobre la rama original.
+
+`feature/clientes-por-grupo` queda pendiente — antes de mergearla, el usuario pidió 2
+pruebas puntuales (ver sección siguiente).
