@@ -10,6 +10,7 @@ const { ventasPorGrupo, totalesGrupo, totalesPreventa, inputSchema: inputSchemaG
 const { ventasCliente } = require("../src/tools/ventasCliente");
 const { clientesPorGrupo, inputSchema: inputSchemaClientesPorGrupo } = require("../src/tools/clientesPorGrupo");
 const { inputSchema: inputSchemaClientesInactivos } = require("../src/tools/clientesInactivos");
+const { clientesSinConsumo, inputSchema: inputSchemaClientesSinConsumo } = require("../src/tools/clientesSinConsumo");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -175,6 +176,43 @@ async function main() {
     if (!parseoValido.success) throw new Error(`FALLO: zod rechazó una ruta real válida "${rutaValida}" en clientesInactivos -> ${parseoValido.error.issues[0].message}`);
   }
   console.log("OK: clientesInactivos acepta códigos de ruta reales con espacio (RUTA 113, POS RUTA 131, TELEVENTA 1, PREVENTA VIP 1).");
+
+  // 10) clientesSinConsumo (nuevo): `grupo`/`categoria` son enums cerrados de
+  //     zod, igual que clientesPorGrupo — y PREVENTA está explícitamente
+  //     excluido del enum de `grupo` (no soportado, tiene su propio
+  //     mecanismo de clasificación).
+  const schemaClientesSinConsumo = z.object(inputSchemaClientesSinConsumo);
+  const parseoSinConsumo = schemaClientesSinConsumo.safeParse({
+    grupo: payloadCategoria,
+    categoria: "BOTELLÓN",
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (parseoSinConsumo.success) throw new Error("FALLO: zod aceptó un payload de inyección en `grupo` de clientesSinConsumo");
+  console.log("OK: zod rechazó el payload de inyección en `grupo` de clientesSinConsumo ->", parseoSinConsumo.error.issues[0].message);
+
+  const parseoSinConsumoPreventa = schemaClientesSinConsumo.safeParse({
+    grupo: "PREVENTA",
+    categoria: "DESCARTABLE",
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (parseoSinConsumoPreventa.success) throw new Error("FALLO: zod aceptó grupo=PREVENTA en clientesSinConsumo (no soportado, mecanismo de clasificación distinto)");
+  console.log("OK: zod rechaza grupo=PREVENTA en clientesSinConsumo (no soportado a propósito) ->", parseoSinConsumoPreventa.error.issues[0].message);
+
+  const payloadFechaSinConsumo = "2026-01-01'; DROP TABLE clientes; --";
+  let fallaEsperadaSinConsumo = false;
+  try {
+    await clientesSinConsumo({ grupo: "EMPRESAS", categoria: "BOTELLÓN", fecha_inicio: payloadFechaSinConsumo, fecha_fin: "2026-01-31", limite: 300 });
+  } catch (e) {
+    fallaEsperadaSinConsumo = /invalid input syntax/i.test(e.message);
+  }
+  if (!fallaEsperadaSinConsumo) throw new Error("FALLO: se esperaba un error de cast de Postgres en clientesSinConsumo, no inyección exitosa ni otro error");
+  console.log("OK: clientesSinConsumo con fecha_inicio maliciosa falló por cast de tipo (parámetro posicional), no por inyección.");
+
+  const { rows: rowsClientes4 } = await pool.query("SELECT to_regclass('clientes') AS existe");
+  if (!rowsClientes4[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía clientesSinConsumo)");
+  console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía clientesSinConsumo).");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");

@@ -2650,3 +2650,75 @@ queda en el backlog.
 — 434 clientes sin compra de BOTELLÓN en la semana calendario 2026-08-31/2026-09-06
 (405 CONSUMO_CERO, 24 NUNCA_COMPRO_BOTELLON, 5 SIN_FACTURACION_FORMAL), sobre el
 universo EMPRESAS corregido de 617 (612 tras consolidar los 5 duplicados).
+
+## ✅ Nueva tool MCP: `clientesSinConsumo` (2026-09-08)
+
+Formaliza como herramienta MCP el reporte semanal de consumo cero EMPRESAS/BOTELLÓN
+(ver sección de arriba) para que un gerente lo pida él mismo con un prompt simple,
+en vez de que se le mande por CSV cada semana.
+
+### Confirmación previa a construir (pedido explícito de cgilces)
+
+Confirmado que el fix de EMPRESAS-3-fuentes (`fix/clasificacion-empresas-3-fuentes`)
+está mergeado a `main` Y desplegado en el servidor MCP de PRODUCCIÓN
+(`mcp.aqua.com.ec`, dominio real con OAuth de Google — no un entorno de prueba) —
+verificado inspeccionando el archivo `clasificacion.js` DENTRO del contenedor en
+ejecución (`docker exec mcp_server ...`), no solo el git log.
+
+### Qué hace
+
+`clientesSinConsumo({ grupo, categoria, fecha_inicio, fecha_fin, limite })` — a
+diferencia de `clientesPorGrupo` (que solo devuelve quién SÍ compró), devuelve el
+UNIVERSO COMPLETO de un grupo (cualquier documento alguna vez clasificado en ese
+grupo, sin exigir status posteado) y clasifica a cada uno que NO compró la
+categoría pedida en el rango:
+- `CONSUMO_CERO`: compró esa categoría antes, no en el rango pedido.
+- `NUNCA_COMPRO_<categoria>`: tiene facturación formal (status=2 posteado, algo)
+  pero nunca compró esa categoría específica.
+- `SIN_FACTURACION_FORMAL`: aparece en el universo del grupo pero no tiene ningún
+  documento posteado — caso raro (5 de 617 en EMPRESAS), se marca aparte para no
+  confundirlo con consumo cero real.
+
+Trae de fábrica los 2 fixes que salieron de la validación manual del gerente:
+`dias_desde_ultima` con aritmética de solo-fecha (no timestamp completo — el bug
+de floor() que daba días distintos para la misma fecha calendario), y
+consolidación automática de duplicados de maestro (mismo `identificacion_cliente`
++ `company_id` + `nombre_cliente` exacto bajo 2+ códigos → 1 sola fila, código
+combinado `codigoA+codigoB`, fecha más reciente entre los dos).
+
+**No soporta PREVENTA** — ese grupo tiene su propio mecanismo de clasificación
+(`FILTRO_PREVENTA_SELLER`, no encaja en el patrón `CASE_GRUPO_*`/`fecha_creacion`
+que usa esta tool). Pedirlo para PREVENTA es un error de validación explícito de
+zod, no un resultado silenciosamente incorrecto — para PREVENTA seguir usando
+`clientesPorGrupo` con `por_mes:true`.
+
+### Validación
+
+Corrida contra producción con los mismos parámetros del reporte ya validado a
+mano (EMPRESAS, BOTELLÓN, semana 2026-08-31 a 2026-09-06): **coincide exacto**
+con el CSV entregado al gerente — 612 universo (tras consolidar), 434 sin
+consumo (405 CONSUMO_CERO / 24 NUNCA_COMPRO_BOTELLÓN / 5 SIN_FACTURACION_FORMAL),
+5 duplicados consolidados, mismas fechas y mismos días para cada uno de los 5
+pares fusionados.
+
+`node --check` OK (contenedor, Node 18). Suite completa en `mcp_server`
+reconstruido: `seguridad-smoke-test` (2 casos nuevos: inyección en `grupo` +
+rechazo explícito de PREVENTA), `oauth-smoke-test` (**9 tools**, antes 8),
+`preventa-real.test`, `diasFestivos-sync.test` — 4/4 OK.
+
+### Para el prompt del gerente
+
+Nombre exacto de la tool: **`clientesSinConsumo`**. Parámetros:
+`grupo` (enum, ej. `"EMPRESAS"`), `categoria` (enum, ej. `"BOTELLÓN"`),
+`fecha_inicio`/`fecha_fin` (`YYYY-MM-DD`), `limite` (opcional, default 300,
+tope 1000). Prompt sugerido: *"Dame los clientes de EMPRESAS sin compra de
+BOTELLÓN la semana pasada, usando clientesSinConsumo"* — Claude resuelve solo
+las fechas de "semana pasada" y arma la llamada.
+
+**El gerente necesita reconectar su MCP para verla** — un cliente MCP (Claude
+Desktop/claude.ai) cachea la lista de tools al conectar; una tool nueva
+desplegada en el servidor no aparece hasta la próxima reconexión. Confirmado
+en este mismo entorno: mi propia sesión, ya conectada antes del despliegue, no
+vio la tool nueva hasta forzar una reconexión — debería avisarle que
+desconecte y reconecte el conector DESPUÉS de que esto se despliegue (ya está
+desplegado en `mcp_server`, falta el merge a `main` — ver abajo).
