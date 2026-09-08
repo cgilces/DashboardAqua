@@ -171,6 +171,27 @@ const FILTRO_PREVENTA_SELLER = (categoriaParam) => `
   )
 `;
 
+// Códigos de cliente placeholder/genéricos, no clientes reales — contaminan
+// cualquier clasificación por seller_code si no se excluyen explícitamente.
+// '8' = "Consumidor final" (venta de mostrador anónima, identificación dummy
+// 9999999999999 en `clientes`, visto con facturas/órdenes bajo seller_code de
+// prácticamente todos los canales: A*, D*, E*, H5, M99, PT02, R*, T*, TA2,
+// TV*, U2, V*). '9' = "FALTANTE" (dato faltante, misma identificación dummy).
+// Confirmado con datos reales (2026-09-08): son los ÚNICOS 2 códigos con esa
+// identificación dummy o ese nombre en toda la tabla `clientes` — no hay más.
+// Afecta a TODOS los grupos que clasifican por seller_code, no solo uno —
+// visto con impacto real en DOMICILIO ($37,191.31, el más grave con
+// diferencia), TIENDAS, RURAL, MAYORISTA, TIENDAS_VIP, EMPRESAS, QUITO y
+// PREVENTA (este último vía FILTRO_PREVENTA_SELLER, no CASE_GRUPO_*).
+const CODIGOS_CLIENTE_GENERICOS = ["8", "9"];
+
+// `aliasCustomerCode` = el nombre calificado de la columna en cada query
+// (ej. "o.customer_code", "f.customer_code") — mismo patrón que
+// FILTRO_PREVENTA_SELLER, sin agregar un parámetro posicional nuevo porque
+// los códigos son constantes de código, no vienen de input de usuario.
+const FILTRO_CLIENTE_VALIDO = (aliasCustomerCode) =>
+  `${aliasCustomerCode} NOT IN ('${CODIGOS_CLIENTE_GENERICOS.join("', '")}')`;
+
 module.exports = {
   CASE_GRUPO_ORDENES,
   FILTRO_ORDENES_GRUPO_VALIDO,
@@ -180,4 +201,6 @@ module.exports = {
   CATEGORIAS_VALIDAS,
   FILTRO_PREVENTA_SELLER,
   CATEGORIA_PREVENTA,
+  CODIGOS_CLIENTE_GENERICOS,
+  FILTRO_CLIENTE_VALIDO,
 };
