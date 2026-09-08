@@ -2444,3 +2444,88 @@ clientes inactivos/en \$0, no este tool.
 Verificado: `node --check` OK, suite completa (`seguridad-smoke-test.js`,
 `oauth-smoke-test.js`, `preventa-real.test.js`, `diasFestivos-sync.test.js`) — 4/4 OK.
 Desplegado (`mcp_server` reconstruido y healthy).
+
+## 🐛 Bug real (no solo de este reporte): `grupo='EMPRESAS'` en `facturas` matchea el equipo equivocado (2026-09-08)
+
+Investigando el pedido de un gerente ("consumo cero desde julio" para EMPRESAS),
+Alberto aclaró que en Odoo estos clientes están bajo el equipo de ventas "Empresas"
+y en MobilVendor bajo el grupo de usuario "Empresas" — pidió confirmar si eso
+corresponde a `grupo='EMPRESAS'` en `ventas_mv` antes de construir nada.
+
+**No corresponde.** Encontrado con datos reales, no asumido:
+
+### El filtro actual de `facturas` (`CASE_GRUPO_FACTURAS` en `clasificacion.js`,
+línea 43: `WHEN f.seller_code ILIKE 'E%' THEN 'EMPRESAS'`) está matcheando el
+equipo EQUIVOCADO
+
+- Las facturas reales del equipo Odoo "Empresas" (`equipo_ventas_nombre = 'Empresas'`,
+  29,422 facturas, 586 clientes) tienen **`seller_code` NULO** — nunca calzan con
+  `ILIKE 'E%'`.
+- Los `seller_code` que SÍ empiezan con 'E' (E1-E10, EA1, EQ1 — 3,205 facturas) NO
+  son de Empresas: son del equipo Odoo **"Ventas"** (un equipo genérico distinto).
+  Confirmado: **0 filas coinciden** entre `equipo_ventas_nombre='Empresas'` y
+  `seller_code ILIKE 'E%'`.
+- Es decir: cualquier reporte de `grupo='EMPRESAS'` construido hasta ahora contra la
+  rama `facturas` (vía `ventasPorGrupo`, `topProductos`, `clientesPorGrupo`) trajo el
+  equipo "Ventas", no "Empresas". **Esto es un problema preexistente, no algo que
+  introduje yo — afecta cualquier reporte anterior que haya usado grupo=EMPRESAS.**
+
+### `ordenes` (MobilVendor) no tiene rama EMPRESAS en absoluto
+
+`CASE_GRUPO_ORDENES`/`FILTRO_ORDENES_GRUPO_VALIDO` no incluyen ningún patrón para
+EMPRESAS — el comentario del archivo asumía que EMPRESAS solo llega vía `facturas`
+(Odoo) o pedido web. Pero SÍ existen órdenes MobilVendor reales con
+`seller_code ILIKE 'E%'` (E1-E10, EA1 — 65 órdenes, 15 clientes), y 12 de esos 15
+clientes coinciden con clientes reales del equipo Odoo "Empresas" (80% de match) —
+o sea, el "grupo de usuario Empresas" de MobilVendor que mencionó Alberto sí existe
+y sí es mayormente el mismo cliente, solo que la query actual nunca lo captura
+porque no hay rama para EMPRESAS en `ordenes`.
+
+### Universo real de clientes EMPRESAS (identificación correcta, con conteos)
+
+| Fuente | Criterio correcto | Clientes |
+|---|---|---|
+| Odoo (facturas) | `equipo_ventas_nombre = 'Empresas'` (NO seller_code) | 586 |
+| MobilVendor (ordenes) | `origen_sistema='MOBILVENDOR' AND seller_code ILIKE 'E%'` | 15 |
+| Coinciden entre ambas fuentes | | 12 |
+| **Universo total (unión)** | | **589** |
+
+Confirma lo que sospechaba Alberto: **no está unificado en un solo campo** — hay
+que identificar por dos criterios distintos, uno por sistema de origen.
+
+### Hallazgo adicional (útil para el punto 2 del pedido, "pedido confirmado sin facturar")
+
+`ordenes` también contiene pedidos de venta de Odoo (`origen_sistema='ODOO'`, no
+solo MobilVendor — 107,861 filas en total), incluyendo 60,996 con
+`equipo_ventas_nombre='Empresas'`. `status=2` en esa rama es el pedido CONFIRMADO
+en Odoo (`status=0`/`1` son borrador/otro estado previo). De los 589 clientes del
+universo EMPRESAS, **211 tienen pedidos confirmados en Odoo bajo team=Empresas que
+nunca se tradujeron en una factura con ese mismo equipo** — es decir, esta rama de
+`ordenes` (ODOO) es la fuente correcta para el flag "pedido confirmado sin
+facturar todavía", pedido explícitamente por el gerente para no confundir "no
+compró" con "compró pero no se ha facturado".
+
+### ⚠️ No corregido en `clasificacion.js` todavía — solo documentado y usado ad-hoc
+
+Para el reporte de este pedido armé la query directamente (no toqué
+`clientesPorGrupo`/`ventasPorGrupo` ni `clasificacion.js`) para no tocar nada que
+ya esté en producción sin autorización explícita. **Pendiente decidir:** si vale la
+pena arreglar `CASE_GRUPO_FACTURAS`/`CASE_GRUPO_ORDENES` para EMPRESAS de forma
+permanente (afectaría `ventasPorGrupo`, `topProductos`, `clientesPorGrupo`) — dado
+que esto puede estar afectando reportes de EMPRESAS ya entregados anteriormente con
+el equipo equivocado.
+
+## ✅ Reporte: clientes EMPRESAS sin factura desde agosto (2026-09-08)
+
+Sobre el universo real de 589 clientes EMPRESAS (ver hallazgo arriba): **264
+clientes** sin ninguna factura desde el 1 de agosto (4 de ellos nunca han
+facturado). De esos, **5** tienen un pedido de venta CONFIRMADO en Odoo este mes
+(septiembre) que todavía no se facturó — marcados con una columna aparte, no
+excluidos de la lista, para no confundir "no compró" con "compró pero no se
+facturó todavía", tal como pidió el gerente.
+
+Criterio de "compra" = factura posteada (`status=2`, `tipo_movimiento='out_invoice'`,
+sin filtrar por equipo_ventas_nombre — una vez identificado el cliente como
+EMPRESAS por cualquiera de las 2 fuentes, se usa TODO su historial de facturas para
+la última compra, porque el tag de equipo en la factura individual puede no
+coincidir 1:1 con la identidad del cliente, ver el bug de arriba).
