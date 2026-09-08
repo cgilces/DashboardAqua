@@ -2598,6 +2598,7 @@ reconstruido: `seguridad-smoke-test`, `oauth-smoke-test` (8 tools),
 
 **Pendiente antes de mergear a main**: confirmación explícita de cgilces (ya
 tiene el antes/después de arriba).
+
 ## ✅ Reporte semanal EMPRESAS/BOTELLÓN — cerrado, listo para el gerente (2026-09-08)
 
 Validación manual del gerente sobre el CSV encontró 3 problemas reales, todos
@@ -2765,3 +2766,66 @@ Con esto, `clientesSinConsumo` puede reemplazar también el reporte de "$0
 clientes" de PREVENTA que se le entregó antes a un gerente con
 `clientesInactivos` (status y ventana incorrectos) — mismo prompt, cambiando
 solo `grupo: "PREVENTA"` y `categoria`.
+
+## ✅ Fix mergeado: mismo bug de EMPRESAS replicado en el dashboard de Botellón (2026-09-08)
+
+Rama `fix/clasificacion-empresas-dashboard-botellon`, separada de
+`fix/clasificacion-empresas-3-fuentes` (mcp-server) por pedido explícito de
+cgilces. Replica el mismo patrón de 3(+1) fuentes + dedup ya validado en
+mcp-server, aplicado a `queryTotalesEmpresas`
+(`backend/controllers/controllerBotellones/botellonesController.js`, línea 1057) —
+la función que alimenta `/api/botellones/empresas-consolidado`, consumida en vivo
+por `TablaEmpresasBotellon` en `DashboardBotellon.tsx` (confirmado: se renderiza
+con `datos={empresasData}`, visible hoy a cualquier usuario con permiso de canal
+'E'). cgilces confirmó explícitamente que no hace falta avisar a CIRE antes de
+mergear esta.
+
+### Fix
+
+- Facturas: `f.seller_code ILIKE 'E%'` (sin restringir origen — matcheaba el
+  equipo Odoo "Ventas", no "Empresas") → separado en 2 fuentes: Odoo por
+  `f.equipo_ventas_nombre = 'Empresas'` (el campo real) + MobilVendor por
+  `f.origen_sistema = 'MOBILVENDOR' AND f.seller_code ILIKE 'E%'`.
+- Agregada una 4ta fuente que no existía: `ordenes` de MobilVendor
+  (`origen_sistema='MOBILVENDOR' AND seller_code ILIKE 'E%'`, ruta/reparto) — 50
+  documentos / \$506.22 históricos de BOTELLÓN+DISC que quedaban completamente
+  fuera.
+- La rama de `ordenes` Odoo (`equipo_ventas='Empresas'`, pedidos confirmados sin
+  exigir factura) se dejó intacta — es una decisión de negocio ya tomada (comentario
+  original cita "el reporte del jefe en Análisis de Facturas"), no un bug.
+  Confirmado que `equipo_ventas` viene siempre vacío en `ordenes` de origen
+  MobilVendor, así que ese filtro nunca se cruza por accidente con las órdenes de
+  MobilVendor.
+- Dedup: mismo patrón ya probado en mcp-server (`CASE`/filtros mutuamente
+  excluyentes por fuente, no ramas `UNION ALL` con filtros solapados como tenía
+  `obtenerOdooDescartablePorCanal`).
+
+### Impacto medido (antes/después, mismos 3 períodos que mcp-server)
+
+| Período | Antes | Después | Delta |
+|---|---|---|---|
+| Histórico completo (2025-01 a hoy) | \$2,505,810.80 | \$4,874,018.41 | **+\$2,368,207.61 (+94.5%)** |
+| YTD 2026 | \$1,058,710.67 | \$2,024,888.92 | **+\$966,178.25 (+91.3%)** |
+| Septiembre 2026 (mes actual) | \$32,147.69 | \$100,330.18 | **+\$68,182.49 (+212.1%)** |
+
+El cambio es más grande que el de mcp-server en términos absolutos porque acá SÍ
+se estaba capturando algo de EMPRESAS real (facturas MobilVendor E%, que sí
+matcheaban bien) — pero faltaba la porción más grande: TODAS las facturas Odoo
+reales del equipo Empresas (`equipo_ventas_nombre`), que nunca se sumaban porque
+el filtro viejo dependía de `seller_code`, siempre nulo para esas facturas.
+
+### Validación previa al merge
+
+1. `node --check` OK (contenedor, Node 18). Backend no tiene suite de tests
+   propia (no hay `*.test.js` en `backend/`) — validación hecha replicando la
+   query vieja y la nueva por separado contra los mismos datos reales.
+2. NO se tocaron los otros endpoints de EMPRESAS del mismo controller
+   (`obtenerEmpresasSubcanales`, `obtenerEmpresasClientesPorTipo`,
+   `obtenerClientesEmpresasBotellon`, `obtenerEmpresasDetalleCliente`,
+   `obtenerEmpresasProductosSucursal`, todos usan `RUTAS_ODOO_EMPRESAS`) — es
+   muy probable que tengan el mismo tipo de bug (no confirmado, no investigado
+   a fondo todavía) ya que son vistas de detalle/drill-down de la misma sección.
+   Fuera de alcance de este pedido puntual, quedan para una decisión aparte.
+3. `obtenerOdooDescartablePorCanal` (el de doble conteo) sigue igual, sin tocar
+   — decisión explícita de cgilces, queda en el backlog tal como estaba
+   documentado antes.
