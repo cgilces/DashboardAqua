@@ -2722,3 +2722,46 @@ en este mismo entorno: mi propia sesión, ya conectada antes del despliegue, no
 vio la tool nueva hasta forzar una reconexión — debería avisarle que
 desconecte y reconecte el conector DESPUÉS de que esto se despliegue (ya está
 desplegado en `mcp_server`, falta el merge a `main` — ver abajo).
+
+## ✅ clientesSinConsumo: soporte PREVENTA agregado (2026-09-08)
+
+cgilces preguntó por qué `clientesSinConsumo` excluía PREVENTA — confirmado que
+es una limitación técnica real, no un descuido: en PREVENTA, a diferencia de
+todos los demás grupos, "¿este cliente pertenece al grupo?" NO es independiente
+de la categoría (`FILTRO_PREVENTA_SELLER` usa un criterio de guía distinto según
+categoría — `waybill_code IS NOT NULL` para DESCARTABLE, `waybill_status='3'`
+para el resto), lo que rompe el diseño de la tool (separa "existe en el
+universo" de "compró categoría X").
+
+**Decisión explícita de cgilces** (elegida entre 2 opciones presentadas): el
+universo de PREVENTA se define SIEMPRE con el criterio más laxo (el de
+DESCARTABLE) — un cliente con al menos un despacho real alguna vez, en
+cualquier categoría, cuenta como "cliente real" del grupo. La categoría
+específica pedida sí usa el filtro correcto y más estricto de esa categoría
+para "última compra"/"compró en el rango".
+
+Consecuencia a propósito de esa decisión: `SIN_FACTURACION_FORMAL` NUNCA
+aparece para PREVENTA — el universo ya exige guía real, así que todo miembro
+tiene por definición facturación formal. Documentado en el código para que no
+parezca un bug si alguien lo nota.
+
+### Validación
+
+- `SQL_UNIVERSO_PREVENTA`/`SQL_ULTIMA_COMPRA_PREVENTA`/`SQL_COMPRARON_EN_RANGO_PREVENTA`
+  reutilizan el mismo `FILTRO_PREVENTA_SELLER` ya validado (usado en
+  `ventasPorGrupo`/`topProductos`/`clientesPorGrupo`), no una reimplementación.
+- Cruce directo: `clientesSinConsumo(PREVENTA, DESCARTABLE, agosto)` da
+  `compraron_en_periodo: 2220` — **coincide exacto** con
+  `clientesPorGrupo(PREVENTA, DESCARTABLE, agosto).total_clientes: 2220` (la
+  tool ya validada contra el ranking oficial del dashboard).
+- Caso completo: universo 4,621 (tras consolidar 6 duplicados), 2,220
+  compraron en agosto, 2,401 sin consumo — clientes más atrasados con hasta
+  613 días sin comprar.
+- Suite completa (`seguridad-smoke-test` con caso PREVENTA actualizado de
+  "rechaza" a "acepta", `oauth-smoke-test`, `preventa-real.test`,
+  `diasFestivos-sync.test`) — 4/4 OK.
+
+Con esto, `clientesSinConsumo` puede reemplazar también el reporte de "$0
+clientes" de PREVENTA que se le entregó antes a un gerente con
+`clientesInactivos` (status y ventana incorrectos) — mismo prompt, cambiando
+solo `grupo: "PREVENTA"` y `categoria`.
