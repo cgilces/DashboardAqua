@@ -2529,3 +2529,59 @@ sin filtrar por equipo_ventas_nombre — una vez identificado el cliente como
 EMPRESAS por cualquiera de las 2 fuentes, se usa TODO su historial de facturas para
 la última compra, porque el tag de equipo en la factura individual puede no
 coincidir 1:1 con la identidad del cliente, ver el bug de arriba).
+
+## ✏️ Corrección al hallazgo de EMPRESAS de arriba: faltaba la fuente `facturas` de MobilVendor (2026-09-08)
+
+El universo de 589 clientes documentado arriba estaba **incompleto**. cgilces
+preguntó explícitamente si existía un registro de facturas de MobilVendor separado
+de `ordenes` (como sí existe pedidos/facturas del lado Odoo) — no lo había
+revisado, solo miré `ordenes` para el lado MobilVendor.
+
+**Sí existe**: `facturas` tiene `origen_sistema='MOBILVENDOR'` (170,702 filas),
+además de `ODOO` (335,298) — MobilVendor genera tanto `ordenes` como `facturas`
+propias (factura directa a clientes de contado, como confirmó Alberto). No lo
+había filtrado por EMPRESAS ahí.
+
+Buscando `seller_code ILIKE 'E%'` en `facturas` MOBILVENDOR (no solo en `ordenes`):
+**154 clientes distintos**, no 15. `equipo_ventas_nombre` en facturas MOBILVENDOR
+NO sirve para identificar el equipo (siempre es `'Ventas'` o vacío — es un campo
+que solo tiene valor real cuando el origen es Odoo) — ahí el único criterio válido
+es `seller_code`, igual que en `ordenes`.
+
+### Universo real corregido (3 fuentes)
+
+| Fuente | Clientes |
+|---|---|
+| Odoo facturas (`equipo_ventas_nombre='Empresas'`) | 586 |
+| MobilVendor ordenes (`seller_code ILIKE 'E%'`) | 15 |
+| MobilVendor facturas (`seller_code ILIKE 'E%'`) | 154 |
+| Unión (antes de limpiar códigos genéricos) | 619 |
+| **Unión final** | **617** |
+
+### Hallazgo adicional, separado del filtro: 2 códigos de cliente genéricos/placeholder contaminan CUALQUIER clasificación por seller_code
+
+`codigo_cliente = '8'` (nombre: "Consumidor final", identificación dummy
+`9999999999999`) tiene facturas bajo **51 seller_code distintos** — A1-A7, D*,
+E1/E7/E8/E9/E10/EA1, H5, M99, PT02, R1-R5, T*, TA2, TV1/TV5, U2, V1-V6 — es un
+código de venta de mostrador/anónima, no una empresa real. `codigo_cliente = '9'`
+(nombre: literalmente `"FALTANTE"`, misma identificación dummy) es un placeholder
+de dato faltante. Búsqueda system-wide confirma que son los ÚNICOS 2 códigos con
+esa identificación dummy o ese nombre — no hay más.
+
+**El código `9` ("FALTANTE") ya se había colado en el reporte de 264 clientes
+entregado antes de esta corrección**, como si fuera un cliente EMPRESAS inactivo
+real. Confirmado y corregido en la v2 del reporte (ver abajo). Esto es relevante
+más allá de EMPRESAS: cualquier reporte a nivel cliente en cualquier grupo debería
+excluir estos 2 códigos.
+
+### Reporte v2 (reemplaza al de arriba)
+
+Universo: 617 clientes (3 fuentes, sin códigos genéricos). Sin factura desde el 1
+de agosto (o nunca): **275 clientes** (3 nunca han facturado — bajó de 4 a 3
+porque el código "9"/FALTANTE se excluyó). De esos, **5** tienen pedido confirmado
+en Odoo este mes (septiembre) sin facturar todavía. Total \$ de julio de estos
+clientes: \$3,547.23.
+
+Columna `fuente_identificacion` del CSV ahora muestra la combinación real de
+fuentes por cliente (ej. `MV_FACTURA`, `ODOO_FACTURA+MV_FACTURA`) en vez de un
+solo valor, porque un cliente puede aparecer en más de una.
