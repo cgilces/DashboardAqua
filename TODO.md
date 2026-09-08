@@ -2598,3 +2598,55 @@ reconstruido: `seguridad-smoke-test`, `oauth-smoke-test` (8 tools),
 
 **Pendiente antes de mergear a main**: confirmación explícita de cgilces (ya
 tiene el antes/después de arriba).
+## ✅ Reporte semanal EMPRESAS/BOTELLÓN — cerrado, listo para el gerente (2026-09-08)
+
+Validación manual del gerente sobre el CSV encontró 3 problemas reales, todos
+resueltos antes de reenviar:
+
+1. **Bug real: `dias_desde_ultima` inconsistente** (99 de 410 filas CONSUMO_CERO,
+   ~24%) — la fórmula usaba el timestamp COMPLETO (con hora) de la última compra
+   contra medianoche de hoy, truncando con `Math.floor`. Dos clientes con la
+   MISMA fecha calendario pero distinta hora del día daban "días" distintos
+   (confirmado con datos reales: mismo 2026-07-28, un cliente con hora
+   `00:00:00` daba 42, otro con `09:05:07` daba 41). Fix: truncar ambas fechas a
+   solo-fecha antes de restar. Verificado programáticamente sobre el archivo
+   completo: 0 inconsistencias tras el fix (antes 17 fechas afectadas).
+2. **Falsa alarma de escapado CSV** (fila de REYBANPAC) — el archivo está
+   correctamente escapado (RFC 4180, verificado con un parser CSV real: 0 filas
+   con cantidad de campos incorrecta). La señal del gerente venía de su propio
+   script de validación (probablemente un split ingenuo sin respetar comillas).
+3. **5 duplicados reales de maestro de clientes** dentro del universo EMPRESAS
+   de 617 — mismo RUC (`identificacion_cliente`), mismo `company_id`, mismo
+   nombre EXACTO en 2 `codigo_cliente` distintos: ERNST & YOUNG ECUADOR E&Y
+   CIA.LTDA. (183333/184172), CARTONERA MANABI CARTOMANABI S.A. (152456/GA135932
+   — este último es además el único código no numérico del universo, confirmado
+   que no rompe ningún join/filtro), ZAMBRANO SUAREZ NURY JANNINA (147456/137930),
+   DISTRISOLSA S.A. (232980/146024), VALKRYE CIA. LTDA. (147761/145916).
+   Consolidados en una sola fila por empresa en el reporte final (código
+   combinado `codigoA+codigoB`, fecha de última compra = la MÁS RECIENTE entre
+   los 2 códigos) — decisión explícita de cgilces: "es limpieza de datos sobre
+   un hecho ya confirmado, no una decisión de negocio", no requiere caso por
+   caso.
+
+   **Distinto y NO tocado**: se encontraron además 29 grupos (70 códigos) que
+   comparten RUC pero tienen NOMBRES DISTINTOS entre sí — patrón normal de
+   sucursales/direcciones de la misma empresa, no un error de maestro. cgilces
+   confirmó explícitamente no auditar esto.
+
+### 📋 Pendiente de fondo, sin urgencia — auditoría de duplicados por RUC en todo el maestro de clientes
+
+Si aparecieron 5 duplicados confirmados (mismo RUC+company_id+nombre exacto)
+solo mirando el universo chico de EMPRESAS (617 clientes), es razonable pensar
+que el maestro completo de `clientes` (+23,000 registros) tiene más — no
+cuantificado todavía, nadie lo ha revisado a esa escala. Vale la pena en algún
+momento una auditoría completa (mismo criterio: mismo `identificacion_cliente`
++ `company_id` + `nombre_cliente` exacto) para dimensionar el problema real y
+decidir si conviene una limpieza/fusión de maestro más amplia. No es urgente,
+queda en el backlog.
+
+### Reporte final
+
+`codigo_cliente,nombre_cliente,ultima_compra_botellon,dias_desde_ultima,clasificacion`
+— 434 clientes sin compra de BOTELLÓN en la semana calendario 2026-08-31/2026-09-06
+(405 CONSUMO_CERO, 24 NUNCA_COMPRO_BOTELLON, 5 SIN_FACTURACION_FORMAL), sobre el
+universo EMPRESAS corregido de 617 (612 tras consolidar los 5 duplicados).
