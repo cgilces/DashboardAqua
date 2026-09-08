@@ -1,23 +1,40 @@
 // src/sql/clasificacion.js
 // Fuente única de la clasificación por grupo de ruta (seller_code/route_code),
-// portada tal cual del patrón ya validado en producción en
+// portada originalmente del patrón en
 // backend/controllers/controllerBotellones/botellonesController.js (objeto
-// GRUPOS + el SQL de obtenerGrupoBotellon), pero generalizada a TODAS las
+// GRUPOS + el SQL de obtenerGrupoBotellon), generalizada a TODAS las
 // categorías de producto — el backend original la usa solo para BOTELLÓN.
+//
+// OJO: "portada del patrón del backend" NO significa "ya validado" — el
+// criterio de EMPRESAS que traía el backend original (`seller_code ILIKE
+// 'E%'` en facturas) tenía un bug real (ver corrección 2026-09-08 más abajo)
+// que se heredó acá tal cual. `botellonesController.js` y
+// `ventasController.js` tienen el MISMO bug (y uno de los dos, un bug propio
+// adicional de doble conteo) sin corregir todavía — ver TODO.md, esta rama
+// corrige solo mcp-server.
 //
 // Son fragmentos de texto SQL ESTÁTICOS (constantes de código, no vienen de
 // input de usuario) — el ruta/grupo/fechas que sí vienen del usuario siempre
 // se pasan como parámetros $1, $2, ... en cada tool, nunca concatenados aquí.
 
-// Usado en la rama de `ordenes` (alias o). MobilVendor solo genera "ordenes"
-// para estos 5 canales; DOMICILIO/EMPRESAS/VIP/QUITO llegan vía `facturas`
-// (Odoo) o vía el pedido web (ver CTE_WEBSITE).
+// Usado en la rama de `ordenes` (alias o). Los callers de esta rama SIEMPRE
+// filtran `o.origen_sistema = 'MOBILVENDOR'` en su propio WHERE (ver
+// ventasPorGrupo.js/resumenDiario.js/topProductos.js/clientesPorGrupo.js) —
+// por eso EMPRESAS puede usar seller_code E% directo acá sin chequear origen
+// dentro del CASE: nunca va a evaluar una fila de Odoo.
+//
+// CORRECCIÓN 2026-09-08: EMPRESAS no tenía rama acá — MobilVendor SÍ genera
+// órdenes reales bajo seller_code E1-E10/EA1 (clientes de contado del canal
+// Empresas), pero nunca se clasificaban (quedaban excluidas por
+// FILTRO_ORDENES_GRUPO_VALIDO). Ver hallazgo completo en TODO.md
+// ("bug real: grupo='EMPRESAS' en facturas matchea el equipo equivocado").
 const CASE_GRUPO_ORDENES = `
   CASE
     WHEN o.seller_code ILIKE 'M%'  THEN 'MAYORISTA'
     WHEN o.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
     WHEN o.seller_code ILIKE 'T%'  AND o.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
     WHEN o.seller_code ILIKE 'R%'  THEN 'RURAL'
+    WHEN o.seller_code ILIKE 'E%'  THEN 'EMPRESAS'
     WHEN o.seller_code = '148399'  THEN 'TELEVENTA_VIP'
   END
 `;
@@ -29,18 +46,37 @@ const FILTRO_ORDENES_GRUPO_VALIDO = `
     OR o.seller_code ILIKE 'TV%'
     OR (o.seller_code ILIKE 'T%' AND o.seller_code NOT ILIKE 'TV%')
     OR o.seller_code ILIKE 'R%'
+    OR o.seller_code ILIKE 'E%'
     OR o.seller_code = '148399'
   )
 `;
 
-// Usado en la rama de `facturas` (alias f). Cubre todos los grupos.
+// Usado en la rama de `facturas` (alias f). A diferencia de la rama `ordenes`,
+// ACÁ SÍ conviven filas de origen ODOO y MOBILVENDOR sin filtrar por
+// origen_sistema en el WHERE del caller — por eso EMPRESAS necesita
+// distinguir el origen DENTRO del CASE (ver corrección de abajo).
 // 'OTROS' es un catch-all deliberado (facturas que no calzan ningún canal
 // conocido) — nunca se expone como grupo válido hacia afuera.
+//
+// CORRECCIÓN 2026-09-08: `f.seller_code ILIKE 'E%'` NUNCA matcheaba las
+// facturas reales del equipo Odoo "Empresas" — esas tienen `seller_code`
+// NULO (`equipo_ventas_nombre='Empresas'` es el campo real). En cambio SÍ
+// matcheaba, por error, el equipo Odoo "Ventas" (seller_code E1-E10/EA1/EQ1
+// — un equipo totalmente distinto, sin relación con Empresas). El criterio
+// correcto son 2 fuentes separadas por origen: Odoo por `equipo_ventas_nombre`
+// (NUNCA por seller_code — ese campo no sirve para identificar el equipo en
+// facturas Odoo) + MobilVendor por `seller_code ILIKE 'E%'` (ahí sí es el
+// criterio correcto, `equipo_ventas_nombre` no sirve del lado MobilVendor:
+// siempre viene 'Ventas' o vacío, no refleja el equipo real). Confirmado con
+// datos reales — ver TODO.md para los conteos completos (586 clientes Odoo +
+// 154 MobilVendor-facturas + 15 MobilVendor-ordenes, 617 tras excluir
+// códigos genéricos).
 const CASE_GRUPO_FACTURAS = `
   CASE
     WHEN f.seller_code IN ('A1','A2','A3','A4.1','A5','A6','A7','TA2') THEN 'DOMICILIO'
     WHEN f.seller_code ILIKE 'M%' THEN 'MAYORISTA'
-    WHEN f.seller_code ILIKE 'E%' THEN 'EMPRESAS'
+    WHEN f.equipo_ventas_nombre = 'Empresas' THEN 'EMPRESAS'
+    WHEN f.origen_sistema = 'MOBILVENDOR' AND f.seller_code ILIKE 'E%' THEN 'EMPRESAS'
     WHEN f.seller_code ILIKE 'R%' THEN 'RURAL'
     WHEN f.seller_code ILIKE 'TV%' THEN 'TIENDAS_VIP'
     WHEN f.seller_code ILIKE 'T%' AND f.seller_code NOT ILIKE 'TV%' THEN 'TIENDAS'
