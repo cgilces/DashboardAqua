@@ -1053,7 +1053,29 @@ const RUTAS_ODOO_EMPRESAS = [
   'RUTA EA1', 'Distribucion OK/E',
 ];
 
-/* Helper: totales consolidados Empresa (facturas E% + ordenes Odoo) */
+/* Helper: totales consolidados Empresa (3 fuentes: facturas Odoo + facturas
+   MobilVendor + ordenes Odoo confirmadas + ordenes MobilVendor).
+
+   CORRECCIÓN 2026-09-08: `f.seller_code ILIKE 'E%'` SIN restringir
+   `origen_sistema` matcheaba, además de las facturas reales de MobilVendor,
+   las facturas del equipo Odoo "Ventas" (seller_code E1-E10/EA1/EQ1 — un
+   equipo Odoo sin relación con Empresas; sus facturas reales tienen
+   seller_code NULO, se identifican por `equipo_ventas_nombre='Empresas'`).
+   Mismo bug y mismo fix ya aplicado y validado en
+   mcp-server/src/sql/clasificacion.js (ver TODO.md) — acá se replica el
+   patrón de 3 fuentes ya probado (dedup exhaustivo: 0 coincidencias de
+   código y 0 por heurística cliente+fecha+monto entre las 3 fuentes).
+
+   Se agrega además una 4ta fuente que no existía: ordenes de MobilVendor
+   (ruta, seller_code E%) — 50 documentos / $506.22 (BOTELLÓN+DISC,
+   histórico) que quedaban fuera por completo, mismo hueco que tenía
+   mcp-server antes del fix (CASE_GRUPO_ORDENES sin rama EMPRESAS).
+
+   La rama de `ordenes` Odoo (equipo_ventas='Empresas', pedidos CONFIRMADOS
+   sin exigir factura) se deja intacta a propósito — es una decisión de
+   negocio ya tomada (ver comentario de "reporte del jefe" abajo), no un bug;
+   `equipo_ventas` viene siempre vacío para ordenes de origen MobilVendor, así
+   que ese filtro nunca matchea filas de MobilVendor por accidente. */
 const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
   const rutasRepl = {};
   RUTAS_ODOO_EMPRESAS.forEach((r, i) => { rutasRepl[`re${i}`] = r; });
@@ -1077,18 +1099,30 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
     SELECT COALESCE(SUM(sub.unidades), 0) AS unidades,
            COALESCE(SUM(sub.dolares),  0) AS dolares
     FROM (
-      -- MobilVendor: facturas EMPRESA (excluye clientes VIP)
+      -- ① Odoo: facturas EMPRESA por equipo real (excluye clientes VIP)
       SELECT COALESCE(${signedSumFactura('f', 'dd', 'cantidad')}, 0) AS unidades,
              COALESCE(${signedSumFactura('f', 'dd', 'total')}, 0)    AS dolares
       FROM facturas f
       JOIN detalle_documento dd ON dd.documento_code = f.code
-      WHERE f.seller_code ILIKE 'E%' AND f.status = 2
+      WHERE f.equipo_ventas_nombre = 'Empresas' AND f.status = 2
         AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
         ${filtroProductoBotellonFact}
         AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
         ${excluyeVipPorFactura}
       UNION ALL
-      -- Odoo: ordenes EMPRESA (excluye VIP y POS)
+      -- ② MobilVendor: facturas EMPRESA (seller_code E%, solo origen MobilVendor)
+      SELECT COALESCE(${signedSumFactura('f', 'dd', 'cantidad')}, 0) AS unidades,
+             COALESCE(${signedSumFactura('f', 'dd', 'total')}, 0)    AS dolares
+      FROM facturas f
+      JOIN detalle_documento dd ON dd.documento_code = f.code
+      WHERE f.origen_sistema = 'MOBILVENDOR' AND f.seller_code ILIKE 'E%' AND f.status = 2
+        AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
+        ${filtroProductoBotellonFact}
+        AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
+        ${excluyeVipPorFactura}
+      UNION ALL
+      -- ③ Odoo: ordenes EMPRESA CONFIRMADAS, sin exigir factura (decisión de
+      --   negocio ya tomada, no se toca) — excluye VIP y POS
       SELECT COALESCE(SUM(dd.cantidad), 0), COALESCE(SUM(dd.total), 0)
       FROM ordenes o
       JOIN detalle_documento dd ON dd.documento_code = o.code
@@ -1099,6 +1133,17 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
         AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
         ${excluyeVipPorOrden}
         ${excluyePOS}
+      UNION ALL
+      -- ④ MobilVendor: ordenes EMPRESA (ruta, seller_code E%) — fuente nueva,
+      --   no existía ninguna rama de ordenes MobilVendor para EMPRESAS.
+      SELECT COALESCE(SUM(dd.cantidad), 0), COALESCE(SUM(dd.total), 0)
+      FROM ordenes o
+      JOIN detalle_documento dd ON dd.documento_code = o.code
+      WHERE o.origen_sistema = 'MOBILVENDOR' AND o.seller_code ILIKE 'E%'
+        AND o.status = 2
+        AND (dd.descripcion_categoria = 'BOTELLÓN' OR dd.producto_codigo_interno = 'DISC')
+        ${filtroProductoBotellon}
+        AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
     ) sub
   `, {
     replacements: { inicio, fin, ...rutasRepl },
@@ -1110,7 +1155,8 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
       COALESCE((
         SELECT COUNT(DISTINCT f.code)
         FROM facturas f
-        WHERE f.seller_code ILIKE 'E%' AND f.status = 2
+        WHERE f.status = 2
+          AND (f.equipo_ventas_nombre = 'Empresas' OR (f.origen_sistema = 'MOBILVENDOR' AND f.seller_code ILIKE 'E%'))
           AND f.fecha_creacion >= :inicio AND f.fecha_creacion < :fin
           AND EXISTS (
             SELECT 1 FROM detalle_documento dd
@@ -1123,8 +1169,11 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
       COALESCE((
         SELECT COUNT(DISTINCT o.code)
         FROM ordenes o
-        WHERE o.equipo_ventas = 'Empresas'
-          AND o.type = 2 AND o.status = 2
+        WHERE (
+          (o.equipo_ventas = 'Empresas' AND o.type = 2 ${excluyePOS})
+          OR (o.origen_sistema = 'MOBILVENDOR' AND o.seller_code ILIKE 'E%')
+        )
+          AND o.status = 2
           AND o.fecha_creacion >= :inicio AND o.fecha_creacion < :fin
           AND EXISTS (
             SELECT 1 FROM detalle_documento dd
@@ -1133,7 +1182,6 @@ const queryTotalesEmpresas = async (inicio, fin, tipoProducto = 'todo') => {
               ${filtroProductoBotellon}
           )
           ${excluyeVipPorOrden}
-          ${excluyePOS}
       ), 0) AS num_ordenes
   `, {
     replacements: { inicio, fin, ...rutasRepl },
