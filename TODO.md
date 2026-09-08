@@ -2502,3 +2502,99 @@ distorsión sistémica del negocio.
 completa sobre `mcp_server` reconstruido: `seguridad-smoke-test`,
 `oauth-smoke-test` (8 tools), `preventa-real.test`, `diasFestivos-sync.test` —
 4/4 OK.
+
+## ✅ Fix (alcance acotado a mcp-server): grupo EMPRESAS correcto en clasificacion.js (2026-09-08)
+
+Después de investigar el alcance completo (ver hallazgos previos de hoy sobre
+EMPRESAS), cgilces decidió explícitamente **acotar esta corrección a
+`mcp-server` únicamente** por ahora — NO se tocó `botellonesController.js` ni
+`ventasController.js`, que tienen bugs relacionados pero de mayor alcance/riesgo
+(uno alimenta una tabla real del dashboard de Botellón, ver abajo).
+
+### Antes de decidir el alcance: se investigó si el patrón de referencia
+("`obtenerOdooDescartablePorCanal` ya está bien hecho") era realmente aplicable
+
+**No lo era — hallazgo nuevo, corrige lo documentado antes.** Al leer el código
+completo (no solo el resumen), `obtenerOdooDescartablePorCanal`
+(`backend/controllers/controllerPreventa/ventasController.js`, líneas 456-527)
+tiene el MISMO bug (`seller_code LIKE 'E%'` sin restringir `origen_sistema`,
+matchea el equipo Odoo "Ventas" además de MobilVendor) **más un bug propio de
+doble conteo**: su rama ① clasifica órdenes Odoo por `equipo_ventas` real (una
+orden del equipo "Ventas" con vendedor E5 cae correctamente en canal='Ventas'),
+pero su rama ② (sin filtro de origen) vuelve a sumar esa MISMA orden bajo
+canal='Empresas' — se cuenta dos veces. Esta función NO era un patrón limpio
+para copiar.
+
+### El dashboard de Botellón también tiene el mismo bug de origen, en otro lugar
+
+`queryTotalesEmpresas` (`backend/controllers/controllerBotellones/botellonesController.js`,
+línea 1057) — la función que SÍ alimenta la tabla real `/api/botellones/empresas-consolidado`
+que ve un usuario — tiene el mismo problema: `f.seller_code ILIKE 'E%'` sin
+restringir `origen_sistema`. Impacto medido con datos reales, septiembre 2026,
+solo BOTELLÓN: **\$32,147.69 (actual) → \$31,054.54 (con el origen corregido) =
+-\$1,093.15 (-3.4%)**.
+
+Además, esta función **mezcla deliberadamente pedidos de Odoo confirmados
+(`equipo_ventas='Empresas' AND status=2` en `ordenes`, sin exigir factura) como
+si fueran venta** — una decisión de negocio ya tomada (hay un comentario en el
+código citando "el reporte del jefe en Análisis de Facturas"), NO un bug. Esto
+significa que aunque se corrijan los 3 lugares, `mcp-server` (estrictamente
+facturado) y el dashboard de Botellón (facturado + pedido confirmado) van a
+seguir dando números distintos por diseño, no por error.
+
+**Corrección importante sobre lo dicho antes hoy**: el bloque `CASE WHEN` con
+el mismo bug que SÍ vive en `botellonesController.js` (`obtenerGrupoBotellon`/
+`metaHistoricaBotellon`, usado por `GRUPOS.EMPRESAS`) — el que originalmente
+dije que "está en producción, visible en vivo ahora mismo" — **NO es correcto,
+era un error mío**. Confirmado con grep sobre `my-app/src`: el resultado
+`botellones.EMPRESAS` de ese código SÍ se calcula en cada carga del dashboard,
+pero el frontend (`DashboardBotellon.tsx`) nunca lo lee — solo usa `VIP` y
+`DOMICILIO` de ese objeto, más el `empresasData` separado que viene de
+`queryTotalesEmpresas` (el de arriba). Ese `CASE WHEN` es código muerto, no
+visible a ningún usuario.
+
+**Ninguno de los 2 hallazgos de arriba (botellón, ventasController) se corrigió
+en esta rama** — quedan como pendientes separados, cada uno con su propia
+decisión de negocio implícita (¿incluir pedidos confirmados sin facturar?) que
+alguien tiene que decidir antes de tocarlos, no solo aplicar el mismo fix a
+ciegas.
+
+### Fix aplicado (solo `mcp-server/src/sql/clasificacion.js`)
+
+- `CASE_GRUPO_FACTURAS`: `f.seller_code ILIKE 'E%'` → reemplazado por
+  `f.equipo_ventas_nombre = 'Empresas'` (fuente Odoo, el campo real) OR
+  `f.origen_sistema = 'MOBILVENDOR' AND f.seller_code ILIKE 'E%'` (fuente
+  MobilVendor — ahí `equipo_ventas_nombre` no sirve, siempre viene 'Ventas' o
+  vacío).
+- `CASE_GRUPO_ORDENES`/`FILTRO_ORDENES_GRUPO_VALIDO`: agregada rama EMPRESAS
+  (`seller_code ILIKE 'E%'`) — antes no existía ninguna, esas órdenes
+  MobilVendor quedaban excluidas por completo. Sin chequeo de origen dentro del
+  CASE porque el caller ya restringe `origen_sistema='MOBILVENDOR'` en el WHERE
+  de esa rama en las 4 tools.
+- Afecta: `ventasPorGrupo`, `topProductos`, `clientesPorGrupo`, `resumenDiario`
+  (las 4 tools que usan `CASE_GRUPO_*`). `proyeccionMensual` corregido
+  indirectamente (delega en `totalesGrupo` de `ventasPorGrupo.js`).
+
+### Impacto medido en mcp-server (antes/después, 3 períodos)
+
+| Período | Antes | Después | Delta |
+|---|---|---|---|
+| Histórico completo (2025-01 a hoy) | \$69,019.37 | \$2,566,549.31 | **+\$2,497,529.94 (+3,619%)** |
+| YTD 2026 | \$59,479.96 | \$1,068,958.02 | **+\$1,009,478.06 (+1,697%)** |
+| Septiembre 2026 (mes actual) | \$1,679.82 | \$72,728.64 | **+\$71,048.82 (+4,230%)** |
+
+El número "antes" no era una aproximación imprecisa de EMPRESAS — era, casi en
+su totalidad, la facturación de un equipo Odoo distinto ("Ventas") que nada
+tiene que ver con Empresas. El número real de EMPRESAS es ~35x más grande. Esto
+NO afecta ningún reporte ya entregado (mcp-server no tenía menciones de EMPRESAS
+en TODO.md antes de hoy — ver hallazgo original) ni ninguna vista del dashboard
+(la tabla real de Botellón usa `queryTotalesEmpresas`, no `clasificacion.js`).
+
+### Verificación
+
+`node --check` (contenedor, Node 18): OK. Suite completa sobre `mcp_server`
+reconstruido: `seguridad-smoke-test`, `oauth-smoke-test` (8 tools),
+`preventa-real.test`, `diasFestivos-sync.test` — 4/4 OK.
+
+**Pendiente antes de mergear a main**: confirmación explícita de cgilces (ya
+tiene el antes/después de arriba).
