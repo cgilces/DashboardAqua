@@ -197,8 +197,8 @@ async function main() {
     fecha_inicio: "2026-01-01",
     fecha_fin: "2026-01-31",
   });
-  if (parseoSinConsumoPreventa.success) throw new Error("FALLO: zod aceptó grupo=PREVENTA en clientesSinConsumo (no soportado, mecanismo de clasificación distinto)");
-  console.log("OK: zod rechaza grupo=PREVENTA en clientesSinConsumo (no soportado a propósito) ->", parseoSinConsumoPreventa.error.issues[0].message);
+  if (!parseoSinConsumoPreventa.success) throw new Error("FALLO: zod rechazó grupo=PREVENTA en clientesSinConsumo (sí está soportado)");
+  console.log("OK: zod acepta grupo=PREVENTA en clientesSinConsumo.");
 
   const payloadFechaSinConsumo = "2026-01-01'; DROP TABLE clientes; --";
   let fallaEsperadaSinConsumo = false;

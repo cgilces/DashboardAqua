@@ -19,11 +19,32 @@
 //      una decisión de negocio caso a caso, es limpieza de datos sobre un
 //      hecho verificable (mismo RUC+compañía+nombre).
 //
-// No soporta PREVENTA: ese grupo tiene su propio mecanismo de clasificación
-// (FILTRO_PREVENTA_SELLER, status=5, fecha_entrega, filtro condicional de
-// guía — ver clasificacion.js) que no encaja en el patrón CASE_GRUPO_*/
-// fecha_creacion que usa esta tool. Pedirlo para PREVENTA es un error de
-// validación explícito, no un resultado silenciosamente incorrecto.
+// ============================================================
+// PREVENTA (agregado 2026-09-08, mismo día que el resto): a diferencia de
+// los demás grupos, "¿este cliente pertenece al grupo?" en PREVENTA NO es
+// independiente de la categoría — el filtro de guía de
+// `FILTRO_PREVENTA_SELLER` es distinto según categoría (DESCARTABLE exige
+// solo `waybill_code IS NOT NULL`; el resto exige `waybill_status='3'`, más
+// estricto). Eso rompe el diseño de esta tool, que separa "¿existe el
+// cliente en el universo?" (sin categoría) de "¿compró la categoría X?".
+//
+// Decisión explícita de cgilces para resolverlo: el UNIVERSO de PREVENTA se
+// define SIEMPRE con el criterio más laxo (el de DESCARTABLE,
+// `waybill_code IS NOT NULL`) — un cliente con al menos un pedido despachado
+// alguna vez (cualquier categoría) cuenta como "cliente real" del grupo. La
+// categoría pedida (para "última compra"/"compró en el rango") sí usa el
+// filtro correcto y más estricto de esa categoría específica vía
+// `FILTRO_PREVENTA_SELLER`.
+//
+// Consecuencia de esa decisión, a propósito: como el universo YA exige tener
+// guía real, `SIN_FACTURACION_FORMAL` NUNCA aparece para PREVENTA — todo
+// miembro del universo ya tiene, por definición, al menos un despacho
+// confirmado. No es un bug, es la definición elegida.
+//
+// PREVENTA solo usa `ordenes` (MobilVendor) — no genera `facturas` propias
+// ni pasa por el canal web — con `status=5`/`fecha_entrega`, no
+// `status=2`/`fecha_creacion` como el resto.
+// ============================================================
 const { z } = require("zod");
 const { pool } = require("../db");
 const { finExclusivo, diffDias } = require("../util/fechas");
@@ -33,6 +54,7 @@ const {
   CASE_GRUPO_FACTURAS,
   GRUPOS_VALIDOS,
   CATEGORIAS_VALIDAS,
+  FILTRO_PREVENTA_SELLER,
   FILTRO_CLIENTE_VALIDO,
 } = require("../sql/clasificacion");
 
@@ -40,15 +62,18 @@ const MAX_RANGO_DIAS = 400;
 const LIMITE_DEFAULT = 300;
 const LIMITE_MAX = 1000;
 
-const GRUPOS_SOPORTADOS = GRUPOS_VALIDOS.filter((g) => g !== "PREVENTA");
-
 const inputSchema = {
-  grupo: z.enum(GRUPOS_SOPORTADOS),
+  grupo: z.enum(GRUPOS_VALIDOS),
   categoria: z.enum(CATEGORIAS_VALIDAS),
   fecha_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   fecha_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   limite: z.number().int().min(1).max(LIMITE_MAX).default(LIMITE_DEFAULT),
 };
+
+// ============================================================
+// Grupos "estilo botellón" (todos menos PREVENTA) — ordenes MOBILVENDOR +
+// facturas + pedido web, status=2, fecha_creacion.
+// ============================================================
 
 // Universo crudo: cualquier documento (SIN filtrar status) que el CASE
 // clasifique en este grupo — a propósito sin exigir status=2, para poder
@@ -185,6 +210,48 @@ const SQL_COMPRARON_EN_RANGO = `
   WHERE fecha >= $3 AND fecha < $4;
 `;
 
+// ============================================================
+// PREVENTA — solo `ordenes` (MobilVendor), status=5, fecha_entrega. Ver el
+// comentario grande al inicio del archivo para la decisión de universo.
+// ============================================================
+
+// Universo: criterio SIEMPRE laxo (el de DESCARTABLE), sin importar qué
+// categoría se pida — decisión explícita, ver comentario de arriba. Sin
+// parámetros: no depende de categoría.
+const SQL_UNIVERSO_PREVENTA = `
+  SELECT DISTINCT o.customer_code AS customer_code
+  FROM ordenes o
+  WHERE o.type = 2 AND o.status = 5
+    AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
+    AND o.waybill_code IS NOT NULL
+    AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")};
+`;
+
+// Última compra POSTEADA de la categoría pedida (criterio de guía correcto
+// para esa categoría, vía FILTRO_PREVENTA_SELLER) — $1 = categoria.
+const SQL_ULTIMA_COMPRA_PREVENTA = `
+  SELECT o.customer_code AS customer_code, MAX(o.fecha_entrega) AS ultima
+  FROM ordenes o
+  JOIN detalle_documento dd ON dd.documento_code = o.code
+  WHERE o.type = 2 AND o.status = 5
+    AND ${FILTRO_PREVENTA_SELLER("$1")}
+    AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
+    AND dd.descripcion_categoria = $1
+  GROUP BY o.customer_code;
+`;
+
+// $1 = categoria, $2 = inicio, $3 = fin exclusivo.
+const SQL_COMPRARON_EN_RANGO_PREVENTA = `
+  SELECT DISTINCT o.customer_code AS customer_code
+  FROM ordenes o
+  JOIN detalle_documento dd ON dd.documento_code = o.code
+  WHERE o.type = 2 AND o.status = 5
+    AND ${FILTRO_PREVENTA_SELLER("$1")}
+    AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
+    AND dd.descripcion_categoria = $1
+    AND o.fecha_entrega >= $2 AND o.fecha_entrega < $3;
+`;
+
 const SQL_NOMBRES = `
   SELECT codigo_cliente, COALESCE(nombre_comercial_cliente, nombre_cliente) AS nombre
   FROM clientes WHERE codigo_cliente = ANY($1::text[]);
@@ -216,18 +283,33 @@ async function clientesSinConsumo({ grupo, categoria, fecha_inicio, fecha_fin, l
   const finTs = `${finExclusivo(fecha_fin)} 00:00:00`;
   const limiteReal = limite ?? LIMITE_DEFAULT;
   const hoy = fechaSoloDia(new Date());
+  const esPreventa = grupo === "PREVENTA";
 
-  const [
-    { rows: universoRows },
-    { rows: formalRows },
-    { rows: ultimaRows },
-    { rows: compraronRows },
-  ] = await Promise.all([
-    pool.query(SQL_UNIVERSO, [grupo]),
-    pool.query(SQL_FORMAL, [grupo]),
-    pool.query(SQL_ULTIMA_COMPRA, [grupo, categoria]),
-    pool.query(SQL_COMPRARON_EN_RANGO, [grupo, categoria, inicioTs, finTs]),
-  ]);
+  let universoRows, formalRows, ultimaRows, compraronRows;
+  if (esPreventa) {
+    const [uni, ult, comp] = await Promise.all([
+      pool.query(SQL_UNIVERSO_PREVENTA),
+      pool.query(SQL_ULTIMA_COMPRA_PREVENTA, [categoria]),
+      pool.query(SQL_COMPRARON_EN_RANGO_PREVENTA, [categoria, inicioTs, finTs]),
+    ]);
+    universoRows = uni.rows;
+    ultimaRows = ult.rows;
+    compraronRows = comp.rows;
+    // El universo de PREVENTA ya exige guía real (ver comentario del
+    // archivo) — por definición, todo miembro tiene facturación formal.
+    formalRows = universoRows;
+  } else {
+    const [uni, form, ult, comp] = await Promise.all([
+      pool.query(SQL_UNIVERSO, [grupo]),
+      pool.query(SQL_FORMAL, [grupo]),
+      pool.query(SQL_ULTIMA_COMPRA, [grupo, categoria]),
+      pool.query(SQL_COMPRARON_EN_RANGO, [grupo, categoria, inicioTs, finTs]),
+    ]);
+    universoRows = uni.rows;
+    formalRows = form.rows;
+    ultimaRows = ult.rows;
+    compraronRows = comp.rows;
+  }
 
   const conFacturacionFormal = new Set(formalRows.map((r) => r.customer_code));
   const compraronEnRango = new Set(compraronRows.map((r) => r.customer_code));
