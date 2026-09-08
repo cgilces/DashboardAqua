@@ -2444,3 +2444,61 @@ clientes inactivos/en \$0, no este tool.
 Verificado: `node --check` OK, suite completa (`seguridad-smoke-test.js`,
 `oauth-smoke-test.js`, `preventa-real.test.js`, `diasFestivos-sync.test.js`) — 4/4 OK.
 Desplegado (`mcp_server` reconstruido y healthy).
+
+## ✅ Fix: excluir códigos de cliente genéricos (8/9) en clasificacion.js (2026-09-08)
+
+Confirmado que el problema de contaminación por códigos de cliente placeholder
+(`8`="Consumidor final", `9`="FALTANTE") no es específico de EMPRESAS — afecta a
+TODOS los grupos que clasifican por `seller_code` en `clasificacion.js`, incluidos
+2 que no había listado antes: **PREVENTA** (vía `FILTRO_PREVENTA_SELLER`, mecanismo
+separado de `CASE_GRUPO_*`) y **TIENDAS_VIP**/**QUITO** (montos menores). VIP y
+TELEVENTA_VIP: 0 filas contaminadas, confirmado.
+
+### Fix
+
+`mcp-server/src/sql/clasificacion.js`: nuevo `FILTRO_CLIENTE_VALIDO(alias)` +
+`CODIGOS_CLIENTE_GENERICOS = ['8', '9']`, mismo patrón que `FILTRO_PREVENTA_SELLER`
+(función que recibe el alias calificado de columna). Aplicado en las 4 tools que
+construyen CTEs base con `CASE_GRUPO_ORDENES`/`CASE_GRUPO_FACTURAS`/
+`FILTRO_PREVENTA_SELLER`: `ventasPorGrupo.js` (rama grupo + rama PREVENTA),
+`resumenDiario.js` (`SQL_DIA` + `SQL_NUM_DOCUMENTOS`, las 3 ramas de cada una),
+`topProductos.js` (`SQL_GENERAL` + `SQL_GRUPO` + `SQL_PREVENTA`), `clientesPorGrupo.js`
+(`BASE_GRUPO` + `BASE_PREVENTA`). `proyeccionMensual.js` no se tocó — delega en
+`totalesGrupo`/`totalesPreventa` de `ventasPorGrupo.js`, queda corregido
+automáticamente.
+
+**No incluye `backend/controllers/controllerBotellones/botellonesController.js`**
+(tiene su propia copia del mismo bug, alimenta el dashboard de Botellón en vivo) —
+eso queda fuera de esta rama a propósito, es de mayor alcance/riesgo (toca UI en
+producción) y se evalúa junto con el fix de EMPRESAS-3-fuentes (rama separada
+`fix/clasificacion-empresas-3-fuentes`).
+
+### Impacto medido (antes/después, con datos reales, 3 períodos)
+
+| Grupo | Histórico completo (2025-01 a hoy) | YTD 2026 | Septiembre 2026 (mes actual) |
+|---|---|---|---|
+| DOMICILIO | -\$37,191.31 (-2.847%) | -\$10,190.84 (-1.152%) | -\$381.16 (-1.010%) |
+| TIENDAS | -\$3,956.51 (-0.141%) | -\$3,198.59 (-0.256%) | -\$14.75 (-0.045%) |
+| RURAL | -\$3,276.16 (-0.098%) | -\$3,269.31 (-0.189%) | -\$17.05 (-0.033%) |
+| EMPRESAS* | -\$139.16 (-0.201%) | -\$77.21 (-0.130%) | -\$0.00 (0.000%) |
+| MAYORISTA | -\$692.87 (-0.071%) | -\$638.37 (-0.089%) | -\$25.13 (-0.128%) |
+| PREVENTA (extra, no listado originalmente) | -\$484.45 (-0.013%) | \$0.00 | \$0.00 |
+
+\* Los números de EMPRESAS de esta tabla son bajo el filtro VIEJO (`seller_code
+ILIKE 'E%'`, que en realidad matchea el equipo Odoo "Ventas", no "Empresas" —
+ver hallazgo de arriba). Esta rama NO corrige esa identificación, solo excluye
+los 2 códigos genéricos del cálculo — el número real de EMPRESAS sigue mal por
+el otro motivo hasta que se mergee `fix/clasificacion-empresas-3-fuentes`.
+
+DOMICILIO es, con diferencia, el grupo más afectado en dólares — confirma lo que
+ya sugería el chequeo inicial (código `8` = venta de mostrador, mayormente
+atribuida a rutas de despacho a domicilio). En todos los casos el cambio relativo
+es pequeño (<3%), consistente con ser un problema de 2 códigos puntuales, no una
+distorsión sistémica del negocio.
+
+### Verificación
+
+`node --check` (vía contenedor, Node 18) en los 5 archivos tocados: OK. Suite
+completa sobre `mcp_server` reconstruido: `seguridad-smoke-test`,
+`oauth-smoke-test` (8 tools), `preventa-real.test`, `diasFestivos-sync.test` —
+4/4 OK.

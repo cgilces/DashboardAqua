@@ -7,6 +7,7 @@ const {
   FILTRO_ORDENES_GRUPO_VALIDO,
   CASE_GRUPO_FACTURAS,
   GRUPOS_VALIDOS,
+  FILTRO_CLIENTE_VALIDO,
 } = require("../sql/clasificacion");
 
 const TOP_RUTAS_LIMITE = 10;
@@ -33,6 +34,7 @@ const SQL_DIA = `
     WHERE o.status = 2
       AND o.origen_sistema = 'MOBILVENDOR'
       AND ${FILTRO_ORDENES_GRUPO_VALIDO}
+      AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
       AND o.fecha_creacion >= $1
       AND o.fecha_creacion <  $2
 
@@ -47,6 +49,7 @@ const SQL_DIA = `
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.status = 2
+      AND ${FILTRO_CLIENTE_VALIDO("f.customer_code")}
       AND f.fecha_creacion >= $1
       AND f.fecha_creacion <  $2
 
@@ -62,6 +65,7 @@ const SQL_DIA = `
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.status = 2
       AND o.equipo_ventas = 'Website'
+      AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
       AND o.fecha_creacion >= $1
       AND o.fecha_creacion <  $2
   )
@@ -78,6 +82,7 @@ const SQL_NUM_DOCUMENTOS = `
     WHERE o.status = 2
       AND o.origen_sistema = 'MOBILVENDOR'
       AND ${FILTRO_ORDENES_GRUPO_VALIDO}
+      AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
       AND o.fecha_creacion >= $1
       AND o.fecha_creacion <  $2
 
@@ -87,6 +92,7 @@ const SQL_NUM_DOCUMENTOS = `
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.status = 2
+      AND ${FILTRO_CLIENTE_VALIDO("f.customer_code")}
       AND f.fecha_creacion >= $1
       AND f.fecha_creacion <  $2
 
@@ -97,6 +103,7 @@ const SQL_NUM_DOCUMENTOS = `
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.status = 2
       AND o.equipo_ventas = 'Website'
+      AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
       AND o.fecha_creacion >= $1
       AND o.fecha_creacion <  $2
   )

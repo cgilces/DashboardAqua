@@ -20,6 +20,7 @@ const {
   CATEGORIAS_VALIDAS,
   FILTRO_PREVENTA_SELLER,
   CATEGORIA_PREVENTA,
+  FILTRO_CLIENTE_VALIDO,
 } = require("../sql/clasificacion");
 
 const MAX_RANGO_DIAS = 400;
@@ -54,6 +55,7 @@ const BASE_GRUPO = `
     WHERE o.status = 2
       AND o.origen_sistema = 'MOBILVENDOR'
       AND ${FILTRO_ORDENES_GRUPO_VALIDO}
+      AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
       AND o.fecha_creacion >= $1
       AND o.fecha_creacion <  $2
 
@@ -70,6 +72,7 @@ const BASE_GRUPO = `
     FROM facturas f
     JOIN detalle_documento dd ON dd.documento_code = f.code
     WHERE f.status = 2
+      AND ${FILTRO_CLIENTE_VALIDO("f.customer_code")}
       AND f.fecha_creacion >= $1
       AND f.fecha_creacion <  $2
 
@@ -87,6 +90,7 @@ const BASE_GRUPO = `
     JOIN detalle_documento dd ON dd.documento_code = o.code
     WHERE o.status = 2
       AND o.equipo_ventas = 'Website'
+      AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
       AND o.fecha_creacion >= $1
       AND o.fecha_creacion <  $2
   ),
@@ -137,6 +141,7 @@ const BASE_PREVENTA = `
     WHERE o.type = 2
       AND o.status = 5
       AND ${FILTRO_PREVENTA_SELLER("$3")}
+      AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")}
       AND dd.descripcion_categoria = $3
       AND o.fecha_entrega >= $1
       AND o.fecha_entrega <  $2
