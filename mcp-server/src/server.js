@@ -27,6 +27,7 @@ const { proyeccionMensual, inputSchema: schemaProyeccionMensual } = require("./t
 const { ventasCliente, inputSchema: schemaVentasCliente } = require("./tools/ventasCliente");
 const { clientesPorGrupo, inputSchema: schemaClientesPorGrupo } = require("./tools/clientesPorGrupo");
 const { clientesSinConsumo, inputSchema: schemaClientesSinConsumo } = require("./tools/clientesSinConsumo");
+const { clientesSinVisita, inputSchema: schemaClientesSinVisita } = require("./tools/clientesSinVisita");
 
 function resultadoTexto(objeto) {
   return { content: [{ type: "text", text: JSON.stringify(objeto, null, 2) }] };
@@ -123,6 +124,16 @@ function crearServer() {
       inputSchema: schemaClientesSinConsumo,
     },
     async (args) => resultadoTexto(await clientesSinConsumo(args))
+  );
+
+  server.registerTool(
+    "clientesSinVisita",
+    {
+      description:
+        "Universo COMPLETO de clientes de un grupo de canal (incluido PREVENTA) sin una visita reciente registrada — para reportes en vivo tipo '¿qué clientes de esta ruta no se han visitado?'. IMPORTANTE: la fuente (fecha_ultima_visita_direccion_cliente) es un PUNTERO a la visita más reciente conocida a HOY, no un historial de visitas — sirve para preguntar '¿quién no tiene visita reciente, ahora mismo?', pero NO para reconstruir retroactivamente si un cliente fue visitado en una semana pasada ya superada por visitas más nuevas; si se pide un fecha_fin que no es reciente, la respuesta trae un campo advertencia explicándolo. Un cliente con varias direcciones/sucursales cuenta como visitado si CUALQUIERA de sus direcciones tiene visita reciente (se toma la más reciente entre todas). Los duplicados de maestro (mismo RUC+compañía+nombre exacto bajo 2 códigos) se consolidan automáticamente igual que en clientesSinConsumo. Cada cliente sin visita trae clasificacion: SIN_VISITA_NUNCA (nunca se registró una visita — típico de clientes servidos solo por Odoo, sin ruta física, ej. cuentas corporativas grandes de EMPRESAS) o SIN_VISITA_RECIENTE (tuvo visita antes de fecha_inicio, no desde entonces). limite acota cuántos clientes se devuelven (default 300, tope 1000), siempre ordenados con los más atrasados primero.",
+      inputSchema: schemaClientesSinVisita,
+    },
+    async (args) => resultadoTexto(await clientesSinVisita(args))
   );
 
   return server;

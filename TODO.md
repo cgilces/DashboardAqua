@@ -2829,3 +2829,71 @@ el filtro viejo dependía de `seller_code`, siempre nulo para esas facturas.
 3. `obtenerOdooDescartablePorCanal` (el de doble conteo) sigue igual, sin tocar
    — decisión explícita de cgilces, queda en el backlog tal como estaba
    documentado antes.
+
+## ✅ Nueva tool MCP: `clientesSinVisita` (2026-09-14)
+
+Investigación previa a construirla (3 puntos pedidos por cgilces, todos con datos
+reales, no supuestos):
+
+1. **La brecha de `historial_visitas` es real y enorme**: 7,671 clientes distintos
+   con factura/orden en agosto 2026, contra solo 302 con `visit_start`/`visit_end`
+   registrado (296 coinciden con compradores). Confirma que esa tabla NUNCA fue la
+   señal completa de visita.
+2. **Sí existe el campo correcto**: `doc.last_visit_date`, incrustado en cada
+   documento de MobilVendor (no un evento separado), sincronizado a
+   `direcciones_clientes.fecha_ultima_visita_direccion_cliente`
+   (`backend/services/sincronizacionService.js`). Cobertura: 13,771 clientes
+   distintos, siempre al día (verificado actualizado el mismo día de la
+   consulta), 91% de coincidencia con compradores reales de agosto.
+3. **Sucursales**: un cliente puede tener muchas direcciones en
+   `direcciones_clientes` (hasta 399 en un caso real) — mismo patrón de
+   sucursales ya visto en el reporte de EMPRESAS (SANTA PRISCILA/108557 tiene 12:
+   MATRIZ, ALDEA, PLANTA 2, PLANTA 7, TROPACK, etc.). Se agrega por CLIENTE, no
+   por dirección — cualquier dirección visitada cuenta, tomando la fecha más
+   reciente entre todas.
+4. **Los 710 compradores de agosto sin fecha de visita — investigado, no es un
+   hueco de datos**: el campo `last_visit_date` SOLO existe en documentos de
+   origen MobilVendor (no en los de Odoo). De los 710, el 100% son clientes
+   servidos EXCLUSIVAMENTE por Odoo — 165 EMPRESAS (cuentas corporativas
+   grandes sin ruta física, ej. SANTA PRISCILA/TELCONET), 156 RURAL, 117
+   DOMICILIO, resto repartido. Confirmado: CERO casos con documento MobilVendor
+   y sin fecha de visita — es un segmento real de "no aplica", no un error.
+5. **El corte del 29 de agosto de `historial_visitas` queda sin resolver a
+   propósito** — cgilces indicó explícitamente no seguir investigándolo, esa
+   tabla queda descartada para este reporte.
+
+### Qué hace la tool
+
+`clientesSinVisita({ grupo, fecha_inicio, fecha_fin, limite })` — mismo patrón
+que `clientesSinConsumo` (universo completo del grupo, incluido PREVENTA desde
+el día 1), pero sobre visitas en vez de compras. Cada cliente sin visita
+reciente trae `ultima_visita`/`dias_desde_ultima` y clasificación
+`SIN_VISITA_NUNCA` (nunca se registró, típico de clientes solo-Odoo) o
+`SIN_VISITA_RECIENTE` (tuvo visita, no desde `fecha_inicio`).
+
+**Documentado explícitamente, en código y en la descripción del tool (pedido
+del punto 1)**: la fuente es un PUNTERO a la visita más reciente conocida HOY,
+no un historial — sirve para reportes en vivo, no para reconstruir
+retroactivamente una semana pasada ya superada por visitas más nuevas. Si se
+pide un `fecha_fin` que no es reciente (más de 3 días), la respuesta trae un
+campo `advertencia` explicándolo en vez de fingir que el reporte es válido
+para esa fecha — verificado con un caso real (`fecha_fin` de hace 44 días
+dispara la advertencia correctamente).
+
+Duplicados de maestro (mismo RUC+compañía+nombre exacto) se consolidan
+automáticamente, misma lógica que `clientesSinConsumo`.
+
+### Validación
+
+Corrida real (EMPRESAS, hoy): 623 universo, 473 sin visita (389 nunca, 84
+reciente-pero-vencida), 150 con visita reciente, 3 duplicados consolidados.
+**SANTA PRISCILA (108557) y TELCONET (108581) — los 2 clientes grandes
+solo-Odoo ya identificados en el punto 4 — aparecen correctamente como
+`SIN_VISITA_NUNCA`**, confirmando que la tool refleja bien lo investigado.
+
+`node --check` OK (contenedor, Node 18). Suite completa: `seguridad-smoke-test`
+(caso nuevo — nota: `fecha_inicio`/`fecha_fin` en esta tool NUNCA tocan SQL,
+solo aritmética en JS, así que el payload malicioso falla con "Invalid time
+value" en vez del típico error de cast de Postgres — no hay superficie de
+inyección en esos 2 parámetros en esta tool en particular), `oauth-smoke-test`
+(**10 tools**, antes 9), `preventa-real.test`, `diasFestivos-sync.test` — 4/4 OK.
