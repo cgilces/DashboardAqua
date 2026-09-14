@@ -11,6 +11,7 @@ const { ventasCliente } = require("../src/tools/ventasCliente");
 const { clientesPorGrupo, inputSchema: inputSchemaClientesPorGrupo } = require("../src/tools/clientesPorGrupo");
 const { inputSchema: inputSchemaClientesInactivos } = require("../src/tools/clientesInactivos");
 const { clientesSinConsumo, inputSchema: inputSchemaClientesSinConsumo } = require("../src/tools/clientesSinConsumo");
+const { clientesSinVisita, inputSchema: inputSchemaClientesSinVisita } = require("../src/tools/clientesSinVisita");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -213,6 +214,37 @@ async function main() {
   const { rows: rowsClientes4 } = await pool.query("SELECT to_regclass('clientes') AS existe");
   if (!rowsClientes4[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía clientesSinConsumo)");
   console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía clientesSinConsumo).");
+
+  // 11) clientesSinVisita (nuevo): `grupo` es enum cerrado de zod, igual que
+  //     el resto — incluye PREVENTA (soportado desde el inicio acá, a
+  //     diferencia de la primera versión de clientesSinConsumo).
+  const schemaClientesSinVisita = z.object(inputSchemaClientesSinVisita);
+  const parseoSinVisita = schemaClientesSinVisita.safeParse({
+    grupo: payloadCategoria,
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (parseoSinVisita.success) throw new Error("FALLO: zod aceptó un payload de inyección en `grupo` de clientesSinVisita");
+  console.log("OK: zod rechazó el payload de inyección en `grupo` de clientesSinVisita ->", parseoSinVisita.error.issues[0].message);
+
+  // A diferencia de clientesPorGrupo/clientesSinConsumo, acá fecha_inicio/
+  // fecha_fin NUNCA se pasan a una query SQL (solo aritmética de fechas en
+  // JS) — no hay superficie de inyección en esos parámetros en esta tool.
+  // Un payload malicioso debe fallar de forma controlada (error de fecha
+  // inválida en JS), no ejecutar SQL ni devolver datos.
+  const payloadFechaSinVisita = "2026-01-01'; DROP TABLE clientes; --";
+  let fallaEsperadaSinVisita = false;
+  try {
+    await clientesSinVisita({ grupo: "EMPRESAS", fecha_inicio: payloadFechaSinVisita, fecha_fin: "2026-01-31", limite: 300 });
+  } catch (e) {
+    fallaEsperadaSinVisita = /invalid time value|invalid date/i.test(e.message);
+  }
+  if (!fallaEsperadaSinVisita) throw new Error("FALLO: se esperaba un error controlado de fecha inválida en clientesSinVisita, no inyección exitosa ni otro error");
+  console.log("OK: clientesSinVisita con fecha_inicio maliciosa falló de forma controlada (fecha inválida en JS, no toca SQL) — no hay superficie de inyección en fecha_inicio/fecha_fin en esta tool.");
+
+  const { rows: rowsClientes5 } = await pool.query("SELECT to_regclass('clientes') AS existe");
+  if (!rowsClientes5[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía clientesSinVisita)");
+  console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía clientesSinVisita).");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");
