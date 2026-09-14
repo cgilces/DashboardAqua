@@ -44,6 +44,33 @@
 // PREVENTA solo usa `ordenes` (MobilVendor) — no genera `facturas` propias
 // ni pasa por el canal web — con `status=5`/`fecha_entrega`, no
 // `status=2`/`fecha_creacion` como el resto.
+//
+// ============================================================
+// `venta_reciente_otra_ruta` (agregado 2026-09-14) — caso real encontrado
+// ============================================================
+// El universo de esta tool ("¿alguna vez tuvo un documento de este grupo?",
+// sin límite de tiempo) puede meter en el reporte a un cliente cuya ÚNICA
+// evidencia de pertenecer a este grupo es una transacción de hace más de un
+// año, mientras su actividad real y actual es en OTRA ruta por completo —
+// confirmado con un caso real (cliente 100071, TIENDAS_VIP: única
+// transacción TV% de hace 532 días, pero comprando BOTELLÓN cada pocos días
+// bajo T5/TIENDAS, la más reciente 7 días antes de la consulta). En un
+// reporte de TIENDAS_VIP salía como "nunca compró BOTELLÓN" cuando en
+// realidad es un comprador frecuente — solo que en otra ruta.
+//
+// Fix elegido (a propósito NO se excluye al cliente ni se cambia su
+// clasificación, decisión explícita de cgilces): se agrega el campo
+// `venta_reciente_otra_ruta` — si existe una compra de la MISMA categoría
+// pedida, en CUALQUIER OTRO grupo, más reciente que su última compra en el
+// grupo pedido (o si nunca compró en el grupo pedido pero sí en otro), se
+// informa esa ruta y fecha. El gerente ve la señal completa y decide —
+// típicamente, sacar a ese cliente de la frecuencia de visita de la ruta
+// vieja, no tratarlo como "consumo cero" real.
+//
+// No implementado para PREVENTA en esta pasada: su lógica de fecha/status
+// es estructuralmente distinta (fecha_entrega/status=5 vs
+// fecha_creacion/status=2) y no se puede mezclar limpio en la misma query
+// sin duplicar toda esa rama — queda pendiente si se necesita.
 // ============================================================
 const { z } = require("zod");
 const { pool } = require("../db");
@@ -210,6 +237,34 @@ const SQL_COMPRARON_EN_RANGO = `
   WHERE fecha >= $3 AND fecha < $4;
 `;
 
+// Compra MÁS RECIENTE de la categoría pedida en CUALQUIER OTRO grupo (no el
+// pedido) — ver comentario grande del archivo ("venta_reciente_otra_ruta").
+// Solo se corre para los clientes que ya salieron "sin consumo" del grupo
+// pedido, no para todo el universo. $1 = array de códigos, $2 = categoria,
+// $3 = grupo pedido (se excluye).
+const SQL_ULTIMA_COMPRA_OTRA_RUTA = `
+  SELECT DISTINCT ON (customer_code) customer_code, seller_code, fecha FROM (
+    SELECT o.customer_code, o.seller_code, o.fecha_creacion AS fecha
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.origen_sistema = 'MOBILVENDOR' AND o.status = 2
+      AND dd.descripcion_categoria = $2
+      AND o.customer_code = ANY($1::text[])
+      AND (${CASE_GRUPO_ORDENES}) IS DISTINCT FROM $3
+
+    UNION ALL
+
+    SELECT f.customer_code, f.seller_code, f.fecha_creacion AS fecha
+    FROM facturas f
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE f.status = 2 AND f.tipo_movimiento = 'out_invoice'
+      AND dd.descripcion_categoria = $2
+      AND f.customer_code = ANY($1::text[])
+      AND (${CASE_GRUPO_FACTURAS}) IS DISTINCT FROM $3
+  ) x
+  ORDER BY customer_code, fecha DESC;
+`;
+
 // ============================================================
 // PREVENTA — solo `ordenes` (MobilVendor), status=5, fecha_entrega. Ver el
 // comentario grande al inicio del archivo para la decisión de universo.
@@ -339,7 +394,31 @@ async function clientesSinConsumo({ grupo, categoria, fecha_inicio, fecha_fin, l
       ultimaDia,
       dias,
       clasificacion,
+      otraRuta: null,
     });
+  }
+
+  // `venta_reciente_otra_ruta` — ver comentario grande del archivo. Solo se
+  // busca para los clientes ya marcados "sin consumo" (no todo el universo),
+  // y no aplica a PREVENTA (estructura de fecha/status distinta).
+  if (!esPreventa && clientes.length) {
+    const { rows: otraRutaRows } = await pool.query(SQL_ULTIMA_COMPRA_OTRA_RUTA, [
+      clientes.map((c) => c.codigos[0]),
+      categoria,
+      grupo,
+    ]);
+    const mapOtraRuta = new Map(otraRutaRows.map((r) => [r.customer_code, r]));
+    for (const c of clientes) {
+      const otra = mapOtraRuta.get(c.codigos[0]);
+      if (!otra) continue;
+      const otraDia = fechaSoloDia(otra.fecha);
+      // Solo se informa si es MÁS RECIENTE que su última compra conocida en
+      // el grupo pedido (o si nunca compró en el grupo pedido) — si la
+      // compra en otra ruta es más vieja que la del grupo pedido, no aporta.
+      if (c.ultimaDia === null || otraDia > c.ultimaDia) {
+        c.otraRuta = { ruta: otra.seller_code, fecha: otraDia.toISOString().slice(0, 10) };
+      }
+    }
   }
 
   // Consolidar duplicados de maestro (mismo RUC+compañía+nombre exacto):
@@ -385,12 +464,14 @@ async function clientesSinConsumo({ grupo, categoria, fecha_inicio, fecha_fin, l
     sin_consumo_total: total,
     sin_consumo_devueltos: devueltos.length,
     duplicados_consolidados: duplicadosConsolidados,
+    con_venta_reciente_otra_ruta: clientes.filter((c) => c.otraRuta).length,
     clientes: devueltos.map((c) => ({
       codigo_cliente: c.codigos.join("+"),
       nombre_cliente: c.nombre,
       ultima_compra: c.ultimaDia ? c.ultimaDia.toISOString().slice(0, 10) : null,
       dias_desde_ultima: c.dias,
       clasificacion: c.clasificacion,
+      venta_reciente_otra_ruta: c.otraRuta,
     })),
   };
 }

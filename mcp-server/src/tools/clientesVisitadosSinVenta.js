@@ -213,6 +213,34 @@ const SQL_COMPRARON_EN_RANGO = `
   WHERE fecha >= $3 AND fecha < $4;
 `;
 
+// Compra MÁS RECIENTE de la categoría pedida en CUALQUIER OTRO grupo (no el
+// pedido) — mismo fix que clientesSinConsumo.js (ver ese archivo para el
+// caso real que lo motivó: cliente TIENDAS_VIP con evidencia de hace 532
+// días, comprador activo actual bajo TIENDAS normal). $1 = códigos, $2 =
+// categoria, $3 = grupo pedido (se excluye).
+const SQL_ULTIMA_COMPRA_OTRA_RUTA = `
+  SELECT DISTINCT ON (customer_code) customer_code, seller_code, fecha FROM (
+    SELECT o.customer_code, o.seller_code, o.fecha_creacion AS fecha
+    FROM ordenes o
+    JOIN detalle_documento dd ON dd.documento_code = o.code
+    WHERE o.origen_sistema = 'MOBILVENDOR' AND o.status = 2
+      AND dd.descripcion_categoria = $2
+      AND o.customer_code = ANY($1::text[])
+      AND (${CASE_GRUPO_ORDENES}) IS DISTINCT FROM $3
+
+    UNION ALL
+
+    SELECT f.customer_code, f.seller_code, f.fecha_creacion AS fecha
+    FROM facturas f
+    JOIN detalle_documento dd ON dd.documento_code = f.code
+    WHERE f.status = 2 AND f.tipo_movimiento = 'out_invoice'
+      AND dd.descripcion_categoria = $2
+      AND f.customer_code = ANY($1::text[])
+      AND (${CASE_GRUPO_FACTURAS}) IS DISTINCT FROM $3
+  ) x
+  ORDER BY customer_code, fecha DESC;
+`;
+
 const SQL_UNIVERSO_PREVENTA = `
   SELECT DISTINCT o.customer_code AS customer_code
   FROM ordenes o
@@ -343,11 +371,31 @@ async function clientesVisitadosSinVenta({ grupo, categoria, fecha_inicio, fecha
     else if (ultimaDia === null) clasificacion = `NUNCA_COMPRO_${categoria}`;
     else clasificacion = "CONSUMO_CERO";
 
-    sinVenta.push({ codigos: [codigo], nombre: mapNombre.get(codigo) || null, ultimaDia, dias, clasificacion });
+    sinVenta.push({ codigos: [codigo], nombre: mapNombre.get(codigo) || null, ultimaDia, dias, clasificacion, otraRuta: null });
   }
 
   // A ∩ B: se queda solo con los que tienen visita confirmada en el rango.
   let interseccion = sinVenta.filter((c) => mapVisitaConfirmada.has(c.codigos[0]));
+
+  // `venta_reciente_otra_ruta` — ver clientesSinConsumo.js para el caso real
+  // que lo motivó. Solo se busca sobre la intersección ya filtrada (chica),
+  // no sobre todo Set B. No aplica a PREVENTA.
+  if (!esPreventa && interseccion.length) {
+    const { rows: otraRutaRows } = await pool.query(SQL_ULTIMA_COMPRA_OTRA_RUTA, [
+      interseccion.map((c) => c.codigos[0]),
+      categoria,
+      grupo,
+    ]);
+    const mapOtraRuta = new Map(otraRutaRows.map((r) => [r.customer_code, r]));
+    for (const c of interseccion) {
+      const otra = mapOtraRuta.get(c.codigos[0]);
+      if (!otra) continue;
+      const otraDia = fechaSoloDia(otra.fecha);
+      if (c.ultimaDia === null || otraDia > c.ultimaDia) {
+        c.otraRuta = { ruta: otra.seller_code, fecha: otraDia.toISOString().slice(0, 10) };
+      }
+    }
+  }
 
   // Consolidar duplicados de maestro SOLO dentro de la intersección ya
   // filtrada — mismo criterio que clientesSinConsumo/clientesSinVisita.
@@ -387,6 +435,7 @@ async function clientesVisitadosSinVenta({ grupo, categoria, fecha_inicio, fecha
     },
     interseccion_devueltos: devueltos.length,
     duplicados_consolidados: duplicadosConsolidados,
+    con_venta_reciente_otra_ruta: interseccion.filter((c) => c.otraRuta).length,
     clientes: devueltos.map((c) => ({
       codigo_cliente: c.codigos.join("+"),
       nombre_cliente: c.nombre,
@@ -398,6 +447,7 @@ async function clientesVisitadosSinVenta({ grupo, categoria, fecha_inicio, fecha
       ultima_compra: c.ultimaDia ? c.ultimaDia.toISOString().slice(0, 10) : null,
       dias_desde_ultima_compra: c.dias,
       clasificacion: c.clasificacion,
+      venta_reciente_otra_ruta: c.otraRuta,
     })),
   };
 }
