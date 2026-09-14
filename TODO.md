@@ -2970,3 +2970,67 @@ ninguno visitado) a 100% (varias rutas chicas). Suma de `total_clientes`/
 espacio), `oauth-smoke-test` (10 tools, sin cambio de conteo — mismo tool
 extendido), `preventa-real.test`, `diasFestivos-sync.test`, y el nuevo
 `clientesSinVisita-real.test` (regresión del bug de consistencia) — 5/5 OK.
+
+## ✅ Nueva tool MCP: `clientesVisitadosSinVenta` (2026-09-14)
+
+Intersección de 2 conjuntos: A = clientes con `visit_start`/`visit_end` CONFIRMADO
+en `historial_visitas` dentro del rango pedido; B = clientes "sin venta" de un
+grupo/categoría en ese mismo rango (misma lógica exacta que `clientesSinConsumo`).
+A ∩ B = "se confirmó que un vendedor visitó a este cliente, y no hubo venta" — el
+caso más accionable de "visita sin venta", porque el check-in existe, no es una
+inferencia.
+
+### Verificación técnica previa (pedida antes de construir)
+
+Confirmado que el cruce funciona limpio: 336 clientes distintos con
+`visit_start`/`visit_end` histórico, el 100% hace match exacto contra
+`clientes.codigo_cliente` (mismo formato, sin espacios/mayúsculas raras, sin
+códigos genéricos 8/9).
+
+**Hallazgo que cambió el diseño**: el corte de `historial_visitas` NO es una
+fecha fija. La investigación anterior (2026-09-08) encontró el último dato en
+2026-08-29; al construir esta tool (2026-09-14) el corte real ya había avanzado
+a **2026-09-04** — la fuente sigue recibiendo datos de forma intermitente. Por
+eso la tool consulta `MAX(fecha_visita)` EN VIVO en cada llamada (nunca un valor
+fijo) y devuelve `advertencia_cobertura_temporal` explícita cuando el rango
+pedido queda parcial o totalmente fuera de cobertura — validado con 3 casos
+reales: dentro de cobertura (sin advertencia), parcialmente fuera (advertencia
+de cobertura parcial), y totalmente fuera (advertencia fuerte + intersección
+vacía explicada, no un silencio).
+
+### 🔒 Permiso de base de datos otorgado en producción (autorizado explícitamente)
+
+`mcp_readonly` (el rol de BD del servidor MCP) tenía una whitelist deliberada de
+solo 6 tablas — `historial_visitas` no estaba, y esa tabla trae PII de
+vendedores (email, teléfono, dirección, cédula) además de comentarios de
+clientes. Se presentó la disyuntiva a cgilces antes de tocar producción; eligió
+la opción más conservadora: **GRANT a nivel de COLUMNA**, no de tabla completa —
+`mcp_readonly` solo puede leer `codigo_cliente`, `fecha_visita`, `accion` de
+`historial_visitas` (las únicas 3 que esta tool usa) — nunca email/teléfono/
+dirección/cédula de vendedores ni comentarios de clientes, ni aunque un tool
+futuro lo intentara por error. Aplicado y verificado directamente en producción.
+
+### ⚠️ Documentado explícitamente que es una MUESTRA, no el universo
+
+`historial_visitas` tiene adopción muy baja (ver investigación de
+`clientesSinVisita`) — un resultado chico o vacío de esta tool NO significa
+"casi nadie fue visitado sin vender", significa que pocos vendedores usaron el
+botón de check-in en ese período. La respuesta trae `cobertura.clientes_con_checkin_confirmado_en_rango`
+para que quede explícito qué tan chica es la muestra en cada consulta, y el
+campo `muestra_no_universo` con la explicación completa. Para el universo real
+de cobertura de visitas, la tool señala usar `clientesSinVisita` en su lugar.
+
+### Validación (caso real: TIENDAS_VIP, BOTELLÓN, agosto 2026 completo)
+
+- 302 clientes con check-in confirmado en agosto (Set A).
+- 775 clientes sin venta de BOTELLÓN en agosto (Set B).
+- **Intersección: 23 clientes** — visita confirmada Y sin venta, el resultado
+  accionable real.
+- `advertencia_cobertura_temporal: null` (agosto completo cae dentro del corte
+  real de 2026-09-04).
+
+`node --check` OK (contenedor, Node 18). Suite completa: `seguridad-smoke-test`
+(2 casos nuevos — inyección en `grupo`, fecha maliciosa falla en JS antes de
+tocar SQL igual que `clientesSinVisita`), `oauth-smoke-test` (**11 tools**,
+antes 10), `preventa-real.test`, `clientesSinVisita-real.test`,
+`diasFestivos-sync.test` — 5/5 OK.
