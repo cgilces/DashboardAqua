@@ -246,6 +246,27 @@ async function main() {
   if (!rowsClientes5[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía clientesSinVisita)");
   console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía clientesSinVisita).");
 
+  // 12) clientesSinVisita — nuevo parámetro `ruta` (mismo patrón que
+  //     ventasPorRuta: RUTA_RE con espacio, string o array).
+  const schemaClientesSinVisitaRuta = z.object(inputSchemaClientesSinVisita);
+  const parseoRutaInyeccion = schemaClientesSinVisitaRuta.safeParse({
+    grupo: "TIENDAS_VIP",
+    ruta: "T2'; DROP TABLE ordenes; --",
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (parseoRutaInyeccion.success) throw new Error("FALLO: zod aceptó un payload de inyección en `ruta` de clientesSinVisita");
+  console.log("OK: zod rechazó el payload de inyección en `ruta` de clientesSinVisita ->", parseoRutaInyeccion.error.issues[0].message);
+
+  const parseoRutaConEspacio = schemaClientesSinVisitaRuta.safeParse({
+    grupo: "PREVENTA",
+    ruta: ["TELEVENTA 1", "RUTA 113"],
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (!parseoRutaConEspacio.success) throw new Error("FALLO: zod rechazó rutas reales con espacio en clientesSinVisita");
+  console.log("OK: clientesSinVisita acepta array de rutas reales con espacio (TELEVENTA 1, RUTA 113).");
+
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");
 }
