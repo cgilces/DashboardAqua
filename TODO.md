@@ -3034,3 +3034,61 @@ de cobertura de visitas, la tool señala usar `clientesSinVisita` en su lugar.
 tocar SQL igual que `clientesSinVisita`), `oauth-smoke-test` (**11 tools**,
 antes 10), `preventa-real.test`, `clientesSinVisita-real.test`,
 `diasFestivos-sync.test` — 5/5 OK.
+
+## ✅ Fix: `venta_reciente_otra_ruta` en clientesSinConsumo/clientesVisitadosSinVenta (2026-09-14)
+
+Validando el reporte de "visitado sin venta" de TIENDAS_VIP/BOTELLÓN con cgilces,
+salió el cliente PINDUISACA GUAMAN BERTHA (100071) marcado "NUNCA compró BOTELLÓN"
+— cgilces confirmó con datos reales que ES falso: compró BOTELLÓN el 7 de
+septiembre y fue visitado el 12 de septiembre. Investigado a fondo, no fue un caso
+aislado.
+
+### Causa raíz: el universo "sin límite de tiempo" puede clasificar mal a un cliente que migró de ruta
+
+`PINDUISACA` (100071) tiene UNA SOLA transacción TIENDAS_VIP en toda su historia —
+una factura de DESCARTABLE de hace 532 días (31 de marzo de 2025). Desde entonces
+es una clienta activa de **T5 (TIENDAS normal)**, comprando BOTELLÓN cada pocos
+días (72 documentos, el más reciente 7 días antes de la consulta). El universo de
+`clientesSinConsumo`/`clientesSinVisita`/`clientesVisitadosSinVenta` define
+"pertenece al grupo" como "tuvo alguna vez, sin límite de tiempo, un documento
+clasificado ahí" — eso la mantiene contando como "de TIENDAS_VIP" para siempre,
+aunque hace año y medio que en realidad es de otra ruta.
+
+**Esto no es un caso raro**: se revisaron los 23 clientes del reporte de
+"visitado sin venta" y **22 de 23** tenían su única evidencia TIENDAS_VIP de
+180 a 600+ días atrás, con actividad real y actual (hasta el mismo día de la
+consulta) bajo una ruta completamente distinta (T3/T4/T5/T14/D1/D9/D56/R5/PV1/PV3/
+DM1). Solo 1 de los 23 (226866) es un cliente genuinamente activo de TIENDAS_VIP.
+
+### Fix elegido (decisión explícita de cgilces — no excluir, marcar)
+
+No se cambió el universo ni la clasificación (`CONSUMO_CERO` sigue siendo
+técnicamente correcto para el grupo pedido) — se agregó el campo
+`venta_reciente_otra_ruta` (`null`, o `{ruta, fecha}` si la compra más reciente de
+esa categoría fue en OTRA ruta, más reciente que la del grupo pedido). El gerente
+ve la señal completa y decide — típicamente, sacar a ese cliente de la frecuencia
+de visita de la ruta vieja, no tratarlo como cliente inactivo real.
+
+Implementado en `clientesSinConsumo.js` (fuente original de la lógica) y
+replicado en `clientesVisitadosSinVenta.js` (que la duplica, mismo patrón de
+aislamiento del proyecto). **No implementado para PREVENTA** — su estructura de
+fecha/status (`fecha_entrega`/`status=5`) es distinta y no se puede mezclar limpio
+en la misma query sin duplicar toda esa rama; queda pendiente si se necesita.
+`clientesSinVisita` no se tocó en esta rama — tiene el mismo problema de fondo
+(universo sin límite de tiempo) pero para visitas, no para consumo; queda anotado
+como pendiente relacionado, no resuelto acá.
+
+### Validación
+
+Corrida real (TIENDAS_VIP, BOTELLÓN, agosto 2026):
+- **PINDUISACA (100071) ahora muestra `venta_reciente_otra_ruta: {ruta: "T5", fecha: "2026-09-07"}`** — coincide exacto con los datos reales que confirmó cgilces.
+- **19 de los 23** de la intersección "visitado sin venta" salen marcados — confirma que el problema es sistémico, no aislado.
+- **226866** (el único cliente genuinamente activo de TIENDAS_VIP) sale con `venta_reciente_otra_ruta: null` — cero falsos positivos.
+- `clientesSinConsumo` (TIENDAS_VIP/BOTELLÓN, agosto, universo completo sin
+  truncar): 751 "sin consumo" totales, **504 con la marca** — confirma que el
+  problema afecta a la mayoría del universo reportado, no solo a la muestra de 23.
+
+`node --check` OK (contenedor, Node 18). Suite completa (`seguridad-smoke-test`,
+`oauth-smoke-test` 11 tools sin cambio de conteo, `preventa-real.test`,
+`clientesSinVisita-real.test`, `diasFestivos-sync.test`) — 5/5 OK, sin regresión
+(los schemas de entrada no cambiaron, solo se agregó un campo a la salida).
