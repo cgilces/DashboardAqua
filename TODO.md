@@ -2897,3 +2897,76 @@ solo aritmética en JS, así que el payload malicioso falla con "Invalid time
 value" en vez del típico error de cast de Postgres — no hay superficie de
 inyección en esos 2 parámetros en esta tool en particular), `oauth-smoke-test`
 (**10 tools**, antes 9), `preventa-real.test`, `diasFestivos-sync.test` — 4/4 OK.
+
+## ✅ Extensión: clientesSinVisita — filtro por ruta y desglose por ruta/vendedor (2026-09-14)
+
+Investigación previa a construir (2 puntos pedidos):
+
+1. **Ruta/vendedor no es 100% fijo, y ningún campo "maestro" es confiable**:
+   75% de los clientes tuvieron 1 solo `seller_code` en los últimos 3 meses, 24%
+   tuvieron 2. `clientes.codigo_usuario_asignado_cliente` (vendedor "asignado")
+   solo coincide con la ruta real de sus órdenes recientes el 66% de las veces;
+   `detalles_rutas` (plan semanal de visitas, sí fresco) coincide solo ~46%.
+   Decisión (aprobada por cgilces): la ruta de cada cliente se deriva de su
+   DOCUMENTO MÁS RECIENTE real (mismo criterio que ya usan `ultima_visita`/
+   `ultima_compra`), no de ningún campo maestro/planeado.
+2. **No existe tabla de vendedores con nombre real**: `seller_nombre` viene
+   vacío en el 100% de las órdenes recientes, `rutas.descripcion` solo repite
+   el código, `app_users` (cuentas de login del dashboard, no vendedores de
+   campo) y `clientes_usuarios_ventas` tampoco tienen nombre de persona.
+   Confirmado (verificación pedida por cgilces antes de cerrar el punto):
+   NO existe ninguna tabla maestra de vendedores/empleados con nombre real
+   indexada por seller_code. `ruta` y `vendedor` (`agrupar_por`) son
+   literalmente el mismo dato (`seller_code`) — documentado así a propósito.
+
+### 🐛 Bug real encontrado y corregido DURANTE la validación (antes de mergear)
+
+Al validar con el ejemplo pedido (TIENDAS_VIP por ruta), el resumen agrupado
+mostraba D1: 155 clientes, pero filtrar directo a `ruta=D1` daba 157 — mismo
+grupo, mismo rango de fechas, números distintos. Investigado y confirmado
+con datos reales (no descartado como ruido): filtrar `codigosUniverso` por
+`ruta` ANTES de buscar duplicados de maestro rompía la consolidación para
+clientes cuyos 2 códigos duplicados están en RUTAS DISTINTAS — 3 casos reales
+en TIENDAS_VIP (ej. código A en ruta D1, código duplicado B en ruta TV1). Al
+pre-filtrar a D1, el código B desaparecía del array antes de que la query de
+duplicados pudiera verlo, así que ese par nunca se detectaba como duplicado
+en el filtro directo (quedaba sin consolidar, contando de más), pero SÍ se
+detectaba y consolidaba en el resumen sin filtrar (atribuyéndose a una sola
+ruta) — de ahí la diferencia de 2.
+
+**Fix**: los duplicados se calculan SIEMPRE sobre el universo completo, antes
+de cualquier filtro de ruta; el filtro de `ruta` se aplica DESPUÉS de
+consolidar, sobre los clientes ya fusionados — así el filtro directo es
+siempre un subconjunto exacto del resumen agrupado, por construcción, no
+puede repetirse esta discrepancia. Agregado test de regresión dedicado
+(`test/clientesSinVisita-real.test.js`) contra datos reales (rutas D1 y TV1,
+las que expusieron el bug), verificando que ambos caminos coincidan exacto Y
+que `agrupar_por: "ruta"` == `agrupar_por: "vendedor"` byte a byte.
+
+### Qué se agregó
+
+`clientesSinVisita({ grupo, ruta?, agrupar_por?, fecha_inicio, fecha_fin, limite })`:
+- `ruta` (opcional, string o array — mismo patrón y regex que `ventasPorRuta`,
+  con espacio incluido) acota a rutas específicas.
+- `agrupar_por` ('ruta' | 'vendedor', mismo agrupamiento) cambia la respuesta
+  de lista de clientes a un resumen por ruta: `total_clientes`, `visitados`,
+  `sin_visitar`, `pct_cobertura` — ordenado con la peor cobertura primero.
+
+### Validación (antes/después)
+
+| | Antes de esta rama | Después |
+|---|---|---|
+| Filtro por ruta específica | No existía | Sí, mismo patrón que `ventasPorRuta` |
+| Desglose por ruta/vendedor | No existía (solo lista plana) | Sí, con % de cobertura |
+| Consistencia filtro vs. resumen | N/A | **Verificada exacta** (bug encontrado y corregido antes de mergear) |
+
+Caso real (TIENDAS_VIP, hoy): 955 clientes en el universo (tras consolidar 29
+duplicados de maestro), 39 rutas reales, cobertura de 0% (TV1, 29 clientes,
+ninguno visitado) a 100% (varias rutas chicas). Suma de `total_clientes`/
+`sin_visitar` por ruta cuadra exacto contra los totales generales.
+
+`node --check` OK (contenedor, Node 18). Suite completa: `seguridad-smoke-test`
+(2 casos nuevos — inyección en `ruta`, aceptación de rutas reales con
+espacio), `oauth-smoke-test` (10 tools, sin cambio de conteo — mismo tool
+extendido), `preventa-real.test`, `diasFestivos-sync.test`, y el nuevo
+`clientesSinVisita-real.test` (regresión del bug de consistencia) — 5/5 OK.
