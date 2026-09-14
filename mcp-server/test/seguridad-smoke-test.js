@@ -12,6 +12,7 @@ const { clientesPorGrupo, inputSchema: inputSchemaClientesPorGrupo } = require("
 const { inputSchema: inputSchemaClientesInactivos } = require("../src/tools/clientesInactivos");
 const { clientesSinConsumo, inputSchema: inputSchemaClientesSinConsumo } = require("../src/tools/clientesSinConsumo");
 const { clientesSinVisita, inputSchema: inputSchemaClientesSinVisita } = require("../src/tools/clientesSinVisita");
+const { clientesVisitadosSinVenta, inputSchema: inputSchemaClientesVisitadosSinVenta } = require("../src/tools/clientesVisitadosSinVenta");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -266,6 +267,38 @@ async function main() {
   });
   if (!parseoRutaConEspacio.success) throw new Error("FALLO: zod rechazó rutas reales con espacio en clientesSinVisita");
   console.log("OK: clientesSinVisita acepta array de rutas reales con espacio (TELEVENTA 1, RUTA 113).");
+
+  // 13) clientesVisitadosSinVenta (nuevo): `grupo`/`categoria` son enums
+  //     cerrados de zod, igual que clientesSinConsumo.
+  const schemaVisitadosSinVenta = z.object(inputSchemaClientesVisitadosSinVenta);
+  const parseoVisitadosInyeccion = schemaVisitadosSinVenta.safeParse({
+    grupo: payloadCategoria,
+    categoria: "BOTELLÓN",
+    fecha_inicio: "2026-08-01",
+    fecha_fin: "2026-08-31",
+  });
+  if (parseoVisitadosInyeccion.success) throw new Error("FALLO: zod aceptó un payload de inyección en `grupo` de clientesVisitadosSinVenta");
+  console.log("OK: zod rechazó el payload de inyección en `grupo` de clientesVisitadosSinVenta ->", parseoVisitadosInyeccion.error.issues[0].message);
+
+  // Igual que clientesSinVisita: fechaSoloDia(fecha_inicio) corre ANTES de
+  // cualquier query SQL (para la advertencia de cobertura temporal), así
+  // que un payload malicioso falla en JS (fecha inválida) sin llegar nunca
+  // a tocar Postgres — no hay superficie de inyección efectiva acá tampoco,
+  // aunque fecha_inicio SÍ se use como parámetro posicional más adelante en
+  // el código si llegara a pasar ese punto.
+  const payloadFechaVisitados = "2026-08-01'; DROP TABLE clientes; --";
+  let fallaEsperadaVisitados = false;
+  try {
+    await clientesVisitadosSinVenta({ grupo: "EMPRESAS", categoria: "BOTELLÓN", fecha_inicio: payloadFechaVisitados, fecha_fin: "2026-08-31", limite: 300 });
+  } catch (e) {
+    fallaEsperadaVisitados = /invalid time value|invalid date/i.test(e.message);
+  }
+  if (!fallaEsperadaVisitados) throw new Error("FALLO: se esperaba un error controlado de fecha inválida en clientesVisitadosSinVenta, no inyección exitosa ni otro error");
+  console.log("OK: clientesVisitadosSinVenta con fecha_inicio maliciosa falló de forma controlada (fecha inválida en JS, antes de tocar SQL).");
+
+  const { rows: rowsClientes6 } = await pool.query("SELECT to_regclass('clientes') AS existe");
+  if (!rowsClientes6[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía clientesVisitadosSinVenta)");
+  console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía clientesVisitadosSinVenta).");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");

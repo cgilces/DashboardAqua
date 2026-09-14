@@ -28,6 +28,7 @@ const { ventasCliente, inputSchema: schemaVentasCliente } = require("./tools/ven
 const { clientesPorGrupo, inputSchema: schemaClientesPorGrupo } = require("./tools/clientesPorGrupo");
 const { clientesSinConsumo, inputSchema: schemaClientesSinConsumo } = require("./tools/clientesSinConsumo");
 const { clientesSinVisita, inputSchema: schemaClientesSinVisita } = require("./tools/clientesSinVisita");
+const { clientesVisitadosSinVenta, inputSchema: schemaClientesVisitadosSinVenta } = require("./tools/clientesVisitadosSinVenta");
 
 function resultadoTexto(objeto) {
   return { content: [{ type: "text", text: JSON.stringify(objeto, null, 2) }] };
@@ -134,6 +135,16 @@ function crearServer() {
       inputSchema: schemaClientesSinVisita,
     },
     async (args) => resultadoTexto(await clientesSinVisita(args))
+  );
+
+  server.registerTool(
+    "clientesVisitadosSinVenta",
+    {
+      description:
+        "Clientes con VISITA CONFIRMADA (check-in explícito visit_start/visit_end en historial_visitas) que no tuvieron venta de una categoría en ese mismo rango — el cruce más fuerte de 'visita sin venta': no es una inferencia, el check-in existe. ⚠️ ES UNA MUESTRA, NO EL UNIVERSO COMPLETO — historial_visitas tiene adopción muy baja (la mayoría de vendedores no usa el botón de check-in), así que un resultado chico o vacío NO significa que casi nadie fue visitado sin vender, significa que pocos registraron el check-in en ese período; el campo cobertura.clientes_con_checkin_confirmado_en_rango muestra el tamaño real de la muestra. Para el universo completo de cobertura de visitas usar clientesSinVisita en su lugar. El corte de datos de historial_visitas se mueve (no es una fecha fija) — esta tool lo consulta en vivo en cada llamada; si el rango pedido queda parcial o totalmente después del último dato disponible, la respuesta trae advertencia_cobertura_temporal explicándolo en vez de devolver una lista vacía sin avisar. Cada cliente trae clasificacion igual que clientesSinConsumo (CONSUMO_CERO / NUNCA_COMPRO_<categoria> / SIN_FACTURACION_FORMAL) más la fecha de la visita confirmada. limite acota cuántos clientes se devuelven (default 300, tope 1000).",
+      inputSchema: schemaClientesVisitadosSinVenta,
+    },
+    async (args) => resultadoTexto(await clientesVisitadosSinVenta(args))
   );
 
   return server;
