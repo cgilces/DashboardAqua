@@ -29,17 +29,20 @@
 // cliente en el universo?" (sin categoría) de "¿compró la categoría X?".
 //
 // Decisión explícita de cgilces para resolverlo: el UNIVERSO de PREVENTA se
-// define SIEMPRE con el criterio más laxo (el de DESCARTABLE,
-// `waybill_code IS NOT NULL`) — un cliente con al menos un pedido despachado
-// alguna vez (cualquier categoría) cuenta como "cliente real" del grupo. La
-// categoría pedida (para "última compra"/"compró en el rango") sí usa el
-// filtro correcto y más estricto de esa categoría específica vía
-// `FILTRO_PREVENTA_SELLER`.
+// define SIEMPRE con el criterio más laxo — un cliente con al menos un
+// pedido en `status=5` alguna vez (cualquier categoría) cuenta como
+// "cliente real" del grupo. La categoría pedida (para "última compra"/
+// "compró en el rango") sí usa el filtro correcto y más estricto de esa
+// categoría específica vía `FILTRO_PREVENTA_SELLER`.
 //
-// Consecuencia de esa decisión, a propósito: como el universo YA exige tener
-// guía real, `SIN_FACTURACION_FORMAL` NUNCA aparece para PREVENTA — todo
-// miembro del universo ya tiene, por definición, al menos un despacho
-// confirmado. No es un bug, es la definición elegida.
+// ACTUALIZADO 2026-09-15: el criterio de universo YA NO exige
+// `waybill_code IS NOT NULL` — ver clientesSinVisita.js para el detalle
+// completo. Alberto confirmó que existen órdenes creadas por administración
+// cuando el dispositivo del vendedor falla mid-entrega (la venta es real y
+// de la ruta, nunca va a tener guía) — `status=5` solo ya es "entrega
+// confirmada" en este canal. Consecuencia: `SIN_FACTURACION_FORMAL` sigue
+// sin aparecer para PREVENTA (todo miembro tiene al menos un `status=5`,
+// con o sin guía), pero por una razón más amplia que antes.
 //
 // PREVENTA solo usa `ordenes` (MobilVendor) — no genera `facturas` propias
 // ni pasa por el canal web — con `status=5`/`fecha_entrega`, no
@@ -273,12 +276,18 @@ const SQL_ULTIMA_COMPRA_OTRA_RUTA = `
 // Universo: criterio SIEMPRE laxo (el de DESCARTABLE), sin importar qué
 // categoría se pida — decisión explícita, ver comentario de arriba. Sin
 // parámetros: no depende de categoría.
+// ACTUALIZADO 2026-09-15: ya no exige waybill_code — ver clientesSinVisita.js
+// para el detalle completo del hallazgo. Alberto confirmó que hay órdenes
+// creadas por administración cuando el dispositivo del vendedor de ruta
+// falla mid-entrega: la venta SÍ es real y de la ruta, solo que nunca va a
+// tener guía porque no pasó por el despacho normal de la app. Criterio
+// correcto: `type=2 AND status=5`, con o sin guía — status=5 ya es "entrega
+// confirmada" en este canal, sin depender de ningún prefijo de documento.
 const SQL_UNIVERSO_PREVENTA = `
   SELECT DISTINCT o.customer_code AS customer_code
   FROM ordenes o
   WHERE o.type = 2 AND o.status = 5
     AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
-    AND o.waybill_code IS NOT NULL
     AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")};
 `;
 

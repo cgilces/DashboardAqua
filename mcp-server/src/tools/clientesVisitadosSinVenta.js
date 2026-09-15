@@ -241,12 +241,15 @@ const SQL_ULTIMA_COMPRA_OTRA_RUTA = `
   ORDER BY customer_code, fecha DESC;
 `;
 
+// ACTUALIZADO 2026-09-15: ya no exige waybill_code — ver clientesSinVisita.js
+// para el detalle completo (órdenes creadas por administración cuando el
+// dispositivo del vendedor falla mid-entrega: venta real y de la ruta,
+// nunca va a tener guía; status=5 solo ya es "entrega confirmada" acá).
 const SQL_UNIVERSO_PREVENTA = `
   SELECT DISTINCT o.customer_code AS customer_code
   FROM ordenes o
   WHERE o.type = 2 AND o.status = 5
     AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
-    AND o.waybill_code IS NOT NULL
     AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")};
 `;
 
