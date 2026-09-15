@@ -3339,3 +3339,107 @@ regresión): `seguridad-smoke-test`, `oauth-smoke-test` (11 tools),
 `preventa-real.test` (cifras \$ de PREVENTA sin cambio, no tocadas por este
 fix), `clientesSinVisita-real.test`, `diasFestivos-sync.test` (desde host) —
 5/5 OK.
+
+## ✅ Nueva tool: `ventasPorCondicionPago` — desglose de ventas por CONTADO/CREDITO real, cruzado con canal/grupo
+
+Pedido explícito de Alberto: identificar la condición de pago real (contado
+vs crédito) DENTRO de las propias tablas de MobilVendor — la vieja asunción
+"contado=MobilVendor / crédito=Odoo" (`origen_sistema` como proxy) es
+INCORRECTA como regla general: esa correlación solo aplica a cómo factura
+EMPRESAS específicamente. Alberto confirmó clientes de VIP y de HIELO en
+MobilVendor que sí son de crédito.
+
+### Investigación de campos reales (no solo documentación del API)
+
+Se revisó el esquema real de `clientes`, `ordenes` y `facturas` (no la
+documentación del API, que describe campos que nuestra sync no siempre
+trae poblados):
+
+- **`ordenes.payment_term_id`/`payment_term_nombre`**: documentado en el API
+  ("put órdenes") pero **0% poblado en MobilVendor** (315,872 filas, todas
+  vacías) — 99.9% poblado en ODOO. Inútil para el propósito pedido.
+- **No existe tabla `customer_policies`/`clientes_policies` sincronizada**
+  (el endpoint "put customer policies" del API no tiene contraparte en
+  nuestra BD).
+- **`clientes.tiene_credito_cliente`** (booleano): rechazado — 40.7% de los
+  clientes cuyo 100% de facturas reales están en patrón contado están
+  marcados `TRUE`, contradice la transacción real.
+- **`clientes.condicion_pago_cliente`**: peor completitud (73.2% vs 76%
+  general) y menos consistente que la opción elegida.
+- **`clientes.metodo_pago_cliente`** ✅ **ganador** — 100% completo en
+  clientes con al menos una transacción MobilVendor real (12,460/12,460).
+  Validado contra el patrón real de crédito derivado de facturas: 100% de
+  los clientes con TODAS sus facturas MV en patrón contado tienen
+  literalmente `'Pago Inmediato'` acá (0 excepciones sobre 11,225 clientes),
+  96.7% de los 100%-crédito tienen un texto de plazo consistente.
+- **`facturas.fecha_vencimiento`** (señal TRANSACCIONAL, no un cálculo
+  nuestro) ✅ **la más confiable cuando existe** — comparada contra
+  `fecha_creacion`: 0-1 día = CONTADO, más = CREDITO real (14/15/29/30/44/
+  45/58-62/91/92 días, agrupados limpio alrededor de 15/30/45/60/90). 98.9%
+  completa en facturas MOBILVENDOR `out_invoice`, 100% en ODOO
+  `out_invoice`, mismo patrón limpio en ambos orígenes.
+
+Confirmado con datos reales exactamente lo que dijo Alberto — dentro de
+canales MobilVendor puros hay mezcla real de contado y crédito: VIP
+(`codigo_tipo_negocio='29'`) 136 contado vs 54 crédito; TELEVENTA_VIP
+(`seller_code='148399'`) 146 vs 51; compradores de HIELO vía MobilVendor 489
+vs 104.
+
+### Diseño híbrido implementado (decisión de Alberto)
+
+`facturas` usa la señal TRANSACCIONAL (`fecha_vencimiento - fecha_creacion`);
+`ordenes` — incluida PREVENTA, que nunca genera factura propia — usa
+`clientes.metodo_pago_cliente` como fallback (`ordenes` no trae
+`fecha_vencimiento` propia, 0% poblada en MobilVendor). Excluir PREVENTA
+hubiera repetido el mismo punto ciego ya corregido con LIQ y el universo de
+status — se construyó con cobertura completa, no solo lo más simple.
+
+**Requisito explícito cumplido**: cada fila de `por_condicion_y_fuente` trae
+`fuente_condicion` (`'TRANSACCIONAL'` o `'METODO_PAGO_CLIENTE'`) — mismo
+patrón que `venta_reciente_otra_ruta` — para poder rastrear si un patrón raro
+de discrepancia viene del fallback o de la señal transaccional, sin rehacer
+la investigación desde cero.
+
+### Bug real encontrado y corregido ANTES de mergear (validación empírica, no solo construir y entregar)
+
+Al probar la tool contra datos reales (VIP, julio 2026) el resultado inicial
+mostraba `CONTADO` con **dólares NEGATIVOS** (-$93,703.16) — una señal de que
+algo estaba mal, no un resultado de negocio plausible. Investigado: las
+notas de crédito (`out_refund`, **exclusivas de ODOO** — no existe ninguna en
+MobilVendor) tienen su propia `fecha_vencimiento` NO confiable como señal de
+condición de pago — verificado con datos reales: de los clientes cuyo 100%
+de facturas `out_invoice` son CREDITO (plazo real confirmado), el **74.5%**
+de SUS PROPIAS notas de crédito muestran `fecha_vencimiento` = mismo día que
+`fecha_creacion` (patrón "CONTADO"), contradiciendo la condición real del
+cliente — es un artefacto de cómo se emite la nota de crédito (parece
+fijarse igual a la fecha de emisión por convención), no una señal real de
+esa transacción específica. En cambio, `metodo_pago_cliente` sí clasifica
+correctamente el 91.8% de esos mismos refunds como CREDITO.
+
+**Fix**: la señal transaccional solo se confía cuando
+`tipo_movimiento = 'out_invoice'` — cualquier otro tipo (`out_refund`, o
+vacío) usa el fallback de cliente. Tras el fix, VIP julio 2026: CREDITO
+$193,142.72 / CONTADO $14,134.60 (suma exacta a $207,277.32, el mismo total
+ya validado en `ventasPorGrupo` — el fix solo corrige la CLASIFICACIÓN por
+condición, nunca el total de $).
+
+### Validación final
+
+- `dolares_totales` de esta tool coincide EXACTO (< $0.01) con `ventasPorGrupo`
+  en los 9 grupos + PREVENTA, julio 2026 — confirma que no se alteró ningún
+  cálculo de ventas, solo se agregó la dimensión de condición de pago.
+- `por_condicion` y `por_condicion_y_fuente` suman exacto al total (sin fuga
+  ni doble conteo).
+- VIP julio confirmado con mezcla real CONTADO+CREDITO (el hallazgo que
+  motivó la tool).
+- Ningún renglón de `por_condicion` queda negativo tras el fix de `out_refund`
+  (regresión del bug de arriba).
+- `fuente_condicion`/`condicion_pago` siempre valores reconocidos
+  (trazabilidad).
+
+Suite completa (`node:20-alpine`, misma versión que el Dockerfile de
+producción): `seguridad-smoke-test` (incluye inyección en `grupo` de la
+nueva tool + `categoria` maliciosa vía las funciones internas),
+`oauth-smoke-test` (12 tools), `preventa-real.test`,
+`clientesSinVisita-real.test`, `ventasPorCondicionPago-real.test` (nuevo),
+`diasFestivos-sync.test` (desde host) — 6/6 OK.

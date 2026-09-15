@@ -13,6 +13,11 @@ const { inputSchema: inputSchemaClientesInactivos } = require("../src/tools/clie
 const { clientesSinConsumo, inputSchema: inputSchemaClientesSinConsumo } = require("../src/tools/clientesSinConsumo");
 const { clientesSinVisita, inputSchema: inputSchemaClientesSinVisita } = require("../src/tools/clientesSinVisita");
 const { clientesVisitadosSinVenta, inputSchema: inputSchemaClientesVisitadosSinVenta } = require("../src/tools/clientesVisitadosSinVenta");
+const {
+  totalesGrupo: totalesGrupoCondicionPago,
+  totalesPreventa: totalesPreventaCondicionPago,
+  inputSchema: inputSchemaVentasPorCondicionPago,
+} = require("../src/tools/ventasPorCondicionPago");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -299,6 +304,49 @@ async function main() {
   const { rows: rowsClientes6 } = await pool.query("SELECT to_regclass('clientes') AS existe");
   if (!rowsClientes6[0].existe) throw new Error("FALLO: la tabla clientes ya no existe (inyección exitosa vía clientesVisitadosSinVenta)");
   console.log("OK: la tabla `clientes` sigue existiendo intacta (payload vía clientesVisitadosSinVenta).");
+
+  // 14) ventasPorCondicionPago (nuevo): `grupo`/`categoria` son los mismos
+  //     enums cerrados que ventasPorGrupo — un payload de inyección ni
+  //     siquiera matchea un valor válido del enum, se rechaza antes de la
+  //     query.
+  const schemaCondicionPago = z.object(inputSchemaVentasPorCondicionPago);
+  const parseoCondicionPagoInyeccion = schemaCondicionPago.safeParse({
+    grupo: payloadCategoria,
+    fecha_inicio: "2026-07-01",
+    fecha_fin: "2026-07-31",
+  });
+  if (parseoCondicionPagoInyeccion.success) throw new Error("FALLO: zod aceptó un payload de inyección en `grupo` de ventasPorCondicionPago");
+  console.log("OK: zod rechazó el payload de inyección en `grupo` de ventasPorCondicionPago ->", parseoCondicionPagoInyeccion.error.issues[0].message);
+
+  // Igual que ventasPorGrupo (mismo patrón de query, mismos parámetros
+  // posicionales): aunque alguien se salte zod y llame la función interna
+  // directo con `categoria` maliciosa, pg debe seguir tratándola como texto
+  // literal ($4 en ambas queries, la genérica y la de PREVENTA) — no debe
+  // lanzar error de sintaxis ni afectar la tabla.
+  const resultadoCondicionPagoCategoria = await totalesGrupoCondicionPago(
+    "MAYORISTA",
+    "2026-01-01 00:00:00",
+    "2026-01-31 00:00:00",
+    payloadCategoria
+  );
+  console.log(
+    "OK: totalesGrupo (ventasPorCondicionPago) con categoria maliciosa no lanzó error de sintaxis ->",
+    JSON.stringify(resultadoCondicionPagoCategoria.totales)
+  );
+
+  const resultadoCondicionPagoPreventa = await totalesPreventaCondicionPago(
+    "2026-01-01 00:00:00",
+    "2026-01-31 00:00:00",
+    payloadCategoria
+  );
+  console.log(
+    "OK: totalesPreventa (ventasPorCondicionPago) con categoria maliciosa no lanzó error de sintaxis ->",
+    JSON.stringify(resultadoCondicionPagoPreventa.totales)
+  );
+
+  const { rows: rowsDD2 } = await pool.query("SELECT to_regclass('detalle_documento') AS existe");
+  if (!rowsDD2[0].existe) throw new Error("FALLO: la tabla detalle_documento ya no existe (inyección exitosa vía ventasPorCondicionPago)");
+  console.log("OK: la tabla `detalle_documento` sigue existiendo intacta (payload vía ventasPorCondicionPago).");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");

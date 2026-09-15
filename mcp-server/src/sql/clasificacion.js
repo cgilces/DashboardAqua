@@ -228,6 +228,123 @@ const CODIGOS_CLIENTE_GENERICOS = ["8", "9"];
 const FILTRO_CLIENTE_VALIDO = (aliasCustomerCode) =>
   `${aliasCustomerCode} NOT IN ('${CODIGOS_CLIENTE_GENERICOS.join("', '")}')`;
 
+// ============================================================
+// Condición de pago (CONTADO/CREDITO) — investigado 2026-09-15/16. Alberto
+// corrigió la vieja asunción "contado=MobilVendor / crédito=Odoo": esa
+// correlación solo aplica a cómo factura EMPRESAS específicamente, no es
+// una regla general del sistema — hay clientes de VIP y de HIELO en
+// MobilVendor que sí son de crédito (confirmado con datos reales: VIP
+// tipo_negocio=29 tiene 136 contado vs 54 crédito; TELEVENTA_VIP 146 vs 51;
+// compradores de HIELO vía MobilVendor 489 vs 104).
+//
+// Se investigaron los campos reales de la BD (no solo la documentación del
+// API — `ordenes.payment_term_id/nombre` está documentado ahí pero 0%
+// poblado en MobilVendor; no existe tabla `customer_policies` sincronizada)
+// y se encontraron 2 señales utilizables, de confiabilidad MUY distinta:
+//
+//  1. TRANSACCIONAL (solo `facturas`, `tipo_movimiento='out_invoice'`,
+//     ambos orígenes) — `fecha_vencimiento` es un campo propio del
+//     documento (no un cálculo nuestro): comparado contra `fecha_creacion`,
+//     0-1 día de diferencia = pagado de inmediato (CONTADO), más de eso =
+//     plazo real de crédito (se ve limpio agrupado en
+//     14/15/29/30/44/45/58-62/91/92 días — variantes de 15/30/45/60/90 con
+//     redondeo). 98.9% completa en facturas MOBILVENDOR out_invoice, 100%
+//     en ODOO out_invoice (mismo patrón limpio en ambos orígenes,
+//     confirmado con datos reales). Es la señal MÁS confiable porque es del
+//     documento real, no una condición "actual" del cliente aplicada
+//     retroactivamente — PERO NO aplica a notas de crédito (`out_refund`,
+//     exclusivas de ODOO): su propia `fecha_vencimiento` NO es confiable
+//     ahí (ver comentario de `CONDICION_PAGO_FACTURA` más abajo, caso
+//     verificado con datos reales), así que esos documentos también caen en
+//     el fallback (2).
+//  2. `clientes.metodo_pago_cliente` (fallback — usado en `ordenes`, que no
+//     trae `fecha_vencimiento` propia, 0% poblado en MobilVendor; en el
+//     ~1.1% de `facturas out_invoice` sin fecha_vencimiento; y en TODAS las
+//     notas de crédito `out_refund`, ver punto 1): validado contra la señal
+//     transaccional — 100% de los clientes con TODAS sus facturas
+//     out_invoice MV en patrón contado tienen literalmente 'Pago Inmediato'
+//     acá (0 excepciones sobre 11,225 clientes), 96.7% de los clientes 100%
+//     crédito (por out_invoice) tienen un texto de plazo consistente ('30
+//     días', '45 Días', etc.), y 91.8% de las notas de crédito de esos
+//     mismos clientes 100%-crédito también clasifican correctamente como
+//     CREDITO acá (contra solo 25.5% si se usara la fecha_vencimiento
+//     propia del refund). 100% completo en clientes con al menos una
+//     transacción MobilVendor real (los códigos numéricos sucios que
+//     existen en esta columna, ej. '13'/'4' — probablemente IDs de Odoo sin
+//     resolver — son siempre de clientes SIN ninguna transacción
+//     MobilVendor, fuera del universo relevante acá). Es un campo de
+//     CLIENTE, no de documento — usarlo asume que la condición ACTUAL del
+//     cliente valía también en el momento de ese documento específico
+//     (mismo tipo de riesgo ya documentado para
+//     `codigo_usuario_asignado_cliente` con rutas), por eso nunca se usa si
+//     la señal transaccional (1) está disponible y es confiable para ese
+//     documento.
+//
+// Rechazados: `tiene_credito_cliente` (booleano) — 40.7% de los clientes
+// con 100% de facturas reales en patrón contado están marcados TRUE,
+// contradice la transacción real. `condicion_pago_cliente` — peor
+// completitud (73.2% vs 76% general de metodo_pago_cliente) y menos
+// consistente.
+//
+// Cada tool que use esto debe exponer, por registro, qué señal se usó
+// (fuente_condicion: 'TRANSACCIONAL' o 'METODO_PAGO_CLIENTE') — así un
+// patrón raro de discrepancia se puede rastrear a su origen sin rehacer la
+// investigación.
+//
+// `aliasCliente` = alias calificado de `clientes` en el JOIN del caller
+// (SIEMPRE debe ser un LEFT JOIN — no hay FK que garantice que todo
+// customer_code de ordenes/facturas tenga fila en clientes; con LEFT JOIN
+// un cliente faltante degrada a SIN_DATO en vez de perder silenciosamente
+// el documento de la suma).
+const CONDICION_PAGO_CLIENTE = (aliasCliente) => `
+  CASE
+    WHEN ${aliasCliente}.metodo_pago_cliente ILIKE 'pago inmediato' THEN 'CONTADO'
+    WHEN ${aliasCliente}.metodo_pago_cliente IS NOT NULL AND ${aliasCliente}.metodo_pago_cliente <> '' THEN 'CREDITO'
+    ELSE 'SIN_DATO'
+  END
+`;
+
+const FUENTE_CONDICION_PAGO_CLIENTE = "'METODO_PAGO_CLIENTE'";
+
+// `aliasFactura` = alias calificado de `facturas` en la query del caller.
+// Usa la señal transaccional cuando existe `fecha_vencimiento` Y el
+// documento es `tipo_movimiento = 'out_invoice'`; si no, cae al fallback de
+// cliente — mismo criterio, sin duplicar la lógica.
+//
+// CORRECCIÓN (mismo día, antes de mergear): las notas de crédito
+// (`out_refund`, exclusivas de ODOO — no hay ninguna en MobilVendor) NO
+// tienen una `fecha_vencimiento` confiable como señal de condición de pago
+// — verificado con datos reales: de los clientes cuyo 100% de facturas
+// `out_invoice` son CREDITO (plazo real confirmado), el 74.5% de SUS PROPIAS
+// notas de crédito muestran `fecha_vencimiento` = mismo día que
+// `fecha_creacion` (patrón "CONTADO"), contradiciendo la condición real del
+// cliente — es un artefacto de cómo se emite la nota de crédito (parece
+// fijarse igual a la fecha de emisión por convención), no una señal real de
+// esa transacción. En cambio, `metodo_pago_cliente` sí clasifica
+// correctamente el 91.8% de esos mismos refunds como CREDITO. Por eso la
+// señal transaccional SOLO se confía en `out_invoice` — cualquier otro
+// `tipo_movimiento` (`out_refund`, o vacío) usa el fallback de cliente.
+const CONDICION_PAGO_FACTURA = (aliasFactura, aliasCliente) => `
+  CASE
+    WHEN ${aliasFactura}.tipo_movimiento = 'out_invoice'
+         AND ${aliasFactura}.fecha_vencimiento IS NOT NULL
+         AND ROUND(EXTRACT(EPOCH FROM (${aliasFactura}.fecha_vencimiento - ${aliasFactura}.fecha_creacion))/86400) <= 1
+      THEN 'CONTADO'
+    WHEN ${aliasFactura}.tipo_movimiento = 'out_invoice'
+         AND ${aliasFactura}.fecha_vencimiento IS NOT NULL
+      THEN 'CREDITO'
+    ELSE (${CONDICION_PAGO_CLIENTE(aliasCliente)})
+  END
+`;
+
+const FUENTE_CONDICION_PAGO_FACTURA = (aliasFactura) => `
+  CASE
+    WHEN ${aliasFactura}.tipo_movimiento = 'out_invoice' AND ${aliasFactura}.fecha_vencimiento IS NOT NULL
+      THEN 'TRANSACCIONAL'
+    ELSE 'METODO_PAGO_CLIENTE'
+  END
+`;
+
 module.exports = {
   CASE_GRUPO_ORDENES,
   FILTRO_ORDENES_GRUPO_VALIDO,
@@ -239,4 +356,8 @@ module.exports = {
   CATEGORIA_PREVENTA,
   CODIGOS_CLIENTE_GENERICOS,
   FILTRO_CLIENTE_VALIDO,
+  CONDICION_PAGO_CLIENTE,
+  FUENTE_CONDICION_PAGO_CLIENTE,
+  CONDICION_PAGO_FACTURA,
+  FUENTE_CONDICION_PAGO_FACTURA,
 };
