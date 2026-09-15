@@ -29,6 +29,7 @@ const { clientesPorGrupo, inputSchema: schemaClientesPorGrupo } = require("./too
 const { clientesSinConsumo, inputSchema: schemaClientesSinConsumo } = require("./tools/clientesSinConsumo");
 const { clientesSinVisita, inputSchema: schemaClientesSinVisita } = require("./tools/clientesSinVisita");
 const { clientesVisitadosSinVenta, inputSchema: schemaClientesVisitadosSinVenta } = require("./tools/clientesVisitadosSinVenta");
+const { ventasPorCondicionPago, inputSchema: schemaVentasPorCondicionPago } = require("./tools/ventasPorCondicionPago");
 
 function resultadoTexto(objeto) {
   return { content: [{ type: "text", text: JSON.stringify(objeto, null, 2) }] };
@@ -145,6 +146,16 @@ function crearServer() {
       inputSchema: schemaClientesVisitadosSinVenta,
     },
     async (args) => resultadoTexto(await clientesVisitadosSinVenta(args))
+  );
+
+  server.registerTool(
+    "ventasPorCondicionPago",
+    {
+      description:
+        "Ventas de un grupo de canal (mismos grupos que ventasPorGrupo, incluido PREVENTA) desglosadas por condición de pago real del documento/cliente: CONTADO o CREDITO — NUNCA usa origen_sistema como proxy (esa correlación 'contado=MobilVendor/crédito=Odoo' solo aplicaba a cómo factura EMPRESAS, no es una regla general: hay clientes VIP e HIELO en MobilVendor que sí son de crédito). Enfoque híbrido: en `facturas` la condición sale de una señal TRANSACCIONAL propia del documento (fecha_vencimiento vs fecha_creacion — 0-1 día=CONTADO, más días=CREDITO, validado contra datos reales); en `ordenes` (incluida PREVENTA, que nunca genera factura propia) se usa como fallback la condición actual del cliente (metodo_pago_cliente) porque no existe una señal transaccional equivalente ahí. Cada fila de por_condicion_y_fuente trae fuente_condicion ('TRANSACCIONAL' o 'METODO_PAGO_CLIENTE') para poder rastrear si un patrón raro viene del fallback o de la señal transaccional. categoría de producto opcional (mismos valores que ventasPorGrupo); para PREVENTA si no se especifica se usa DESCARTABLE por default, igual que ventasPorGrupo.",
+      inputSchema: schemaVentasPorCondicionPago,
+    },
+    async (args) => resultadoTexto(await ventasPorCondicionPago(args))
   );
 
   return server;
