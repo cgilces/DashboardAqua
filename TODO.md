@@ -3092,3 +3092,55 @@ Corrida real (TIENDAS_VIP, BOTELLÓN, agosto 2026):
 `oauth-smoke-test` 11 tools sin cambio de conteo, `preventa-real.test`,
 `clientesSinVisita-real.test`, `diasFestivos-sync.test`) — 5/5 OK, sin regresión
 (los schemas de entrada no cambiaron, solo se agregó un campo a la salida).
+
+## ✅ PREVENTA en clientesSinVisita: confirmado que ya funciona y que NO tiene el riesgo de "otra ruta" (2026-09-15)
+
+Alberto pidió avanzar PREVENTA ahora en vez de dejarlo pendiente. 2 preguntas
+investigadas con datos reales, sin necesidad de tocar código:
+
+### 1. ¿`clientesSinVisita` ya soporta PREVENTA?
+
+**Sí, ya funciona** — se construyó con soporte PREVENTA desde el día 1 (rama
+`feature/clientes-sin-visita-por-ruta`, 2026-09-14), usando exactamente la
+misma definición de universo ya acordada (`waybill_code IS NOT NULL`, el
+criterio laxo de DESCARTABLE). No hace falta construir nada nuevo.
+
+Corrida real (grupo PREVENTA, agrupado por ruta, 1-15 sept 2026): **universo
+4,629 clientes**, **1,467 sin visita reciente**, 3,162 con visita — 28 rutas
+reales (PV1-PV15, PVM/PVM2, PVQ1/PVQ2, PVR1-PVR5, TELEVENTA 1/3/4, PREVENTA
+VIP 1/2), coberturas de 0% (PVQ2) a 100% (PVR3).
+
+Ejemplo puntual — ruta **PV1**: 316 clientes en el universo, 177 visitados,
+**139 sin visita** (56% de cobertura), el más atrasado con 474 días sin
+visita registrada.
+
+### 2. ¿Aplica el mismo riesgo de `venta_reciente_otra_ruta`?
+
+**No aplica, y no es necesario adaptarlo — confirmado con datos reales, no
+solo por diseño.** La razón de fondo: `venta_reciente_otra_ruta` (en
+`clientesSinConsumo`) existe porque la "última compra" se calcula SOLO dentro
+del grupo pedido (compras clasificadas específicamente como esa ruta) — un
+cliente que migró de ruta puede salir "nunca compró" aunque compre seguido en
+otro lado, porque esa otra compra ni se mira.
+
+`clientesSinVisita` NO tiene ese problema porque su fuente de "última visita"
+(`direcciones_clientes.fecha_ultima_visita_direccion_cliente`) es un campo a
+nivel de CLIENTE/DIRECCIÓN, no de grupo/ruta — registra la visita más
+reciente sin importar qué ruta la hizo. Un cliente cuya única evidencia
+PREVENTA es de hace más de un año, pero visitado la semana pasada por
+CUALQUIER otro canal, ya cuenta correctamente como "visitado" — el campo no
+distingue de dónde vino la visita.
+
+**Verificado empíricamente, no solo razonado**: se buscaron 10 clientes reales
+con evidencia PREVENTA de 150-560+ días, pero actividad real reciente
+(últimos 30 días) en un canal completamente distinto (no PV/PREVENTA/
+TELEVENTA) — los 10 tienen también una visita reciente confirmada
+(`fecha_ultima_visita_direccion_cliente` entre el 1 y el 14 de septiembre) —
+y los 10, sin excepción, **NO aparecen en la lista de "sin visita" de
+PREVENTA** de `clientesSinVisita`. Cero falsos negativos.
+
+**Conclusión**: no se necesita ningún cambio de código para PREVENTA en
+`clientesSinVisita` — ya funciona correctamente y ya es inmune al problema
+que sí afectaba a `clientesSinConsumo`/`clientesVisitadosSinVenta`, por
+diferencia estructural de la fuente de datos (visita = evento a nivel
+cliente; compra = evento clasificado por ruta).
