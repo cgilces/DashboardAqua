@@ -280,13 +280,22 @@ const SQL_ULTIMA_COMPRA_OTRA_RUTA = `
 // para el detalle completo del hallazgo. Alberto confirmó que hay órdenes
 // creadas por administración cuando el dispositivo del vendedor de ruta
 // falla mid-entrega: la venta SÍ es real y de la ruta, solo que nunca va a
-// tener guía porque no pasó por el despacho normal de la app. Criterio
-// correcto: `type=2 AND status=5`, con o sin guía — status=5 ya es "entrega
-// confirmada" en este canal, sin depender de ningún prefijo de documento.
+// tener guía porque no pasó por el despacho normal de la app.
+// ACTUALIZADO 2026-09-15 (2do cambio, mismo día): status=2 se agrega al
+// universo. Alberto revisó la documentación oficial del API MobilVendor
+// v2.13 (status de órdenes: 0=Borrador, 2=Confirmado, 10=Completado — el 5
+// no está documentado ahí) y decidió que un pedido en status=2
+// ("Confirmado") ya es una transacción comprometida del cliente, cuente o
+// no cuente después con `status=5`/10. Confirmado empíricamente: los
+// pedidos status=2 NO progresan con el tiempo a status=5 (92.5% tienen 90+
+// días de antigüedad, hasta 620 días, en las 28 rutas PREVENTA, no solo
+// PVQ2) — no es un estado "pendiente de cerrar", es efectivamente terminal
+// para la mayoría. Criterio final: `type=2 AND status IN (2,5)`, sin
+// depender de ningún prefijo de documento.
 const SQL_UNIVERSO_PREVENTA = `
   SELECT DISTINCT o.customer_code AS customer_code
   FROM ordenes o
-  WHERE o.type = 2 AND o.status = 5
+  WHERE o.type = 2 AND o.status IN (2, 5)
     AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
     AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")};
 `;

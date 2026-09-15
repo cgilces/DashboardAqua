@@ -159,10 +159,43 @@ const SQL_UNIVERSO = `
 // ningún prefijo de código de documento (eso cambia, `status`/`waybill_code`
 // no): `type=2 AND status=5`, con o sin guía — status=5 ya es "entrega
 // confirmada" en este canal.
+//
+// ACTUALIZADO 2026-09-15 (2do cambio, mismo día): status=2 se agrega al
+// universo. Alberto revisó la documentación oficial del API MobilVendor
+// v2.13 (sección 41 "put órdenes", pág 106): el único enum documentado
+// para `status` de órdenes/facturas es 0=Borrador, 2=Confirmado,
+// 10=Completado — el valor 5 (usado hasta ahora como "entrega confirmada")
+// NO está en esa documentación, así que debe ser un estado calculado o
+// agregado en nuestra propia sincronización, no un valor nativo del API tal
+// como Alberto lo revisó. Evidencia empírica que sustenta que igual es un
+// valor real y esperado para el endpoint que sí usamos (`getInvoices`, no
+// "put órdenes"): el código de sync YA filtraba explícitamente por
+// `status: "0,1,2,5,10"` desde antes de esta sesión
+// (`backend/services/sincronizacionService.js`), status=5 es
+// abrumadoramente MOBILVENDOR (117k filas) y 99.8% de esas SÍ tienen guía
+// (contra lo que se podría pensar, "sin guía" es la excepción rara, no la
+// norma) — consistente con ser un estado post-entrega distinto a
+// "Confirmado". No se pudo determinar con certeza en qué documento exacto
+// del API v2.13 se define status=5 (podría ser otro endpoint/acción no
+// revisado), así que esto queda como evidencia, no como confirmación
+// documental.
+//
+// Independientemente de esa duda, Alberto decidió: un pedido en status=2
+// ("Confirmado" según la documentación oficial) YA es una transacción
+// comprometida del cliente, cuente o no después con status=5/10 — debe
+// contar como actividad real. Se validó que status=2 NO es simplemente
+// "pendiente de cerrar": 92.5% de los pedidos status=2 en TODAS las 28
+// rutas PREVENTA (no solo PVQ2) tienen 90+ días de antigüedad, hasta 620
+// días — no progresan con el tiempo a status=5, son efectivamente
+// terminales para la enorme mayoría. Impacto medido antes de mergear:
+// universo PREVENTA completo pasa de 4,661 a 4,720 clientes (+59); en PVQ2
+// específicamente pasa de 11 a 24 clientes (+13, más que duplica).
+//
+// Criterio final: `type=2 AND status IN (2, 5)`, con o sin guía.
 const SQL_UNIVERSO_PREVENTA = `
   SELECT DISTINCT o.customer_code AS customer_code
   FROM ordenes o
-  WHERE o.type = 2 AND o.status = 5
+  WHERE o.type = 2 AND o.status IN (2, 5)
     AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
     AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")};
 `;
@@ -212,10 +245,19 @@ const SQL_ULTIMA_RUTA = `
 // puede mostrar una ruta "vieja" para un cliente con actividad más reciente
 // sin guía — es intencional, no un bug: mejor una ruta desactualizada pero
 // real que una ruta reciente pero probablemente incorrecta.
+//
+// ACTUALIZADO 2026-09-15: incluye status=2 además de status=5 (ver universo
+// arriba) — un cliente en status IN (2,5) siempre entra al universo, pero un
+// cliente cuya ÚNICA evidencia sea status=2 nunca tiene guía (0.3% de
+// status=2 tiene waybill_code), así que sin este cambio se quedaría sin
+// ruta derivable. El ORDER BY ya prioriza "con guía" primero — como
+// status=2 nunca trae guía, no compite contra documentos status=5 con guía,
+// solo llena el hueco cuando no hay ningún documento con guía en el
+// historial del cliente. Mismo criterio laxo del universo, misma mitigación.
 const SQL_ULTIMA_RUTA_PREVENTA = `
   SELECT DISTINCT ON (customer_code) customer_code, seller_code
   FROM ordenes o
-  WHERE o.type = 2 AND o.status = 5
+  WHERE o.type = 2 AND o.status IN (2, 5)
     AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
     AND o.customer_code = ANY($1::text[])
   ORDER BY customer_code, (o.waybill_code IS NOT NULL) DESC, o.fecha_entrega DESC;

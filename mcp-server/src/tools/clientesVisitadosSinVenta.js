@@ -245,10 +245,17 @@ const SQL_ULTIMA_COMPRA_OTRA_RUTA = `
 // para el detalle completo (órdenes creadas por administración cuando el
 // dispositivo del vendedor falla mid-entrega: venta real y de la ruta,
 // nunca va a tener guía; status=5 solo ya es "entrega confirmada" acá).
+// ACTUALIZADO 2026-09-15 (2do cambio, mismo día): status=2 también cuenta
+// como actividad real del cliente — decisión explícita de Alberto tras
+// revisar la documentación oficial del API MobilVendor v2.13 (status=2 =
+// "Confirmado", ya es una transacción comprometida, sin importar si nunca
+// llega a status=5/10). Confirmado empíricamente que status=2 NO progresa
+// con el tiempo (92.5% tiene 90+ días de antigüedad en las 28 rutas
+// PREVENTA) — ver clientesSinVisita.js para el detalle completo.
 const SQL_UNIVERSO_PREVENTA = `
   SELECT DISTINCT o.customer_code AS customer_code
   FROM ordenes o
-  WHERE o.type = 2 AND o.status = 5
+  WHERE o.type = 2 AND o.status IN (2, 5)
     AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
     AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")};
 `;
