@@ -3255,3 +3255,87 @@ incluir `status=2` tendría un impacto mucho más grande y sistémico que el fix
 de `status=5 sin guía` ya mergeado — **no se tocó nada de esto**, queda
 esperando que Alberto confirme la definición de negocio de `status=2` antes de
 decidir si se justifica un ajuste (y de qué alcance).
+
+## ✅ Hecho: status=5 investigado contra el API oficial + status=2 agregado al universo PREVENTA
+
+Alberto revisó la documentación oficial del API MobilVendor v2.13 (sección 41
+"put órdenes" pág 106, sección 50 "put guías de entrega" pág 138) y encontró
+que el único enum documentado para `status` de órdenes/facturas es
+0=Borrador, 2=Confirmado, 10=Completado — **el valor 5 no aparece en esa
+documentación**. Pidió confirmarlo empíricamente antes de seguir confiando en
+`status=5` como "entrega confirmada", y decidió aparte que `status=2` sí debe
+contar como actividad real del cliente.
+
+### Investigación de `status=5` (empírica, contra los datos reales)
+
+- Distribución por `origen_sistema`: `status=5` es EXCLUSIVAMENTE MOBILVENDOR
+  (117,056 filas) — 99.8% (116,815) tiene `waybill_code` (contra la intuición
+  inicial de que "sin guía" era la norma en status=5 — en realidad es la
+  excepción rara, 0.2%). `status=10` prácticamente no se usa (2 filas en más
+  de 620 días de datos). `status=2` sí existe en ambos orígenes
+  (MOBILVENDOR 184,276 + ODOO 102,460).
+- **El propio código de sync, de antes de esta sesión, ya esperaba `status=5`
+  como valor real**: `backend/services/sincronizacionService.js` línea 619
+  (`status = Number(doc.status)`, paso directo del API) y líneas 1012-1025
+  (el filtro de la llamada `getInvoices` pide explícitamente
+  `status: "0,1,2,5,10"`) — evidencia interna consistente con que 5 es un
+  valor real y esperado para ESTE endpoint específico (`getInvoices`), aunque
+  no esté en la sección de "put órdenes" que Alberto revisó — no se pudo
+  confirmar en qué sección exacta del API v2.13 se documenta (podría ser otra
+  acción/endpoint no revisada), así que esto queda como evidencia razonable,
+  no como confirmación documental cerrada.
+- Muestra de 8 órdenes `status=5` reales: `waybill_status='0'` (Shipping, no
+  Terminated) en las más recientes, `fecha_entrega` ≈ 1 día después de
+  `fecha_creacion`, y cada una tiene una `factura` aproximadamente
+  correspondiente (mismo cliente+total+fecha en ventana de 3 días) pese a que
+  ningún código de `ordenes` coincide exactamente con uno de `facturas`.
+  `waybill_status` no progresa limpiamente de '0' a '3' con el tiempo (35% de
+  las órdenes status=5 de más de 30 días siguen en '0') — consistente con el
+  problema de REUSO de código de guía ya documentado en sesiones anteriores,
+  no evidencia de que status=5 esté mal.
+- **No se cambió nada del criterio existente de status=5** a partir de esta
+  investigación — la evidencia apoya que es un valor real de este endpoint,
+  no un error de nuestro lado.
+
+### Decisión de Alberto sobre `status=2`: sí cuenta como actividad real
+
+Confirmado en la documentación oficial: `status=2` = "Confirmado" (no
+borrador). Alberto decide que un pedido confirmado ya es una transacción
+comprometida del cliente, cuente o no después con `status=5`/10 — y esto
+encaja con lo ya investigado antes (ver sección anterior): `status=2` NO es
+"pendiente de cerrar en unos días", es efectivamente terminal para el 92.5%
+de los casos.
+
+**Cambio aplicado** (`fix/preventa-universo-incluye-status2`, 2026-09-15): el
+universo laxo de PREVENTA pasa de `type=2 AND status=5` a
+`type=2 AND status IN (2, 5)` en las 3 tools que lo usan
+(`clientesSinVisita.js`, `clientesSinConsumo.js`,
+`clientesVisitadosSinVenta.js`). En `clientesSinVisita.js` también se
+actualizó `SQL_ULTIMA_RUTA_PREVENTA` para incluir `status=2` como fuente de
+ruta — si no, un cliente cuya única evidencia sea `status=2` (que nunca trae
+guía, 0.3% de los casos) se quedaría sin ruta derivable. El `ORDER BY`
+existente ("con guía primero") ya prioriza correctamente: como `status=2`
+nunca trae guía, solo llena el hueco cuando el cliente no tiene ningún
+documento con guía en su historial — misma mitigación ya documentada, sin
+cambios de diseño.
+
+**Impacto medido antes de mergear:**
+- Universo PREVENTA general: 4,661 → **4,720** clientes (+59).
+- **PVQ2 específicamente** (el caso que originó toda la investigación):
+  universo 11 → **24** clientes (+13, más que duplica). Cobertura de visita
+  (últimos 30 días): antes 3/11 visitados (27.3%), ahora **16/24 visitados
+  (66.7%)** — los 8 clientes "sin visita" NO cambiaron (siguen siendo los
+  mismos 8 de antes), los 13 clientes nuevos (solo `status=2`) SÍ tienen
+  visita reciente registrada — consistente con que la creación de la orden
+  por administración también actualiza `direcciones_clientes` vía
+  `doc.last_visit_date`.
+
+`node --check` OK (contenedor `node:18`, sintaxis). Suite completa corrida
+contra `node:20-alpine` (misma versión que el Dockerfile real de producción —
+`node:18` genérico da un falso negativo en `oauth-smoke-test` por no tener el
+global `crypto` disponible, confirmado reproduciendo el mismo fallo en `main`
+sin cambios, así que es un artefacto del entorno de prueba ad hoc, no una
+regresión): `seguridad-smoke-test`, `oauth-smoke-test` (11 tools), 
+`preventa-real.test` (cifras \$ de PREVENTA sin cambio, no tocadas por este
+fix), `clientesSinVisita-real.test`, `diasFestivos-sync.test` (desde host) —
+5/5 OK.
