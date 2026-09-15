@@ -3222,3 +3222,36 @@ esto hasta tener esa confirmación.
 `oauth-smoke-test` 11 tools, `preventa-real.test` — confirma que las cifras de
 \$ de PREVENTA siguen exactas, sin cambio —, `clientesSinVisita-real.test`,
 `diasFestivos-sync.test`) — 5/5 OK.
+
+## 🔍 Investigado: ¿PVQ2 (status=2) se resuelve solo con el tiempo? — NO, verificado con datos
+
+Antes de que Alberto confirme qué significa `status=2` para el lote de PVQ2 del
+14 de septiembre (ver sección anterior), se investigó empíricamente si el patrón
+normal es "status=2 → status=5 en X días" (en cuyo caso el 0% de PVQ2 sería
+solo cuestión de esperar) o si las órdenes se quedan pegadas indefinidamente.
+
+**Resultado: se quedan pegadas. La hipótesis de "se resuelve con el tiempo" es
+falsa, verificado con datos reales:**
+
+- **92.5% de las órdenes status=2 vigentes en PREVENTA (1,934 de ~2,091) tienen
+  más de 90 días** — las más viejas, 620 días (más de año y medio). La
+  distribución por antigüedad no muestra un cuello de botella que se destraba
+  en días — muestra acumulación permanente y creciente.
+- **No es un problema aislado de PVQ2** — toca las 28 rutas de PREVENTA sin
+  excepción (de 1 caso en PVM2 a 332 en PVR5). PVQ2 mismo ya tenía 2 órdenes
+  status=2 de más de 90 días ANTES del lote del 14 de septiembre.
+- Se descartó también que sean simples duplicados inofensivos de una orden que
+  sí cerró bien: solo el 19% (366/1,934) tiene una orden status=5 cercana del
+  mismo cliente que podría explicarlas como reemplazadas — el 81% restante no
+  tiene ninguna evidencia de haber sido sustituida.
+
+**Conclusión**: el lote de PVQ2 no se va a resolver solo con esperar — el
+patrón real es que una orden que llega a `status=2` en PREVENTA, en la inmensa
+mayoría de los casos, se queda ahí indefinidamente (efectivamente un estado
+terminal, no un estado de tránsito de unos días). Esto ya no es una pregunta
+chica sobre PVQ2 — es una pregunta sobre qué significa `status=2` en las 28
+rutas de PREVENTA, con ~1,934 órdenes de por medio. Extender el universo para
+incluir `status=2` tendría un impacto mucho más grande y sistémico que el fix
+de `status=5 sin guía` ya mergeado — **no se tocó nada de esto**, queda
+esperando que Alberto confirme la definición de negocio de `status=2` antes de
+decidir si se justifica un ajuste (y de qué alcance).
