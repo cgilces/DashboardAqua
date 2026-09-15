@@ -149,15 +149,21 @@ const SQL_UNIVERSO = `
   ) x;
 `;
 
-// PREVENTA: mismo universo laxo (criterio de DESCARTABLE) ya acordado y
-// usado en clientesSinConsumo, por consistencia — acá no depende de
-// categoría porque esta tool no filtra por categoría en absoluto.
+// PREVENTA — universo laxo, ACTUALIZADO 2026-09-15 (ver comentario grande
+// del archivo sobre "órdenes sin guía"): ya no exige waybill_code. Antes
+// exigía `waybill_code IS NOT NULL` — Alberto confirmó que hay órdenes
+// creadas por administración cuando el dispositivo del vendedor de ruta
+// falla mid-entrega: la venta SÍ es de la ruta (entrega real, confirmada
+// por administración, status=5), pero nunca va a tener guía porque no pasó
+// por el despacho normal de la app. Criterio correcto, sin depender de
+// ningún prefijo de código de documento (eso cambia, `status`/`waybill_code`
+// no): `type=2 AND status=5`, con o sin guía — status=5 ya es "entrega
+// confirmada" en este canal.
 const SQL_UNIVERSO_PREVENTA = `
   SELECT DISTINCT o.customer_code AS customer_code
   FROM ordenes o
   WHERE o.type = 2 AND o.status = 5
     AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
-    AND o.waybill_code IS NOT NULL
     AND ${FILTRO_CLIENTE_VALIDO("o.customer_code")};
 `;
 
@@ -184,16 +190,35 @@ const SQL_ULTIMA_RUTA = `
   ORDER BY customer_code, fecha DESC;
 `;
 
-// PREVENTA: mismo criterio (documento más reciente), pero status=5/
-// fecha_entrega como el resto de PREVENTA. Sin filtro de guía — acá solo
-// importa quién los atendió últimamente, no si la venta cuenta como válida.
+// PREVENTA — ruta actual, ACTUALIZADO 2026-09-15. Las órdenes sin guía que
+// ahora sí cuentan para el universo (arriba) tienen un `seller_code` NO
+// confiable para saber quién atendió al cliente de verdad — verificado con
+// datos reales: de 64 casos donde `seller_code` y `route_code` (el otro
+// candidato investigado) difieren, ninguno de los dos coincide con el
+// historial real del cliente en el 85%+ de los casos, y `route_code` trae
+// valores que no corresponden a ninguna ruta conocida (Z1, Z13, PBR3, H2 —
+// parecen códigos de zona internos de MobilVendor, no el vendedor real).
+// No existe NINGÚN campo en `ordenes` que identifique quién hizo la entrega
+// real en estos casos (se revisó concept_code/concept_origin/source_document/
+// parent_id/notes/equipo_ventas/mobilvendor_id — todos vacíos) — es un hueco
+// de datos real, no algo que el código pueda resolver.
+//
+// Mitigación (NO solución — evita mostrar una atribución falsa, no resuelve
+// a quién le corresponde el crédito real, eso queda desconocido): para
+// derivar la ruta de un cliente se PREFIERE su documento más reciente CON
+// guía (confiable) sobre uno más nuevo pero sin guía (no confiable) — solo
+// se usa un documento sin guía si el cliente no tiene ningún documento con
+// guía en su historial. Por eso el desglose por ruta/vendedor (agrupar_por)
+// puede mostrar una ruta "vieja" para un cliente con actividad más reciente
+// sin guía — es intencional, no un bug: mejor una ruta desactualizada pero
+// real que una ruta reciente pero probablemente incorrecta.
 const SQL_ULTIMA_RUTA_PREVENTA = `
   SELECT DISTINCT ON (customer_code) customer_code, seller_code
   FROM ordenes o
   WHERE o.type = 2 AND o.status = 5
     AND (o.seller_code ILIKE 'PV%' OR o.seller_code ILIKE 'PREVENTA%' OR o.seller_code ILIKE 'TELEVENTA%')
     AND o.customer_code = ANY($1::text[])
-  ORDER BY customer_code, o.fecha_entrega DESC;
+  ORDER BY customer_code, (o.waybill_code IS NOT NULL) DESC, o.fecha_entrega DESC;
 `;
 
 // Última visita conocida por CLIENTE (no por dirección) — MAX entre todas

@@ -3144,3 +3144,81 @@ PREVENTA** de `clientesSinVisita`. Cero falsos negativos.
 que sí afectaba a `clientesSinConsumo`/`clientesVisitadosSinVenta`, por
 diferencia estructural de la fuente de datos (visita = evento a nivel
 cliente; compra = evento clasificado por ruta).
+
+## ✅ Fix: universo PREVENTA ya no exige guía para órdenes status=5 (2026-09-15)
+
+Alberto confirmó (tras el hallazgo de las 9 rutas afectadas en junio/julio, ver
+sección anterior): existen órdenes creadas por ADMINISTRACIÓN cuando el
+dispositivo del vendedor de ruta falla a mitad de la entrega — la venta SÍ es
+real y de la ruta (confirmada por administración, `status=5`), pero nunca va a
+tener `waybill_code` porque no pasó por el despacho normal de la app.
+
+### 2 correcciones al enfoque original, pedidas antes de implementar
+
+1. **Criterio equivocado descartado**: NO se usa `code LIKE 'LIQ%'` — es
+   atarse a un prefijo de texto que puede cambiar (mismo tipo de error que ya
+   pasó con `waybill_status`). Criterio correcto, sin depender del prefijo del
+   documento: `type=2 AND status=5` (con o sin guía) — confirmado que este
+   criterio corregido captura **240 órdenes**, no las 78-95 que había estado
+   mirando con el filtro `LIQ%` (que resultó ser solo un subconjunto parcial,
+   no representativo).
+
+2. **`route_code` investigado como posible identificador del vendedor real —
+   descartado, no existe ningún campo confiable**: en los 64 casos donde
+   `route_code` difiere de `seller_code`, ninguno de los dos coincide con el
+   historial real del cliente en más del 15% de los casos, y `route_code`
+   trae valores sin relación con ninguna ruta conocida (`Z1`, `Z13`, `PBR3`,
+   `H2`) — parecen códigos de zona internos de MobilVendor. Se revisaron
+   también `concept_code`, `concept_origin`, `source_document`, `parent_id`,
+   `notes`, `equipo_ventas`, `mobilvendor_id` — todos vacíos en estas órdenes.
+   **Conclusión explícita: no existe ningún campo en `ordenes` que identifique
+   quién hizo la entrega real — es un hueco de datos real, no algo que se
+   arregle con código.** Habría que resolverlo cambiando cómo administración
+   captura estas órdenes (un campo de usuario/vendedor real), no en este repo.
+
+### Fix implementado
+
+- **Universo** (`SQL_UNIVERSO_PREVENTA`, las 3 tools —
+  `clientesSinVisita`/`clientesSinConsumo`/`clientesVisitadosSinVenta`): ya no
+  exige `waybill_code IS NOT NULL` — solo `type=2 AND status=5`.
+- **Ruta actual** (`SQL_ULTIMA_RUTA_PREVENTA`, solo `clientesSinVisita` — es la
+  única de las 3 que expone ruta/vendedor): dado que no hay forma de saber el
+  vendedor real de una orden sin guía, se PREFIERE el documento más reciente
+  CON guía sobre uno más nuevo pero sin guía — mitigación, no solución: evita
+  mostrar una atribución probablemente falsa, no resuelve a quién le
+  corresponde el crédito real de esas entregas puntuales (eso queda
+  desconocido, documentado explícitamente en el código).
+- No se tocó `FILTRO_PREVENTA_SELLER` (el filtro validado con Excel real que
+  usan `ventasPorGrupo`/`topProductos`/`clientesPorGrupo` para las cifras
+  oficiales de \$) — el impacto en \$ de estas órdenes sin guía es
+  irrelevante (~\$1,795 de \$2.04M en DESCARTABLE, <0.1%), no ameritaba tocar
+  el cálculo de ingresos.
+
+### Validación
+
+- Universo PREVENTA general: 4,629 → **4,645** (+16 clientes reales que antes
+  quedaban invisibles). `sin_visita_total`: 1,467 → 1,452.
+- Fallback de ruta verificado con los 8 clientes del caso T12/PV12 (30 de
+  junio): **7 de 8 resuelven correctamente a PV12** — al mirar su historial
+  completo (no solo los 3 documentos previos al evento puntual), tienen
+  entregas PV12 con guía real recientes, hasta el 14 de septiembre — el "T12"
+  fue un evento aislado, no su ruta real, y el fallback lo ignora
+  correctamente. El octavo (sin ninguna entrega PV12 con guía real) resuelve
+  a su ruta real distinta (TELEVENTA 4), no a PV12 — el fallback tampoco
+  fuerza una atribución falsa cuando no hay evidencia real.
+
+### ⚠️ Pendiente: PVQ2 específicamente NO quedó cubierto por este fix
+
+El lote de PVQ2 del 14 de septiembre (`LIQ1-000452` a `000462`, 12 órdenes) es
+`status=2`, **no `status=5`** — el criterio corregido (y lo que confirmó
+Alberto) es específicamente para `status=5`. PVQ2 sigue mostrando 8 clientes/
+0% de cobertura, sin cambio. Falta confirmar con Alberto si las órdenes
+`status=2` de PVQ2 también representan una entrega confirmada (y por lo tanto
+deberían sumarse al criterio), o si `status=2` legítimamente significa
+"todavía no cerrado" y está bien que no cuente por ahora — no se tocó nada de
+esto hasta tener esa confirmación.
+
+`node --check` OK (contenedor, Node 18). Suite completa (`seguridad-smoke-test`,
+`oauth-smoke-test` 11 tools, `preventa-real.test` — confirma que las cifras de
+\$ de PREVENTA siguen exactas, sin cambio —, `clientesSinVisita-real.test`,
+`diasFestivos-sync.test`) — 5/5 OK.
