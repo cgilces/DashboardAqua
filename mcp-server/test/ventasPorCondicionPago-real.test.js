@@ -18,6 +18,13 @@
 //     test asegura que ningún renglón de por_condicion quede negativo (más
 //     allá de una desviación chica y explicable por notas de crédito
 //     normales, no una acumulación sistemática de refunds mal clasificados).
+//  4. Regresión del fix de etiquetado (2026-09-16, reportado por el usuario
+//     tras verificar la tool en vivo): las notas de crédito usan el mismo
+//     fallback de cliente que las órdenes, pero deben reportarse bajo su
+//     propia fuente `NOTA_CREDITO` — no mezcladas bajo `METODO_PAGO_CLIENTE`
+//     (que antes hacía ilegible un renglón negativo en un canal facturado
+//     por `facturas`, como VIP, dando la falsa impresión de que había
+//     órdenes reales negativas).
 require("dotenv").config();
 const { ventasPorCondicionPago } = require("../src/tools/ventasPorCondicionPago");
 const { totalesGrupo: totalesGrupoOriginal, totalesPreventa: totalesPreventaOriginal } = require("../src/tools/ventasPorGrupo");
@@ -96,9 +103,21 @@ async function main() {
     asegurar(r.dolares >= 0, `VIP julio: ${r.condicion_pago} no queda negativo (${r.dolares}) — antes del fix de out_refund daba negativo`);
   }
 
+  // 4) Fix de etiquetado: VIP julio 2026 debe traer un renglón NOTA_CREDITO
+  //    propio (no mezclado bajo METODO_PAGO_CLIENTE) — negativo por
+  //    definición (out_refund siempre resta), eso es correcto contablemente,
+  //    no un bug. Ninguna fila jamás debe usar 'NOTA_CREDITO' salvo que
+  //    venga de `facturas` out_refund — como `ordenes` siempre usa la
+  //    constante FUENTE_CONDICION_PAGO_CLIENTE ('METODO_PAGO_CLIENTE'), la
+  //    sola presencia de NOTA_CREDITO ya prueba que esa fila vino de
+  //    facturas, nunca de una orden real.
+  const notaCredito = vip.por_condicion_y_fuente.find((r) => r.fuente_condicion === "NOTA_CREDITO");
+  asegurar(!!notaCredito, "VIP julio: existe un renglón con fuente_condicion=NOTA_CREDITO, separado de METODO_PAGO_CLIENTE");
+  asegurar(notaCredito.dolares <= 0, `VIP julio: el renglón NOTA_CREDITO es <= 0 (${notaCredito.dolares}) — correcto contablemente, las notas de crédito restan venta`);
+
   // Toda fila de por_condicion_y_fuente debe traer una fuente reconocida —
   // el requisito explícito de poder rastrear de dónde salió cada condición.
-  const fuentesValidas = new Set(["TRANSACCIONAL", "METODO_PAGO_CLIENTE"]);
+  const fuentesValidas = new Set(["TRANSACCIONAL", "METODO_PAGO_CLIENTE", "NOTA_CREDITO"]);
   const condicionesValidas = new Set(["CONTADO", "CREDITO", "SIN_DATO"]);
   for (const grupoProbado of [vip, preventaNuevo]) {
     for (const r of grupoProbado.por_condicion_y_fuente) {
