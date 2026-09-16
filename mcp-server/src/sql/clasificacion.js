@@ -280,6 +280,17 @@ const FILTRO_CLIENTE_VALIDO = (aliasCustomerCode) =>
 //     la señal transaccional (1) está disponible y es confiable para ese
 //     documento.
 //
+// NOTA sobre la ETIQUETA de fuente expuesta hacia afuera (fuente_condicion,
+// CORRECCIÓN 2026-09-16): aunque las notas de crédito usan el MISMO fallback
+// de cliente (2) que `ordenes`, se reportan bajo una tercera etiqueta,
+// `NOTA_CREDITO`, no `METODO_PAGO_CLIENTE` — un renglón CREDITO/
+// METODO_PAGO_CLIENTE con dólares negativos en un canal que factura por
+// `facturas` (no por `ordenes`) es ilegible sin conocer este detalle interno
+// (así se reportó, verificando la tool en vivo: VIP julio 2026 con
+// -$112,011.11/-1,363 unidades en ese bucket, 194 documentos, 100% notas de
+// crédito confirmado con datos reales, 0 órdenes). La CLASIFICACIÓN
+// (CONTADO/CREDITO) no cambia por esto, solo la etiqueta de fuente.
+//
 // Rechazados: `tiene_credito_cliente` (booleano) — 40.7% de los clientes
 // con 100% de facturas reales en patrón contado están marcados TRUE,
 // contradice la transacción real. `condicion_pago_cliente` — peor
@@ -337,10 +348,26 @@ const CONDICION_PAGO_FACTURA = (aliasFactura, aliasCliente) => `
   END
 `;
 
+// CORRECCIÓN 2026-09-16 (reportada por el usuario tras verificar la tool en
+// vivo — VIP julio 2026 mostraba un renglón CREDITO/METODO_PAGO_CLIENTE con
+// -$112,011.11 y -1,363 unidades, sin explicación en la descripción de la
+// tool): esos 194 documentos son 100% notas de crédito (confirmado con
+// datos reales — 0 órdenes en ese bucket), correctas contablemente (restan
+// venta) pero mal etiquetadas — la descripción de la tool decía que
+// METODO_PAGO_CLIENTE era el fallback EXCLUSIVO de `ordenes`, y una nota de
+// crédito de `facturas` cayendo ahí (aunque por la razón correcta, ver
+// comentario de CONDICION_PAGO_FACTURA arriba) no coincidía con eso. Se
+// separa en su propia fuente `NOTA_CREDITO` — value de la CLASIFICACIÓN
+// (CONTADO/CREDITO) no cambia, sigue viniendo del fallback de cliente vía
+// CONDICION_PAGO_FACTURA (ya validado: 91.8% de aciertos) — solo cambia la
+// ETIQUETA de fuente, para que el desglose sea legible sin conocer el
+// detalle interno de por qué cae ahí.
 const FUENTE_CONDICION_PAGO_FACTURA = (aliasFactura) => `
   CASE
     WHEN ${aliasFactura}.tipo_movimiento = 'out_invoice' AND ${aliasFactura}.fecha_vencimiento IS NOT NULL
       THEN 'TRANSACCIONAL'
+    WHEN ${aliasFactura}.tipo_movimiento = 'out_refund'
+      THEN 'NOTA_CREDITO'
     ELSE 'METODO_PAGO_CLIENTE'
   END
 `;

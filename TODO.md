@@ -3443,3 +3443,44 @@ nueva tool + `categoria` maliciosa vía las funciones internas),
 `oauth-smoke-test` (12 tools), `preventa-real.test`,
 `clientesSinVisita-real.test`, `ventasPorCondicionPago-real.test` (nuevo),
 `diasFestivos-sync.test` (desde host) — 6/6 OK.
+
+## ✅ Fix de etiquetado: `ventasPorCondicionPago` — notas de crédito separadas en `NOTA_CREDITO`, no mezcladas bajo `METODO_PAGO_CLIENTE`
+
+El usuario verificó la tool recién mergeada en vivo (VIP julio 2026): el
+total coincidía exacto ($207,277.32), pero en `por_condicion_y_fuente`
+encontró un renglón `CREDITO`/`METODO_PAGO_CLIENTE` con **-$112,011.11** y
+**-1,363 unidades** — negativo, sin explicación en la descripción de la
+tool, que decía que `METODO_PAGO_CLIENTE` era el fallback EXCLUSIVO de
+`ordenes` (VIP factura mayoritariamente por `facturas`, así que ese bucket
+"debería" ser órdenes reales, no algo negativo). Sospecha correcta del
+usuario: son notas de crédito cayendo en el fallback de cliente sin
+etiquetarse aparte.
+
+**Confirmado con datos reales**: los 194 documentos de ese renglón son
+**100% notas de crédito** (`facturas`, `tipo_movimiento='out_refund'`) — 0
+provienen de `ordenes`. Contablemente correcto (las notas de crédito restan
+venta), pero la etiqueta no reflejaba con precisión de dónde salía el dato
+— exactamente lo que pidió el usuario confirmar.
+
+**Fix aplicado**: `FUENTE_CONDICION_PAGO_FACTURA` (clasificacion.js) ahora
+distingue 3 fuentes en vez de 2 — `TRANSACCIONAL` (out_invoice con
+fecha_vencimiento confiable), `NOTA_CREDITO` (out_refund, mismo fallback de
+cliente que antes pero etiquetado aparte) y `METODO_PAGO_CLIENTE` (el resto
+— siempre y exclusivamente `ordenes`, o `facturas out_invoice` sin
+fecha_vencimiento). La CLASIFICACIÓN (CONTADO/CREDITO) no cambió — sigue
+viniendo del mismo fallback ya validado (91.8% de aciertos en notas de
+crédito) — solo cambió la etiqueta de fuente, para que el desglose sea
+legible sin conocer el detalle interno. Ahora VIP julio muestra 3 renglones
+en `por_condicion_y_fuente`: `CREDITO/TRANSACCIONAL` ($305,153.83),
+`CONTADO/TRANSACCIONAL` ($14,134.60) y `CREDITO/NOTA_CREDITO`
+(-$112,011.11) — suman exacto a los mismos $207,277.32 de antes, ningún
+cálculo de $ cambió.
+
+Actualizada la descripción de la tool en `server.js` y el header de
+`ventasPorCondicionPago.js` para documentar `NOTA_CREDITO` explícitamente.
+Agregada regresión en `ventasPorCondicionPago-real.test.js`: VIP julio debe
+traer un renglón `NOTA_CREDITO` propio (≤0, correcto contablemente) y
+`fuentesValidas` ahora incluye `'NOTA_CREDITO'`.
+
+Suite completa (`node:20-alpine`) 6/6 OK, `dolares_totales` sin cambio
+(verificado contra los mismos totales de `ventasPorGrupo`).

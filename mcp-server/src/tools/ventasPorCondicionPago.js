@@ -18,9 +18,18 @@
 // universo de status: cobertura completa, no solo lo más simple de
 // construir.
 //
-// Cada fila de salida trae `fuente_condicion` ('TRANSACCIONAL' o
-// 'METODO_PAGO_CLIENTE') para poder rastrear si un patrón raro viene del
-// fallback o de la señal transaccional, sin rehacer la investigación.
+// Cada fila de salida trae `fuente_condicion` ('TRANSACCIONAL',
+// 'METODO_PAGO_CLIENTE' o 'NOTA_CREDITO') para poder rastrear si un patrón
+// raro viene del fallback, de una nota de crédito o de la señal
+// transaccional, sin rehacer la investigación. 'NOTA_CREDITO' (agregado
+// 2026-09-16, reportado por el usuario tras verificar la tool en vivo)
+// usa el MISMO fallback de cliente que 'METODO_PAGO_CLIENTE' (la
+// clasificación CONTADO/CREDITO no cambia) pero se etiqueta distinto porque
+// son documentos de `facturas` (out_refund), no `ordenes` — un renglón
+// CREDITO/METODO_PAGO_CLIENTE con dólares negativos en un canal que
+// factura por `facturas` (ej. VIP) era ilegible sin conocer que
+// "METODO_PAGO_CLIENTE" era el fallback también para notas de crédito con
+// fecha_vencimiento no confiable, no solo para órdenes.
 const { z } = require("zod");
 const { pool } = require("../db");
 const { finExclusivo, diffDias } = require("../util/fechas");
