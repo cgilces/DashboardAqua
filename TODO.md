@@ -3484,3 +3484,75 @@ traer un renglón `NOTA_CREDITO` propio (≤0, correcto contablemente) y
 
 Suite completa (`node:20-alpine`) 6/6 OK, `dolares_totales` sin cambio
 (verificado contra los mismos totales de `ventasPorGrupo`).
+
+## ✅ Nueva extensión: `ventasCliente` con `solo_notas_credito` — notas de crédito como movimientos propios, sin tocar el neto existente
+
+Pedido explícito: consultar solo las notas de crédito (`tipo_movimiento =
+'out_refund'`) de un cliente, cada una con fecha/código/monto/comentario,
+sin mezclarlas con ventas normales — y sin tocar cómo `ventasCliente`
+calcula hoy `total`/`por_mes`/`por_direccion`/`por_compania` (el neto ya
+resta las notas de las ventas brutas, es correcto, no se cambió nada de
+eso).
+
+### Validación previa a construir (caso real de CORPORACIÓN EL ROSADO)
+
+Antes de tocar código se llamó la tool real (`ventasCliente`, codigo_cliente
+110470+112892+109880) para ubicar EXACTO el caso que el usuario describió
+("la nota que hoy se ve enterrada como -$316,261.45 en CD COMISARIATO"):
+confirmado que con rango `2026-01-01` a `2026-09-16`, la dirección "CD
+COMISARIATO" (codigo_direccion 113138, del codigo_cliente 110470) da
+EXACTO `-$316,261.45` en `por_direccion` — resultado del NETO entre ventas
+normales (~$157,804) y ~222 notas de crédito de ese período en esa
+dirección (~$474,066 en notas, más que las ventas — por eso el neto es
+negativo). No es "una nota", son ~222 notas acumuladas — el neto las
+esconde a todas por igual.
+
+### Diseño implementado
+
+- Parámetro nuevo `solo_notas_credito: boolean` (default false/ausente =
+  comportamiento idéntico a hoy). Reutiliza la MISMA resolución de cliente
+  (nombre parcial, desambiguación, multicompañía) — el branch nuevo corta el
+  flujo justo después de resolver el/los cliente(s), antes de resolver
+  producto/categoria (que no aplican en este modo: una nota de crédito es
+  un documento completo, no tiene sentido filtrarla por línea de producto —
+  si se pasan junto con `solo_notas_credito: true`, se ignoran
+  silenciosamente, documentado en el schema y en el código, no es un error).
+- Query nueva a nivel de DOCUMENTO (no de línea de `detalle_documento` como
+  el resto de la tool): `facturas` con `tipo_movimiento = 'out_refund' AND
+  status = 2`, para el/los codigo_cliente resueltos y el rango pedido.
+- Cada nota trae: `codigo` (code del documento), `fecha`, `codigo_direccion`
+  + `descripcion_direccion` (reutilizando `SQL_DIRECCIONES`), `dolares` y
+  `comentario` (de `facturas.notes`, que trae HTML crudo — se limpian tags
+  y las 2 entidades reales encontradas en los datos, `&nbsp;`/`&amp;`, sin
+  inventar limpieza de más). `codigo_cliente` por nota solo aparece si se
+  consultó más de una compañía (evita redundancia en el caso simple).
+- **Decisión de signo, documentada explícitamente**: el monto se muestra
+  CRUDO y POSITIVO (`facturas.total`, que se guarda positivo — confirmado
+  con datos reales), NO negado como hace el neto de `SQL_HISTORIAL`. Es
+  deliberado: este reporte está aislado de las ventas, no hay nada que
+  netear acá — un monto positivo ("esto es lo que se acreditó") es más
+  claro que un negativo fuera de contexto.
+- `total_notas_credito: {dolares, num_notas}` + `por_compania` (mismo
+  criterio que el resto de la tool: siempre presente si se consultó más de
+  un codigo_cliente, para que el total nunca se entregue sin su desglose
+  auditable).
+
+### Validación con el caso real
+
+- Con `solo_notas_credito: true`, mismos parámetros: 222 notas en CD
+  COMISARIATO sumando $474,065.91 — consistente matemáticamente con el neto
+  de siempre (`-316,261.45 = ventas_brutas - 474,065.91`, es decir
+  ventas_brutas ≈ $157,804.46 en esa dirección en ese período).
+- Confirmado que el flujo SIN el parámetro nuevo sigue dando EXACTO
+  `-$316,261.45` en `por_direccion` — cero cambio al comportamiento
+  existente.
+- `categoria`/`producto` pasados junto con `solo_notas_credito: true` no
+  cambian el resultado (se ignoran, sin crash).
+- Caso multicompañía (3 codigo_cliente): `por_compania` suma exacto al
+  total; cada nota trae `codigo_cliente`. Caso single-company: ni
+  `por_compania` ni `codigo_cliente` por nota (evita redundancia).
+- Ningún comentario queda con HTML/entidades sin limpiar.
+
+Actualizada la descripción de la tool en `server.js`. Nuevo test de
+regresión con datos reales (`notasCredito-real.test.js`, 7 assertions
+cubriendo todo lo anterior). Suite completa (`node:20-alpine`) 7/7 OK.

@@ -21,6 +21,35 @@
 // cero resultados (typo, palabra faltante), corre un fallback de similitud
 // (pg_trgm) y devuelve una lista de `sugerencias` — nunca se autoselecciona
 // ninguna, es solo un "¿quisiste decir...?" para que el asistente confirme.
+//
+// ============================================================
+// `solo_notas_credito` (agregado 2026-09-16) — pedido real: un gerente
+// necesita ver las notas de crédito de un cliente como movimientos propios
+// (fecha, código, monto, comentario), no enterradas dentro del neto de
+// `por_direccion`/`por_mes`/`por_compania`/`total` — que YA restan las
+// notas de las ventas brutas (correcto, no se toca: ver `tipo_movimiento =
+// 'out_refund'` en SQL_HISTORIAL, CASE que resta con signo). Caso real que
+// motivó esto: CORPORACIÓN EL ROSADO, dirección "CD COMISARIATO"
+// (codigo_direccion 113138 del codigo_cliente 110470), rango 2026-01-01 a
+// 2026-09-16 — el neto normal muestra esa dirección en -$316,261.45 (~180
+// notas de crédito de ese período acumuladas contra ventas normales), sin
+// forma de ver cada nota por separado.
+//
+// Reutiliza la MISMA resolución de cliente (nombre parcial, desambiguación,
+// multicompañía) que el resto de la tool — solo cambia qué se consulta
+// después de resolver el cliente. `categoria`/`producto` no aplican en este
+// modo (una nota de crédito es un documento completo, no tiene sentido
+// filtrarla por línea de producto para este reporte) — si se pasan junto
+// con `solo_notas_credito: true`, se ignoran silenciosamente, documentado
+// acá y en el inputSchema para que no sea una sorpresa.
+//
+// Signo del monto: se muestra el monto CRUDO del documento (`facturas.total`,
+// que se guarda POSITIVO — confirmado con datos reales), NO el signo negado
+// que usa SQL_HISTORIAL para netear contra ventas. Es una decisión
+// deliberada: este reporte está AISLADO de las ventas (no hay nada que
+// netear acá), así que un monto positivo = "esto es lo que se acreditó",
+// más claro para leer que un negativo fuera de contexto de netting.
+// ============================================================
 const { z } = require("zod");
 const { pool } = require("../db");
 const { finExclusivo, diffDias } = require("../util/fechas");
@@ -44,6 +73,9 @@ const inputSchema = {
   fecha_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   categoria: z.enum(CATEGORIAS_VALIDAS).optional(),
   producto: z.string().min(MIN_LARGO_NOMBRE, `mínimo ${MIN_LARGO_NOMBRE} caracteres`).optional(),
+  // Ver comentario grande del archivo. Ignora categoria/producto si vienen
+  // junto con esto (documentado, no es un error).
+  solo_notas_credito: z.boolean().optional(),
 };
 
 // Escapa los caracteres especiales de LIKE/ILIKE (% y _) que el usuario
@@ -168,6 +200,45 @@ const SQL_NOMBRES_PRODUCTOS = `
   WHERE codigo_producto = ANY($1::text[]);
 `;
 
+// Notas de crédito puras — ver comentario grande del archivo. A nivel de
+// DOCUMENTO (no de línea de detalle_documento, a diferencia de
+// SQL_HISTORIAL): una nota de crédito es un movimiento completo, no algo
+// que tenga sentido filtrar por producto. `status = 2` = posteada
+// (mismo filtro que la rama `facturas` de SQL_HISTORIAL). $1 = lista de
+// codigo_cliente, $2 = inicio (timestamp), $3 = fin exclusivo (timestamp).
+const SQL_NOTAS_CREDITO = `
+  SELECT
+    f.code AS codigo,
+    f.customer_code AS codigo_cliente_fila,
+    f.customer_address_code AS direccion_code,
+    f.fecha_creacion AS fecha,
+    f.total AS dolares,
+    f.notes AS comentario_crudo
+  FROM facturas f
+  WHERE f.tipo_movimiento = 'out_refund'
+    AND f.status = 2
+    AND f.customer_code = ANY($1::text[])
+    AND f.fecha_creacion >= $2
+    AND f.fecha_creacion <  $3
+  ORDER BY f.fecha_creacion DESC;
+`;
+
+// `facturas.notes` trae HTML crudo (ej. "<p>\nHIPERMARKET VIA DAULE\n...\n</p>")
+// — limpieza de presentación, no una decisión de negocio: quita tags,
+// decodifica las 2 entidades reales encontradas en los datos (&nbsp;/&amp;
+// — confirmado con datos reales, no hay más) y colapsa espacios/saltos de
+// línea para que el comentario sea legible.
+function limpiarComentarioNota(notasCrudas) {
+  if (!notasCrudas) return null;
+  const texto = notasCrudas
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+  return texto.length > 0 ? texto : null;
+}
+
 async function buscarSugerenciasCliente(textoCrudo) {
   const { rows } = await pool.query(SQL_SUGERENCIAS_CLIENTE, [
     textoCrudo,
@@ -199,7 +270,15 @@ async function buscarUno(sql, patron, camposCandidato) {
   return { estado: "resuelto", fila: rows[0] };
 }
 
-async function ventasCliente({ nombre_cliente, codigo_cliente, fecha_inicio, fecha_fin, categoria, producto }) {
+async function ventasCliente({
+  nombre_cliente,
+  codigo_cliente,
+  fecha_inicio,
+  fecha_fin,
+  categoria,
+  producto,
+  solo_notas_credito,
+}) {
   const largoDias = diffDias(fecha_inicio, fecha_fin);
   if (largoDias < 0) throw new Error("fecha_inicio no puede ser posterior a fecha_fin");
   if (largoDias > MAX_RANGO_DIAS) throw new Error(`rango máximo permitido: ${MAX_RANGO_DIAS} días`);
@@ -298,6 +377,92 @@ async function ventasCliente({ nombre_cliente, codigo_cliente, fecha_inicio, fec
             descripcion_company: c.descripcion_company,
           })),
         };
+
+  // 1.5) Modo notas de crédito puras — corta el flujo normal acá, antes de
+  //      resolver producto/categoria (no aplican, ver comentario grande del
+  //      archivo). Reutiliza codigosClientes/inicioTs/finTs más abajo, pero
+  //      como este modo termina la función, se calculan localmente para no
+  //      adelantar código que el flujo normal no necesita.
+  if (solo_notas_credito) {
+    const codigosClientesNotas = clientesResueltos.map((c) => c.codigo_cliente);
+    const inicioTsNotas = `${fecha_inicio} 00:00:00`;
+    const finTsNotas = `${finExclusivo(fecha_fin)} 00:00:00`;
+
+    const { rows: filasNotas } = await pool.query(SQL_NOTAS_CREDITO, [
+      codigosClientesNotas,
+      inicioTsNotas,
+      finTsNotas,
+    ]);
+
+    const direccionesCodigosNotas = [
+      ...new Set(filasNotas.map((f) => f.direccion_code).filter(Boolean)),
+    ];
+    let descripcionesPorCodigoNotas = {};
+    if (direccionesCodigosNotas.length > 0) {
+      const { rows: direccionesNotas } = await pool.query(SQL_DIRECCIONES, [
+        codigosClientesNotas,
+        direccionesCodigosNotas,
+      ]);
+      descripcionesPorCodigoNotas = Object.fromEntries(
+        direccionesNotas.map((d) => [
+          d.codigo_direccion_cliente,
+          d.descripcion_direccion_cliente || d.calle1_direccion_cliente || null,
+        ])
+      );
+    }
+
+    const notasCredito = filasNotas.map((f) => ({
+      codigo: f.codigo,
+      fecha: f.fecha.toISOString().slice(0, 10),
+      ...(clientesResueltos.length > 1 ? { codigo_cliente: f.codigo_cliente_fila } : {}),
+      codigo_direccion: f.direccion_code || null,
+      descripcion_direccion: f.direccion_code ? descripcionesPorCodigoNotas[f.direccion_code] || null : null,
+      dolares: Number(f.dolares) || 0,
+      comentario: limpiarComentarioNota(f.comentario_crudo),
+    }));
+
+    const dolaresTotalNotas = notasCredito.reduce((acc, n) => acc + n.dolares, 0);
+
+    const resultadoNotas = {
+      encontrado: true,
+      cliente: clienteInfoResumen,
+      solo_notas_credito: true,
+      rango: { fecha_inicio, fecha_fin },
+      total_notas_credito: {
+        dolares: Number(dolaresTotalNotas.toFixed(2)),
+        num_notas: notasCredito.length,
+      },
+      notas_credito: notasCredito,
+    };
+
+    // por_compania: mismo criterio que el flujo normal — siempre que se
+    // consulte más de un codigo_cliente, para que el total nunca se
+    // entregue sin su desglose auditable.
+    if (clientesResueltos.length > 1) {
+      const porCompaniaNotasMap = new Map();
+      for (const n of notasCredito) {
+        const actual = porCompaniaNotasMap.get(n.codigo_cliente) || { dolares: 0, num_notas: 0 };
+        actual.dolares += n.dolares;
+        actual.num_notas += 1;
+        porCompaniaNotasMap.set(n.codigo_cliente, actual);
+      }
+      resultadoNotas.por_compania = clientesResueltos
+        .map((c) => {
+          const v = porCompaniaNotasMap.get(c.codigo_cliente) || { dolares: 0, num_notas: 0 };
+          return {
+            codigo_cliente: c.codigo_cliente,
+            company_id: c.company_id,
+            descripcion_company: c.descripcion_company,
+            dolares: Number(v.dolares.toFixed(2)),
+            num_notas: v.num_notas,
+          };
+        })
+        .sort((a, b) => b.dolares - a.dolares);
+    }
+    if (codigosNoEncontrados.length > 0) resultadoNotas.codigos_no_encontrados = codigosNoEncontrados;
+
+    return resultadoNotas;
+  }
 
   // 2) Resolver producto, solo si se pidió.
   let productoResuelto = null;
