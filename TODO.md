@@ -3556,3 +3556,120 @@ esconde a todas por igual.
 Actualizada la descripción de la tool en `server.js`. Nuevo test de
 regresión con datos reales (`notasCredito-real.test.js`, 7 assertions
 cubriendo todo lo anterior). Suite completa (`node:20-alpine`) 7/7 OK.
+
+## 🚨 Incidente resuelto: caída total del MCP (ventas + OAuth) por `pg_hba.conf` sin regla para `mcp_readonly`/`mcp_oauth` — más red de seguridad versionada
+
+Un gerente reportó error al conectar/desconectar el MCP. Investigado y
+confirmado: **no era un problema aislado de OAuth — era una caída total de
+producción**, activa en el momento del reporte.
+
+### Causa raíz
+
+`pg_hba.conf` en `dashboard_postgres` **nunca tuvo una regla de red para los
+roles `mcp_readonly` ni `mcp_oauth`** (solo existían reglas para `postgres` y
+`activos_sync`). Se destapó porque `dashboard_postgres` se reinició ~5h antes
+del reporte (vs. `mcp_server` con 27h de uptime) — al reiniciar Postgres se
+cortaron las conexiones TCP viejas del pool de `mcp_server`, y al reconectar,
+Postgres las rechazó por falta de regla en `pg_hba.conf`.
+
+Confirmado en vivo con el pool REAL de `mcp_server` en producción (no una
+simulación): `no pg_hba.conf entry for host "172.18.0.9", user
+"mcp_readonly", database "ventas_mv"` — **ninguna tool del MCP podía
+consultar la base de datos**. El error de OAuth que vio el gerente
+(`/register`/`/token` → HTTP 500, confirmado en el log de nginx-proxy-manager
+exactamente a la hora del reporte, user-agent `python-httpx` — coincide con
+un intento real vía claude.ai) tenía la misma causa: `store.registerClient`/
+`store.emitirRefreshToken` (esquema `mcp_oauth`) fallan igual, y el SDK de
+MCP **traga el error silenciosamente**, devolviendo un 500 genérico sin
+loguear nada — por eso no había nada revelador en los logs del contenedor
+hasta que se reprodujo manualmente contra el endpoint público real.
+
+### Fix en vivo (autorizado explícitamente por el usuario, dado que era una caída total)
+
+```
+host    ventas_mv       mcp_readonly    172.18.0.0/16           scram-sha-256
+host    ventas_mv       mcp_oauth       172.18.0.0/16           scram-sha-256
+```
+agregado a `pg_hba.conf` + `SELECT pg_reload_conf();` (sin reiniciar el
+contenedor, sin cortar conexiones existentes). Verificado end-to-end contra
+el endpoint público real: `/register` → 201, `/authorize` con client_id
+inexistente → 400 (correcto, antes 500), pool real de `mcp_server` puede
+consultar `clientes` de nuevo.
+
+### Hueco más profundo, encontrado al responder "¿esto persiste?"
+
+El usuario preguntó si `pg_hba.conf` vive en el volumen persistente
+(`dashboard_pgdata`) o se perdería en un recreate. Respuesta: SÍ es
+persistente (vive en `/var/lib/postgresql/data`, dentro del volumen nombrado
+de Compose, no `external`) — sobrevive restarts y recreates normales. Pero
+al confirmar esto se encontró un hueco más grave: **ni los roles
+`mcp_readonly`/`mcp_oauth` ni sus GRANTs ni el esquema `mcp_oauth` (tablas
+`clients`/`refresh_tokens`/`login_events`) existen en ningún script
+versionado del repo** — se provisionaron a mano en producción, sin ningún
+rastro en git. Un disaster recovery real (volumen nuevo desde cero) habría
+quedado con el MISMO problema, y ni siquiera los roles existirían.
+
+### Red de seguridad versionada construida (a pedido explícito del usuario)
+
+- **`backend/sql/postgres-init/01_mcp_roles_y_pg_hba.sh`** (nuevo) — corre
+  SOLO cuando Postgres inicializa un volumen vacío
+  (`docker-entrypoint-initdb.d`, comportamiento de la imagen oficial: nunca
+  se ejecuta contra un `PGDATA` ya inicializado, seguro de dejar montado
+  siempre). Crea `mcp_readonly`/`mcp_oauth` (contraseñas desde
+  `MCP_READONLY_DB_PASS`/`MCP_OAUTH_DB_PASS`, **nunca hardcodeadas**), el
+  esquema `mcp_oauth` completo (tablas + GRANTs + permiso de secuencia,
+  reconstruido a partir del DDL/GRANTs REALES verificados en producción, no
+  de memoria), y agrega las 2 líneas de `pg_hba.conf`.
+- **Bug real encontrado probando el script** (no solo "se ve bien"): el
+  `GRANT SELECT ON clientes, ordenes, ...` NO puede ir en ese script — corre
+  ANTES de que esas tablas existan (las crea `dashboard_backend` al arrancar,
+  vía `000_schema.sql`), así que fallaba con `relation "clientes" does not
+  exist`. Corregido moviendo ese GRANT específico al final de
+  `backend/sql/000_schema.sql` (dentro de un `DO $$ IF EXISTS (rol) THEN
+  GRANT ... END IF $$` — GRANT es idempotente, seguro de repetir en cada
+  arranque del backend).
+- **`.env` (raíz, nuevo, gitignored — confirmado con `git check-ignore`)**
+  con `MCP_READONLY_DB_PASS`/`MCP_OAUTH_DB_PASS` (mismos valores ya usados en
+  `mcp-server/.env`) + `docker-compose.yml` actualizado para pasarlas a
+  `dashboard_postgres` y montar el directorio de init.
+
+### Verificación real (pedido explícito del usuario: no dar por bueno sin probarlo)
+
+Contenedor Postgres 15 aislado, red y volumen propios (`diag-net-test`/
+`diag_pgdata_test`), sin tocar producción en ningún momento:
+1. Primera corrida reveló el bug real de arriba (`relation clientes does not
+   exist`) — se corrigió antes de continuar.
+2. Segunda corrida: 0 errores.
+3. Comparado línea por línea contra producción: roles (`mcp_readonly`/
+   `mcp_oauth` — idéntico), GRANTs de `mcp_oauth` sobre sus 3 tablas
+   (idéntico), `USAGE` de esquema (idéntico), `USAGE` de secuencia
+   (idéntico), DDL completo de las 3 tablas vía `\d` (diff limpio, sin
+   diferencias), líneas nuevas de `pg_hba.conf` (idéntico, ignorando
+   espacios).
+4. Simulado el arranque real de `dashboard_backend` corriendo
+   `000_schema.sql` completo contra el volumen de prueba (mismo modo
+   tolerante a errores que usa `runStartupSql.js`) — el GRANT final de
+   `mcp_readonly` corrió limpio; comparado contra producción: mismas 6
+   tablas + mismas 3 columnas de `historial_visitas`, idéntico.
+5. Conexión TCP real como `mcp_readonly` (`SELECT count(*) FROM clientes`) y
+   como `mcp_oauth` (`INSERT`/`SELECT` en `mcp_oauth.clients`) contra el
+   contenedor de prueba — ambas funcionan de punta a punta (rol + password +
+   `pg_hba.conf`, no solo permisos a nivel SQL).
+6. Limpieza: contenedor/volumen/red de prueba eliminados, sin dejar rastro.
+
+**No aplicado (deliberado)**: `dashboard_postgres` NO se recreó ni reinició
+para levantar el nuevo volume mount de `docker-compose.yml` — el volumen
+sigue poblado, así que `docker-entrypoint-initdb.d` no correría de todos
+modos; forzar un recreate justo después de resolver una caída total habría
+sido un riesgo innecesario sin beneficio inmediato. El mount queda armado
+para la próxima vez que el servicio se recree de verdad o (el caso real que
+esto protege) para un disaster recovery con volumen nuevo.
+
+### Fuera de alcance, mencionado pero no tocado
+
+Se encontró que los roles `activos_sync` y `pedidos_backend_readonly`
+tienen el MISMO problema de gobernanza (provisionados a mano, sin rastro en
+git) — no se tocaron, pertenecen a otros proyectos/sistemas fuera del
+alcance de este incidente. También se vio una regla nueva en `pg_hba.conf`
+para una base `pedidos_aqua` que tampoco está documentada en ningún repo
+conocido — mismo patrón, mismo riesgo, de otro sistema.
