@@ -11,12 +11,22 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: Aqua1992.
       POSTGRES_DB: ventas_mv
+      # Leídas de .env (raíz, gitignored) — solo las usa
+      # postgres-init/01_mcp_roles_y_pg_hba.sh, que a su vez solo corre si
+      # el volumen se inicializa vacío (ver ese archivo). No hardcodear acá.
+      MCP_READONLY_DB_PASS: ${MCP_READONLY_DB_PASS}
+      MCP_OAUTH_DB_PASS: ${MCP_OAUTH_DB_PASS}
     volumes:
       - dashboard_pgdata:/var/lib/postgresql/data
+      # Solo se ejecuta si el volumen de arriba está vacío (imagen oficial
+      # de Postgres) — recrea los roles mcp_readonly/mcp_oauth y las reglas
+      # de pg_hba.conf que hoy solo existían en producción, sin rastro en
+      # git (incidente 2026-09-17, ver TODO.md). Montado :ro por seguridad.
+      - ./backend/sql/postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - aqua-network
     ports:
-      - "127.0.0.1:5432:5432"
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s

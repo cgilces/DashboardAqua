@@ -1501,3 +1501,29 @@ CREATE TABLE IF NOT EXISTS auditoria_chat (
   tiempo_ms       INTEGER,
   creado_en       TIMESTAMP DEFAULT NOW()
 );
+
+-- =========================================================================
+-- Permisos de mcp_readonly sobre las tablas de ventas (incidente 2026-09-17,
+-- ver TODO.md: mcp_readonly quedó SIN GRANT sobre estas tablas — de hecho
+-- SIN NINGÚN rastro de su creación/permisos en git — hasta que se reconstruyó
+-- a mano en producción, provisionado por fuera de todo control de versiones).
+--
+-- El ROL en sí (CREATE ROLE mcp_readonly ...) se crea en
+-- backend/sql/postgres-init/01_mcp_roles_y_pg_hba.sh, que corre UNA SOLA VEZ
+-- al inicializar un volumen de Postgres nuevo (docker-entrypoint-initdb.d) —
+-- ANTES de que estas tablas existan, así que el GRANT no puede ir ahí. Acá
+-- SÍ pueden existir las tablas (este archivo las crea arriba), así que el
+-- GRANT va acá — se repite en cada arranque del backend, pero GRANT es
+-- inherentemente idempotente (repetirlo no es un error).
+--
+-- El `IF EXISTS` sobre el rol es defensivo: en un entorno donde mcp_readonly
+-- no se aprovisionó (ej. un dev local sin el servidor MCP), este archivo
+-- sigue corriendo limpio en vez de fallar por un rol que no le interesa a
+-- ese entorno.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mcp_readonly') THEN
+    GRANT SELECT ON clientes, detalle_documento, direcciones_clientes, facturas, ordenes, productos TO mcp_readonly;
+    GRANT SELECT (codigo_cliente, fecha_visita, accion) ON historial_visitas TO mcp_readonly;
+  END IF;
+END $$;
