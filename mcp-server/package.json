@@ -12,7 +12,8 @@
     "test:dias-festivos-sync": "node test/diasFestivos-sync.test.js",
     "test:preventa-real": "node test/preventa-real.test.js",
     "test:condicion-pago-real": "node test/ventasPorCondicionPago-real.test.js",
-    "test:notas-credito-real": "node test/notasCredito-real.test.js"
+    "test:notas-credito-real": "node test/notasCredito-real.test.js",
+    "test:backlog-prevendedores-real": "node test/backlogPrevendedores-real.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

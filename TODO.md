@@ -3673,3 +3673,106 @@ git) — no se tocaron, pertenecen a otros proyectos/sistemas fuera del
 alcance de este incidente. También se vio una regla nueva en `pg_hba.conf`
 para una base `pedidos_aqua` que tampoco está documentada en ningún repo
 conocido — mismo patrón, mismo riesgo, de otro sistema.
+
+## ✅ Nueva tool: `backlogPrevendedores` — backlog de órdenes por prevendedor/ruta D
+
+Pedido: "las rutas D (D1...D20) entregan las órdenes que los prevendedores
+crean en MobilVendor — hoy no existe forma de ver el backlog real de cada
+prevendedor, solo lo ya vendido/facturado." Se pidió explícitamente
+investigar empíricamente el vínculo orden→factura ANTES de construir nada.
+
+### Investigación (resumen — contexto nuevo esta sesión, "rutas D" no se había tocado antes)
+
+- **"Rutas D" NO están en `ordenes.route_code`** (ya sabíamos que ese campo
+  es basura — zonas tipo Z1/Z5/Z13). Aparecen en **`facturas.seller_code`**
+  (D1/D8/D9/D56/D210/D314/D1112/D1213, volumen alto y constante desde enero
+  2025).
+- Los prevendedores reales de este flujo son el canal **TIENDAS/
+  TIENDAS_VIP** (`T*`/`TV*` en `ordenes.seller_code` — T5, T6, T9, TV2,
+  etc., ~98,000 órdenes) — NO el canal PREVENTA (`PV*`/`TELEVENTA*`, que
+  tiene su propio mecanismo de status=5/guía ya documentado, no confundir).
+- **Se intentó exhaustivamente encontrar un vínculo orden→factura directo**:
+  `parent_id`, `source_document`, `invoice_origin`, `concept_code`,
+  `concept_origin`, `mobilvendor_id` — vacíos en el 100% de las facturas de
+  rutas D revisadas. `waybill_code`/`waybill_status` — vacío en las 98,367
+  órdenes de este canal (el mecanismo de guía sincronizado solo existe para
+  PREVENTA). Coincidencia cliente+fecha+monto+línea de producto — probada
+  con 2 casos reales concretos donde SÍ había una factura del mismo cliente
+  cerca en fecha: en ambos, productos y cantidades NO coinciden en
+  absoluto con la orden. Probado además con 3 clientes adicionales: cero
+  facturas de cualquier tipo en una ventana de 3 semanas. **Conclusión:
+  no existe ningún vínculo reconstruible entre una orden puntual y su
+  factura** — la facturación de este flujo ocurre en un proceso de
+  despacho/consolidación separado, sin trazabilidad hacia la orden de
+  origen en esta base de datos.
+- Se investigó también si el estado "Shipping/Terminated" (guía de
+  entrega) que Alberto ve en MobilVendor para estas rutas podría ser la
+  señal correcta: confirmado que ese mecanismo (`waybill_status`) SÍ existe
+  en nuestros datos, pero casi exclusivamente para el canal PREVENTA
+  (11,730 de 11,733 órdenes en status=4 ahí tienen guía — 99.97%); para
+  T5/T6/T9/TV2 prácticamente no llegan a status=3/4 (solo 770 de ~98,000),
+  y de esos, solo 2 tienen guía asignada. El código de sync
+  (`sincronizarVentasRango`) captura `doc.waybill` del mismo objeto que
+  devuelve `getInvoices` — si MobilVendor expone la guía de estas rutas en
+  un objeto/acción distinta, no la estaríamos sincronizando. Queda como
+  pregunta abierta para Alberto, de menor prioridad (no bloquea esta tool).
+
+### Decisión de Alberto (confirmada con datos reales antes de construir)
+
+Usar directamente `ordenes.status`: 2 = pendiente (nunca avanzó), cualquier
+otro valor (3/4/5/10) = avanzada. Pregunta válida de Alberto, verificada
+explícitamente antes de construir: ¿`status` está completo/sincronizado
+igual para TODAS las órdenes de T5/T6/T9 (no solo las 770 que llegan a
+3/4), y la gran mayoría simplemente se queda en status=2 porque no ha
+avanzado (no porque no se pueda leer)? **Confirmado: sí.** `status` es
+parte de `basePayload` en el upsert de la orden, sin ninguna protección
+tipo COALESCE (a diferencia de `waybill_status`) — se sobreescribe sin
+condición en cada resync, igual para todas las órdenes, sin ninguna
+barrera de lectura.
+
+**Caveat real encontrado al verificar esto** (`backend/cron/tareasCron.js`,
+`DIAS_RETRO=10`): el cron solo re-sincroniza los últimos 10 días + hoy, dos
+veces al día. Como `status` se sobreescribe sin protección, para una orden
+DENTRO de esa ventana el dato es en vivo — pero para una orden creada hace
+MÁS de ~10-14 días, "pendiente" en nuestra base es el ÚLTIMO valor visto,
+no necesariamente el estado actual real en MobilVendor (pudo avanzar sin
+que lo hayamos vuelto a consultar). La tool expone esto explícitamente vía
+`advertencia_status_desactualizado` cuando el rango pedido lo amerita.
+
+### Diseño implementado
+
+- `ruta`: mismo patrón array-capable que `ventasPorRuta`/`clientesSinVisita`
+  (string o array, con espacio permitido) — filtra por `seller_code` del
+  prevendedor (T5, T6, TV2, etc.), NO por `route_code` (inútil, ya
+  establecido como basura).
+- `total_ordenes`, `pendientes` (status=2), `avanzadas` (status≠2),
+  `por_status` (desglose crudo por cada valor de status, para no esconder
+  granularidad que podría importar).
+- `cruce_factura_cliente` (pedido explícito de Alberto): para cada orden,
+  si el CLIENTE tiene alguna factura (cualquier canal) dentro de
+  `ventana_dias_factura_cliente` días después de la orden — nombrado y
+  documentado explícitamente como señal de corroboración a nivel cliente,
+  NO como confirmación de que esa orden puntual se facturó (esa
+  granularidad ya se descartó como imposible en la investigación).
+- `por_ruta` cuando se pide un array (mismo patrón que el resto de la
+  familia de tools).
+
+### Validación con datos reales (T5 y T6, 2026-09-15)
+
+`total_ordenes`/`dolares_totales` de la tool coinciden EXACTO con SQL
+directo contra la tabla (T5: 41 órdenes; T6: 27 órdenes, confirmado antes
+de escribir el test). `por_ruta` en la llamada con array `["T5","T6"]`
+coincide EXACTO con las llamadas individuales. `pendientes+avanzadas`,
+`por_status` y `cruce_factura_cliente` suman exacto al total en ambos
+casos. `advertencia_status_desactualizado`: ausente para el rango reciente
+(2026-09-15), presente para un rango viejo (2025-09-01).
+
+Nuevo test de regresión con datos reales (`backlogPrevendedores-real.test.js`).
+Suite completa: 6/7 OK — la única falla (`notasCredito-real.test.js`) es
+deriva de datos preexistente, no relacionada a esta rama (el valor
+hardcodeado de esa prueba, `-$316,261.45` para CD COMISARIATO en un rango
+fijo hasta 2026-09-16, cambió a `-$316,613.12` porque siguieron llegando
+notas de crédito con fecha retroactiva backfillada después de esa fecha —
+confirmado que esta rama no toca `ventasCliente.js` ni ese test).
+Reportado al usuario, pendiente de decidir si se vuelve tolerante a
+deriva de datos (como `preventa-real.test.js`) en vez de exacto.

@@ -18,6 +18,7 @@ const {
   totalesPreventa: totalesPreventaCondicionPago,
   inputSchema: inputSchemaVentasPorCondicionPago,
 } = require("../src/tools/ventasPorCondicionPago");
+const { backlogPrevendedores, inputSchema: inputSchemaBacklogPrevendedores } = require("../src/tools/backlogPrevendedores");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -347,6 +348,45 @@ async function main() {
   const { rows: rowsDD2 } = await pool.query("SELECT to_regclass('detalle_documento') AS existe");
   if (!rowsDD2[0].existe) throw new Error("FALLO: la tabla detalle_documento ya no existe (inyección exitosa vía ventasPorCondicionPago)");
   console.log("OK: la tabla `detalle_documento` sigue existiendo intacta (payload vía ventasPorCondicionPago).");
+
+  // 15) backlogPrevendedores (nuevo): `ruta` es el mismo patrón string/array
+  //     que ventasPorRuta/clientesSinVisita — un payload de inyección debe
+  //     rechazarse por la regex de zod antes de tocar la query.
+  const schemaBacklogPrevendedores = z.object(inputSchemaBacklogPrevendedores);
+  const parseoBacklogRutaInyeccion = schemaBacklogPrevendedores.safeParse({
+    ruta: payload,
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (parseoBacklogRutaInyeccion.success) throw new Error("FALLO: zod aceptó un payload de inyección en `ruta` de backlogPrevendedores");
+  console.log("OK: zod rechazó el payload de inyección en `ruta` de backlogPrevendedores ->", parseoBacklogRutaInyeccion.error.issues[0].message);
+
+  const parseoBacklogRutaConEspacio = schemaBacklogPrevendedores.safeParse({
+    ruta: ["TELEVENTA 1", "RUTA 113"],
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (!parseoBacklogRutaConEspacio.success) throw new Error("FALLO: zod rechazó rutas reales con espacio en backlogPrevendedores");
+  console.log("OK: backlogPrevendedores acepta array de rutas reales con espacio (TELEVENTA 1, RUTA 113).");
+
+  // Aunque alguien se salte zod y llame la función interna directo con el
+  // payload como `ruta` (bypaseando la regex), pg debe seguir tratándolo
+  // como texto literal ($1::text[] posicional) — no debe lanzar error de
+  // sintaxis ni afectar la tabla.
+  const resultadoBacklogInyeccion = await backlogPrevendedores({
+    ruta: payload,
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+    ventana_dias_factura_cliente: 30,
+  });
+  console.log(
+    "OK: backlogPrevendedores con ruta maliciosa no lanzó error de sintaxis ->",
+    JSON.stringify({ total_ordenes: resultadoBacklogInyeccion.total_ordenes })
+  );
+
+  const { rows: rowsOrdenes2 } = await pool.query("SELECT to_regclass('ordenes') AS existe");
+  if (!rowsOrdenes2[0].existe) throw new Error("FALLO: la tabla ordenes ya no existe (inyección exitosa vía backlogPrevendedores)");
+  console.log("OK: la tabla `ordenes` sigue existiendo intacta (payload vía backlogPrevendedores).");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");
