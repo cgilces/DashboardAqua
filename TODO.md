@@ -3776,3 +3776,103 @@ notas de crédito con fecha retroactiva backfillada después de esa fecha —
 confirmado que esta rama no toca `ventasCliente.js` ni ese test).
 Reportado al usuario, pendiente de decidir si se vuelve tolerante a
 deriva de datos (como `preventa-real.test.js`) en vez de exacto.
+
+## 🚨 Incidente resuelto: MCP con error `-32000 "No valid session ID provided"` tras cada redeploy — fix de código de error, sesión NO es persistible
+
+Reportado el 2026-09-22: el usuario reprodujo el error desde otra sesión
+(Cowork/claude.ai) tras el redeploy de `backlogPrevendedores`. Investigado
+antes de aplicar cualquier fix, como se pidió explícitamente.
+
+### Descartado explícitamente: NO es una recaída del incidente del 17-sept
+
+Verificado en vivo: `pg_hba.conf` sigue con las 4 reglas intactas
+(`mcp_readonly`/`mcp_oauth`/`postgres`/`activos_sync`), el pool real de
+`mcp_server` consulta la BD sin error, cero errores de conexión en los
+logs. Descartado con evidencia directa, no por descarte.
+
+### Causa raíz real
+
+`mcp_server` se redesplegó a las 2026-09-22 10:52:20 UTC (yo, para
+`backlogPrevendedores`). Confirmado en el log de nginx-proxy-manager: una
+ráfaga de 13 respuestas 400 consecutivas exactamente en el segundo del
+restart — todas las sesiones MCP vivas en ese momento (guardadas en
+`transports = {}`, `src/server.js`) se invalidaron de golpe. El patrón
+posterior en el log es intermitente, no una caída total: la mayoría de
+clientes se reconectan solos (400 → initialize nuevo → 200, mismo
+segundo, para IPs distintas repetidamente), pero no todos — el cliente
+reportado (Cowork) seguía fallando incluso después de una reconexión
+manual forzada.
+
+### Investigación pedida por el usuario antes de comprometerse a una solución: ¿es viable persistir la sesión?
+
+**No.** Inspeccionado el código fuente real del SDK
+(`WebStandardStreamableHTTPServerTransport`, la implementación detrás de
+`StreamableHTTPServerTransport`): guarda `_streamMapping`/
+`_requestToStreamMapping` (Maps de streamId → objetos de respuesta HTTP
+VIVOS, atados al socket TCP de esa conexión) y `_requestResponseMap`
+(buffer de requests en vuelo) — no son datos serializables, y aunque lo
+fueran, el socket TCP original ya no existe tras un restart. Persistir el
+objeto `transports[sessionId]` literal no es viable con ningún motor de
+almacenamiento.
+
+### La causa exacta del comportamiento mixto (por qué unos clientes se recuperan solos y otros no)
+
+Encontrado en el código fuente del SDK: `WebStandardStreamableHTTPServerTransport`
+documenta EXPLÍCITAMENTE que "requests with invalid session IDs are
+rejected with **404 Not Found**" y código JSON-RPC **`-32001` "Session not
+found"** — la señal estándar que el ecosistema MCP espera para "tu sesión
+ya no existe, reinicializa".
+
+Nuestro `mcpPostHandler` (`src/server.js`) NO usaba esa convención para el
+caso "sessionId presente pero no está en `transports`" (exactamente el
+caso de sesión perdida por restart) — devolvía **400 + `-32000` "Bad
+Request"**, un código genérico. Confirmado que esto viene copiado literal
+del propio **ejemplo oficial del SDK**
+(`examples/server/simpleStreamableHttp.js`, texto idéntico) — el ejemplo
+no sigue la convención que su propia clase interna documenta. Heredamos
+el lado equivocado de una inconsistencia real dentro del SDK.
+
+Esto explica el patrón mixto: los clientes que se recuperaban solos
+probablemente usan una heurística ciega ("cualquier fallo → reintentar
+con sesión nueva", sin mirar el código); un cliente que sigue el spec de
+forma más estricta (como parece ser el caso de Cowork) espera la señal
+específica 404/-32001 para saber que debe reinicializar, y como nunca se
+la mandábamos, no se recuperaba.
+
+### Fix aplicado
+
+En `mcpPostHandler`, se separó el caso único anterior en dos:
+- Sin `sessionId` Y no es un `initialize` válido → sigue en 400/-32000
+  (esto sí es un request genuinamente malformado, sin cambios).
+- `sessionId` presente pero no encontrado en `transports` → **404 +
+  `-32001` "Session not found"** (el caso real de sesión perdida por
+  restart, ahora alineado con lo que el propio SDK documenta).
+
+### Validación — requisito explícito del usuario: probar AMBAS invariantes, no solo la que se arregla
+
+Nuevo test (`mcp-session-recovery.test.js`) con dos heurísticas de
+cliente simuladas contra el servidor real (HTTP real, sesión falsa
+mandada a propósito — mismo código de servidor que un restart real, sin
+necesidad de reiniciar el proceso):
+- `clienteGenerico`: heurística ciega (cualquier fallo → reinicializa y
+  reintenta) — representa los clientes que YA se recuperaban.
+- `clienteEspecifico`: heurística estricta (solo reintenta si ve
+  EXACTAMENTE 404/-32001) — representa el caso real reportado (Cowork).
+
+Corrido **antes y después** del fix, comparando:
+- **Antes** (línea base, código sin tocar): respuesta cruda 400/-32000;
+  `clienteGenerico` se recupera (200); `clienteEspecifico` NO se recupera
+  (reproduce el bug real reportado, confirmando que el test lo capta
+  fielmente).
+- **Después** (con el fix): respuesta cruda 404/-32001;
+  `clienteGenerico` SIGUE recuperándose igual (200 — regresión
+  descartada); `clienteEspecifico` AHORA se recupera (200 — fix
+  confirmado). El caso "sin session-id y sin initialize" (genuinamente
+  malformado) se mantiene en 400/-32000 sin cambios en ningún momento.
+
+Suite completa (`node:20-alpine`) 7/7 OK (`seguridad-smoke-test`,
+`oauth-smoke-test`, `preventa-real`, `clientesSinVisita-real`,
+`ventasPorCondicionPago-real`, `backlogPrevendedores-real`,
+`mcp-session-recovery` nuevo) + `diasFestivos-sync` desde host —
+`notasCredito-real.test.js` no se corrió, deriva de datos preexistente ya
+reportada aparte, sin relación a este fix.
