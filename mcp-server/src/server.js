@@ -227,7 +227,31 @@ async function mcpPostHandler(req, res) {
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
       return;
+    } else if (sessionId) {
+      // Incidente 2026-09-22 (ver TODO.md): `sessionId` viene en el header
+      // pero no está en `transports` — pasa en cada redeploy de mcp_server
+      // (el registro vive SOLO en memoria del proceso, se pierde entero en
+      // cada restart; confirmado que no es serializable — WebStandardStreamableHTTPServerTransport
+      // guarda streams HTTP vivos, no datos). El SDK documenta EXPLÍCITAMENTE
+      // este caso como 404 + código JSON-RPC -32001 "Session not found"
+      // (ver node_modules/@modelcontextprotocol/sdk .../server/webStandardStreamableHttp.js,
+      // comentario de la clase) — antes acá se devolvía 400/-32000 genérico,
+      // copiado tal cual del ejemplo oficial del SDK (que no sigue la
+      // convención documentada por su propia clase interna). Algunos
+      // clientes se recuperan solos con cualquier código de error (heurística
+      // ciega, ya funcionaba); otros (reportado con Cowork/claude.ai) solo
+      // reinicializan si ven la señal EXACTA que el spec define — por eso
+      // hacía falta este código específico, no solo "cualquier 4xx".
+      res.status(404).json({
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "Session not found" },
+        id: null,
+      });
+      return;
     } else {
+      // Sin sessionId Y no es un initialize válido — genuinamente un
+      // request malformado, no el caso de sesión perdida de arriba. Mismo
+      // código que siempre (sin cambios).
       res.status(400).json({
         jsonrpc: "2.0",
         error: { code: -32000, message: "Bad Request: No valid session ID provided" },
