@@ -30,6 +30,7 @@ const { clientesSinConsumo, inputSchema: schemaClientesSinConsumo } = require(".
 const { clientesSinVisita, inputSchema: schemaClientesSinVisita } = require("./tools/clientesSinVisita");
 const { clientesVisitadosSinVenta, inputSchema: schemaClientesVisitadosSinVenta } = require("./tools/clientesVisitadosSinVenta");
 const { ventasPorCondicionPago, inputSchema: schemaVentasPorCondicionPago } = require("./tools/ventasPorCondicionPago");
+const { backlogPrevendedores, inputSchema: schemaBacklogPrevendedores } = require("./tools/backlogPrevendedores");
 
 function resultadoTexto(objeto) {
   return { content: [{ type: "text", text: JSON.stringify(objeto, null, 2) }] };
@@ -156,6 +157,16 @@ function crearServer() {
       inputSchema: schemaVentasPorCondicionPago,
     },
     async (args) => resultadoTexto(await ventasPorCondicionPago(args))
+  );
+
+  server.registerTool(
+    "backlogPrevendedores",
+    {
+      description:
+        "Backlog de un prevendedor o ruta D (D1...D20, identificados por su seller_code de ordenes, ej. T5/T6/TV2 — mismo parámetro `ruta` array-capable que ventasPorRuta/clientesSinVisita): cuántas órdenes creó en un rango de fechas, cuántas siguen pendientes (status=2) y cuántas ya avanzaron (cualquier otro status). IMPORTANTE — investigado a fondo antes de construir: NO existe ningún vínculo confiable en los datos entre una orden puntual y la factura que la cubre (se probaron todos los campos de referencia posibles y coincidencia cliente+fecha+producto, ninguno funciona — ver TODO.md). Por eso el criterio de 'pendiente vs avanzada' es el status de la propia orden (2=pendiente, 3/4/5/10=avanzada), NO una confirmación de facturación real. cruce_factura_cliente es una señal adicional exploratoria (si el cliente tiene alguna factura, de cualquier canal, dentro de ventana_dias_factura_cliente días después de la orden) — es una corroboración a nivel CLIENTE, no una confirmación de que ESA orden específica se facturó. advertencia_status_desactualizado avisa cuando el rango incluye órdenes de hace más de ~14 días: el cron solo re-sincroniza los últimos 10 días, así que el status de órdenes más viejas puede estar desactualizado (pendientes ahí puede estar sobreestimado).",
+      inputSchema: schemaBacklogPrevendedores,
+    },
+    async (args) => resultadoTexto(await backlogPrevendedores(args))
   );
 
   return server;
