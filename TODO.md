@@ -4102,6 +4102,17 @@ sin cambios; los dos PRs (`feature/ventas-ruta-ok`,
 en GitHub — esta rama local no los reemplaza, es puramente para
 producción mientras se resuelve el acceso al repo.
 
+**Desplegado y verificado** (2026-09-23): suite completa sobre
+`local/mcp-integracion` (seguridad, oauth —15 tools confirmadas—,
+`ventasRutaOk-real`, `facturasProveedores-real`, `backlogPrevendedores-real`,
+`preventa-real`, `ventasPorCondicionPago-real`, `mcp-session-recovery`,
+`diasFestivos-sync`) sin regresión. `docker compose build mcp_server && up
+-d` desde esta rama; confirmado con un `require()` real dentro del
+contenedor vivo (no solo grep) que ambos módulos cargan y exportan lo
+esperado (`ventasRutaOk.RUTAS_OK_VALIDAS` y
+`facturasProveedores.COMPANIAS_VALIDAS`), más `/health` respondiendo
+`{"ok":true}`.
+
 Párrafo original (contexto histórico, ya no aplica):
 
 > El contenedor `mcp_server` en este momento corre el código de
