@@ -3717,6 +3717,48 @@ investigar empíricamente el vínculo orden→factura ANTES de construir nada.
   un objeto/acción distinta, no la estaríamos sincronizando. Queda como
   pregunta abierta para Alberto, de menor prioridad (no bloquea esta tool).
 
+### Seguimiento (2026-09-23): se investigó la pregunta abierta de arriba — sin hallazgo positivo, 3 hipótesis descartadas con datos reales
+
+Se probaron en vivo contra la API real de MobilVendor (login +
+`getInvoices`, mismo endpoint que usa el sync) y contra Postgres, las 3
+únicas fuentes de "estado" adicionales que existen en los datos a los que
+tenemos acceso, buscando la señal "Shipping/Terminated" que Alberto ve en
+la UI de MobilVendor para T5/T6/T9 y que no se refleja en nuestros datos:
+
+1. **`doc.process_status`** (campo del objeto de la orden en
+   `getInvoices`, DISTINTO de `doc.status` — confirmado que existe, no se
+   captura en `ordenes` hoy). Se tomaron 2 órdenes reales conocidas con
+   `status=3` en nuestra base (`PDT9-009785` T9 2026-09-17,
+   `PDT6-008565` T6 2026-09-17) y se buscaron por `code` en la respuesta
+   viva de MobilVendor para ese día exacto: **`process_status` = "0" en
+   ambas**, igual que en órdenes normales sin avanzar — no correlaciona
+   con el avance real. Descartado como la señal buscada.
+2. **`waybill`** (ya documentado arriba como casi vacío para T-routes) —
+   confirmado de nuevo en vivo para esas mismas 2 órdenes: `waybill: false`
+   en ambas pese a `status=3`. Sin cambios respecto al hallazgo original.
+3. **`detalles_rutas.estado`** (tabla de planificación de visitas por
+   ruta/semana/día/secuencia, sincronizada por
+   `syncRouteDetailsService.js` desde el schema `route_details` — un
+   candidato no considerado en la investigación original). Consultada
+   directamente en Postgres (rol `postgres`, `mcp_readonly` no tiene
+   grant sobre esta tabla): **solo toma valores 0/1** (123,747 en 0,
+   75,742 en 1) — un flag binario de plan activo/inactivo, no un estado de
+   despacho/entrega con granularidad tipo "Shipping/Terminated". Descartado.
+
+**Conclusión de este seguimiento**: no existe, en ninguna fuente a la que
+tenemos acceso hoy (API de MobilVendor vía `getInvoices`, ni la tabla de
+planificación de rutas), un campo que capture la señal "Shipping/Terminated"
+que Alberto ve en la UI para T5/T6/T9 con más granularidad que
+`ordenes.status`. La hipótesis más probable, sin forma de confirmarla con
+los datos actuales, es que esa etiqueta vive en un proceso interno de
+MobilVendor (posiblemente ligado al rol `DESPACHADOR` visto en el
+`user_role_code` de estas órdenes) sin un endpoint de API correspondiente
+que la exponga — o que exista un endpoint distinto no descubierto en esta
+pasada. **Sigue sin bloquear nada**: la decisión de usar `ordenes.status`
+directo para `backlogPrevendedores` (confirmada por Alberto, ver abajo)
+sigue siendo válida — esto solo confirma que no hay una fuente mejor
+disponible, no que la decisión tomada esté incompleta.
+
 ### Decisión de Alberto (confirmada con datos reales antes de construir)
 
 Usar directamente `ordenes.status`: 2 = pendiente (nunca avanzó), cualquier
