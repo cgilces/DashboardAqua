@@ -4263,3 +4263,31 @@ Mergeada sobre `local/mcp-integracion` (que ya tenía `ventasRutaOk` +
 `facturasProveedores` activas) — 16 tools en total sobre esa rama (13 base
 + las 3). Ver el `## ✅ Despliegue combinado` al final de este archivo para
 la verificación completa del deploy.
+
+## ✅ Despliegue combinado: ventasRutaOk + facturasProveedores + auditoriaClientes (2026-09-24)
+
+Autorizado explícitamente por el usuario ("Sí, despliega ya (16 tools en
+total)"). `local/mcp-integracion` (local, no destinada a PR) recibió el
+merge de `feature/auditoria-clientes` sobre lo que ya tenía
+(`ventasRutaOk` + `facturasProveedores`) — conflictos en
+`TODO.md`/`package.json` resueltos a mano, `server.js` y
+`seguridad-smoke-test.js` auto-mergearon limpio. Conteo de tools ajustado
+a 16 en `oauth-smoke-test`.
+
+Suite completa (`node:20-alpine`) sin regresión: `seguridad-smoke-test`,
+`oauth-smoke-test` (16 tools confirmadas), `ventasRutaOk-real`,
+`facturasProveedores-real`, `auditoriaClientes-real`,
+`backlogPrevendedores-real`. `docker compose build mcp_server && up -d`
+desde esta rama (commit `7ed307c`); confirmado con un `require()` real
+dentro del contenedor vivo (no solo grep) que los 3 módulos cargan y
+exportan lo esperado (`RUTAS_OK_VALIDAS`, `COMPANIAS_VALIDAS`,
+`CATEGORIAS_VALIDAS`), más `/health` respondiendo `{"ok":true}`.
+
+**Nota sobre verificación end-to-end real (MCP + OAuth)**: no se pudo
+confirmar `auditoriaClientes` vía una llamada MCP real de esta sesión de
+Claude Code (la conexión `claude_ai_MCP` ya tenía cacheada la lista de
+tools de ANTES de este redeploy) — es exactamente la advertencia de
+"hay que reconectar el cliente MCP tras un redeploy" ya documentada. La
+verificación de `require()` dentro del contenedor vivo es la prueba
+disponible desde acá; una llamada real por MCP requiere que alguien
+reconecte su cliente (o abra uno nuevo) después de este deploy.
