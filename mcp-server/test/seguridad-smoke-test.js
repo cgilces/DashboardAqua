@@ -19,6 +19,8 @@ const {
   inputSchema: inputSchemaVentasPorCondicionPago,
 } = require("../src/tools/ventasPorCondicionPago");
 const { backlogPrevendedores, inputSchema: inputSchemaBacklogPrevendedores } = require("../src/tools/backlogPrevendedores");
+const { inputSchema: inputSchemaFacturasProveedores, COMPANIAS_VALIDAS } = require("../src/tools/facturasProveedores");
+const { inputSchema: inputSchemaAuditoriaClientes, CATEGORIAS_VALIDAS: CATEGORIAS_AUDITORIA_VALIDAS } = require("../src/tools/auditoriaClientes");
 const { pool } = require("../src/db");
 
 async function main() {
@@ -387,6 +389,70 @@ async function main() {
   const { rows: rowsOrdenes2 } = await pool.query("SELECT to_regclass('ordenes') AS existe");
   if (!rowsOrdenes2[0].existe) throw new Error("FALLO: la tabla ordenes ya no existe (inyección exitosa vía backlogPrevendedores)");
   console.log("OK: la tabla `ordenes` sigue existiendo intacta (payload vía backlogPrevendedores).");
+
+  // 16) facturasProveedores (nuevo): no toca Postgres en absoluto (todo va
+  //     a Odoo vía JSON-RPC) — no hay `pool.query` que proteger acá. `compania`
+  //     es z.enum(...) igual que ventasRutaOk: un payload de inyección se
+  //     rechaza directo por no ser uno de los 5 alias válidos, sin necesidad
+  //     de probar el bypass a nivel de query (`compania` solo indexa un
+  //     objeto de configuración fijo en JS — COMPANIAS — nunca se concatena
+  //     ni se pasa a la llamada JSON-RPC).
+  const schemaFacturasProveedores = z.object(inputSchemaFacturasProveedores);
+  const parseoFacturasProveedoresInyeccion = schemaFacturasProveedores.safeParse({
+    compania: payload,
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (parseoFacturasProveedoresInyeccion.success) throw new Error("FALLO: zod aceptó un payload de inyección en `compania` de facturasProveedores");
+  console.log("OK: zod rechazó el payload de inyección en `compania` de facturasProveedores ->", parseoFacturasProveedoresInyeccion.error.issues[0].message);
+
+  const parseoFacturasProveedoresArray = schemaFacturasProveedores.safeParse({
+    compania: COMPANIAS_VALIDAS,
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+  });
+  if (!parseoFacturasProveedoresArray.success) throw new Error("FALLO: zod rechazó el array de las 5 compañías válidas en facturasProveedores");
+  console.log("OK: facturasProveedores acepta el array de las 5 compañías válidas.");
+
+  const parseoFacturasProveedoresTipoInyeccion = schemaFacturasProveedores.safeParse({
+    compania: "COTTSA",
+    fecha_inicio: "2026-01-01",
+    fecha_fin: "2026-01-31",
+    tipo_documento: "FACTURA'; DROP TABLE clientes; --",
+  });
+  if (parseoFacturasProveedoresTipoInyeccion.success) throw new Error("FALLO: zod aceptó un payload de inyección en `tipo_documento` de facturasProveedores");
+  console.log("OK: zod rechazó el payload de inyección en `tipo_documento` de facturasProveedores ->", parseoFacturasProveedoresTipoInyeccion.error.issues[0].message);
+
+  // 18) auditoriaClientes (nuevo): sin superficie de inyección SQL en
+  //     absoluto — todo el SQL es texto estático, los únicos parámetros de
+  //     usuario son `categoria` (z.enum cerrado), `umbral_dias_inactividad`
+  //     y `limite` (ambos z.number().int(), zod ya rechaza cualquier string).
+  //     Se confirma que el enum rechaza un valor inválido y acepta las 5
+  //     categorías reales.
+  const schemaAuditoriaClientes = z.object(inputSchemaAuditoriaClientes);
+  const parseoAuditoriaCategoriaInvalida = schemaAuditoriaClientes.safeParse({ categoria: "DROP TABLE clientes" });
+  if (parseoAuditoriaCategoriaInvalida.success) throw new Error("FALLO: zod aceptó una categoria inválida en auditoriaClientes");
+  console.log("OK: zod rechazó una categoria inválida en auditoriaClientes ->", parseoAuditoriaCategoriaInvalida.error.issues[0].message);
+
+  for (const categoriaValida of CATEGORIAS_AUDITORIA_VALIDAS) {
+    const parseoValido = schemaAuditoriaClientes.safeParse({ categoria: categoriaValida });
+    if (!parseoValido.success) throw new Error(`FALLO: zod rechazó la categoria real "${categoriaValida}" en auditoriaClientes`);
+  }
+  console.log("OK: auditoriaClientes acepta las 5 categorías reales:", CATEGORIAS_AUDITORIA_VALIDAS.join(", "));
+
+  // Esta tool es de SOLO LECTURA por regla de fase 1 — confirmación
+  // estructural (no solo de comportamiento): el CÓDIGO real (sin
+  // comentarios, que sí mencionan estos verbos en prosa al explicar la
+  // regla) no debe contener ningún verbo de escritura SQL.
+  const fuenteAuditoria = require("fs")
+    .readFileSync(require("path").join(__dirname, "../src/tools/auditoriaClientes.js"), "utf8")
+    .split("\n")
+    .filter((linea) => !linea.trim().startsWith("//"))
+    .join("\n");
+  if (/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b/i.test(fuenteAuditoria)) {
+    throw new Error("FALLO: auditoriaClientes.js contiene un verbo de escritura SQL fuera de comentarios — viola la regla de fase 1 (solo lectura)");
+  }
+  console.log("OK: auditoriaClientes.js no contiene ningún verbo de escritura SQL fuera de comentarios (confirma la regla de fase 1: solo lectura).");
 
   await pool.end();
   console.log("\nSEGURIDAD SMOKE TEST OK");
